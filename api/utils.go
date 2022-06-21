@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"green/green-ds/database"
 	"io/ioutil"
 	"net/http"
@@ -9,17 +10,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func preparePostRecord(c *gin.Context) (*database.Record, error) {
+func prepareInputRecords(c *gin.Context) ([]database.Record, error) {
+
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		return nil, err
 	}
-	var m database.Record
+	var m any
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		return nil, err
 	}
-	return &m, nil
+	var records []database.Record
+	records, ok := m.([]database.Record)
+	if !ok {
+		r, ok := m.(database.Record)
+		if !ok {
+			return nil, fmt.Errorf("invalid JSON in body request")
+		}
+		records = append(records, r)
+	}
+	return records, nil
 }
 
 func prepareInternalServerError(c *gin.Context, err error) {

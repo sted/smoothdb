@@ -8,11 +8,12 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-// DBEngine represents a database instance
+// DBEngine represents a database instance (a "cluster")
 type DBEngine struct {
 	connString string
 	pool       *pgxpool.Pool
 	databases  map[string]*Database
+	exec       *QueryExecutor
 }
 
 // InitDBEngine creates a connection pool, connects to the engine and initializes it
@@ -22,7 +23,7 @@ func InitDBEngine(connString string) (*DBEngine, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbe := &DBEngine{connString, pool, map[string]*Database{}}
+	dbe := &DBEngine{connString, pool, map[string]*Database{}, &QueryExecutor{}}
 	return dbe, nil
 }
 
@@ -77,8 +78,8 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 	if err != nil {
 		return nil, err
 	}
-	db := &Database{name, pool, map[string]SourceDesc{}}
-	db_ctx := NewContextFromDb(db)
+	db := &Database{name, pool, map[string]SourceDesc{}, dbe.exec}
+	db_ctx := NewContextForDb(db)
 	defer GetConn(db_ctx).Release()
 	err = checkDatabase(db_ctx)
 	if err != nil {
@@ -89,7 +90,7 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 		return nil, err
 	}
 	for _, source := range sources {
-		db.refreshSource(db_ctx, &source)
+		db.refreshSource(db_ctx, source.Name)
 	}
 	dbe.databases[name] = db
 	return db, nil

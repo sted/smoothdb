@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ type Database struct {
 	name          string
 	pool          *pgxpool.Pool
 	cachedSources map[string]SourceDesc
+	exec          *QueryExecutor
 }
 
 type Source struct {
@@ -59,7 +59,7 @@ func fieldsToStruct(fields []Field) reflect.Type {
 		newField := reflect.StructField{
 			Name: strings.Title(name),
 			Type: reflect.TypeOf(typeMap[strings.ToLower(field.Type)]),
-			Tag:  reflect.StructTag("json:" + strings.ToLower(field.Name)),
+			Tag:  reflect.StructTag("`json:\"" + strings.ToLower(field.Name+"\"`")),
 		}
 		if !field.NotNull {
 			newField.Type = reflect.PtrTo(newField.Type)
@@ -69,11 +69,11 @@ func fieldsToStruct(fields []Field) reflect.Type {
 	return reflect.StructOf(structFields)
 }
 
-func (db *Database) refreshSource(ctx context.Context, source *Source) {
+func (db *Database) refreshSource(ctx context.Context, source string) {
 	sourceDesc := SourceDesc{}
-	sourceDesc.Fields, _ = db.GetFields(ctx, source.Name)
+	sourceDesc.Fields, _ = db.GetFields(ctx, source)
 	sourceDesc.Struct = fieldsToStruct(sourceDesc.Fields)
-	db.cachedSources[source.Name] = sourceDesc
+	db.cachedSources[source] = sourceDesc
 }
 
 func (db *Database) AcquireConnection(ctx context.Context) *pgxpool.Conn {
@@ -139,7 +139,7 @@ func (db *Database) CreateSource(ctx context.Context, name string) (*Source, err
 		return nil, err
 	}
 	_, err = db.CreateField(ctx, &Field{Name: "_id", Type: "SERIAL", Source: name, Check: "PRIMARY KEY"})
-	db.refreshSource(ctx, source)
+	db.refreshSource(ctx, name)
 
 	tx.Commit(ctx)
 	return source, nil
@@ -217,6 +217,7 @@ func (db *Database) CreateField(ctx context.Context, field *Field) (*Field, erro
 	if err != nil {
 		return nil, err
 	}
+	db.refreshSource(ctx, field.Source)
 
 	tx.Commit(ctx)
 	return field, nil
@@ -236,106 +237,12 @@ func (db *Database) DeleteField(ctx context.Context, source string, name string)
 		return err
 	}
 
-	// Delete the related data source
+	// Delete the related column
 	_, err = tx.Exec(ctx, "ALTER TABLE "+source+" DROP COLUMN "+name)
 	if err != nil {
 		return err
 	}
 
 	tx.Commit(ctx)
-	return nil
-}
-
-func (db *Database) GetRecords(ctx context.Context, source string) ([]byte, error) {
-	conn := GetConn(ctx)
-	rows, err := conn.Query(ctx, "SELECT * FROM "+source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	json, err := db.rowsToJSON(source, rows)
-	return json, err
-}
-
-func (db *Database) GetRecords2(ctx context.Context, source string) ([]byte, error) {
-	conn := GetConn(ctx)
-	rows, err := conn.Query(ctx, "SELECT * FROM "+source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	json, err := db.rowsToJSON2(source, rows)
-	return json, err
-}
-
-func (db *Database) GetRecords3(ctx context.Context, source string) ([]byte, error) {
-	conn := GetConn(ctx)
-	rows, err := conn.Query(ctx, "SELECT json_agg("+source+") FROM "+source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	json, err := db.rowsToJSON3(source, rows)
-	return json, err
-}
-
-func (db *Database) GetRecords4(ctx context.Context, source string) ([]byte, error) {
-	conn := GetConn(ctx)
-	rows, err := conn.Query(ctx, "SELECT * FROM "+source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	json, err := db.rowsToJSON4(source, rows)
-	return json, err
-}
-
-func (db *Database) GetRecords5(ctx context.Context, source string) ([]byte, error) {
-	conn := GetConn(ctx)
-	rows, err := conn.Query(ctx, "SELECT * FROM "+source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	json, err := db.rowsToJSON5(conn, source, rows)
-	return json, err
-	//return []byte{}, err
-}
-
-func (db *Database) CreateRecord(ctx context.Context, source string, record *Record) ([]byte, error) {
-	conn := GetConn(ctx)
-
-	var fields string
-	var values string
-	var valueList []interface{}
-	var i int
-
-	for name, value := range *record {
-		if i > 0 {
-			fields += ", "
-			values += ", "
-		}
-		i += 1
-		fields += name
-		values += "$" + strconv.Itoa(i)
-		valueList = append(valueList, value)
-	}
-	var insert = "INSERT INTO " + source + " (" + fields + ") VALUES (" + values + ") RETURNING *"
-	rows, err := conn.Query(ctx, insert, valueList...)
-	if err != nil {
-		return nil, err
-	}
-	json, err := db.rowsToJSON5(conn, source, rows)
-	return json, err
-	// rows.Next()
-	// return nil, err
-}
-
-func (db *Database) DeleteRecord(ctx context.Context, source string, name string) error {
 	return nil
 }

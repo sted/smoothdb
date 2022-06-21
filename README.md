@@ -8,7 +8,7 @@ It offers the following features:
 * Data sources with standard fields and configurable fields
 * Add, delete and reorder fields
 * Set and change fields properties (type, constraints, etc)
-* CRUD operations
+* CRUD operations on data sources
 * Simple one-to-many relationships
 * Many-to-many relationships
 * Permissions

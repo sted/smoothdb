@@ -2,8 +2,10 @@ package database
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgproto3/v2"
@@ -18,8 +20,6 @@ func Values(conn *pgxpool.Conn, rows pgx.Rows, values []interface{}) error {
 	// }
 
 	connInfo := conn.Conn().ConnInfo()
-
-	//values := make([]interface{}, 0, len(rows.FieldDescriptions()))
 
 	for i := range rows.FieldDescriptions() {
 		buf := rows.RawValues()[i]
@@ -296,7 +296,12 @@ func (db *Database) rowsToJSON5(conn *pgxpool.Conn, sourcename string, rows pgx.
 					f.SetString(v)
 				}
 			case bool:
-				f.SetBool(values[i].(bool))
+				v := values[i].(bool)
+				if !field.NotNull {
+					f.Set(reflect.ValueOf(&v))
+				} else {
+					f.SetBool(v)
+				}
 			case time.Time:
 				v := values[i].(time.Time)
 				if !field.NotNull {
@@ -323,4 +328,76 @@ func (db *Database) rowsToJSON5(conn *pgxpool.Conn, sourcename string, rows pgx.
 	//encoder.Encode(array)
 	//return json.Marshal(array.Interface())
 	return w.Bytes(), nil
+}
+
+const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
+const secFromUnixEpochToY2K int64 = 946684800
+const iso8601 = "2006-01-02T15:04:05Z"
+
+func (db *Database) rowsToJSON7(conn *pgxpool.Conn, sourcename string, rows pgx.Rows) ([]byte, error) {
+
+	fds := rows.FieldDescriptions()
+	first := true
+	nfields := len(fds)
+	var w []byte
+
+	w = append(w, "["...)
+
+	for rows.Next() {
+		bufRaw := rows.RawValues()
+
+		if !first {
+			w = append(w, ", "...)
+		} else {
+			first = false
+		}
+		w = append(w, "{"...)
+
+		for i := range fds {
+			buf := bufRaw[i]
+			fd := fds[i]
+
+			w = append(w, "\""...)
+			w = append(w, fds[i].Name...)
+			w = append(w, "\":"...)
+
+			if buf == nil {
+				//tmpValue = nil
+				continue
+			}
+
+			switch fd.DataTypeOID {
+			case pgtype.Int4OID:
+				w = strconv.AppendInt(w, int64(binary.BigEndian.Uint32(buf)), 10)
+			case pgtype.TextOID:
+				w = append(w, "\""...)
+				w = append(w, buf...)
+				w = append(w, "\""...)
+			case pgtype.BoolOID:
+				if buf[0] == 1 {
+					w = append(w, "true"...)
+				} else {
+					w = append(w, "false"...)
+				}
+			case pgtype.TimestampOID:
+				w = append(w, "\""...)
+				microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
+				tim := time.Unix(
+					secFromUnixEpochToY2K+microsecSinceY2K/1000000,
+					(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
+				w = tim.AppendFormat(w, time.RFC3339Nano)
+				w = append(w, "\""...)
+			}
+			if i < nfields-1 {
+				w = append(w, ", "...)
+			}
+		}
+		w = append(w, "}"...)
+	}
+	w = append(w, "]"...)
+
+	if err := rows.Err(); err != nil {
+		return []byte{}, err
+	}
+	return w, nil
 }
