@@ -6,9 +6,10 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildSelect(parser QueryStringParser, table string, filters Filters) (string, error)
-	BuildInsert(table string, records []Record) (string, []any, error)
-	BuildDelete(parser QueryStringParser, table string, filters Filters) (string, error)
+	BuildInsert(table string, records []Record, options QueryOptions) (string, []any, error)
+	BuildUpdate(table string, record Record, parts QueryParts, options QueryOptions) (string, []any, error)
+	BuildDelete(table string, parts QueryParts, options QueryOptions) (string, error)
+	BuildSelect(table string, parts QueryParts, options QueryOptions) (string, error)
 	preferredSerializer() ResultSerializer
 }
 
@@ -90,7 +91,7 @@ func whereClause(node *WhereConditionNode) string {
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record) (insert string, valueList []any, err error) {
+func (CommonBuilder) BuildInsert(table string, records []Record, options QueryOptions) (insert string, valueList []any, err error) {
 	var fields string
 	var fieldList []string
 	var values string
@@ -121,26 +122,54 @@ func (CommonBuilder) BuildInsert(table string, records []Record) (insert string,
 		}
 		j = 0
 	}
-	insert = "INSERT INTO " + table + " (" + fields + ") VALUES (" + values + ") RETURNING *"
+	insert = "INSERT INTO " + table + " (" + fields + ") VALUES (" + values + ")"
+	if options.ReturnRepresentation {
+		insert += " RETURNING *"
+	}
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(parser QueryStringParser, table string, filters Filters) (string, error) {
-	parts, _ := parser.Parse(table, filters)
-	whereClause := whereClause(&parts.whereConditionsTree)
-	query := "DELETE FROM " + table
-	if whereClause != "" {
-		query += " WHERE " + whereClause
+func (CommonBuilder) BuildUpdate(table string, record Record, parts QueryParts, options QueryOptions) (update string, valueList []any, err error) {
+	var pairs string
+
+	var i int
+	for key := range record {
+		if pairs != "" {
+			pairs += ", "
+		}
+		pairs += key
+		i++
+		pairs += " = $" + strconv.Itoa(i)
+		valueList = append(valueList, record[key])
 	}
-	return query, nil
+	whereClause := whereClause(&parts.whereConditionsTree)
+	update = "UPDATE " + table + " SET " + pairs
+	if whereClause != "" {
+		update += " WHERE " + whereClause
+	}
+	if options.ReturnRepresentation {
+		update += " RETURNING *"
+	}
+	return update, valueList, nil
+}
+
+func (CommonBuilder) BuildDelete(table string, parts QueryParts, options QueryOptions) (string, error) {
+	whereClause := whereClause(&parts.whereConditionsTree)
+	delete := "DELETE FROM " + table
+	if whereClause != "" {
+		delete += " WHERE " + whereClause
+	}
+	if options.ReturnRepresentation {
+		delete += " RETURNING *"
+	}
+	return delete, nil
 }
 
 type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(parser QueryStringParser, table string, filters Filters) (string, error) {
-	parts, _ := parser.Parse(table, filters)
+func (DirectQueryBuilder) BuildSelect(table string, parts QueryParts, options QueryOptions) (string, error) {
 	selectClause := selectClause(parts.selectFields)
 	orderClause := orderClause(parts.orderFields)
 	whereClause := whereClause(&parts.whereConditionsTree)
@@ -168,8 +197,7 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(parser QueryStringParser, table string, filters Filters) (string, error) {
-	parts, _ := parser.Parse(table, filters)
+func (QueryWithJSON) BuildSelect(table string, parts QueryParts, options QueryOptions) (string, error) {
 	selectClause := selectClause(parts.selectFields)
 	orderClause := orderClause(parts.orderFields)
 	whereClause := whereClause(&parts.whereConditionsTree)

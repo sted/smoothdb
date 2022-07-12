@@ -145,7 +145,7 @@ func (db *Database) rowsToJSON(sourcename string, rows pgx.Rows) ([]byte, error)
 			return []byte{}, err
 		}
 		//struc := reflect.New(source.Struct).Elem()
-		for i, field := range source.Fields {
+		for i, field := range source.Columns {
 			f := struc.Field(i)
 
 			switch values[i].(type) {
@@ -201,7 +201,7 @@ func (db *Database) rowsToJSON2(sourcename string, rows pgx.Rows) ([]byte, error
 			return []byte{}, err
 		}
 		struc := map[string]interface{}{}
-		for i, field := range source.Fields {
+		for i, field := range source.Columns {
 
 			struc[field.Name] = values[i]
 
@@ -277,7 +277,7 @@ func (db *Database) rowsToJSON5(conn *pgxpool.Conn, sourcename string, rows pgx.
 		if err != nil {
 			return []byte{}, err
 		}
-		for i, field := range source.Fields {
+		for i, field := range source.Columns {
 			f := struc.Field(i)
 
 			switch values[i].(type) {

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sort"
@@ -15,18 +16,18 @@ type QueryField struct {
 	cast  string
 }
 
+type OrderField struct {
+	name        string
+	descending  bool
+	invertNulls bool
+}
+
 type WhereConditionNode struct {
 	field    string
 	operator string
 	not      bool
 	value    string
 	children []*WhereConditionNode
-}
-
-type OrderField struct {
-	name        string
-	descending  bool
-	invertNulls bool
 }
 
 type QueryParts struct {
@@ -37,11 +38,16 @@ type QueryParts struct {
 	whereConditionsTree WhereConditionNode
 }
 
-// QueryStringParser is the interface used to parse the query string and
-// extract the query parts, like the WHERE clause.
+type QueryOptions struct {
+	ReturnRepresentation bool
+}
+
+// RequestParser is the interface used to parse the query string and
+// extract the significant headers.
 // Initially we will support the PostgREST mode and later the Django mode.
-type QueryStringParser interface {
-	Parse(table string, filters Filters) (QueryParts, error)
+type RequestParser interface {
+	parseQuery(filters Filters) (QueryParts, error)
+	getOptions(ctx context.Context) (QueryOptions, error)
 }
 
 type PostgRestParser struct {
@@ -49,9 +55,9 @@ type PostgRestParser struct {
 	cur    int
 }
 
-var postgRestReservedWords = []string{
-	"select", "order", "limit", "offset", "not", "and", "or",
-}
+// var postgRestReservedWords = []string{
+// 	"select", "order", "limit", "offset", "not", "and", "or",
+// }
 
 // From https://github.com/PostgREST/postgrest/blob/v9.0.0/src/PostgREST/Query/SqlFragment.hs
 var postgRestParserOperators = map[string]string{
@@ -206,7 +212,7 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 	return nil
 }
 
-func (p PostgRestParser) Parse(table string, filters Filters) (QueryParts, error) {
+func (p PostgRestParser) parseQuery(filters Filters) (QueryParts, error) {
 	parts := QueryParts{}
 
 	// SELECT
@@ -285,4 +291,13 @@ func (p PostgRestParser) Parse(table string, filters Filters) (QueryParts, error
 		}
 	}
 	return parts, nil
+}
+
+func (p PostgRestParser) getOptions(ctx context.Context) (QueryOptions, error) {
+	header := GetHeader(ctx)
+	options := QueryOptions{}
+	if header.Get("Prefer") == "return=representation" {
+		options.ReturnRepresentation = true
+	}
+	return options, nil
 }

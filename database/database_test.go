@@ -26,7 +26,7 @@ func BenchmarkBase(b *testing.B) {
 	db, _ := dbe.CreateDatabase(f_ctx, "bench")
 	defer dbe.DeleteDatabase(f_ctx, "bench")
 
-	ctx := NewContextForDb(db)
+	ctx := WithDb(context.Background(), db)
 	defer ReleaseContext(ctx)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
@@ -36,7 +36,7 @@ func BenchmarkBase(b *testing.B) {
 
 	//b.Run("Insert", func(b *testing.B) {
 	for i := 0; i < 10000; i++ {
-		_, err := db.CreateRecords(ctx, "b1", []Record{
+		_, _, err := db.CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
 			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}})
 		if err != nil {
@@ -82,15 +82,17 @@ func TestBase(t *testing.T) {
 	db, _ := dbe.CreateDatabase(f_ctx, "bench")
 	defer dbe.DeleteDatabase(f_ctx, "bench")
 
-	ctx := NewContextForDb(db)
+	ctx := WithDb(context.Background(), db)
 	defer ReleaseContext(ctx)
 
-	db.CreateTable(ctx, &Table{Name: "b1"})
-	db.CreateColumn(ctx, &Column{Name: "name", Type: "text", Table: "b1"})
-	db.CreateColumn(ctx, &Column{Name: "number", Type: "integer", Table: "b1"})
-	db.CreateColumn(ctx, &Column{Name: "date", Type: "timestamp", Table: "b1"})
-	db.CreateColumn(ctx, &Column{Name: "bool", Type: "boolean", Table: "b1"})
-
+	_, err := db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+		{Name: "name", Type: "text"},
+		{Name: "number", Type: "integer"},
+		{Name: "date", Type: "timestamp"},
+		{Name: "bool", Type: "boolean"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 5; i++ {
 		db.CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true},
@@ -100,8 +102,7 @@ func TestBase(t *testing.T) {
 	t.Run("Select1", func(t *testing.T) {
 		j, err := db.GetRecords(ctx, "b1", nil)
 		if err != nil {
-			log.Print(err)
-			return
+			t.Error(err)
 		}
 		fmt.Println("1", string(j))
 	})
@@ -110,8 +111,7 @@ func TestBase(t *testing.T) {
 		SetQueryBuilder(ctx, QueryWithJSON{})
 		j, err := db.GetRecords(ctx, "b1", nil)
 		if err != nil {
-			log.Print(err)
-			return
+			t.Error(err)
 		}
 		fmt.Println("2", string(j))
 	})
