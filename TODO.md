@@ -1,17 +1,23 @@
-* Databases
-* Tables
-* Columns
-* Generic records: different strategies: reflect, database, optimized
-* Bulk inserts
-* Bulk table creation
-* Queries, filters: postgrest mode, django mode
+√ Databases
+√ Tables
+√ Columns
+* Generic records: different strategies: reflect, √ database, √ optimized
+√ Bulk inserts
+√ Bulk table creation
+* Queries, filters: √ postgrest mode, django mode
+√ Checks, constraints
+* Functions 
 * Views
-* Functions (DB)
+* Alter tables, view and columns
 * More types, in order: jsonb, 
-* Sessions
+* Resource embedding
+* Sessions, Auth
 * Indexes
-* Relationships
-* Checks, constraints
+* Triggers
+* Upsert
+* Schemas
+* Table inheritance
+* MxN Relationships
 * Permissions
 * Versioning
 * Localizations

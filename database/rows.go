@@ -133,7 +133,7 @@ func Values2(conn *pgxpool.Conn, rows pgx.Rows, fds []pgproto3.FieldDescription,
 }
 
 func (db *Database) rowsToJSON(sourcename string, rows pgx.Rows) ([]byte, error) {
-	source := db.cachedSources[sourcename]
+	source := db.cachedTables[sourcename]
 	array := reflect.New(reflect.SliceOf(source.Struct)).Elem()
 	//array := reflect.MakeSlice(reflect.SliceOf(source.Struct), 0, 25000)
 	//array := []interface{}{}
@@ -193,7 +193,7 @@ func (db *Database) rowsToJSON(sourcename string, rows pgx.Rows) ([]byte, error)
 }
 
 func (db *Database) rowsToJSON2(sourcename string, rows pgx.Rows) ([]byte, error) {
-	source := db.cachedSources[sourcename]
+	source := db.cachedTables[sourcename]
 	array := []interface{}{}
 	for rows.Next() {
 		values, err := rows.Values()
@@ -263,7 +263,7 @@ func (db *Database) rowsToJSON4(sourcename string, rows pgx.Rows) ([]byte, error
 }
 
 func (db *Database) rowsToJSON5(conn *pgxpool.Conn, sourcename string, rows pgx.Rows) ([]byte, error) {
-	source := db.cachedSources[sourcename]
+	source := db.cachedTables[sourcename]
 	//array := reflect.New(reflect.SliceOf(source.Struct)).Elem()
 	array := reflect.MakeSlice(reflect.SliceOf(source.Struct), 0, 50000)
 	//array := []interface{}{}

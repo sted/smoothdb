@@ -17,15 +17,14 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 	databases := admin.Group("/databases")
 
 	databases.GET("/", func(c *gin.Context) {
-		ctx := context.Background()
-		databases := dbe.GetDatabases(ctx)
+		databases, _ := dbe.GetDatabases(c)
 		c.JSON(http.StatusOK, databases)
 	})
 
-	databases.POST("/:dbname", func(c *gin.Context) {
-		ctx := context.Background()
-		name := c.Param("dbname")
-		db, err := dbe.CreateDatabase(ctx, name)
+	databases.POST("/", func(c *gin.Context) {
+		var database database.Database
+		c.BindJSON(&database)
+		db, err := dbe.CreateDatabase(c, database.Name)
 		if err == nil {
 			c.JSON(http.StatusCreated, db)
 		} else {
@@ -42,12 +41,11 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
-	// SOURCES
+	// TABLES
 
-	databases.GET("/:dbname/sources", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		sources, err := db.GetSources(ctx)
+	databases.GET("/:dbname/tables", func(c *gin.Context) {
+		db := database.GetDb(c)
+		sources, err := db.GetTables(c)
 		if err == nil {
 			c.JSON(http.StatusOK, sources)
 		} else {
@@ -55,11 +53,11 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
-	databases.POST("/:dbname/sources/:sourcename", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		name := c.Param("sourcename")
-		source, err := db.CreateSource(ctx, name)
+	databases.POST("/:dbname/tables/", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var table database.Table
+		c.BindJSON(&table)
+		source, err := db.CreateTable(c, &table)
 		if err == nil {
 			c.JSON(http.StatusCreated, source)
 		} else {
@@ -67,41 +65,37 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
-	databases.DELETE("/:dbname/sources/:sourcename", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		name := c.Param("sourcename")
-		err := db.DeleteSource(ctx, name)
+	databases.DELETE("/:dbname/tables/:table", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("table")
+		err := db.DeleteTable(c, name)
 		if err != nil {
 			prepareInternalServerError(c, err)
 		}
 	})
 
-	// FIELDS
+	// COLUMNS
 
-	databases.GET("/:dbname/sources/:sourcename/fields", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		sourcename := c.Param("sourcename")
-		fields, err := db.GetFields(ctx, sourcename)
+	databases.GET("/:dbname/tables/:table/columns", func(c *gin.Context) {
+		db := database.GetDb(c)
+		table := c.Param("table")
+		columns, err := db.GetColumns(c, table)
 		if err == nil {
-			c.JSON(http.StatusOK, fields)
+			c.JSON(http.StatusOK, columns)
 		} else {
 			prepareInternalServerError(c, err)
 		}
 	})
 
-	databases.POST("/:dbname/sources/:sourcename/fields/:fieldname", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		var field database.Field
-		field.Source = c.Param("sourcename")
-		field.Name = c.Param("fieldname")
-		c.BindJSON(&field)
-		if field.Type == "" {
-			field.Type = "text"
+	databases.POST("/:dbname/tables/:table/columns", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var column database.Column
+		column.Table = c.Param("table")
+		c.BindJSON(&column)
+		if column.Type == "" {
+			column.Type = "text"
 		}
-		source, err := db.CreateField(ctx, &field)
+		source, err := db.CreateColumn(c, &column)
 		if err == nil {
 			c.JSON(http.StatusCreated, source)
 		} else {
@@ -109,12 +103,11 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
-	databases.DELETE("/:dbname/sources/:sourcename/fields/:fieldname", func(c *gin.Context) {
-		ctx := database.NewContext(c)
-		db := database.GetDb(ctx)
-		sourcename := c.Param("sourcename")
-		fieldname := c.Param("fieldname")
-		err := db.DeleteField(ctx, sourcename, fieldname)
+	databases.DELETE("/:dbname/tables/:table/columns/:column", func(c *gin.Context) {
+		db := database.GetDb(c)
+		table := c.Param("table")
+		column := c.Param("column")
+		err := db.DeleteColumn(c, table, column)
 		if err != nil {
 			prepareInternalServerError(c, err)
 		}

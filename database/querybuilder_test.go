@@ -22,7 +22,7 @@ func TestQueryBuilder(t *testing.T) {
 			"SELECT a AS Aa, b, c AS Cc FROM table",
 		},
 		{
-			// with casrs and labels
+			// with casts and labels
 			"?select=a::text,b:bbb::integer,c",
 			"SELECT a::text, b::integer AS bbb, c FROM table",
 		},

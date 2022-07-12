@@ -10,34 +10,45 @@ import (
 )
 
 type Database struct {
-	name          string
-	pool          *pgxpool.Pool
-	cachedSources map[string]SourceDesc
-	exec          *QueryExecutor
-}
-
-type Source struct {
-	Id    int    `json:"id"`
 	Name  string `json:"name"`
-	Check string `json:"check"`
+	Owner string `json:"owner"`
+
+	pool         *pgxpool.Pool
+	cachedTables map[string]Table
+	exec         *QueryExecutor
 }
 
-type SourceDesc struct {
-	Source
-	Fields []Field
-	Struct reflect.Type
+type Constraint struct {
+	Name       string
+	Type       byte // c: check, u: unique, p: primary, f: foreign
+	Table      string
+	Column     string
+	NumCols    int
+	Definition string
 }
 
-type Field struct {
-	Id          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Source      string `json:"source"`
-	Unique      bool   `json:"unique"`
-	NotNull     bool   `json:"notnull"`
-	Default     string `json:"default"`
-	Check       string `json:"check"`
+type Table struct {
+	Name    string   `json:"name"`
+	Owner   string   `json:"owner"`
+	Check   []string `json:"check"`
+	Unique  []string `json:"unique"`
+	Primary string   `json:"primary"`
+	Foreign []string `json:"foreign"`
+	Columns []Column `json:"columns,omitempty"`
+
+	Struct reflect.Type `json:"-"`
+}
+
+type Column struct {
+	Name    string  `json:"name"`
+	Type    string  `json:"type"`
+	NotNull bool    `json:"notnull"`
+	Default *string `json:"default"`
+	Check   string  `json:"check"`
+	Unique  bool    `json:"unique"`
+	Primary bool    `json:"primary"`
+	Foreign string  `json:"foreign"`
+	Table   string  `json:"table,omitempty"`
 }
 
 type Record map[string]interface{}
@@ -52,7 +63,7 @@ var typeMap = map[string]interface{}{
 	"timestamp": time.Now(),
 }
 
-func fieldsToStruct(fields []Field) reflect.Type {
+func fieldsToStruct(fields []Column) reflect.Type {
 	var structFields []reflect.StructField
 	for _, field := range fields {
 		name := strings.TrimPrefix(field.Name, "_")
@@ -69,11 +80,11 @@ func fieldsToStruct(fields []Field) reflect.Type {
 	return reflect.StructOf(structFields)
 }
 
-func (db *Database) refreshSource(ctx context.Context, source string) {
-	sourceDesc := SourceDesc{}
-	sourceDesc.Fields, _ = db.GetFields(ctx, source)
-	sourceDesc.Struct = fieldsToStruct(sourceDesc.Fields)
-	db.cachedSources[source] = sourceDesc
+func (db *Database) refreshTable(ctx context.Context, name string) {
+	// table := Table{}
+	// table.Columns, _ = db.GetColumns(ctx, name)
+	// table.Struct = fieldsToStruct(table.Columns)
+	// db.cachedTables[name] = table
 }
 
 func (db *Database) AcquireConnection(ctx context.Context) *pgxpool.Conn {
@@ -81,168 +92,265 @@ func (db *Database) AcquireConnection(ctx context.Context) *pgxpool.Conn {
 	return conn
 }
 
-func (db *Database) GetSources(ctx context.Context) ([]Source, error) {
+const constraintsQuery = `
+	SELECT
+		c.conrelid::regclass tablename,
+		att.attname colname,
+		c.conname  name,
+		c.contype  type,
+		cardinality(c.conkey) cols,
+		pg_get_constraintdef(c.oid, true) def
+	FROM pg_constraint c
+		JOIN pg_namespace ns ON c.connamespace = ns.oid
+		JOIN pg_attribute att ON c.conrelid = att.attrelid and c.conkey[1] = att.attnum
+	WHERE ns.nspname = 'public' 
+	ORDER BY tablename, type`
+
+func getConstraints(ctx context.Context) ([]Constraint, error) {
 	conn := GetConn(ctx)
-	sources := []Source{}
-	rows, err := conn.Query(ctx, "SELECT * FROM _sources")
+	constraints := []Constraint{}
+	rows, err := conn.Query(ctx, constraintsQuery)
 	if err != nil {
-		return sources, err
+		return nil, err
 	}
 	defer rows.Close()
 
+	constraint := Constraint{}
 	for rows.Next() {
-		source := &Source{}
-		err := rows.Scan(&source.Id, &source.Name, &source.Check)
+		err := rows.Scan(&constraint.Table, &constraint.Column, &constraint.Name,
+			&constraint.Type, &constraint.NumCols, &constraint.Definition)
 		if err != nil {
-			return sources, err
+			return nil, err
 		}
-		sources = append(sources, *source)
+		constraints = append(constraints, constraint)
 	}
-
 	if err := rows.Err(); err != nil {
-		return sources, err
+		return nil, err
 	}
 
-	return sources, nil
+	return constraints, nil
 }
 
-func (db *Database) GetSource(ctx context.Context, name string) (*Source, error) {
-	conn := GetConn(ctx)
-	source := Source{}
-	err := conn.QueryRow(ctx, "SELECT * FROM _sources WHERE _name = $1", name).Scan(&source.Id, &source.Name, &source.Check)
-	if err != nil {
-		return nil, err
+func fillTableConstraints(table *Table, constraints []Constraint) {
+	table.Check = nil
+	table.Unique = nil
+	table.Primary = ""
+	table.Foreign = nil
+	for _, c := range constraints {
+		if c.Table == table.Name && (c.NumCols > 1 || c.Type == 'p') {
+			switch c.Type {
+			case 'c':
+				table.Check = append(table.Check, c.Definition)
+			case 'u':
+				table.Unique = append(table.Unique, c.Definition)
+			case 'p':
+				table.Primary = c.Definition
+			case 'f':
+				table.Foreign = append(table.Foreign, c.Definition)
+			}
+		}
 	}
-
-	return &source, nil
 }
 
-func (db *Database) CreateSource(ctx context.Context, name string) (*Source, error) {
-	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, err
+func fillColumnsConstraints(tableName string, column *Column, constraints []Constraint) {
+	column.Check = ""
+	column.Unique = false
+	column.Primary = false
+	column.Foreign = ""
+	for _, c := range constraints {
+		if c.Table == tableName && c.Column == column.Name && c.NumCols == 1 {
+			switch c.Type {
+			case 'c':
+				column.Check = c.Definition
+			case 'u':
+				column.Unique = true
+			case 'p':
+				column.Primary = true
+			case 'f':
+				column.Foreign = c.Definition
+			}
+		}
 	}
-	defer tx.Rollback(ctx)
-
-	// Create source item in the _sources table
-	source := &Source{}
-	err = tx.QueryRow(ctx, "INSERT INTO _sources (_name) VALUES ($1) RETURNING *", name).
-		Scan(&source.Id, &source.Name, &source.Check)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the related data source
-	_, err = tx.Exec(ctx, "CREATE TABLE "+name+" ()")
-	if err != nil {
-		return nil, err
-	}
-	_, err = db.CreateField(ctx, &Field{Name: "_id", Type: "SERIAL", Source: name, Check: "PRIMARY KEY"})
-	db.refreshSource(ctx, name)
-
-	tx.Commit(ctx)
-	return source, nil
 }
 
-func (db *Database) DeleteSource(ctx context.Context, name string) error {
+func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
+	constraints, err := getConstraints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tables := []Table{}
+	rows, err := conn.Query(ctx, `
+		SELECT tablename, tableowner 
+		FROM pg_tables
+		WHERE schemaname = 'public'`)
+	if err != nil {
+		return tables, err
+	}
+	defer rows.Close()
+
+	table := Table{}
+	for rows.Next() {
+		err := rows.Scan(&table.Name, &table.Owner)
+		if err != nil {
+			return tables, err
+		}
+		fillTableConstraints(&table, constraints)
+		tables = append(tables, table)
+	}
+	if err := rows.Err(); err != nil {
+		return tables, err
+	}
+
+	return tables, nil
+}
+
+func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
+	conn := GetConn(ctx)
+	constraints, err := getConstraints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	table := Table{}
+	err = conn.QueryRow(ctx,
+		"SELECT tablename, tableowner FROM pg_tables WHERE tablename = $1", name).
+		Scan(&table.Name, &table.Owner)
+	if err != nil {
+		return nil, err
+	}
+	fillTableConstraints(&table, constraints)
+	return &table, nil
+}
+
+func composeColumnSQL(sql *string, column *Column) {
+	*sql += column.Name + " " + column.Type
+	if column.NotNull {
+		*sql += " NOT NULL"
+	}
+	if column.Default != nil {
+		*sql += " DEFAULT '" + *column.Default + "'"
+	}
+	if column.Check != "" {
+		*sql += " CHECK (" + column.Check + ")"
+	}
+	if column.Unique {
+		*sql += " UNIQUE"
+	}
+	if column.Primary {
+		*sql += " PRIMARY KEY"
+	}
+	if column.Foreign != "" {
+		*sql += " REFERENCES " + column.Foreign
+	}
+}
+
+func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, error) {
+	conn := GetConn(ctx)
+
+	var columnList string
+	for _, col := range table.Columns {
+		if columnList != "" {
+			columnList += ", "
+		}
+		composeColumnSQL(&columnList, &col)
+	}
+
+	create := "CREATE TABLE " + table.Name + " (" + columnList
+	if table.Check != nil {
+		for _, check := range table.Check {
+			create += ", " + check
+		}
+	}
+	if table.Unique != nil {
+		for _, unique := range table.Unique {
+			create += ", " + unique
+		}
+	}
+	if table.Primary != "" {
+		create += ", " + table.Primary
+	}
+	if table.Foreign != nil {
+		for _, foreign := range table.Foreign {
+			create += ", " + foreign
+		}
+	}
+	create += ")"
+
+	_, err := conn.Exec(ctx, create)
+	if err != nil {
+		return nil, err
+	}
+	db.refreshTable(ctx, table.Name)
+	return table, nil
+}
+
+func (db *Database) DeleteTable(ctx context.Context, name string) error {
+	conn := GetConn(ctx)
+	_, err := conn.Exec(ctx, "DROP TABLE "+name)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
-
-	// Delete the source item from the _sources table
-	_, err = tx.Exec(ctx, "DELETE FROM _sources WHERE _name = $1", name)
-	if err != nil {
-		return err
-	}
-
-	// Delete the related data source
-	_, err = tx.Exec(ctx, "DROP TABLE "+name)
-	if err != nil {
-		return err
-	}
-
-	tx.Commit(ctx)
+	delete(db.cachedTables, name)
 	return nil
 }
 
-func (db *Database) GetFields(ctx context.Context, source string) ([]Field, error) {
+func (db *Database) GetColumns(ctx context.Context, table string) ([]Column, error) {
 	conn := GetConn(ctx)
-	fields := []Field{}
-	rows, err := conn.Query(ctx, "SELECT * FROM _fields WHERE _source = $1", source)
+	constraints, err := getConstraints(ctx)
 	if err != nil {
-		return fields, err
+		return nil, err
+	}
+	columns := []Column{}
+	rows, err := conn.Query(ctx, `
+		SELECT column_name, data_type, is_nullable, column_default
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = $1`, table)
+	if err != nil {
+		return columns, err
 	}
 	defer rows.Close()
 
+	var nullable string
+	column := Column{}
 	for rows.Next() {
-		field := &Field{}
-		err := rows.Scan(&field.Id, &field.Name, &field.Type, &field.Source, &field.Check)
+		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default)
 		if err != nil {
-			return fields, err
+			return columns, err
 		}
-		fields = append(fields, *field)
+		if nullable == "NO" {
+			column.NotNull = true
+		} else {
+			column.NotNull = false
+		}
+		fillColumnsConstraints(table, &column, constraints)
+		columns = append(columns, column)
 	}
 
 	if rows.Err() != nil {
-		return fields, err
+		return columns, err
 	}
 
-	return fields, nil
+	return columns, nil
 }
 
-func (db *Database) CreateField(ctx context.Context, field *Field) (*Field, error) {
+func (db *Database) CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
+	create := "ALTER TABLE " + column.Table + " ADD COLUMN "
+	composeColumnSQL(&create, column)
+	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
-
-	// Create the field item in the _fields table
-	err = tx.QueryRow(ctx, `INSERT INTO _fields 
-		(_name, _type, _source, _check) VALUES ($1, $2, $3, $4) 
-		RETURNING *`,
-		field.Name, field.Type, field.Source, field.Check).
-		Scan(&field.Id, &field.Name, &field.Type, &field.Source, &field.Check)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the related column
-	_, err = tx.Exec(ctx, "ALTER TABLE "+field.Source+" ADD COLUMN "+field.Name+" "+field.Type)
-	if err != nil {
-		return nil, err
-	}
-	db.refreshSource(ctx, field.Source)
-
-	tx.Commit(ctx)
-	return field, nil
+	db.refreshTable(ctx, column.Table)
+	return column, nil
 }
 
-func (db *Database) DeleteField(ctx context.Context, source string, name string) error {
+func (db *Database) DeleteColumn(ctx context.Context, table string, name string) error {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
+	_, err := conn.Exec(ctx, "ALTER TABLE "+table+" DROP COLUMN "+name)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
-
-	// Delete the field item from the fields table
-	_, err = tx.Exec(ctx, "DELETE FROM _fields WHERE _source = $1 AND _name = $2", source, name)
-	if err != nil {
-		return err
-	}
-
-	// Delete the related column
-	_, err = tx.Exec(ctx, "ALTER TABLE "+source+" DROP COLUMN "+name)
-	if err != nil {
-		return err
-	}
-
-	tx.Commit(ctx)
+	db.refreshTable(ctx, table)
 	return nil
 }

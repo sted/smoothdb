@@ -12,9 +12,9 @@ func ExampleT() {
 	for _, n := range names {
 		dbe.CreateDatabase(ctx, n)
 	}
-	databases := dbe.GetDatabases(ctx)
+	databases := dbe.GetActiveDatabases(ctx)
 	for _, d := range databases {
-		fmt.Println(d.name)
+		fmt.Println(d.Name)
 	}
 	// Unordered output:
 	// t1

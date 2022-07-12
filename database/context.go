@@ -18,8 +18,21 @@ type GreenContext struct {
 	QueryBuilder      QueryBuilder
 }
 
-func initDefaultGreenContext(conn *pgxpool.Conn, db *Database) *GreenContext {
-	return &GreenContext{conn, db, PostgRestParser{}, DirectQueryBuilder{}}
+func FillContext(gctx *gin.Context) {
+	var db *Database
+	var err error
+	var conn *pgxpool.Conn
+	dbname := gctx.Param("dbname")
+	if dbname != "" {
+		db, err = DBE.GetDatabase(gctx, dbname)
+		if err != nil {
+			panic("")
+		}
+		conn = db.AcquireConnection(gctx.Request.Context())
+	} else {
+		conn = DBE.AcquireConnection(gctx.Request.Context())
+	}
+	gctx.Set(greenTag, defaultGreenInfo(gctx, conn, db))
 }
 
 func NewContext(c *gin.Context) context.Context {

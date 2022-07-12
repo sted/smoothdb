@@ -20,7 +20,7 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 
 	fds := rows.FieldDescriptions()
 	first := true
-	nfields := len(fds)
+	//nfields := len(fds)
 	var w []byte
 
 	w = append(w, "["...)
@@ -39,12 +39,16 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 			buf := bufRaw[i]
 			fd := fds[i]
 
+			if i > 0 {
+				w = append(w, ", "...)
+			}
+
 			w = append(w, "\""...)
 			w = append(w, fds[i].Name...)
-			w = append(w, "\":"...)
+			w = append(w, "\": "...)
 
 			if buf == nil {
-				//tmpValue = nil
+				w = append(w, "null"...)
 				continue
 			}
 
@@ -62,6 +66,7 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 					w = append(w, "false"...)
 				}
 			case pgtype.TimestampOID:
+			case pgtype.TimestamptzOID:
 				w = append(w, "\""...)
 				microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
 				tim := time.Unix(
@@ -69,9 +74,6 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 					(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
 				w = tim.AppendFormat(w, time.RFC3339Nano)
 				w = append(w, "\""...)
-			}
-			if i < nfields-1 {
-				w = append(w, ", "...)
 			}
 		}
 		w = append(w, "}"...)
