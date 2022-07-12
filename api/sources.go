@@ -55,10 +55,10 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		data, count, err := db.UpdateRecords(c, sourcename, records[0], c.Request.URL.Query())
 		if err == nil {
 			if data == nil {
-				c.JSON(http.StatusCreated, count)
+				c.JSON(http.StatusOK, count)
 			} else {
 				c.Writer.Header().Set("Content-Type", "application/json")
-				c.String(http.StatusCreated, string(data))
+				c.String(http.StatusOK, string(data))
 			}
 		} else {
 			prepareInternalServerError(c, err)
@@ -71,7 +71,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		data, count, err := db.DeleteRecords(c, sourcename, c.Request.URL.Query())
 		if err == nil {
 			if data == nil {
-				c.JSON(http.StatusCreated, count)
+				c.JSON(http.StatusOK, count)
 			} else {
 				c.Writer.Header().Set("Content-Type", "application/json")
 				c.String(http.StatusOK, string(data))

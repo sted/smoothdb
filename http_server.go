@@ -26,8 +26,8 @@ func InitHTTPServer(addr string, dbe *database.DBEngine) *http.Server {
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      router,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
 	}
 	return server
 }

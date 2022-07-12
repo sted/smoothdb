@@ -13,7 +13,7 @@ type Server struct {
 	Sessions  map[string]*Session
 }
 
-func InitServer(addr string, dburl string) (*Server, error) {
+func NewServer(addr string, dburl string) (*Server, error) {
 	// DB Engine
 	dbe, err := database.InitDBEngine(dburl)
 	if err != nil {

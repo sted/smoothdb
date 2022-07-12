@@ -16,9 +16,9 @@ type Session struct {
 }
 
 func NewSession() *Session {
-	server.CurrentID = server.CurrentID + 1
+	ThisServer.CurrentID = ThisServer.CurrentID + 1
 	return &Session{
-		Id:           fmt.Sprintf("%d", server.CurrentID),
+		Id:           fmt.Sprintf("%d", ThisServer.CurrentID),
 		UserId:       "",
 		UserName:     "",
 		PasswordHash: "",

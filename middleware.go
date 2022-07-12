@@ -1,10 +1,9 @@
 package main
 
 import (
-	"context"
+	"green/green-ds/database"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 func internalMiddleware(admin bool) gin.HandlerFunc {
@@ -15,24 +14,15 @@ func internalMiddleware(admin bool) gin.HandlerFunc {
 			s = NewSession()
 			c.SetCookie("session_id", s.Id, 0, "", "", true, false)
 		} else {
-			s = server.Sessions[sessionId]
+			s = ThisServer.Sessions[sessionId]
 		}
 		if s == nil {
 			return
 		}
-		var conn *pgxpool.Conn
-		dbname := c.Param("dbname")
-		db, err := server.DBE.GetDatabase(c, dbname)
-		if err != nil {
-			return
-		}
-		c.Set("db", db)
-		conn = db.AcquireConnection(context.Background())
-		c.Set("conn", conn)
-
+		database.FillContext(c)
 		c.Next()
 
-		conn.Release()
+		database.ReleaseContext(c)
 	}
 }
 

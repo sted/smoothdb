@@ -51,11 +51,9 @@ type Column struct {
 	Table   string  `json:"table,omitempty"`
 }
 
-type Record map[string]interface{}
+type Record = map[string]any
 
-var DBE *DBEngine
-
-var typeMap = map[string]interface{}{
+var typeMap = map[string]any{
 	"integer":   int32(0),
 	"serial":    int32(0),
 	"text":      string(""),
@@ -63,9 +61,9 @@ var typeMap = map[string]interface{}{
 	"timestamp": time.Now(),
 }
 
-func fieldsToStruct(fields []Column) reflect.Type {
+func fieldsToStruct(columns []Column) reflect.Type {
 	var structFields []reflect.StructField
-	for _, field := range fields {
+	for _, field := range columns {
 		name := strings.TrimPrefix(field.Name, "_")
 		newField := reflect.StructField{
 			Name: strings.Title(name),

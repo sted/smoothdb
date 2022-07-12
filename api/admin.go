@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"green/green-ds/database"
 	"net/http"
 
@@ -33,9 +32,8 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 	})
 
 	databases.DELETE("/:dbname", func(c *gin.Context) {
-		ctx := context.Background()
 		name := c.Param("dbname")
-		err := dbe.DeleteDatabase(ctx, name)
+		err := dbe.DeleteDatabase(c, name)
 		if err != nil {
 			prepareInternalServerError(c, err)
 		}

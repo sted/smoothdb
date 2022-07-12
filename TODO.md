@@ -9,7 +9,7 @@
 * Functions 
 * Views
 * Alter tables, view and columns
-* More types, in order: jsonb, 
+* More types, in order: jsonb, interval
 * Resource embedding
 * Sessions, Auth
 * Indexes

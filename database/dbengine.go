@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
+var DBE *DBEngine
+
 // DBEngine represents a database instance (a "cluster")
 type DBEngine struct {
 	connString      string
@@ -23,8 +25,8 @@ func InitDBEngine(connString string) (*DBEngine, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbe := &DBEngine{connString, pool, map[string]*Database{}, &QueryExecutor{}}
-	return dbe, nil
+	DBE = &DBEngine{connString, pool, map[string]*Database{}, &QueryExecutor{}}
+	return DBE, nil
 }
 
 func (dbe *DBEngine) AcquireConnection(ctx context.Context) *pgxpool.Conn {

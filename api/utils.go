@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"green/green-ds/database"
 	"io/ioutil"
 	"net/http"
@@ -16,19 +15,27 @@ func prepareInputRecords(c *gin.Context) ([]database.Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	var m any
-	err = json.Unmarshal(body, &m)
-	if err != nil {
-		return nil, err
+	isArray := false
+	for _, c := range body {
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		isArray = c == '['
+		break
 	}
 	var records []database.Record
-	records, ok := m.([]database.Record)
-	if !ok {
-		r, ok := m.(database.Record)
-		if !ok {
-			return nil, fmt.Errorf("invalid JSON in body request")
+	if isArray {
+		err = json.Unmarshal(body, &records)
+		if err != nil {
+			return nil, err
 		}
-		records = append(records, r)
+	} else {
+		var record database.Record
+		err = json.Unmarshal(body, &record)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
 	}
 	return records, nil
 }

@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var server *Server
+var ThisServer *Server
 
 func main() {
 	var addr string
@@ -16,14 +16,14 @@ func main() {
 	flag.StringVar(&dburl, "dburl", "postgres://localhost:5432/", "DatabaseURL")
 	flag.Parse()
 
-	server, err = InitServer(addr, dburl)
+	ThisServer, err = NewServer(addr, dburl)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	fmt.Println("Listening at ", addr)
-	err = server.Start()
+	err = ThisServer.Start()
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
