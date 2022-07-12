@@ -105,7 +105,7 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 
 func (dbe *DBEngine) CreateDatabase(ctx context.Context, name string) (*Database, error) {
 	_, err := dbe.pool.Exec(ctx, "CREATE DATABASE "+name)
-	if err != nil && err.(*pgconn.PgError).Code != "42P04" {
+	if err != nil && err.(*pgconn.PgError).Code != "42P04" {	
 		return nil, err
 	}
 	return dbe.GetDatabase(ctx, name)

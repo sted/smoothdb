@@ -32,8 +32,17 @@ func BenchmarkBase(b *testing.B) {
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
-		{Name: "date", Type: "timestamp"},
-	}})
+		{Name: "date", Type: "timestamp"}}})
+
+	//b.Run("Insert", func(b *testing.B) {
+	for i := 0; i < 10000; i++ {
+		_, err := db.CreateRecords(ctx, "b1", []Record{
+			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
+			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 
 	b.Run("Select1", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
