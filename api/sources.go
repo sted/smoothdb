@@ -20,6 +20,8 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		if err == nil {
 			c.Writer.Header().Set("Content-Type", "application/json")
 			c.String(http.StatusOK, string(json))
+		} else if _, ok := err.(*database.ParseError); ok {
+			prepareBadRequest(c, err)
 		} else {
 			prepareInternalServerError(c, err)
 		}

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"green/green-ds/api"
@@ -10,13 +10,16 @@ import (
 )
 
 func InitHTTPServer(addr string, dbe *database.DBEngine) *http.Server {
-	// gin.SetMode(gin.ReleaseMode)
-	// router := gin.New()
-	// router.Use(gin.Recovery())
-	router := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	//router := gin.Default()
 
 	root := router.Group("/")
 
+	root.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "Green")
+	})
 	admin := api.InitAdminRouter(root, dbe, AdminOnly())
 	api.InitSourcesRouter(root, Authenticated())
 

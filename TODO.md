@@ -3,21 +3,27 @@
 √ Columns
 * Generic records: different strategies: reflect, √ database, √ optimized
 √ Bulk inserts
-√ Bulk table creation
+√ Table creation with columns 
 * Queries, filters: √ postgrest mode, django mode
 √ Checks, constraints
-* Functions 
-* Views
-* Alter tables, view and columns
+√ Views
+√ Alter tables, view and columns
+* Some more operator: IN, etc
+* Sessions, JWT, Auth
+* Permissions
 * More types, in order: jsonb, interval
+* Configuration (shared with other apps) 
+* Functions 
+* Caching
 * Resource embedding
-* Sessions, Auth
+* Activity
+* Migrations (Tern?)
 * Indexes
 * Triggers
 * Upsert
 * Schemas
+* Full Text Search
 * Table inheritance
-* MxN Relationships
-* Permissions
+* M x N Relationships
 * Versioning
 * Localizations

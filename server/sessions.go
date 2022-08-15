@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -11,19 +11,19 @@ type Session struct {
 	UserName     string
 	PasswordHash string
 	Token        string
-	CreateAt     time.Time
-	LastUsedAt   time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 func NewSession() *Session {
-	ThisServer.CurrentID = ThisServer.CurrentID + 1
+	MainServer.CurrentID = MainServer.CurrentID + 1
 	return &Session{
-		Id:           fmt.Sprintf("%d", ThisServer.CurrentID),
+		Id:           fmt.Sprintf("%d", MainServer.CurrentID),
 		UserId:       "",
 		UserName:     "",
 		PasswordHash: "",
 		Token:        "",
-		CreateAt:     time.Now(),
-		LastUsedAt:   time.Now(),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 }

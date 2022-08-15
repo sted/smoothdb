@@ -3,10 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"green/green-ds/server"
 	"os"
 )
-
-var ThisServer *Server
 
 func main() {
 	var addr string
@@ -16,14 +15,14 @@ func main() {
 	flag.StringVar(&dburl, "dburl", "postgres://localhost:5432/", "DatabaseURL")
 	flag.Parse()
 
-	ThisServer, err = NewServer(addr, dburl)
+	s, err := server.NewServer(addr, dburl)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	fmt.Println("Listening at ", addr)
-	err = ThisServer.Start()
+	err = s.Start()
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)

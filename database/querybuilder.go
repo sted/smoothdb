@@ -19,12 +19,12 @@ func selectClause(queryFields []QueryField) string {
 		if i != 0 {
 			selectClause += ", "
 		}
-		selectClause += field.name
+		selectClause += "\"" + field.name + "\""
 		if field.cast != "" {
 			selectClause += "::" + field.cast
 		}
 		if field.label != "" {
-			selectClause += " AS " + field.label
+			selectClause += " AS \"" + field.label + "\""
 		}
 	}
 	if selectClause == "" {
@@ -84,7 +84,16 @@ func whereClause(node *WhereConditionNode) string {
 		if node.not {
 			where += "NOT "
 		}
-		where += node.field + " " + node.operator + " '" + node.value + "'"
+		where += node.field + " " + node.operator + " "
+		if node.operator == "IN" ||
+			node.value == "null" ||
+			node.value == "true" ||
+			node.value == "false" ||
+			node.value == "unknown" {
+			where += node.value
+		} else {
+			where += "'" + node.value + "'"
+		}
 	}
 	return where
 }

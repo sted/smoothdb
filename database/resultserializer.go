@@ -29,23 +29,23 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 		bufRaw := rows.RawValues()
 
 		if !first {
-			w = append(w, ", "...)
+			w = append(w, ',')
 		} else {
 			first = false
 		}
-		w = append(w, "{"...)
+		w = append(w, '{')
 
 		for i := range fds {
 			buf := bufRaw[i]
 			fd := fds[i]
 
 			if i > 0 {
-				w = append(w, ", "...)
+				w = append(w, ',')
 			}
 
-			w = append(w, "\""...)
+			w = append(w, '"')
 			w = append(w, fds[i].Name...)
-			w = append(w, "\": "...)
+			w = append(w, "\":"...)
 
 			if buf == nil {
 				w = append(w, "null"...)
@@ -55,10 +55,12 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 			switch fd.DataTypeOID {
 			case pgtype.Int4OID:
 				w = strconv.AppendInt(w, int64(binary.BigEndian.Uint32(buf)), 10)
-			case pgtype.TextOID:
-				w = append(w, "\""...)
+			case pgtype.Int8OID:
+				w = strconv.AppendInt(w, int64(binary.BigEndian.Uint64(buf)), 10)
+			case pgtype.TextOID, pgtype.VarcharOID:
+				w = append(w, '"')
 				w = append(w, buf...)
-				w = append(w, "\""...)
+				w = append(w, '"')
 			case pgtype.BoolOID:
 				if buf[0] == 1 {
 					w = append(w, "true"...)
@@ -67,21 +69,23 @@ func (DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byt
 				}
 			case pgtype.TimestampOID:
 			case pgtype.TimestamptzOID:
-				w = append(w, "\""...)
+				w = append(w, '"')
 				microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
 				tim := time.Unix(
 					secFromUnixEpochToY2K+microsecSinceY2K/1000000,
 					(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
 				w = tim.AppendFormat(w, time.RFC3339Nano)
-				w = append(w, "\""...)
+				w = append(w, '"')
+			default:
+				w = append(w, "\"n\\a\""...)
 			}
 		}
-		w = append(w, "}"...)
+		w = append(w, '}')
 	}
-	w = append(w, "]"...)
+	w = append(w, ']')
 
 	if err := rows.Err(); err != nil {
-		return []byte{}, err
+		return nil, err
 	}
 	return w, nil
 }

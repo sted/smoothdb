@@ -1,9 +1,11 @@
-package main
+package server
 
 import (
 	"green/green-ds/database"
 	"net/http"
 )
+
+var MainServer *Server
 
 type Server struct {
 	DBE  *database.DBEngine
@@ -23,7 +25,8 @@ func NewServer(addr string, dburl string) (*Server, error) {
 	// HTTP Server
 	http := InitHTTPServer(addr, dbe)
 
-	return &Server{dbe, http, 0, map[string]*Session{}}, nil
+	MainServer = &Server{dbe, http, 0, map[string]*Session{}}
+	return MainServer, nil
 }
 
 func (s *Server) Start() error {

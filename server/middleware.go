@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"green/green-ds/database"
@@ -14,7 +14,7 @@ func internalMiddleware(admin bool) gin.HandlerFunc {
 			s = NewSession()
 			c.SetCookie("session_id", s.Id, 0, "", "", true, false)
 		} else {
-			s = ThisServer.Sessions[sessionId]
+			s = MainServer.Sessions[sessionId]
 		}
 		if s == nil {
 			return

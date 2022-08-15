@@ -72,6 +72,39 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
+	// VIEWS
+
+	databases.GET("/:dbname/views", func(c *gin.Context) {
+		db := database.GetDb(c)
+		views, err := db.GetViews(c)
+		if err == nil {
+			c.JSON(http.StatusOK, views)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	databases.POST("/:dbname/views/", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var view database.View
+		c.BindJSON(&view)
+		v, err := db.CreateView(c, &view)
+		if err == nil {
+			c.JSON(http.StatusCreated, v)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	databases.DELETE("/:dbname/views/:view", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("view")
+		err := db.DeleteView(c, name)
+		if err != nil {
+			prepareInternalServerError(c, err)
+		}
+	})
+
 	// COLUMNS
 
 	databases.GET("/:dbname/tables/:table/columns", func(c *gin.Context) {
@@ -105,7 +138,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		db := database.GetDb(c)
 		table := c.Param("table")
 		column := c.Param("column")
-		err := db.DeleteColumn(c, table, column)
+		err := db.DeleteColumn(c, table, column, false)
 		if err != nil {
 			prepareInternalServerError(c, err)
 		}

@@ -10,6 +10,8 @@ import (
 
 var greenTag = "gctx"
 
+type greenCtxKey struct{}
+
 type GreenInfo struct {
 	GinContext    *gin.Context
 	Conn          *pgxpool.Conn

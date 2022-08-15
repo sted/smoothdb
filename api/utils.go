@@ -40,6 +40,10 @@ func prepareInputRecords(c *gin.Context) ([]database.Record, error) {
 	return records, nil
 }
 
+func prepareBadRequest(c *gin.Context, err error) {
+	c.JSON(http.StatusBadRequest, gin.H{"description": err.Error()})
+}
+
 func prepareInternalServerError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"description": err.Error()})
 }

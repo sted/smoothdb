@@ -18,6 +18,12 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 	if err != nil {
 		return nil, err
 	}
+	if options.AcceptProfile != "" {
+		_, err = gi.Conn.Exec(ctx, "SET SCHEMA '"+options.AcceptProfile+"'")
+		if err != nil {
+			return nil, err
+		}
+	}
 	rows, err := gi.Conn.Query(ctx, query)
 	if err != nil {
 		return nil, err

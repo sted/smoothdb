@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"sort"
 	"strings"
@@ -40,6 +39,7 @@ type QueryParts struct {
 
 type QueryOptions struct {
 	ReturnRepresentation bool
+	AcceptProfile        string
 }
 
 // RequestParser is the interface used to parse the query string and
@@ -55,29 +55,38 @@ type PostgRestParser struct {
 	cur    int
 }
 
+type ParseError struct {
+	msg string // description of error
+}
+
+func (e *ParseError) Error() string { return e.msg }
+
 // var postgRestReservedWords = []string{
 // 	"select", "order", "limit", "offset", "not", "and", "or",
 // }
 
 // From https://github.com/PostgREST/postgrest/blob/v9.0.0/src/PostgREST/Query/SqlFragment.hs
 var postgRestParserOperators = map[string]string{
-	"eq":    "=",
-	"gte":   ">=",
-	"gt":    ">",
-	"lte":   "<=",
-	"lt":    "<",
-	"neq":   "<>",
-	"like":  "LIKE",
-	"ilike": "ILIKE",
-	"in":    "IN",
-	"is":    "IS",
-	"cs":    "@>",
-	"cd":    "<@",
-	"ov":    "&&",
-	"sl":    "<<",
-	"sr":    ">>",
-	"nxr":   "&<",
-	"nxl":   "&>",
+	"eq":     "=",
+	"gte":    ">=",
+	"gt":     ">",
+	"lte":    "<=",
+	"lt":     "<",
+	"neq":    "<>",
+	"like":   "LIKE",
+	"ilike":  "ILIKE",
+	"match":  "~",
+	"imatch": "~*",
+	"in":     "IN",
+	"is":     "IS",
+	"cs":     "@>",
+	"cd":     "<@",
+	"ov":     "&&",
+	"sl":     "<<",
+	"sr":     ">>",
+	"nxr":    "&<",
+	"nxl":    "&>",
+	"adj":    "-|-",
 }
 
 func isBooleanOp(op string) bool {
@@ -93,6 +102,7 @@ func isBooleanOp(op string) bool {
 // SelectItem := <name> [':' <label>] ["::" <cast>]
 // Order := OrderItem (',' OrderItem)*
 // OrderItem := <name> ['.' ("asc" | "desc")] ['.' ("nullsfirst" | "nullslast")]
+//
 // Cond := CondName | CondBool
 // CondName := <name> '.' OpValue
 // OpValue :=  ["not" ‘.’] <op> ‘.’ <value>
@@ -112,19 +122,58 @@ func (p *PostgRestParser) lexWhereCondition(k, v string) {
 	} else {
 		p.tokens = append(p.tokens, k, ".")
 	}
-	pos := 0
+	//pos := 0
 
-	for {
-		n := strings.IndexAny(v[pos:], ".,():")
-		if n == -1 {
-			p.tokens = append(p.tokens, v[pos:])
-			break
+	// for {
+	// 	n := strings.IndexAny(v[pos:], ".,():")
+	// 	if n == -1 {
+	// 		p.tokens = append(p.tokens, v[pos:])
+	// 		break
+	// 	}
+	// 	if n != 0 {
+	// 		p.tokens = append(p.tokens, v[pos:pos+n])
+	// 	}
+	// 	p.tokens = append(p.tokens, v[pos+n:pos+n+1]) // valid because our delims are ascii
+	// 	pos += n + 1
+	// }
+
+	s := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+	var normal []byte
+	var quoted []byte
+	var cur byte
+	for i := 0; i < len(v); i++ {
+		cur = v[i]
+		if s == 0 { // normal
+			if cur == '"' {
+				s = 1
+				quoted = nil
+			} else if cur == '.' || cur == ',' || cur == '(' || cur == ')' || cur == ':' {
+				if len(normal) != 0 {
+					p.tokens = append(p.tokens, string(normal))
+					normal = nil
+				}
+				p.tokens = append(p.tokens, string(cur))
+			} else if cur == '*' {
+				normal = append(normal, '%')
+			} else {
+				normal = append(normal, cur)
+			}
+		} else if s == 1 { // quoted
+			if cur == '"' {
+				s = 0
+				p.tokens = append(p.tokens, string(quoted))
+			} else if cur == '\\' {
+				s = 2
+			} else {
+				quoted = append(quoted, cur)
+			}
+		} else if s == 2 { // escaped
+			s = 1
+			quoted = append(quoted, cur)
 		}
-		if n != 0 {
-			p.tokens = append(p.tokens, v[pos:pos+n])
-		}
-		p.tokens = append(p.tokens, v[pos+n:pos+n+1]) // valid because our delims are ascii
-		pos += n + 1
+	}
+	if len(normal) != 0 {
+		p.tokens = append(p.tokens, string(normal))
 	}
 }
 
@@ -135,6 +184,42 @@ func (p *PostgRestParser) next() string {
 	t := p.tokens[p.cur]
 	p.cur++
 	return t
+}
+
+// (1,2,3) values
+// ("aaa","hi,there")
+// {1,2,3} arrays
+// [ts1,ts2) ranges [],[),(],()
+//
+// NOT SUPPORTED FOR NOW: {{1,2},{3,4}} multi-dimensional arrays
+func (p *PostgRestParser) getValueString() string {
+	var value strings.Builder
+	var end func(string) bool
+
+	t := p.next()
+	if t == "(" || strings.HasPrefix(t, "[") {
+		end = func(t string) bool {
+			return t == ")" || strings.HasSuffix(t, "]")
+		}
+	} else if strings.HasPrefix(t, "{") {
+		end = func(t string) bool { return strings.HasSuffix(t, "}") }
+	} else {
+		return t
+	}
+	value.WriteString(t)
+	if !end(t) {
+		for {
+			t = p.next()
+			if t == "" {
+				return "" // error
+			}
+			value.WriteString(t)
+			if end(t) {
+				break
+			}
+		}
+	}
+	return value.String()
 }
 
 func (p *PostgRestParser) parseWhereCondition(key, value string, root *WhereConditionNode) error {
@@ -149,23 +234,23 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 		if token == "not" {
 			node.not = true
 			if p.next() != "." {
-				return fmt.Errorf("'.' expected")
+				return &ParseError{"'.' expected"}
 			}
 			token = p.next()
 		}
 		if token != "and" && token != "or" {
-			return fmt.Errorf("boolean operator expected")
+			return &ParseError{"boolean operator expected"}
 		}
 		node.operator = strings.ToUpper(token)
 		if p.next() != "(" {
-			return fmt.Errorf("'(' expected")
+			return &ParseError{"'(' expected"}
 		}
 		err = p.cond(node)
 		if err != nil {
 			return err
 		}
 		if p.next() != "," {
-			return fmt.Errorf("',' expected")
+			return &ParseError{"',' expected"}
 		}
 		for {
 			err = p.cond(node)
@@ -178,43 +263,49 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 			}
 		}
 		if token != ")" {
-			return fmt.Errorf("')' expected")
+			return &ParseError{"')' expected"}
 		}
-
 	} else {
 		node.field = token
 		if p.next() != "." {
-			return fmt.Errorf("'.' expected")
+			return &ParseError{"'.' expected"}
 		}
 		token = p.next()
 		if token == "not" {
 			node.not = true
 			if p.next() != "." {
-				return fmt.Errorf("'.' expected")
+				return &ParseError{"'.' expected"}
 			}
 			token = p.next()
 		}
 		op, ok := postgRestParserOperators[token]
 		if !ok {
-			return fmt.Errorf("valid sql operator expected")
+			return &ParseError{"valid sql operator expected"}
 		}
 		node.operator = op
-		if p.next() != "." {
-			return fmt.Errorf("'.' expected")
-		}
 		token = p.next()
-		if token == "" {
-			return fmt.Errorf("value expected")
+		if token == "." { // value
+			token = p.getValueString()
+			if token == "" {
+				return &ParseError{"value expected"}
+			}
+			ltoken := strings.ToLower(token)
+			if ltoken == "null" ||
+				ltoken == "true" ||
+				ltoken == "false" ||
+				ltoken == "unknown" {
+				token = ltoken
+			} else if node.operator == "IS" {
+				return &ParseError{"IS operator requires null, true, false or unknown"}
+			}
+			node.value = token
 		}
-		node.value = token
 	}
 	parent.children = append(parent.children, node)
 	return nil
 }
 
-func (p PostgRestParser) parseQuery(filters Filters) (QueryParts, error) {
-	parts := QueryParts{}
-
+func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err error) {
 	// SELECT
 	// select=f1,f2,f3:field3
 	if selectFilter, ok := filters["select"]; ok {
@@ -225,8 +316,11 @@ func (p PostgRestParser) parseQuery(filters Filters) (QueryParts, error) {
 					// log warning
 					continue
 				}
-				nameLabel, cast, _ := strings.Cut(field, "::")
-				name, label, _ := strings.Cut(nameLabel, ":")
+				labelName, cast, _ := strings.Cut(field, "::")
+				label, name, found := strings.Cut(labelName, ":")
+				if !found {
+					label, name = name, label
+				}
 
 				parts.selectFields = append(parts.selectFields,
 					QueryField{name: name, label: label, cast: cast})
@@ -287,7 +381,10 @@ func (p PostgRestParser) parseQuery(filters Filters) (QueryParts, error) {
 	sort.Strings(keys) // canonical order -> sorted alphabetically
 	for _, k := range keys {
 		for _, v := range filters[k] {
-			p.parseWhereCondition(k, v, &parts.whereConditionsTree)
+			err = p.parseWhereCondition(k, v, &parts.whereConditionsTree)
+			if err != nil {
+				return QueryParts{}, err
+			}
 		}
 	}
 	return parts, nil
@@ -298,6 +395,9 @@ func (p PostgRestParser) getOptions(ctx context.Context) (QueryOptions, error) {
 	options := QueryOptions{}
 	if header.Get("Prefer") == "return=representation" {
 		options.ReturnRepresentation = true
+	}
+	if ap := header.Get("Accept-Profile"); ap != "" {
+		options.AcceptProfile = ap
 	}
 	return options, nil
 }
