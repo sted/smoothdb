@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type QueryBuilder interface {
@@ -19,7 +20,8 @@ func selectClause(queryFields []QueryField) string {
 		if i != 0 {
 			selectClause += ", "
 		}
-		selectClause += "\"" + field.name + "\""
+		//selectClause += "\"" + field.name + "\""
+		selectClause += field.name
 		if field.cast != "" {
 			selectClause += "::" + field.cast
 		}
@@ -54,6 +56,18 @@ func orderClause(orderFields []OrderField) string {
 	return order
 }
 
+func appendValue(where, value string) string {
+	if value == "null" ||
+		value == "true" ||
+		value == "false" ||
+		value == "unknown" {
+		where += value
+	} else {
+		where += "'" + value + "'"
+	}
+	return where
+}
+
 func whereClause(node *WhereConditionNode) string {
 	where := ""
 	if node.operator == "" || node.field == "" {
@@ -84,15 +98,23 @@ func whereClause(node *WhereConditionNode) string {
 		if node.not {
 			where += "NOT "
 		}
-		where += node.field + " " + node.operator + " "
-		if node.operator == "IN" ||
-			node.value == "null" ||
-			node.value == "true" ||
-			node.value == "false" ||
-			node.value == "unknown" {
-			where += node.value
+		if strings.HasPrefix(node.field, "\"") {
+			where += node.field
 		} else {
-			where += "'" + node.value + "'"
+			where += "\"" + node.field + "\""
+		}
+		where += " " + node.operator + " "
+		if node.operator == "IN" {
+			where += "("
+			for i, value := range node.values {
+				if i != 0 {
+					where += ", "
+				}
+				where = appendValue(where, value)
+			}
+			where += ")"
+		} else {
+			where = appendValue(where, node.values[0])
 		}
 	}
 	return where
@@ -182,7 +204,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts QueryParts, options Qu
 	selectClause := selectClause(parts.selectFields)
 	orderClause := orderClause(parts.orderFields)
 	whereClause := whereClause(&parts.whereConditionsTree)
-	query := "SELECT " + selectClause + " FROM " + table
+	query := "SELECT " + selectClause + " FROM \"" + table + "\""
 	if whereClause != "" {
 		query += " WHERE " + whereClause
 	}

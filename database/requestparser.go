@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 type Filters = url.Values
@@ -13,8 +15,14 @@ type QueryField struct {
 	name  string
 	label string
 	cast  string
+	table QueryTable
 }
 
+type QueryTable struct {
+	table       string
+	tableCast   string
+	parentTable string
+}
 type OrderField struct {
 	name        string
 	descending  bool
@@ -25,7 +33,7 @@ type WhereConditionNode struct {
 	field    string
 	operator string
 	not      bool
-	value    string
+	values   []string
 	children []*WhereConditionNode
 }
 
@@ -89,86 +97,63 @@ var postgRestParserOperators = map[string]string{
 	"adj":    "-|-",
 }
 
-func isBooleanOp(op string) bool {
-	if op == "and" || op == "or" || op == "not.and" || op == "not.or" {
-		return true
-	} else {
-		return false
-	}
-}
-
-// Filter := Select | Order | Limit | Offset | Where
-// Select := SelectItem (',' SelectItem)*
-// SelectItem := <name> [':' <label>] ["::" <cast>]
-// Order := OrderItem (',' OrderItem)*
-// OrderItem := <name> ['.' ("asc" | "desc")] ['.' ("nullsfirst" | "nullslast")]
-//
-// Cond := CondName | CondBool
-// CondName := <name> '.' OpValue
-// OpValue :=  ["not" ‘.’] <op> ‘.’ <value>
-// CondBool := BoolOp CondList
-// BoolOp := ["not" '.'] ("and" | "or")
-// CondList := ’(‘ Cond (‘,’ Cond)+ ‘)’
-
-func (p *PostgRestParser) lexWhereCondition(k, v string) {
-	p.tokens = nil
-	p.cur = 0
-	if isBooleanOp(k) {
-		ops := strings.Split(k, ".")
-		p.tokens = append(p.tokens, ops[0])
-		if len(ops) == 2 {
-			p.tokens = append(p.tokens, ".", ops[1])
-		}
-	} else {
-		p.tokens = append(p.tokens, k, ".")
-	}
-	//pos := 0
-
-	// for {
-	// 	n := strings.IndexAny(v[pos:], ".,():")
-	// 	if n == -1 {
-	// 		p.tokens = append(p.tokens, v[pos:])
-	// 		break
-	// 	}
-	// 	if n != 0 {
-	// 		p.tokens = append(p.tokens, v[pos:pos+n])
-	// 	}
-	// 	p.tokens = append(p.tokens, v[pos+n:pos+n+1]) // valid because our delims are ascii
-	// 	pos += n + 1
-	// }
-
-	s := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+// scan splits the string s using the separators and
+// skipping double quoted strings.
+// Returns a slice of substrings and separators.
+// sep is the set of single char separators.
+// longSep is the set of multi char separators (longest first)
+func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
+	state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
 	var normal []byte
 	var quoted []byte
 	var cur byte
-	for i := 0; i < len(v); i++ {
-		cur = v[i]
-		if s == 0 { // normal
+outer:
+	for i := 0; i < len(s); i++ {
+		cur = s[i]
+		if state == 0 { // normal
+			// Manage long separators
+			for _, lsep := range longSep {
+				l := len(lsep)
+				if i+l > len(s) {
+					continue
+				}
+				if strings.Compare(lsep, s[i:i+l]) == 0 {
+					if len(normal) != 0 {
+						p.tokens = append(p.tokens, string(normal))
+						normal = nil
+					}
+					p.tokens = append(p.tokens, lsep)
+					i += l - 1
+					continue outer
+				}
+			}
 			if cur == '"' {
-				s = 1
+				if len(normal) != 0 {
+					p.tokens = append(p.tokens, string(normal))
+					normal = nil
+				}
+				state = 1
 				quoted = nil
-			} else if cur == '.' || cur == ',' || cur == '(' || cur == ')' || cur == ':' {
+			} else if strings.Contains(sep, string(cur)) {
 				if len(normal) != 0 {
 					p.tokens = append(p.tokens, string(normal))
 					normal = nil
 				}
 				p.tokens = append(p.tokens, string(cur))
-			} else if cur == '*' {
-				normal = append(normal, '%')
 			} else {
 				normal = append(normal, cur)
 			}
-		} else if s == 1 { // quoted
+		} else if state == 1 { // quoted
 			if cur == '"' {
-				s = 0
+				state = 0
 				p.tokens = append(p.tokens, string(quoted))
 			} else if cur == '\\' {
-				s = 2
+				state = 2
 			} else {
 				quoted = append(quoted, cur)
 			}
-		} else if s == 2 { // escaped
-			s = 1
+		} else if state == 2 { // escaped
+			state = 1
 			quoted = append(quoted, cur)
 		}
 	}
@@ -186,44 +171,198 @@ func (p *PostgRestParser) next() string {
 	return t
 }
 
-// (1,2,3) values
-// ("aaa","hi,there")
-// {1,2,3} arrays
-// [ts1,ts2) ranges [],[),(],()
-//
-// NOT SUPPORTED FOR NOW: {{1,2},{3,4}} multi-dimensional arrays
-func (p *PostgRestParser) getValueString() string {
-	var value strings.Builder
-	var end func(string) bool
-
-	t := p.next()
-	if t == "(" || strings.HasPrefix(t, "[") {
-		end = func(t string) bool {
-			return t == ")" || strings.HasSuffix(t, "]")
-		}
-	} else if strings.HasPrefix(t, "{") {
-		end = func(t string) bool { return strings.HasSuffix(t, "}") }
-	} else {
-		return t
+func (p *PostgRestParser) back() {
+	if p.cur != 0 {
+		p.cur--
 	}
-	value.WriteString(t)
-	if !end(t) {
+}
+
+func (p *PostgRestParser) lookAhead() string {
+	if p.cur == len(p.tokens) {
+		return ""
+	}
+	return p.tokens[p.cur]
+}
+
+func (p *PostgRestParser) reset() {
+	p.tokens = nil
+	p.cur = 0
+}
+
+// General grammar:
+//
+// Filter := Select | Order | Limit | Offset | Where
+//
+// Select := SelectList
+// SelectList := SelectItem (',' SelectItem)*
+// SelectItem := CField | CTable '(' SelectList ')'
+// CField := [<label> ':'] <name> ["::" <cast>]
+// CTable := [<label> ':'] <name>
+//
+// Order := OrderItem (',' OrderItem)*
+// OrderItem := <name> ['.' ("asc" | "desc")] ['.' ("nullsfirst" | "nullslast")]
+//
+// Cond := CondName | CondBool
+// CondName := <name> '.' OpValue
+// OpValue :=  ["not" ‘.’] <op> ‘.’ Values
+// CondBool := BoolOp CondList
+// BoolOp := ["not" '.'] ("and" | "or")
+// CondList := ’(‘ Cond (‘,’ Cond)+ ‘)’
+// Values := Value | ValueList
+// ValueList := '(' Value (',' Value)* ')'
+func (p *PostgRestParser) parseSelect(s string) ([]QueryField, error) {
+	p.scan(s, ".,():", "->>", "->", "::")
+	return p.selectList(&QueryTable{})
+}
+
+func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []QueryField, err error) {
+	selectFields, err = p.selectItem(table)
+	if err != nil {
+		return nil, err
+	}
+	for p.next() == "," {
+		fields, err := p.selectItem(table)
+		if err != nil {
+			return nil, err
+		}
+		selectFields = append(selectFields, fields...)
+	}
+	return selectFields, nil
+}
+
+func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []QueryField, err error) {
+	var label, name, lastname, cast string
+	labelOrName := p.next()
+	token := p.next()
+	if token == ":" {
+		label = labelOrName
+		labelOrName = p.next()
+		token = p.next()
+	}
+	if token == "->>" || token == "->" {
+		name = "(\"" + labelOrName + "\""
+		lastname = labelOrName
 		for {
-			t = p.next()
-			if t == "" {
-				return "" // error
+			name += token
+			token = p.next()
+			if _, err := strconv.Atoi(token); err == nil {
+				name += token
+			} else {
+				name += "'" + token + "'"
+				lastname = token
 			}
-			value.WriteString(t)
-			if end(t) {
+			token = p.next()
+			if token != "->>" && token != "->" {
 				break
 			}
 		}
+		name += ")"
+		if label == "" {
+			label = lastname
+		}
+	} else {
+		name = "\"" + labelOrName + "\""
 	}
-	return value.String()
+	if token == "::" {
+		cast = p.next()
+		token = p.next()
+	}
+	if token != "(" {
+		// field
+		selectFields = append(selectFields, QueryField{name, label, cast, *table})
+		p.back()
+	} else {
+		// table
+		if cast != "" {
+			return nil, &ParseError{"table cannot have cast"}
+		}
+		fields, err := p.selectList(table)
+		if err != nil {
+			return nil, err
+		}
+		selectFields = append(selectFields, fields...)
+	}
+	return selectFields, nil
+}
+
+func isBooleanOp(op string) bool {
+	if op == "and" || op == "or" || op == "not.and" || op == "not.or" {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (p *PostgRestParser) scanWhereCondition(k, v string) {
+	p.reset()
+
+	// Scan key: boolean operator or field name
+	if isBooleanOp(k) {
+		ops := strings.Split(k, ".")
+		p.tokens = append(p.tokens, ops[0])
+		if len(ops) == 2 {
+			p.tokens = append(p.tokens, ".", ops[1])
+		}
+	} else {
+		p.tokens = append(p.tokens, k, ".")
+	}
+	// Scan value part
+	p.scan(v, ".,()[]{}:")
+}
+
+func (p *PostgRestParser) value(node *WhereConditionNode) error {
+	token := p.next()
+	if token == "" {
+		return &ParseError{"value expected"}
+	}
+	value := token
+	level := 0
+	if token == "(" || token == "[" { // Range or Composite
+		level = 1
+		for level > 0 {
+			token := p.next()
+			if token == "(" || token == "[" {
+				level++
+			} else if token == ")" || token == "]" {
+				level--
+			} else if token == "" {
+				return &ParseError{"')' or ']' expected"}
+			}
+			value += token
+		}
+	} else if token == "{" { // Arrays or JSON Object
+		level = 1
+		for level > 0 {
+			token := p.next()
+			if token == "{" {
+				level++
+			} else if token == "}" {
+				level--
+			} else if token == "" {
+				return &ParseError{"'}' expected"}
+			} else if unicode.IsLetter(rune(token[0])) && p.lookAhead() == ":" {
+				token = "\"" + token + "\""
+			}
+			value += token
+		}
+	} else {
+		lvalue := strings.ToLower(value)
+		if lvalue == "null" ||
+			lvalue == "true" ||
+			lvalue == "false" ||
+			lvalue == "unknown" {
+			value = lvalue
+		} else if node.operator == "IS" {
+			return &ParseError{"IS operator requires null, true, false or unknown"}
+		}
+	}
+	value = strings.ReplaceAll(value, "*", "%")
+	node.values = append(node.values, value)
+	return nil
 }
 
 func (p *PostgRestParser) parseWhereCondition(key, value string, root *WhereConditionNode) error {
-	p.lexWhereCondition(key, value)
+	p.scanWhereCondition(key, value)
 	return p.cond(root)
 }
 
@@ -285,20 +424,29 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 		node.operator = op
 		token = p.next()
 		if token == "." { // value
-			token = p.getValueString()
-			if token == "" {
-				return &ParseError{"value expected"}
+			if node.operator == "IN" {
+				if p.next() != "(" {
+					return &ParseError{"'(' expected"}
+				}
+				for {
+					err = p.value(node)
+					if err != nil {
+						return err
+					}
+					token = p.next()
+					if token != "," {
+						break
+					}
+				}
+				if token != ")" {
+					return &ParseError{"')' expected"}
+				}
+			} else {
+				err = p.value(node)
+				if err != nil {
+					return err
+				}
 			}
-			ltoken := strings.ToLower(token)
-			if ltoken == "null" ||
-				ltoken == "true" ||
-				ltoken == "false" ||
-				ltoken == "unknown" {
-				token = ltoken
-			} else if node.operator == "IS" {
-				return &ParseError{"IS operator requires null, true, false or unknown"}
-			}
-			node.value = token
 		}
 	}
 	parent.children = append(parent.children, node)
@@ -307,27 +455,18 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 
 func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err error) {
 	// SELECT
-	// select=f1,f2,f3:field3
+	var sel string
 	if selectFilter, ok := filters["select"]; ok {
 		for _, csFields := range selectFilter {
-			fields := strings.Split(csFields, ",")
-			for _, field := range fields {
-				if field == "" {
-					// log warning
-					continue
-				}
-				labelName, cast, _ := strings.Cut(field, "::")
-				label, name, found := strings.Cut(labelName, ":")
-				if !found {
-					label, name = name, label
-				}
-
-				parts.selectFields = append(parts.selectFields,
-					QueryField{name: name, label: label, cast: cast})
-			}
+			sel += csFields
 		}
 		delete(filters, "select")
+		parts.selectFields, err = p.parseSelect(sel)
+		if err != nil {
+			return QueryParts{}, err
+		}
 	}
+
 	// ORDER
 	// order=f1,f2.asc,f3.desc.nullslast
 	if orderFilter, ok := filters["order"]; ok {

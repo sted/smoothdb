@@ -580,7 +580,7 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  [json| [{"myId":1}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"ename simple columnr",
+			"rename simple column",
 			"/complex_items?id=eq.1&select=myId:id",
 			`[{"myId":1}]`,
 			nil,
@@ -612,7 +612,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	get "/complex_items?id=eq.1&select=settings" `shouldRespondWith`
 		// 	  [json| [{"settings":{"foo":{"int":1,"bar":"baz"}}}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"json column",
+			"/complex_items?id=eq.1&select=settings",
+			`[{"settings":{"foo":{"int":1,"bar":"baz"}}}]`,
+			nil,
+			200,
+		},
 		//   it "fails on bad casting (wrong cast type)" $
 		// 	get "/complex_items?select=id::fakecolumntype"
 		// 	  `shouldRespondWith` [json| {"hint":null,"details":null,"code":"42704","message":"type \"fakecolumntype\" does not exist"} |]
@@ -626,7 +632,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 		[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]
 		// 	  |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can cast types with underscore and number",
+			"/oid_test?select=id,oid_col::int,oid_array_col::_int4",
+			`[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting parents and children" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
@@ -1026,14 +1038,26 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
-
+		{
+			"by a column asc",
+			"/items?id=lte.2&order=id.asc",
+			`[{"id":1},{"id":2}]`,
+			nil,
+			200,
+		},
 		//   it "by a column desc" $
 		// 	get "/items?id=lte.2&order=id.desc"
 		// 	  `shouldRespondWith` [json| [{"id":2},{"id":1}] |]
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
-
+		{
+			"by a column desc",
+			"/items?id=lte.2&order=id.desc",
+			`[{"id":2},{"id":1}]`,
+			nil,
+			200,
+		},
 		//   it "by a column with nulls first" $
 		// 	get "/no_pk?order=a.nullsfirst"
 		// 	  `shouldRespondWith` [json| [{"a":null,"b":null},
@@ -1043,7 +1067,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
-
+		{
+			"by a column with nulls first",
+			"/no_pk?order=a.nullsfirst",
+			`[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			nil,
+			200,
+		},
 		//   it "by a column asc with nulls last" $
 		// 	get "/no_pk?order=a.asc.nullslast"
 		// 	  `shouldRespondWith` [json| [{"a":"1","b":"0"},
@@ -1052,7 +1082,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
-
+		{
+			"by a column asc with nulls last",
+			"/no_pk?order=a.asc.nullslast",
+			`[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
+			nil,
+			200,
+		},
 		//   it "by a column desc with nulls first" $
 		// 	get "/no_pk?order=a.desc.nullsfirst"
 		// 	  `shouldRespondWith` [json| [{"a":null,"b":null},
@@ -1061,7 +1097,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
-
+		{
+			"by a column desc with nulls first",
+			"/no_pk?order=a.desc.nullsfirst",
+			`[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
+			nil,
+			200,
+		},
 		//   it "by a column desc with nulls last" $
 		// 	get "/no_pk?order=a.desc.nullslast"
 		// 	  `shouldRespondWith` [json| [{"a":"2","b":"0"},
@@ -1070,7 +1112,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
-
+		{
+			"by a column desc with nulls last",
+			"/no_pk?order=a.desc.nullslast",
+			`[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
+			nil,
+			200,
+		},
 		//   it "by two columns with nulls and direction specified" $
 		// 	get "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc"
 		// 	  `shouldRespondWith` [json|
@@ -1083,17 +1131,35 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-4/*"]
 		// 	  }
-
+		{
+			"by two columns with nulls and direction specified",
+			"/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc",
+			`[{"client_id":2,"id":4,"name":"OSX"},{"client_id":2,"id":3,"name":"IOS"},{"client_id":1,"id":2,"name":"Windows 10"},{"client_id":1,"id":1,"name":"Windows 7"},{"client_id":null,"id":5,"name":"Orphan"}]`,
+			nil,
+			200,
+		},
 		//   it "by a column with no direction or nulls specified" $
 		// 	get "/items?id=lte.2&order=id"
 		// 	  `shouldRespondWith` [json| [{"id":1},{"id":2}] |]
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
-
+		{
+			"by a column with no direction or nulls specified",
+			"/items?id=lte.2&order=id",
+			`[{"id":1},{"id":2}]`,
+			nil,
+			200,
+		},
 		//   it "without other constraints" $
 		// 	get "/items?order=id.asc" `shouldRespondWith` 200
-
+		{
+			"without other constraints",
+			"/items?order=id.asc",
+			``,
+			nil,
+			200,
+		},
 		//   it "ordering embeded entities" $
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
@@ -1230,13 +1296,32 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	get "/ghostBusters" `shouldRespondWith`
 		// 	  [json| [{"escapeId":1},{"escapeId":3},{"escapeId":5}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can query as normal",
+			"/Escap3e;",
+			`[{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}]`,
+			nil,
+			200,
+		},
+		{
+			"can query as normal",
+			"/ghostBusters",
+			`[{"escapeId":1},{"escapeId":3},{"escapeId":5}]`,
+			nil,
+			200,
+		},
 		//   it "fails if an operator is not given" $
 		// 	get "/ghostBusters?id=0" `shouldRespondWith` [json| {"details":"Failed to parse [(\"id\",\"0\")]","message":"Unexpected param or filter missing operator","code":"PGRST104","hint":null} |]
 		// 	  { matchStatus  = 400
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
-
+		{
+			"fails if an operator is not given",
+			"/ghostBusters?id=0",
+			``,
+			nil,
+			400,
+		},
 		//   it "will embed a collection" $
 		// 	get "/Escap3e;?select=ghostBusters(*)" `shouldRespondWith`
 		// 	  [json| [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] |]
@@ -1250,17 +1335,35 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 		{"Just A Server Model":" IBM,9131-52A (P5-52A)"},
 		// 		{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"will select and filter a column that has spaces",
+			"/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*",
+			`[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
+			nil,
+			200,
+		},
 		//   it "will select and filter a quoted column that has PostgREST reserved characters" $
 		// 	get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" `shouldRespondWith`
 		// 	  [json|[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"will select and filter a quoted column that has PostgREST reserved characters",
+			"/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
+			`[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]`,
+			nil,
+			200,
+		},
 		//   it "will select and filter a column that has dollars in(without double quoting)" $
 		// 	get "/do$llar$s?select=a$num$&a$num$=eq.100" `shouldRespondWith`
 		// 	  [json|[{"a$num$":100}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"will select and filter a column that has dollars in(without double quoting)",
+			"/do$llar$s?select=a$num$&a$num$=eq.100",
+			`[{"a$num$":100}]`,
+			nil,
+			200,
+		},
 		// context "binary output" $ do
 		//   it "can query if a single column is selected" $
 		// 	request methodGet "/images_base64?select=img&name=eq.A.png" (acceptHdrs "application/octet-stream") ""
@@ -1311,6 +1414,8 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Type" <:> "application/octet-stream"]
 		// 	  }
 
+		///
+
 		// describe "values with quotes in IN and NOT IN" $ do
 		//   it "succeeds when only quoted values are present" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" `shouldRespondWith`
@@ -1322,6 +1427,27 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" `shouldRespondWith`
 		// 	  [json| [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			"succeeds when only quoted values are present",
+			"/w_or_wo_comma_names?name=in.(\"Hebdon,%20John\")",
+			`[{"name":"Hebdon, John"}]`,
+			nil,
+			200,
+		},
+		{
+			"succeeds when only quoted values are present",
+			"/w_or_wo_comma_names?name=in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)",
+			`[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
+			nil,
+			200,
+		},
+		{
+			"succeeds when only quoted values are present",
+			"/w_or_wo_comma_names?name=not.in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)&limit=3",
+			`[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
+			nil,
+			200,
+		},
 
 		//   it "succeeds w/ and w/o quoted values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")" `shouldRespondWith`
@@ -1333,13 +1459,39 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")" `shouldRespondWith`
 		// 	  [json| [{"name":"Double O Seven(007)"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"succeeds w/ and w/o quoted values",
+			"/w_or_wo_comma_names?name=in.(David%20White,\"Hebdon,%20John\")",
+			`[{"name":"Hebdon, John"},{"name":"David White"}]`,
+			nil,
+			200,
+		},
+		{
+			"succeeds w/ and w/o quoted values",
+			"/w_or_wo_comma_names?name=not.in.(\"Hebdon,%20John\",Larry%20Thompson,\"Smith,%20Joseph\")&limit=3",
+			`[{"name":"Williams, Mary"},{"name":"David White"},{"name":"Double O Seven(007)"}]`,
+			nil,
+			200,
+		},
+		{
+			"succeeds w/ and w/o quoted values",
+			"/w_or_wo_comma_names?name=in.(\"Double%20O%20Seven(007)\")",
+			`[{"name":"Double O Seven(007)"}]`,
+			nil,
+			200,
+		},
 		//   context "escaped chars" $ do
 		// 	it "accepts escaped double quotes" $
 		// 	  get "/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")" `shouldRespondWith`
 		// 		[json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"accepts escaped double quotes",
+			"/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")",
+			`[{"name":"Double\"Quote\"McGraw\""}]`,
+			nil,
+			200,
+		},
 		// 	it "accepts escaped backslashes" $ do
 		// 	  get "/w_or_wo_comma_names?name=in.(\"\\\\\")" `shouldRespondWith`
 		// 		[json| [{ "name": "\\" }] |]
@@ -1347,12 +1499,31 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  get "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")" `shouldRespondWith`
 		// 		[json| [ { "name": "/\\Slash/\\Beast/\\" } ] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"accepts escaped backslashes",
+			"/w_or_wo_comma_names?name=in.(\"\\\\\")",
+			`[{"name":"\\"}]`,
+			nil,
+			200,
+		},
+		{
+			"accepts escaped backslashes",
+			"/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")",
+			`[{"name":"/\\Slash/\\Beast/\\"}]`,
+			nil,
+			200,
+		},
 		// 	it "passes any escaped char as the same char" $
 		// 	  get "/w_or_wo_comma_names?name=in.(\"D\\a\\vid W\\h\\ite\")" `shouldRespondWith`
 		// 		[json| [{ "name": "David White" }] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"passes any escaped char as the same char",
+			"/w_or_wo_comma_names?name=in.(\"D\\a\\vid%20W\\h\\ite\")",
+			`[{"name":"David White"}]`,
+			nil,
+			200,
+		},
 		// describe "IN values without quotes" $ do
 		//   it "accepts single double quotes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\")" `shouldRespondWith`
@@ -1361,7 +1532,20 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" `shouldRespondWith`
 		// 	  [json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"accepts single double quotes as values",
+			"/w_or_wo_comma_names?name=in.(\")",
+			`[{"name":"\""}]`,
+			nil,
+			200,
+		},
+		{
+			"accepts single double quotes as values",
+			"/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
+			`[{"name":"Double\"Quote\"McGraw\""}]`,
+			nil,
+			200,
+		},
 		//   it "accepts backslashes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\\)" `shouldRespondWith`
 		// 	  [json| [{ "name": "\\" }] |]
@@ -1468,7 +1652,6 @@ func TestPostgRESTQuery(t *testing.T) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		//defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Fatal(err)
@@ -1476,12 +1659,12 @@ func TestPostgRESTQuery(t *testing.T) {
 		json := string(body)
 		if test.expectedResults != "" {
 			if test.expectedResults != json {
-				t.Errorf("\n%d. Expected \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.expectedResults, json, test.query)
+				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.description, test.expectedResults, json, test.query)
 			}
 		} else if test.status != resp.StatusCode {
-			t.Errorf("\n%d. Expected status \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.status, resp.StatusCode, test.query)
+			t.Errorf("\n%d. %v\nExpected status \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.description, test.status, resp.StatusCode, test.query)
 
 		}
-
+		resp.Body.Close()
 	}
 }

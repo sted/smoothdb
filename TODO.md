@@ -11,7 +11,7 @@
 * Some more operator: IN, etc
 * Sessions, JWT, Auth
 * Permissions
-* More types, in order: jsonb, interval
+* More types, in order: array, jsonb, interval, numeric
 * Configuration (shared with other apps) 
 * Functions 
 * Caching
@@ -22,7 +22,7 @@
 * Triggers
 * Upsert
 * Schemas
-* Full Text Search
+* Full Text Search (FTS)
 * Table inheritance
 * M x N Relationships
 * Versioning

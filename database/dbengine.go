@@ -39,7 +39,7 @@ func (dbe *DBEngine) ActivateDatabase(ctx context.Context, db *Database) error {
 	if !strings.HasSuffix(connString, "/") {
 		connString += "/"
 	}
-	connString += db.Name
+	connString += db.Name + "?pool_max_conns=50"
 	pool, err := pgxpool.Connect(ctx, connString)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 
 func (dbe *DBEngine) CreateDatabase(ctx context.Context, name string) (*Database, error) {
 	_, err := dbe.pool.Exec(ctx, "CREATE DATABASE "+name)
-	if err != nil && err.(*pgconn.PgError).Code != "42P04" {	
+	if err != nil && err.(*pgconn.PgError).Code != "42P04" {
 		return nil, err
 	}
 	return dbe.GetDatabase(ctx, name)
