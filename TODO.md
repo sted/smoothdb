@@ -8,22 +8,25 @@
 √ Checks, constraints
 √ Views
 √ Alter tables, view and columns
-* Some more operator: IN, etc
-* Sessions, JWT, Auth
-* Permissions
-* More types, in order: array, jsonb, interval, numeric
-* Configuration (shared with other apps) 
-* Functions 
-* Caching
+√ Some more operator: IN, etc
+√ Full Text Search (FTS)
 * Resource embedding
-* Activity
+* Sessions, JWT, Auth
+* Roles
+* Permissions
+* Schema management
+* More types, in order: √ array, √ jsonb, interval, numeric
+* Configuration (shared with other apps) 
+* Functions (rpc)
+* Caching
+* Activity / stats
 * Migrations (Tern?)
 * Indexes
 * Triggers
 * Upsert
-* Schemas
-* Full Text Search (FTS)
 * Table inheritance
 * M x N Relationships
 * Versioning
 * Localizations
+* application/octet-stream as output
+* "singular" response

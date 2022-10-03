@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestPostgRESTQuery(t *testing.T) {
+func TestPostgREST_Query(t *testing.T) {
 
 	tests := []struct {
 		description     string
@@ -364,36 +364,81 @@ func TestPostgRESTQuery(t *testing.T) {
 		//   get "/tsearch?text_search_vector=fts.impossible" `shouldRespondWith`
 		// 	[json| [{"text_search_vector": "'fun':5 'imposs':9 'kind':3" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with to_tsquery",
+			"/tsearch?text_search_vector=fts.impossible",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			nil,
+			200,
+		},
 		// it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
 		//   get "/tsearch?text_search_vector=fts.fun%26possible" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			"/tsearch?text_search_vector=fts.fun%26possible",
+			`[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			nil,
+			200,
+		},
 		//   get "/tsearch?text_search_vector=fts.impossible%7Cpossible" `shouldRespondWith`
 		// 	[json| [
 		// 	{"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
 		// 	{"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			"/tsearch?text_search_vector=fts.impossible%7Cpossible",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			nil,
+			200,
+		},
 		//   get "/tsearch?text_search_vector=fts.fun%26!possible" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			"/tsearch?text_search_vector=fts.fun%26!possible",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			nil,
+			200,
+		},
 		// it "finds matches with plainto_tsquery" $
 		//   get "/tsearch?text_search_vector=plfts.The%20Fat%20Rats" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with plainto_tsquery",
+			"/tsearch?text_search_vector=plfts.The%20Fat%20Rats",
+			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			nil,
+			200,
+		},
 		// when (actualPgVersion >= pgVersion112) $ do
 		//   it "finds matches with websearch_to_tsquery" $
 		// 	  get "/tsearch?text_search_vector=wfts.The%20Fat%20Rats" `shouldRespondWith`
 		// 		  [json| [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with websearch_to_tsquery",
+			"/tsearch?text_search_vector=wfts.The%20Fat%20Rats",
+			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			nil,
+			200,
+		},
 		//   it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
 		// 	get "/tsearch?text_search_vector=wfts.fun%20and%20possible"
 		// 	  `shouldRespondWith`
 		// 		[json| [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can use boolean operators(and, or, -) in websearch_to_tsquery",
+			"/tsearch?text_search_vector=wfts.fun%20and%20possible",
+			`[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			nil,
+			200,
+		},
 		// 	get "/tsearch?text_search_vector=wfts.impossible%20or%20possible"
 		// 	  `shouldRespondWith`
 		// 		[json| [
@@ -401,36 +446,82 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 		  {"text_search_vector": "'also':2 'fun':3 'possibl':8"}]
 		// 			|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can use boolean operators(and, or, -) in websearch_to_tsquery",
+			"/tsearch?text_search_vector=wfts.impossible%20or%20possible",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			nil,
+			200,
+		},
 		// 	get "/tsearch?text_search_vector=wfts.fun%20and%20-possible"
 		// 	  `shouldRespondWith`
 		// 		[json| [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can use boolean operators(and, or, -) in websearch_to_tsquery",
+			"/tsearch?text_search_vector=wfts.fun%20and%20-possible",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			nil,
+			200,
+		},
 		// it "finds matches with different dictionaries" $ do
 		//   get "/tsearch?text_search_vector=fts(french).amusant" `shouldRespondWith`
 		// 	[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"finds matches with different dictionaries",
+			"/tsearch?text_search_vector=fts(french).amusant",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			nil,
+			200,
+		},
 		//   get "/tsearch?text_search_vector=plfts(french).amusant%20impossible" `shouldRespondWith`
 		// 	[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with different dictionaries",
+			"/tsearch?text_search_vector=plfts(french).amusant%20impossible",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			nil,
+			200,
+		},
 		//   when (actualPgVersion >= pgVersion112) $
 		// 	  get "/tsearch?text_search_vector=wfts(french).amusant%20impossible"
 		// 		  `shouldRespondWith`
 		// 			[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with different dictionaries",
+			"/tsearch?text_search_vector=wfts(french).amusant%20impossible",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			nil,
+			200,
+		},
 		// it "can be negated with not operator" $ do
 		//   get "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun" `shouldRespondWith`
 		// 	[json| [
 		// 	  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can be negated with not operator",
+			"/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		//   get "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun" `shouldRespondWith`
 		// 	[json| [
 		// 	  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can be negated with not operator",
+			"/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		//   get "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats" `shouldRespondWith`
 		// 	[json| [
 		// 	  {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
@@ -438,6 +529,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 	  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can be negated with not operator",
+			"/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		//   when (actualPgVersion >= pgVersion112) $
 		// 	  get "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun"
 		// 		  `shouldRespondWith`
@@ -445,18 +543,36 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 			  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
 		// 			  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can be negated with not operator",
+			"/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun",
+			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		// context "Use of the phraseto_tsquery function" $ do
 		//   it "finds matches" $
 		// 	get "/tsearch?text_search_vector=phfts.The%20Fat%20Cats" `shouldRespondWith`
 		// 	  [json| [{"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches",
+			"/tsearch?text_search_vector=phfts.The%20Fat%20Cats",
+			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			nil,
+			200,
+		},
 		//   it "finds matches with different dictionaries" $
 		// 	get "/tsearch?text_search_vector=phfts(german).Art%20Spass" `shouldRespondWith`
 		// 	  [json| [{"text_search_vector": "'art':4 'spass':5 'unmog':7" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"finds matches with different dictionaries",
+			"/tsearch?text_search_vector=phfts(german).Art%20Spass",
+			`[{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		//   it "can be negated with not operator" $
 		// 	get "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats" `shouldRespondWith`
 		// 	  [json| [
@@ -465,7 +581,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 		{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
 		// 		{"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can be negated with not operator",
+			"/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		//   it "can be used with or query param" $
 		// 	get "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass, text_search_vector.phfts(french).amusant, text_search_vector.fts(english).impossible)" `shouldRespondWith`
 		// 	  [json|[
@@ -473,7 +595,13 @@ func TestPostgRESTQuery(t *testing.T) {
 		// 		{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
 		// 		{"text_search_vector": "'art':4 'spass':5 'unmog':7"}
 		// 	  ]|] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can be used with or query param",
+			"/tsearch?or=(text_search_vector.phfts(german).Art%20Spass,text_search_vector.phfts(french).amusant,text_search_vector.fts(english).impossible)",
+			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			nil,
+			200,
+		},
 		// 	it "matches with computed column" $
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]

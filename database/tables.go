@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"reflect"
+	"strings"
 )
 
 type Table struct {
@@ -27,6 +28,20 @@ type TableUpdate struct {
 	RowSecurity *bool   `json:"rowsecurity"`
 }
 
+func splitTableName(name string) (schemaname, tablename string) {
+	parts := strings.Split(name, ".")
+	if len(parts) == 1 {
+		schemaname = "public"
+		tablename = parts[0]
+	} else {
+		schemaname = parts[0]
+		tablename = parts[1]
+	}
+	return
+}
+
+const tablesQuery = "SELECT  schemaname || '.' || tablename, tableowner, rowsecurity FROM pg_tables"
+
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
 	constraints, err := getConstraints(ctx, nil)
@@ -34,10 +49,8 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 		return nil, err
 	}
 	tables := []Table{}
-	rows, err := conn.Query(ctx, `
-		SELECT tablename, tableowner, rowsecurity 
-		FROM pg_tables
-		WHERE schemaname = 'public'`)
+	rows, err := conn.Query(ctx, tablesQuery+
+		" WHERE schemaname <> 'pg_catalog' AND schemaname <> 'information_schema'")
 	if err != nil {
 		return tables, err
 	}
@@ -65,9 +78,10 @@ func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 	if err != nil {
 		return nil, err
 	}
+	schemaname, tablename := splitTableName(name)
 	table := Table{}
 	err = conn.QueryRow(ctx,
-		"SELECT tablename, tableowner, rowsecurity FROM pg_tables WHERE tablename = $1", name).
+		tablesQuery+" WHERE tablename = $1 AND schemaname = $2", tablename, schemaname).
 		Scan(&table.Name, &table.Owner, &table.RowSecurity)
 	if err != nil {
 		return nil, err

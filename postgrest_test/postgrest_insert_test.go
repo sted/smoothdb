@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPostgRESTInsert(t *testing.T) {
+func TestPostgREST_Insert(t *testing.T) {
 
 	tests := []struct {
 		description     string

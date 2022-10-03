@@ -13,7 +13,7 @@ func InitHTTPServer(addr string, dbe *database.DBEngine) *http.Server {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	//router := gin.Default()
+	//router.Use(gin.Logger())
 
 	root := router.Group("/")
 

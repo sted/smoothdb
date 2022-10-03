@@ -181,6 +181,12 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32) {
 	d.WriteByte(']')
 }
 
+func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
+	d.WriteByte('"')
+	d.Write(buf)
+	d.WriteByte('"')
+}
+
 func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
 	if buf == nil {
 		d.WriteString("null")
@@ -201,6 +207,8 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
 		d.appendTime(buf)
 	case pgtype.Int4ArrayOID:
 		d.appendArray(buf, t)
+	case 3614: // text search
+		d.appendTextSearch(buf)
 	default:
 		// type not supported yet
 		d.WriteString("\"TypeNotSupported\"")

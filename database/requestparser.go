@@ -11,8 +11,14 @@ import (
 
 type Filters = url.Values
 
-type QueryField struct {
-	name  string
+type Field struct {
+	name     string
+	jsonPath string
+	last     string
+}
+
+type SelectField struct {
+	field Field
 	label string
 	cast  string
 	table QueryTable
@@ -23,22 +29,25 @@ type QueryTable struct {
 	tableCast   string
 	parentTable string
 }
+
 type OrderField struct {
-	name        string
+	field       Field
 	descending  bool
 	invertNulls bool
 }
 
 type WhereConditionNode struct {
-	field    string
+	field    Field
 	operator string
+	opSource string
+	opArgs   []string
 	not      bool
 	values   []string
 	children []*WhereConditionNode
 }
 
 type QueryParts struct {
-	selectFields        []QueryField
+	selectFields        []SelectField
 	orderFields         []OrderField
 	limit               string
 	offset              string
@@ -95,6 +104,10 @@ var postgRestParserOperators = map[string]string{
 	"nxr":    "&<",
 	"nxl":    "&>",
 	"adj":    "-|-",
+	"fts":    "@@",
+	"plfts":  "@@",
+	"phfts":  "@@",
+	"wfts":   "@@",
 }
 
 // scan splits the string s using the separators and
@@ -193,29 +206,61 @@ func (p *PostgRestParser) reset() {
 //
 // Filter := Select | Order | Limit | Offset | Where
 //
+// Field := <name> (( '->' | '->>' ) <member>)*
+//
 // Select := SelectList
 // SelectList := SelectItem (',' SelectItem)*
-// SelectItem := CField | CTable '(' SelectList ')'
-// CField := [<label> ':'] <name> ["::" <cast>]
-// CTable := [<label> ':'] <name>
+// SelectItem := SelectField | SelectTable '(' SelectList ')'
+// SelectField := [<label> ':'] Field ["::" <cast>]
+// SelectTable := [<label> ':'] Field
 //
 // Order := OrderItem (',' OrderItem)*
-// OrderItem := <name> ['.' ("asc" | "desc")] ['.' ("nullsfirst" | "nullslast")]
+// OrderItem := Field ['.' ("asc" | "desc")] ['.' ("nullsfirst" | "nullslast")]
 //
 // Cond := CondName | CondBool
-// CondName := <name> '.' OpValue
+// CondName := Field '.' OpValue
 // OpValue :=  ["not" ‘.’] <op> ‘.’ Values
 // CondBool := BoolOp CondList
 // BoolOp := ["not" '.'] ("and" | "or")
 // CondList := ’(‘ Cond (‘,’ Cond)+ ‘)’
 // Values := Value | ValueList
 // ValueList := '(' Value (',' Value)* ')'
-func (p *PostgRestParser) parseSelect(s string) ([]QueryField, error) {
+
+func (p *PostgRestParser) field() (f Field, err error) {
+	token := p.next()
+	if token == "" {
+		return f, &ParseError{"field expected"}
+	}
+	f.name = token
+	token = p.lookAhead()
+	for token == "->>" || token == "->" {
+		f.jsonPath += token
+		p.next()
+		token = p.next()
+		if token == "" {
+			return f, &ParseError{"json path member expected"}
+		}
+		if _, err = strconv.Atoi(token); err == nil {
+			f.jsonPath += token
+		} else {
+			f.jsonPath += "'" + token + "'"
+			f.last = token
+		}
+		token = p.lookAhead()
+	}
+	if f.jsonPath != "" && f.last == "" {
+		f.last = f.name
+	}
+	return f, nil
+}
+
+// SELECT
+func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	p.scan(s, ".,():", "->>", "->", "::")
 	return p.selectList(&QueryTable{})
 }
 
-func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []QueryField, err error) {
+func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []SelectField, err error) {
 	selectFields, err = p.selectItem(table)
 	if err != nil {
 		return nil, err
@@ -230,47 +275,35 @@ func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []QueryFie
 	return selectFields, nil
 }
 
-func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []QueryField, err error) {
-	var label, name, lastname, cast string
-	labelOrName := p.next()
+func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectField, err error) {
+	var label, cast string
 	token := p.next()
-	if token == ":" {
-		label = labelOrName
-		labelOrName = p.next()
-		token = p.next()
-	}
-	if token == "->>" || token == "->" {
-		name = "(\"" + labelOrName + "\""
-		lastname = labelOrName
-		for {
-			name += token
-			token = p.next()
-			if _, err := strconv.Atoi(token); err == nil {
-				name += token
-			} else {
-				name += "'" + token + "'"
-				lastname = token
-			}
-			token = p.next()
-			if token != "->>" && token != "->" {
-				break
-			}
-		}
-		name += ")"
-		if label == "" {
-			label = lastname
-		}
+	if p.lookAhead() == ":" {
+		label = token
+		p.next()
 	} else {
-		name = "\"" + labelOrName + "\""
+		p.back()
 	}
+	field, err := p.field()
+	if err != nil {
+		return nil, err
+	}
+	if label == "" {
+		label = field.last
+	}
+	token = p.lookAhead()
 	if token == "::" {
+		p.next()
 		cast = p.next()
-		token = p.next()
+		token = p.lookAhead()
 	}
 	if token != "(" {
 		// field
-		selectFields = append(selectFields, QueryField{name, label, cast, *table})
-		p.back()
+		if field.name != "," {
+			selectFields = append(selectFields, SelectField{field, label, cast, *table})
+		} else {
+			p.back()
+		}
 	} else {
 		// table
 		if cast != "" {
@@ -285,6 +318,50 @@ func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []QueryFie
 	return selectFields, nil
 }
 
+// ORDER
+func (p *PostgRestParser) parseOrderCondition(o string) (fields []OrderField, err error) {
+	var value1, value2 string
+	p.reset()
+	p.scan(o, ".,", "->>", "->")
+
+	token := p.lookAhead()
+	if token == "" {
+		return nil, &ParseError{"order fields expected"}
+	}
+	for {
+		field, err := p.field()
+		if err != nil {
+			return nil, err
+		}
+		if p.lookAhead() == "." {
+			p.next()
+			value1 = p.next()
+		}
+		if p.lookAhead() == "." {
+			p.next()
+			value2 = p.next()
+		}
+		descending := false
+		invertNulls := false
+		if value1 == "desc" || value2 == "desc" {
+			descending = true
+		}
+		if descending && (value1 == "nullslast" || value2 == "nullslast") ||
+			!descending && (value1 == "nullsfirst" || value2 == "nullsfirst") {
+			invertNulls = true
+		}
+		fields = append(fields,
+			OrderField{field: field, descending: descending, invertNulls: invertNulls})
+		if p.lookAhead() != "," {
+			break
+		}
+		p.next()
+
+	}
+	return fields, nil
+}
+
+// WHERE
 func isBooleanOp(op string) bool {
 	if op == "and" || op == "or" || op == "not.and" || op == "not.or" {
 		return true
@@ -295,19 +372,17 @@ func isBooleanOp(op string) bool {
 
 func (p *PostgRestParser) scanWhereCondition(k, v string) {
 	p.reset()
-
-	// Scan key: boolean operator or field name
 	if isBooleanOp(k) {
-		ops := strings.Split(k, ".")
-		p.tokens = append(p.tokens, ops[0])
-		if len(ops) == 2 {
-			p.tokens = append(p.tokens, ".", ops[1])
-		}
+		v = k + v
 	} else {
-		p.tokens = append(p.tokens, k, ".")
+		v = k + "." + v
 	}
-	// Scan value part
-	p.scan(v, ".,()[]{}:")
+	p.scan(v, ".,()[]{}:", "->>", "->")
+}
+
+func (p *PostgRestParser) parseWhereCondition(key, value string, root *WhereConditionNode) error {
+	p.scanWhereCondition(key, value)
+	return p.cond(root)
 }
 
 func (p *PostgRestParser) value(node *WhereConditionNode) error {
@@ -340,7 +415,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 				level--
 			} else if token == "" {
 				return &ParseError{"'}' expected"}
-			} else if unicode.IsLetter(rune(token[0])) && p.lookAhead() == ":" {
+			} else if unicode.IsLetter(rune(token[0])) {
 				token = "\"" + token + "\""
 			}
 			value += token
@@ -361,15 +436,11 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 	return nil
 }
 
-func (p *PostgRestParser) parseWhereCondition(key, value string, root *WhereConditionNode) error {
-	p.scanWhereCondition(key, value)
-	return p.cond(root)
-}
-
 func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 	node := &WhereConditionNode{}
-	token := p.next()
+	token := p.lookAhead()
 	if token == "not" || token == "and" || token == "or" {
+		p.next()
 		if token == "not" {
 			node.not = true
 			if p.next() != "." {
@@ -388,24 +459,22 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 		if err != nil {
 			return err
 		}
-		if p.next() != "," {
-			return &ParseError{"',' expected"}
-		}
-		for {
+		token = p.next()
+		for token == "," {
 			err = p.cond(node)
 			if err != nil {
 				return err
 			}
 			token = p.next()
-			if token != "," {
-				break
-			}
 		}
 		if token != ")" {
 			return &ParseError{"')' expected"}
 		}
 	} else {
-		node.field = token
+		node.field, err = p.field()
+		if err != nil {
+			return err
+		}
 		if p.next() != "." {
 			return &ParseError{"'.' expected"}
 		}
@@ -422,7 +491,23 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 			return &ParseError{"valid sql operator expected"}
 		}
 		node.operator = op
+		node.opSource = token
 		token = p.next()
+		if op == "@@" {
+			if token == "(" {
+				for {
+					node.opArgs = append(node.opArgs, p.next())
+					token = p.next()
+					if token != "," {
+						break
+					}
+				}
+				if token != ")" {
+					return &ParseError{"')' expected"}
+				}
+				token = p.next()
+			}
+		}
 		if token == "." { // value
 			if node.operator == "IN" {
 				if p.next() != "(" {
@@ -453,11 +538,15 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 	return nil
 }
 
+// QUERY
 func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err error) {
 	// SELECT
 	var sel string
 	if selectFilter, ok := filters["select"]; ok {
-		for _, csFields := range selectFilter {
+		for i, csFields := range selectFilter {
+			if i != 0 {
+				sel += ", "
+			}
 			sel += csFields
 		}
 		delete(filters, "select")
@@ -469,36 +558,19 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 
 	// ORDER
 	// order=f1,f2.asc,f3.desc.nullslast
+	var order string
 	if orderFilter, ok := filters["order"]; ok {
-		for _, csFields := range orderFilter {
-			fields := strings.Split(csFields, ",")
-			for _, field := range fields {
-				values := strings.SplitN(field, ".", 3)
-				if values[0] == "" {
-					// log warning
-					continue
-				}
-				// fill to 3 to simplify the next phase
-				more := 3 - len(values)
-				for i := 0; i < more; i++ {
-					values = append(values, "")
-				}
-				name := values[0]
-				descending := false
-				invertNulls := false
-				if values[1] == "desc" || values[2] == "desc" {
-					descending = true
-				}
-				if descending && (values[1] == "nullslast" || values[2] == "nullslast") {
-					invertNulls = true
-				} else if !descending && (values[1] == "nullsfirst" || values[2] == "nullsfirst") {
-					invertNulls = true
-				}
-				parts.orderFields = append(parts.orderFields,
-					OrderField{name: name, descending: descending, invertNulls: invertNulls})
+		for i, oFields := range orderFilter {
+			if i != 0 {
+				order += ", "
 			}
-			delete(filters, "order")
+			order += oFields
 		}
+		parts.orderFields, err = p.parseOrderCondition(order)
+		if err != nil {
+			return QueryParts{}, err
+		}
+		delete(filters, "order")
 	}
 	// LIMIT
 	// limit=100

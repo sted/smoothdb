@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPostgRESTDelete(t *testing.T) {
+func TestPostgREST_Delete(t *testing.T) {
 
 	tests := []struct {
 		description     string

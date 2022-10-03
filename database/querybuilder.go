@@ -14,19 +14,22 @@ type QueryBuilder interface {
 	preferredSerializer() ResultSerializer
 }
 
-func selectClause(queryFields []QueryField) string {
+func selectClause(selectFields []SelectField) string {
 	selectClause := ""
-	for i, field := range queryFields {
+	for i, sfield := range selectFields {
 		if i != 0 {
 			selectClause += ", "
 		}
-		//selectClause += "\"" + field.name + "\""
-		selectClause += field.name
-		if field.cast != "" {
-			selectClause += "::" + field.cast
+		if sfield.field.jsonPath != "" {
+			selectClause += "(" + sfield.field.name + sfield.field.jsonPath + ")"
+		} else {
+			selectClause += "\"" + sfield.field.name + "\""
 		}
-		if field.label != "" {
-			selectClause += " AS \"" + field.label + "\""
+		if sfield.cast != "" {
+			selectClause += "::" + sfield.cast
+		}
+		if sfield.label != "" {
+			selectClause += " AS \"" + sfield.label + "\""
 		}
 	}
 	if selectClause == "" {
@@ -37,16 +40,16 @@ func selectClause(queryFields []QueryField) string {
 
 func orderClause(orderFields []OrderField) string {
 	order := ""
-	for i, field := range orderFields {
+	for i, ofield := range orderFields {
 		if i != 0 {
 			order += ", "
 		}
-		order += field.name
-		if field.descending {
+		order += "\"" + ofield.field.name + "\"" + ofield.field.jsonPath
+		if ofield.descending {
 			order += " DESC"
 		}
-		if field.invertNulls {
-			if field.descending {
+		if ofield.invertNulls {
+			if ofield.descending {
 				order += " NULLS LAST"
 			} else {
 				order += " NULLS FIRST"
@@ -70,7 +73,7 @@ func appendValue(where, value string) string {
 
 func whereClause(node *WhereConditionNode) string {
 	where := ""
-	if node.operator == "" || node.field == "" {
+	if node.operator == "" || node.field.name == "" {
 		// It is a root or a boolean operator
 
 		var bool_op string
@@ -98,11 +101,12 @@ func whereClause(node *WhereConditionNode) string {
 		if node.not {
 			where += "NOT "
 		}
-		if strings.HasPrefix(node.field, "\"") {
-			where += node.field
+		if strings.HasPrefix(node.field.name, "\"") {
+			where += node.field.name
 		} else {
-			where += "\"" + node.field + "\""
+			where += "\"" + node.field.name + "\""
 		}
+		where += node.field.jsonPath
 		where += " " + node.operator + " "
 		if node.operator == "IN" {
 			where += "("
@@ -113,6 +117,24 @@ func whereClause(node *WhereConditionNode) string {
 				where = appendValue(where, value)
 			}
 			where += ")"
+		} else if node.operator == "@@" {
+			switch node.opSource {
+			case "fts":
+				where += "to_tsquery("
+			case "plfts":
+				where += "plainto_tsquery("
+			case "phfts":
+				where += "phraseto_tsquery("
+			case "wfts":
+				where += "websearch_to_tsquery("
+			}
+			for _, arg := range node.opArgs {
+				where += "'" + arg + "'"
+				where += ", "
+			}
+			where = appendValue(where, node.values[0])
+			where += ")"
+
 		} else {
 			where = appendValue(where, node.values[0])
 		}

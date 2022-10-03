@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPostgRESTJSON(t *testing.T) {
+func TestPostgREST_JSON(t *testing.T) {
 
 	tests := []struct {
 		description     string
@@ -294,16 +294,16 @@ func TestPostgRESTJSON(t *testing.T) {
 		// 	get "/json_table?data->foo->>bar=eq.baz" `shouldRespondWith`
 		// 		[json| [{"data": {"id": 1, "foo": {"bar": "baz"}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	get "/json_table?data->foo->>bar=eq.fake" `shouldRespondWith`
-		// 		[json| [] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			"can filter by properties inside json column",
 			"/json_table?data->foo->>bar=eq.baz",
-			`[{"data": {"id": 1, "foo": {"bar": "baz"}}}]`,
+			`[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
 			nil,
 			200,
 		},
+		// 	get "/json_table?data->foo->>bar=eq.fake" `shouldRespondWith`
+		// 		[json| [] |]
+		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			"can filter by properties inside json column",
 			"/json_table?data->foo->>bar=eq.fake",
@@ -329,7 +329,7 @@ func TestPostgRESTJSON(t *testing.T) {
 		{
 			"can filter by properties inside json column using ->>",
 			"/json_table?data->>id=eq.1",
-			`[{"data": {"id": 1, "foo": {"bar": "baz"}}}]`,
+			`[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
 			nil,
 			200,
 		},
@@ -338,8 +338,8 @@ func TestPostgRESTJSON(t *testing.T) {
 		// 		[json|[{id: 4}, {id: 5}]|] { matchStatus = 200, matchHeaders = [matchContentTypeJson] }
 		{
 			"can be filtered with and/or",
-			"/grandchild_entities?or=(jsonb_col->a->>b.eq.foo,%20jsonb_col->>b.eq.bar)&select=id",
-			`[{id: 4}, {id: 5}]`,
+			"/grandchild_entities?or=(jsonb_col->a->>b.eq.foo,jsonb_col->>b.eq.bar)&select=id",
+			`[{"id":4},{"id":5}]`,
 			nil,
 			200,
 		},
@@ -361,15 +361,6 @@ func TestPostgRESTJSON(t *testing.T) {
 		// 	get "/jsonb_test?data=eq.{\"e\":1}" `shouldRespondWith`
 		// 		[json| [{"id":4,"data":{"e": 1}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	get "/jsonb_test?data->a=eq.{\"b\":2}" `shouldRespondWith`
-		// 		[json| [{"id":1,"data":{"a": {"b": 2}}}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	get "/jsonb_test?data->c=eq.[1,2,3]" `shouldRespondWith`
-		// 		[json| [{"id":2,"data":{"c": [1, 2, 3]}}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	get "/jsonb_test?data->0=eq.{\"d\":\"test\"}" `shouldRespondWith`
-		// 		[json| [{"id":3,"data":[{"d": "test"}]}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			"can filter jsonb",
 			"/jsonb_test?data=eq.{\"e\":1}",
@@ -377,20 +368,37 @@ func TestPostgRESTJSON(t *testing.T) {
 			nil,
 			200,
 		},
-		// {
-		// 	"can filter jsonb",
-		// 	"/json_arr?select=data->c->>0::json&id=in.(7,8)",
-		// 	`[{"c":1},{"c":{"d": [4,5,6,7,8]}}]`,
-		// 	nil,
-		// 	200,
-		// },
+		// 	get "/jsonb_test?data->a=eq.{\"b\":2}" `shouldRespondWith`
+		// 		[json| [{"id":1,"data":{"a": {"b": 2}}}] |]
+		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			"can filter jsonb",
-			"/json_arr?select=data->c->>0::json&id=in.(7,8)",
-			`[{"c":1},{"c":{"d": [4,5,6,7,8]}}]`,
+			"/jsonb_test?data->a=eq.{\"b\":2}",
+			`[{"id":1,"data":{"a": {"b": 2}}}]`,
 			nil,
 			200,
 		},
+		// 	get "/jsonb_test?data->c=eq.[1,2,3]" `shouldRespondWith`
+		// 		[json| [{"id":2,"data":{"c": [1, 2, 3]}}] |]
+		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can filter jsonb",
+			"/jsonb_test?data->c=eq.[1,2,3]",
+			`[{"id":2,"data":{"c": [1, 2, 3]}}]`,
+			nil,
+			200,
+		},
+		// 	get "/jsonb_test?data->0=eq.{\"d\":\"test\"}" `shouldRespondWith`
+		// 		[json| [{"id":3,"data":[{"d": "test"}]}] |]
+		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"can filter jsonb",
+			"/jsonb_test?data->0=eq.{\"d\":\"test\"}",
+			`[{"id":3,"data":[{"d": "test"}]}]`,
+			nil,
+			200,
+		},
+
 		// 	it "can filter composite type field" $
 		// 	get "/fav_numbers?num->>i=gt.0.5"
 		// 		`shouldRespondWith`
@@ -415,11 +423,25 @@ func TestPostgRESTJSON(t *testing.T) {
 		// 	get "/json_table?order=data->>id.asc" `shouldRespondWith`
 		// 		[json| [{"data": {"id": 0}}, {"data": {"id": 1, "foo": {"bar": "baz"}}}, {"data": {"id": 3}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"orders by a json column property asc",
+			"/json_table?order=data->>id.asc",
+			`[{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}},{"data":{"id":3}}]`,
+			nil,
+			200,
+		},
 
 		// 	it "orders by a json column with two level property nulls first" $
 		// 	get "/json_table?order=data->foo->>bar.nullsfirst" `shouldRespondWith`
 		// 		[json| [{"data": {"id": 3}}, {"data": {"id": 0}}, {"data": {"id": 1, "foo": {"bar": "baz"}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			"orders by a json column with two level property nulls first",
+			"/json_table?order=data->foo->>bar.nullsfirst",
+			`[{"data":{"id":3}},{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}}]`,
+			nil,
+			200,
+		},
 
 		// 	it "orders by composite type field" $ do
 		// 	get "/fav_numbers?order=num->i.asc"

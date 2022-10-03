@@ -153,7 +153,7 @@ func TestDDL(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if table_.Name != "b2" ||
+		if table_.Name != "public.b2" ||
 			table_.Primary != "PRIMARY KEY (id)" ||
 			table_.Check[0] != "CHECK (number < 100000 AND bool)" ||
 			len(table_.Unique) != 0 ||

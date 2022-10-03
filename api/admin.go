@@ -20,12 +20,22 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		c.JSON(http.StatusOK, databases)
 	})
 
-	databases.POST("/", func(c *gin.Context) {
-		var database database.Database
-		c.BindJSON(&database)
-		db, err := dbe.CreateDatabase(c, database.Name)
+	databases.GET("/:dbname", func(c *gin.Context) {
+		name := c.Param("dbname")
+		db, err := dbe.GetDatabase(c, name)
 		if err == nil {
-			c.JSON(http.StatusCreated, db)
+			c.JSON(http.StatusOK, db)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	databases.POST("/", func(c *gin.Context) {
+		var databaseInput database.Database
+		c.BindJSON(&databaseInput)
+		database, err := dbe.CreateDatabase(c, databaseInput.Name)
+		if err == nil {
+			c.JSON(http.StatusCreated, database)
 		} else {
 			prepareInternalServerError(c, err)
 		}
@@ -43,9 +53,20 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 
 	databases.GET("/:dbname/tables", func(c *gin.Context) {
 		db := database.GetDb(c)
-		sources, err := db.GetTables(c)
+		tables, err := db.GetTables(c)
 		if err == nil {
-			c.JSON(http.StatusOK, sources)
+			c.JSON(http.StatusOK, tables)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	databases.GET("/:dbname/tables/:table", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("table")
+		table, err := db.GetTable(c, name)
+		if err == nil {
+			c.JSON(http.StatusOK, table)
 		} else {
 			prepareInternalServerError(c, err)
 		}
@@ -53,11 +74,11 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 
 	databases.POST("/:dbname/tables/", func(c *gin.Context) {
 		db := database.GetDb(c)
-		var table database.Table
-		c.BindJSON(&table)
-		source, err := db.CreateTable(c, &table)
+		var tableInput database.Table
+		c.BindJSON(&tableInput)
+		table, err := db.CreateTable(c, &tableInput)
 		if err == nil {
-			c.JSON(http.StatusCreated, source)
+			c.JSON(http.StatusCreated, table)
 		} else {
 			prepareInternalServerError(c, err)
 		}
@@ -84,13 +105,24 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
+	databases.GET("/:dbname/views/:view", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("view")
+		view, err := db.GetView(c, name)
+		if err == nil {
+			c.JSON(http.StatusOK, view)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
 	databases.POST("/:dbname/views/", func(c *gin.Context) {
 		db := database.GetDb(c)
-		var view database.View
-		c.BindJSON(&view)
-		v, err := db.CreateView(c, &view)
+		var viewInput database.View
+		c.BindJSON(&viewInput)
+		view, err := db.CreateView(c, &viewInput)
 		if err == nil {
-			c.JSON(http.StatusCreated, v)
+			c.JSON(http.StatusCreated, view)
 		} else {
 			prepareInternalServerError(c, err)
 		}
@@ -120,15 +152,28 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 
 	databases.POST("/:dbname/tables/:table/columns", func(c *gin.Context) {
 		db := database.GetDb(c)
-		var column database.Column
-		column.Table = c.Param("table")
-		c.BindJSON(&column)
-		if column.Type == "" {
-			column.Type = "text"
+		var columnInput database.Column
+		columnInput.Table = c.Param("table")
+		c.BindJSON(&columnInput)
+		if columnInput.Type == "" {
+			columnInput.Type = "text"
 		}
-		source, err := db.CreateColumn(c, &column)
+		column, err := db.CreateColumn(c, &columnInput)
 		if err == nil {
-			c.JSON(http.StatusCreated, source)
+			c.JSON(http.StatusCreated, column)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	databases.PATCH("/:dbname/tables/:table/columns/:column", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var columnUpdate database.ColumnUpdate
+		columnUpdate.Table = c.Param("table")
+		columnUpdate.Name = c.Param("column")
+		column, err := db.UpdateColumn(c, &columnUpdate)
+		if err == nil {
+			c.JSON(http.StatusOK, column)
 		} else {
 			prepareInternalServerError(c, err)
 		}

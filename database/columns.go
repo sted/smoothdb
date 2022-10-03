@@ -27,17 +27,20 @@ type ColumnUpdate struct {
 	Table   string  `json:"-"`
 }
 
-func (db *Database) GetColumns(ctx context.Context, tablename string) ([]Column, error) {
+const columnsQuery = `
+	SELECT column_name, data_type, is_nullable, column_default, table_schema || '.' || table_name
+		FROM information_schema.columns
+		WHERE table_name = $1 AND table_schema = $2`
+
+func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, &tablename)
+	constraints, err := getConstraints(ctx, &ftablename)
 	if err != nil {
 		return nil, err
 	}
+	schemaname, tablename := splitTableName(ftablename)
 	columns := []Column{}
-	rows, err := conn.Query(ctx, `
-		SELECT column_name, data_type, is_nullable, column_default, table_name
-		FROM information_schema.columns
-		WHERE table_schema = 'public' AND table_name = $1`, tablename)
+	rows, err := conn.Query(ctx, columnsQuery, tablename, schemaname)
 	if err != nil {
 		return columns, err
 	}
@@ -64,18 +67,16 @@ func (db *Database) GetColumns(ctx context.Context, tablename string) ([]Column,
 	return columns, nil
 }
 
-func (db *Database) GetColumn(ctx context.Context, tablename string, name string) (*Column, error) {
+func (db *Database) GetColumn(ctx context.Context, ftablename string, name string) (*Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, &tablename)
+	constraints, err := getConstraints(ctx, &ftablename)
 	if err != nil {
 		return nil, err
 	}
+	schemaname, tablename := splitTableName(ftablename)
 	column := &Column{}
 	var nullable string
-	err = conn.QueryRow(ctx, `
-		SELECT column_name, data_type, is_nullable, column_default, table_name
-		FROM information_schema.columns
-		WHERE table_schema = 'public' AND table_name = $1`, tablename).
+	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
 		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table)
 	if err != nil {
 		return nil, err

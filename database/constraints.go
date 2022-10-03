@@ -1,6 +1,8 @@
 package database
 
-import "context"
+import (
+	"context"
+)
 
 type Constraint struct {
 	Name       string
@@ -13,26 +15,26 @@ type Constraint struct {
 
 const constraintsQuery = `
 	SELECT
-		c.conrelid::regclass tablename,
+		c.connamespace::regnamespace || '.' || cls.relname tablename,
 		att.attname colname,
-		c.conname  name,
-		c.contype  type,
+		c.conname name,
+		c.contype type,
 		cardinality(c.conkey) cols,
 		pg_get_constraintdef(c.oid, true) def
 	FROM pg_constraint c
-		JOIN pg_namespace ns ON c.connamespace = ns.oid
-		JOIN pg_attribute att ON c.conrelid = att.attrelid and c.conkey[1] = att.attnum
-	WHERE ns.nspname = 'public'`
+		JOIN pg_class cls ON c.conrelid = cls.oid
+		JOIN pg_attribute att ON c.conrelid = att.attrelid and c.conkey[1] = att.attnum`
 
-func getConstraints(ctx context.Context, tablename *string) ([]Constraint, error) {
+func getConstraints(ctx context.Context, ftablename *string) ([]Constraint, error) {
 	conn := GetConn(ctx)
 	constraints := []Constraint{}
 	query := constraintsQuery
-	if tablename != nil {
-		query += " AND tablename = " + *tablename
+	if ftablename != nil {
+		schemaname, tablename := splitTableName(*ftablename)
+		query += " WHERE cls.relname = '" + tablename + "' AND c.connamespace::regnamespace = '" + schemaname + "'::regnamespace"
 	}
 	query += " ORDER BY tablename, type"
-	rows, err := conn.Query(ctx, constraintsQuery)
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
