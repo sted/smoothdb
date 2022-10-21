@@ -2,9 +2,6 @@ package main
 
 import (
 	"green/green-ds/server"
-	"io"
-	"log"
-	"net/http"
 	"os"
 	"testing"
 )
@@ -18,13 +15,7 @@ func TestMain(m *testing.M) {
 
 func TestPostgREST_Query(t *testing.T) {
 
-	tests := []struct {
-		description     string
-		query           string
-		expectedResults string
-		headers         []string
-		status          int
-	}{
+	tests := []Test{
 		//	describe "Filtering response" $ do
 		// it "matches with equality" $
 		//   get "/items?id=eq.5"
@@ -606,7 +597,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"matches with computed column",
+			"/items?always_true=eq.true&order=id.asc",
+			`[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
+			nil,
+			200,
+		},
 		//   it "order by computed column" $
 		// 	get "/items?order=anti_id.desc" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
@@ -771,7 +768,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting parents and children",
+			"/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)",
+			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting parent and renaming primary key" $
 		// 	get "/projects?select=name,client:clients(clientId:id,name)" `shouldRespondWith`
 		// 	  [json|[
@@ -782,43 +785,104 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		{"name":"Orphan","client":null}
 		// 	  ]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting parent and renaming primary key",
+			"/projects?select=name,client:clients(clientId:id,name)",
+			`[
+				{"name":"Windows 7","client":{"name": "Microsoft", "clientId": 1}},
+				{"name":"Windows 10","client":{"name": "Microsoft", "clientId": 1}},
+				{"name":"IOS","client":{"name": "Apple", "clientId": 2}},
+				{"name":"OSX","client":{"name": "Apple", "clientId": 2}},
+				{"name":"Orphan","client":null}
+			]`,
+			nil,
+			200,
+		},
 		//   it "requesting parent and specifying/renaming one key of the composite primary key" $ do
 		// 	get "/comments?select=*,users_tasks(userId:user_id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			"requesting parent and specifying/renaming one key of the composite primary key",
+			"/comments?select=*,users_tasks(userId:user_id)",
+			`[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]`,
+			nil,
+			200,
+		},
 		// 	get "/comments?select=*,users_tasks(taskId:task_id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting parent and specifying/renaming one key of the composite primary key",
+			"/comments?select=*,users_tasks(taskId:task_id)",
+			`[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]`,
+			nil,
+			200,
+		},
 		//   it "requesting parents and children while renaming them" $
 		// 	get "/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)" `shouldRespondWith`
 		// 	  [json|[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting parents and children while renaming them",
+			"/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)",
+			`[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting parents and filtering parent columns" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1}}]|]
-
+		{
+			"requesting parents and filtering parent columns",
+			"/projects?id=eq.1&select=id, name, clients(id)",
+			`[{"id":1,"name":"Windows 7","clients":{"id":1}}]`,
+			nil,
+			200,
+		},
 		//   it "rows with missing parents are included" $
 		// 	get "/projects?id=in.(1,5)&select=id,clients(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"rows with missing parents are included",
+			"/projects?id=in.(1,5)&select=id,clients(id)",
+			`[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]`,
+			nil,
+			200,
+		},
 		//   it "rows with no children return [] instead of null" $
 		// 	get "/projects?id=in.(5)&select=id,tasks(id)" `shouldRespondWith`
 		// 	  [json|[{"id":5,"tasks":[]}]|]
-
+		{
+			"rows with no children return [] instead of null",
+			"/projects?id=in.(5)&select=id,tasks(id)",
+			`[{"id":5,"tasks":[]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting children 2 levels" $
 		// 	get "/clients?id=eq.1&select=id,projects(id,tasks(id))" `shouldRespondWith`
 		// 	  [json|[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting children 2 levels",
+			"/clients?id=eq.1&select=id,projects(id,tasks(id))",
+			`[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting many<->many relation" $
 		// 	get "/tasks?select=id,users(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting many<->many relation",
+			"/tasks?select=id,users(id)",
+			`[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]`,
+			nil,
+			200,
+		},
 		//   it "requesting many<->many relation with rename" $
 		// 	get "/tasks?id=eq.1&select=id,theUsers:users(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"theUsers":[{"id":1},{"id":3}]}]|]
@@ -848,7 +912,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)" `shouldRespondWith`
 		// 	  [json|[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"requesting children with composite key",
+			"/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)",
+			`[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
+			nil,
+			200,
+		},
 		//   -- https://github.com/PostgREST/postgrest/issues/2070
 		//   it "one-to-many embeds without a disambiguation error due to wrongly generated many-to-many relationships" $
 		// 	get "/plate?select=*,well(*)" `shouldRespondWith`
@@ -887,7 +957,16 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			[{"name":"DeLorean","year":1981,"car_brands":{"name":"DMC"}},
 		// 			 {"name":"Murcielago","year":2001,"car_brands":{"name":"Lamborghini"}}] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request a table as parent from a partitioned table",
+			"/car_models?name=in.(DeLorean,Murcielago)&select=name,year,car_brands(name)&order=name.asc",
+			`[
+				{"name":"DeLorean","year":1981,"car_brands":{"name":"DMC"}},
+				{"name":"Murcielago","year":2001,"car_brands":{"name":"Lamborghini"}}
+			]`,
+			nil,
+			200,
+		},
 		// 	  it "can request partitioned tables as children from a table" $
 		// 		get "/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc" `shouldRespondWith`
 		// 		  [json|
@@ -895,7 +974,17 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			 {"name":"Ferrari","car_models":[{"name":"F310-B","year":1997}]},
 		// 			 {"name":"Lamborghini","car_models":[{"name":"Murcielago","year":2001},{"name":"Veneno","year":2013}]}] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request partitioned tables as children from a table",
+			"/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc",
+			`[
+				{"name":"DMC","car_models":[{"name":"DeLorean","year":1981}]},
+				{"name":"Ferrari","car_models":[{"name":"F310-B","year":1997}]},
+				{"name":"Lamborghini","car_models":[{"name":"Murcielago","year":2001},{"name":"Veneno","year":2013}]}
+			]`,
+			nil,
+			200,
+		},
 		// 	  when (actualPgVersion >= pgVersion121) $ do
 		// 		it "can request tables as children from a partitioned table" $
 		// 		  get "/car_models?name=in.(DeLorean,F310-B)&select=name,year,car_racers(name)&order=name.asc" `shouldRespondWith`
@@ -903,14 +992,32 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			  [{"name":"DeLorean","year":1981,"car_racers":[]},
 		// 			   {"name":"F310-B","year":1997,"car_racers":[{"name":"Michael Schumacher"}]}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request tables as children from a partitioned table",
+			"/car_models?name=in.(DeLorean,F310-B)&select=name,year,car_racers(name)&order=name.asc",
+			`[
+				{"name":"DeLorean","year":1981,"car_racers":[]},
+				{"name":"F310-B","year":1997,"car_racers":[{"name":"Michael Schumacher"}]}
+			]`,
+			nil,
+			200,
+		},
 		// 		it "can request a partitioned table as parent from a table" $
 		// 		  get "/car_racers?select=name,car_models(name,year)&order=name.asc" `shouldRespondWith`
 		// 			[json|
 		// 			  [{"name":"Alain Prost","car_models":null},
 		// 			   {"name":"Michael Schumacher","car_models":{"name":"F310-B","year":1997}}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request a partitioned table as parent from a table",
+			"/car_racers?select=name,car_models(name,year)&order=name.asc",
+			`[
+				{"name":"Alain Prost","car_models":null},
+				{"name":"Michael Schumacher","car_models":{"name":"F310-B","year":1997}}
+			]`,
+			nil,
+			200,
+		},
 		// 		it "can request partitioned tables as children from a partitioned table" $
 		// 		  get "/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc" `shouldRespondWith`
 		// 			[json|
@@ -918,14 +1025,33 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			   {"name":"Murcielago","year":2001,"car_model_sales":[{"date":"2021-02-11","quantity":1},{"date":"2021-02-12","quantity":3}]},
 		// 			   {"name":"Veneno","year":2013,"car_model_sales":[]}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request partitioned tables as children from a partitioned table",
+			"/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc",
+			`[
+				{"name":"DeLorean","year":1981,"car_model_sales":[{"date":"2021-01-14","quantity":7},{"date":"2021-01-15","quantity":9}]},
+				{"name":"Murcielago","year":2001,"car_model_sales":[{"date":"2021-02-11","quantity":1},{"date":"2021-02-12","quantity":3}]},
+				{"name":"Veneno","year":2013,"car_model_sales":[]}
+			]`,
+			nil,
+			200,
+		},
 		// 		it "can request a partitioned table as parent from a partitioned table" $ do
 		// 		  get "/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc" `shouldRespondWith`
 		// 			[json|
 		// 			  [{"date":"2021-01-15","quantity":9,"car_models":{"name":"DeLorean","year":1981}},
 		// 			   {"date":"2021-02-11","quantity":1,"car_models":{"name":"Murcielago","year":2001}}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			"can request a partitioned table as parent from a partitioned table",
+			"/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc",
+			`[
+				{"date":"2021-01-15","quantity":9,"car_models":{"name":"DeLorean","year":1981}},
+				{"date":"2021-02-11","quantity":1,"car_models":{"name":"Murcielago","year":2001}}
+			]`,
+			nil,
+			200,
+		},
 		// 		it "can request many to many relationships between partitioned tables ignoring the intermediate table partitions" $
 		// 		  get "/car_models?select=name,year,car_dealers(name,city)&order=name.asc&limit=4" `shouldRespondWith`
 		// 			[json|
@@ -984,7 +1110,13 @@ func TestPostgREST_Query(t *testing.T) {
 		//   describe "view embedding" $ do
 		// 	it "can detect fk relations through views to tables in the public schema" $
 		// 	  get "/consumers_view?select=*,orders_view(*)" `shouldRespondWith` 200
-
+		{
+			"can detect fk relations through views to tables in the public schema",
+			"/consumers_view?select=*,orders_view(*)",
+			``,
+			nil,
+			200,
+		},
 		// 	it "can detect fk relations through materialized views to tables in the public schema" $
 		// 	  get "/materialized_projects?select=*,users(*)" `shouldRespondWith` 200
 
@@ -992,7 +1124,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  get "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1"
 		// 		`shouldRespondWith`
 		// 		  [json|[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]|]
-
+		{
+			"can request two parents",
+			"/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
+			`[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
+			nil,
+			200,
+		},
 		// 	it "can detect relations in views from exposed schema that are based on tables in private schema and have columns renames" $
 		// 	  get "/articles?id=eq.1&select=id,articleStars(users(*))" `shouldRespondWith`
 		// 		[json|[{"id":1,"articleStars":[{"users":{"id":1,"name":"Angela Martin"}},{"users":{"id":2,"name":"Michael Scott"}},{"users":{"id":3,"name":"Dwight Schrute"}}]}]|]
@@ -1058,7 +1196,13 @@ func TestPostgREST_Query(t *testing.T) {
 
 		// 	it "works when having a capitalized table name and camelCase fk column" $
 		// 	  get "/foos?select=*,bars(*)" `shouldRespondWith` 200
-
+		{
+			"works when having a capitalized table name and camelCase fk column",
+			"/foos?select=*,bars(*)",
+			``,
+			nil,
+			200,
+		},
 		// 	it "works when embedding a view with a table that has a long compound pk" $ do
 		// 	  get "/player_view?select=id,contract(purchase_price)&id=in.(1,3,5,7)" `shouldRespondWith`
 		// 		[json|
@@ -1067,6 +1211,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		   {"id":5,"contract":[{"purchase_price":50}]},
 		// 		   {"id":7,"contract":[]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+
 		// 	  get "/contract?select=tournament,player_view(first_name)&limit=3" `shouldRespondWith`
 		// 		[json|
 		// 		  [{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},
@@ -1292,7 +1437,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"ordering embeded entities",
+			"/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc",
+			`[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
+			nil,
+			200,
+		},
 		//   it "ordering embeded entities with alias" $
 		// 	get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
@@ -1769,30 +1920,5 @@ func TestPostgREST_Query(t *testing.T) {
 
 	}
 
-	for i, test := range tests {
-		query := "http://localhost:8081/databases/pgrest" + test.query
-		req, err := http.NewRequest("GET", query, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-		req.Header.Add("Accept-Profile", "test")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Fatal(err)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		json := string(body)
-		if test.expectedResults != "" {
-			if test.expectedResults != json {
-				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.description, test.expectedResults, json, test.query)
-			}
-		} else if test.status != resp.StatusCode {
-			t.Errorf("\n%d. %v\nExpected status \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.description, test.status, resp.StatusCode, test.query)
-
-		}
-		resp.Body.Close()
-	}
+	executeTests(t, tests)
 }

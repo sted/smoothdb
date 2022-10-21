@@ -24,7 +24,7 @@ func defaultGreenInfo(gctx *gin.Context, conn *pgxpool.Conn, db *Database) *Gree
 	return &GreenInfo{gctx, conn, db, PostgRestParser{}, DirectQueryBuilder{}}
 }
 
-func FillContext(gctx *gin.Context) {
+func AcquireContext(gctx *gin.Context) {
 	var db *Database
 	var err error
 	var conn *pgxpool.Conn
@@ -79,6 +79,11 @@ func GetHeader(ctx context.Context) http.Header {
 		return nil
 	}
 	return gi.GinContext.Request.Header
+}
+
+func SetRequestParser(ctx context.Context, rp RequestParser) {
+	gi := GetGreenInfo(ctx)
+	gi.RequestParser = rp
 }
 
 func SetQueryBuilder(ctx context.Context, qb QueryBuilder) {

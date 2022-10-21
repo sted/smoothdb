@@ -4,6 +4,8 @@ import (
 	"context"
 )
 
+type Record = map[string]any
+
 func (db *Database) GetRecords(ctx context.Context, table string, filters Filters) ([]byte, error) {
 	return db.exec.Select(ctx, table, filters)
 }

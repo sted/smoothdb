@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"strings"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -32,23 +31,6 @@ func InitDBEngine(connString string) (*DBEngine, error) {
 func (dbe *DBEngine) AcquireConnection(ctx context.Context) *pgxpool.Conn {
 	conn, _ := dbe.pool.Acquire(ctx)
 	return conn
-}
-
-func (dbe *DBEngine) ActivateDatabase(ctx context.Context, db *Database) error {
-	connString := dbe.connString
-	if !strings.HasSuffix(connString, "/") {
-		connString += "/"
-	}
-	connString += db.Name + "?pool_max_conns=50"
-	pool, err := pgxpool.Connect(ctx, connString)
-	if err != nil {
-		return err
-	}
-	db.pool = pool
-	db.cachedTables = map[string]Table{}
-	db.exec = dbe.exec
-	dbe.activeDatabases[db.Name] = db
-	return nil
 }
 
 func (dbe *DBEngine) GetActiveDatabases(ctx context.Context) []Database {
@@ -98,7 +80,7 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 	if err != nil {
 		return nil, err
 	}
-	err = dbe.ActivateDatabase(ctx, db)
+	err = db.Activate(ctx)
 	if err != nil {
 		return nil, err
 	}

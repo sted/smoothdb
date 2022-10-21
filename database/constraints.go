@@ -2,6 +2,10 @@ package database
 
 import (
 	"context"
+	"regexp"
+	"strings"
+
+	"github.com/samber/lo"
 )
 
 type Constraint struct {
@@ -11,6 +15,29 @@ type Constraint struct {
 	Column     string
 	NumCols    int
 	Definition string
+}
+
+type ForeignKey struct {
+	Name           string
+	Table          string
+	Columns        []string
+	RelatedTable   string
+	RelatedColumns []string
+}
+
+type RelType int
+
+const (
+	O2M RelType = iota
+	M2O
+)
+
+type Relationship struct {
+	Type           RelType
+	Table          string
+	Columns        []string
+	RelatedTable   string
+	RelatedColumns []string
 }
 
 const constraintsQuery = `
@@ -32,6 +59,9 @@ func getConstraints(ctx context.Context, ftablename *string) ([]Constraint, erro
 	if ftablename != nil {
 		schemaname, tablename := splitTableName(*ftablename)
 		query += " WHERE cls.relname = '" + tablename + "' AND c.connamespace::regnamespace = '" + schemaname + "'::regnamespace"
+	} else {
+		query += " WHERE c.connamespace::regnamespace <> 'pg_catalog'::regnamespace"
+		query += " AND c.connamespace::regnamespace <> 'information_schema'::regnamespace"
 	}
 	query += " ORDER BY tablename, type"
 	rows, err := conn.Query(ctx, query)
@@ -140,4 +170,79 @@ func (db *Database) DeleteConstraint(ctx context.Context, table string, name str
 	}
 	db.refreshTable(ctx, table)
 	return nil
+}
+
+var re *regexp.Regexp = regexp.MustCompile(`^FOREIGN KEY \(([^\)]+)\) REFERENCES ([^\(]+)\(([^\)]+)\)`)
+
+func constraintToForeignKey(c *Constraint) *ForeignKey {
+	groups := re.FindStringSubmatch(c.Definition)
+	cols := strings.Split(groups[1], ", ")
+	refTable := groups[2]
+	refCols := strings.Split(groups[3], ", ")
+	return &ForeignKey{
+		Name:           c.Name,
+		Table:          c.Table,
+		Columns:        cols,
+		RelatedTable:   refTable,
+		RelatedColumns: refCols,
+	}
+}
+
+func constraintToRelationships(c *Constraint) [2]Relationship {
+	fk := constraintToForeignKey(c)
+	return [2]Relationship{
+		{
+			Type:           M2O,
+			Table:          fk.Table,
+			Columns:        fk.Columns,
+			RelatedTable:   fk.RelatedTable,
+			RelatedColumns: fk.RelatedColumns,
+		},
+		{
+			Type:           O2M,
+			Table:          fk.RelatedTable,
+			Columns:        fk.RelatedColumns,
+			RelatedTable:   fk.Table,
+			RelatedColumns: fk.Columns,
+		},
+	}
+}
+
+func filterRelationships(rels []Relationship, relatedTable string) []Relationship {
+	return lo.Filter(rels, func(rel Relationship, _ int) bool {
+		return rel.RelatedTable == relatedTable
+	})
+}
+
+func getForeignKeys(ctx context.Context, tables []string) (fkeys []ForeignKey, err error) {
+	conn := GetConn(ctx)
+	query := constraintsQuery
+	query += " WHERE c.contype = 'f' AND ("
+	for i, table := range tables {
+		if i > 0 {
+			query += " OR"
+		}
+		schemaname, tablename := splitTableName(table)
+		query += " cls.relname = '" + tablename + "' AND c.connamespace::regnamespace = '" + schemaname + "'::regnamespace"
+	}
+	query += ")"
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	constraint := Constraint{}
+	for rows.Next() {
+		err := rows.Scan(&constraint.Table, &constraint.Column, &constraint.Name,
+			&constraint.Type, &constraint.NumCols, &constraint.Definition)
+		if err != nil {
+			return nil, err
+		}
+		fkeys = append(fkeys, *constraintToForeignKey(&constraint))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return fkeys, nil
 }

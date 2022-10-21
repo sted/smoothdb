@@ -87,6 +87,10 @@ func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 		return nil, err
 	}
 	fillTableConstraints(&table, constraints)
+	table.Columns, err = db.GetColumns(ctx, name)
+	if err != nil {
+		return nil, err
+	}
 	return &table, nil
 }
 

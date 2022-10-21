@@ -19,7 +19,7 @@ func internalMiddleware(admin bool) gin.HandlerFunc {
 		if s == nil {
 			return
 		}
-		database.FillContext(c)
+		database.AcquireContext(c)
 		c.Next()
 
 		database.ReleaseContext(c)

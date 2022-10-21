@@ -21,13 +21,13 @@ type SelectField struct {
 	field Field
 	label string
 	cast  string
-	table QueryTable
+	table *QueryTable
 }
 
 type QueryTable struct {
-	table       string
-	tableCast   string
-	parentTable string
+	name   string
+	label  string
+	parent string
 }
 
 type OrderField struct {
@@ -51,12 +51,12 @@ type QueryParts struct {
 	orderFields         []OrderField
 	limit               string
 	offset              string
-	whereConditionsTree WhereConditionNode
+	whereConditionsTree *WhereConditionNode
 }
 
 type QueryOptions struct {
 	ReturnRepresentation bool
-	AcceptProfile        string
+	Schema               string
 }
 
 // RequestParser is the interface used to parse the query string and
@@ -64,7 +64,7 @@ type QueryOptions struct {
 // Initially we will support the PostgREST mode and later the Django mode.
 type RequestParser interface {
 	parseQuery(filters Filters) (QueryParts, error)
-	getOptions(ctx context.Context) (QueryOptions, error)
+	getOptions(ctx context.Context) QueryOptions
 }
 
 type PostgRestParser struct {
@@ -114,16 +114,20 @@ var postgRestParserOperators = map[string]string{
 // skipping double quoted strings.
 // Returns a slice of substrings and separators.
 // sep is the set of single char separators.
-// longSep is the set of multi char separators (longest first)
+// longSep is the set of multi char separators (put longest first)
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
 	state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
 	var normal []byte
 	var quoted []byte
 	var cur byte
+	wasSep := true
 outer:
 	for i := 0; i < len(s); i++ {
 		cur = s[i]
 		if state == 0 { // normal
+			if wasSep && cur == ' ' {
+				continue
+			}
 			// Manage long separators
 			for _, lsep := range longSep {
 				l := len(lsep)
@@ -137,6 +141,7 @@ outer:
 					}
 					p.tokens = append(p.tokens, lsep)
 					i += l - 1
+					wasSep = true
 					continue outer
 				}
 			}
@@ -147,19 +152,23 @@ outer:
 				}
 				state = 1
 				quoted = nil
+				wasSep = false
 			} else if strings.Contains(sep, string(cur)) {
 				if len(normal) != 0 {
 					p.tokens = append(p.tokens, string(normal))
 					normal = nil
 				}
 				p.tokens = append(p.tokens, string(cur))
+				wasSep = true
 			} else {
 				normal = append(normal, cur)
+				wasSep = false
 			}
 		} else if state == 1 { // quoted
 			if cur == '"' {
 				state = 0
 				p.tokens = append(p.tokens, string(quoted))
+				wasSep = true
 			} else if cur == '\\' {
 				state = 2
 			} else {
@@ -257,7 +266,7 @@ func (p *PostgRestParser) field() (f Field, err error) {
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	p.scan(s, ".,():", "->>", "->", "::")
-	return p.selectList(&QueryTable{})
+	return p.selectList(nil)
 }
 
 func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []SelectField, err error) {
@@ -300,15 +309,17 @@ func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectFi
 	if token != "(" {
 		// field
 		if field.name != "," {
-			selectFields = append(selectFields, SelectField{field, label, cast, *table})
+			selectFields = append(selectFields, SelectField{field, label, cast, table})
 		} else {
 			p.back()
 		}
 	} else {
 		// table
+		p.next()
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
 		}
+		table = &QueryTable{name: field.name, label: label}
 		fields, err := p.selectList(table)
 		if err != nil {
 			return nil, err
@@ -572,6 +583,7 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 		}
 		delete(filters, "order")
 	}
+	//for orderFilter := range
 	// LIMIT
 	// limit=100
 	if limitFilter, ok := filters["limit"]; ok {
@@ -590,9 +602,10 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 		keys = append(keys, k)
 	}
 	sort.Strings(keys) // canonical order -> sorted alphabetically
+	parts.whereConditionsTree = &WhereConditionNode{}
 	for _, k := range keys {
 		for _, v := range filters[k] {
-			err = p.parseWhereCondition(k, v, &parts.whereConditionsTree)
+			err = p.parseWhereCondition(k, v, parts.whereConditionsTree)
 			if err != nil {
 				return QueryParts{}, err
 			}
@@ -601,14 +614,14 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 	return parts, nil
 }
 
-func (p PostgRestParser) getOptions(ctx context.Context) (QueryOptions, error) {
+func (p PostgRestParser) getOptions(ctx context.Context) QueryOptions {
 	header := GetHeader(ctx)
 	options := QueryOptions{}
 	if header.Get("Prefer") == "return=representation" {
 		options.ReturnRepresentation = true
 	}
 	if ap := header.Get("Accept-Profile"); ap != "" {
-		options.AcceptProfile = ap
+		options.Schema = ap
 	}
-	return options, nil
+	return options
 }
