@@ -12,19 +12,20 @@ import (
 type Filters = url.Values
 
 type Field struct {
-	name     string
-	jsonPath string
-	last     string
+	name      string
+	tablename string
+	jsonPath  string
+	last      string
 }
 
 type SelectField struct {
 	field Field
 	label string
 	cast  string
-	table *QueryTable
+	table *SelectedTable
 }
 
-type QueryTable struct {
+type SelectedTable struct {
 	name   string
 	label  string
 	parent string
@@ -46,6 +47,14 @@ type WhereConditionNode struct {
 	children []*WhereConditionNode
 }
 
+func (node *WhereConditionNode) isRootNode() bool {
+	if node.operator == "" && node.field.name == "" {
+		return true
+	} else {
+		return false
+	}
+}
+
 type QueryParts struct {
 	selectFields        []SelectField
 	orderFields         []OrderField
@@ -61,9 +70,9 @@ type QueryOptions struct {
 
 // RequestParser is the interface used to parse the query string and
 // extract the significant headers.
-// Initially we will support the PostgREST mode and later the Django mode.
+// Initially we will support PostgREST mode and later (perhaps) Django mode.
 type RequestParser interface {
-	parseQuery(filters Filters) (QueryParts, error)
+	parseQuery(mainTable string, filters Filters) (*QueryParts, error)
 	getOptions(ctx context.Context) QueryOptions
 }
 
@@ -235,10 +244,16 @@ func (p *PostgRestParser) reset() {
 // Values := Value | ValueList
 // ValueList := '(' Value (',' Value)* ')'
 
-func (p *PostgRestParser) field() (f Field, err error) {
+func (p *PostgRestParser) field(mayHaveTable bool) (f Field, err error) {
 	token := p.next()
 	if token == "" {
 		return f, &ParseError{"field expected"}
+	}
+	if mayHaveTable && p.lookAhead() == "." {
+		// table name
+		f.tablename = token
+		p.next()
+		token = p.next()
 	}
 	f.name = token
 	token = p.lookAhead()
@@ -269,7 +284,7 @@ func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	return p.selectList(nil)
 }
 
-func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []SelectField, err error) {
+func (p *PostgRestParser) selectList(table *SelectedTable) (selectFields []SelectField, err error) {
 	selectFields, err = p.selectItem(table)
 	if err != nil {
 		return nil, err
@@ -284,7 +299,7 @@ func (p *PostgRestParser) selectList(table *QueryTable) (selectFields []SelectFi
 	return selectFields, nil
 }
 
-func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectField, err error) {
+func (p *PostgRestParser) selectItem(table *SelectedTable) (selectFields []SelectField, err error) {
 	var label, cast string
 	token := p.next()
 	if p.lookAhead() == ":" {
@@ -293,9 +308,13 @@ func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectFi
 	} else {
 		p.back()
 	}
-	field, err := p.field()
+	field, err := p.field(false)
 	if err != nil {
 		return nil, err
+	}
+	if table != nil && table.name != "" {
+		// for uniformity but for selects is also in QueryTable
+		field.tablename = table.name
 	}
 	if label == "" {
 		label = field.last
@@ -319,7 +338,7 @@ func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectFi
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
 		}
-		table = &QueryTable{name: field.name, label: label}
+		table = &SelectedTable{name: field.name, label: label}
 		fields, err := p.selectList(table)
 		if err != nil {
 			return nil, err
@@ -330,7 +349,7 @@ func (p *PostgRestParser) selectItem(table *QueryTable) (selectFields []SelectFi
 }
 
 // ORDER
-func (p *PostgRestParser) parseOrderCondition(o string) (fields []OrderField, err error) {
+func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string
 	p.reset()
 	p.scan(o, ".,", "->>", "->")
@@ -340,10 +359,11 @@ func (p *PostgRestParser) parseOrderCondition(o string) (fields []OrderField, er
 		return nil, &ParseError{"order fields expected"}
 	}
 	for {
-		field, err := p.field()
+		field, err := p.field(false)
 		if err != nil {
 			return nil, err
 		}
+		field.tablename = table
 		if p.lookAhead() == "." {
 			p.next()
 			value1 = p.next()
@@ -386,14 +406,14 @@ func (p *PostgRestParser) scanWhereCondition(k, v string) {
 	if isBooleanOp(k) {
 		v = k + v
 	} else {
-		v = k + "." + v
+		v = k + "=" + v
 	}
-	p.scan(v, ".,()[]{}:", "->>", "->")
+	p.scan(v, "=.,()[]{}:", "->>", "->")
 }
 
-func (p *PostgRestParser) parseWhereCondition(key, value string, root *WhereConditionNode) error {
+func (p *PostgRestParser) parseWhereCondition(mainTable, key, value string, root *WhereConditionNode) error {
 	p.scanWhereCondition(key, value)
-	return p.cond(root)
+	return p.cond(mainTable, root)
 }
 
 func (p *PostgRestParser) value(node *WhereConditionNode) error {
@@ -447,10 +467,11 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 	return nil
 }
 
-func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
+func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (err error) {
 	node := &WhereConditionNode{}
 	token := p.lookAhead()
 	if token == "not" || token == "and" || token == "or" {
+		node.field.tablename = mainTable // @@ temp: must manage field.or etc
 		p.next()
 		if token == "not" {
 			node.not = true
@@ -466,13 +487,13 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 		if p.next() != "(" {
 			return &ParseError{"'(' expected"}
 		}
-		err = p.cond(node)
+		err = p.cond(mainTable, node)
 		if err != nil {
 			return err
 		}
 		token = p.next()
 		for token == "," {
-			err = p.cond(node)
+			err = p.cond(mainTable, node)
 			if err != nil {
 				return err
 			}
@@ -482,12 +503,24 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 			return &ParseError{"')' expected"}
 		}
 	} else {
-		node.field, err = p.field()
+		var mayHaveTable bool
+		var nextSep string
+		if parent.isRootNode() {
+			mayHaveTable = true
+			nextSep = "="
+		} else {
+			mayHaveTable = false
+			nextSep = "."
+		}
+		node.field, err = p.field(mayHaveTable)
 		if err != nil {
 			return err
 		}
-		if p.next() != "." {
-			return &ParseError{"'.' expected"}
+		if node.field.tablename == "" {
+			node.field.tablename = mainTable
+		}
+		if p.next() != nextSep {
+			return &ParseError{"'=' expected"}
 		}
 		token = p.next()
 		if token == "not" {
@@ -550,40 +583,51 @@ func (p *PostgRestParser) cond(parent *WhereConditionNode) (err error) {
 }
 
 // QUERY
-func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err error) {
+func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *QueryParts, err error) {
+	parts = &QueryParts{}
+
 	// SELECT
 	var sel string
 	if selectFilter, ok := filters["select"]; ok {
 		for i, csFields := range selectFilter {
 			if i != 0 {
-				sel += ", "
+				sel += ","
 			}
 			sel += csFields
 		}
 		delete(filters, "select")
 		parts.selectFields, err = p.parseSelect(sel)
 		if err != nil {
-			return QueryParts{}, err
+			return nil, err
 		}
 	}
 
 	// ORDER
 	// order=f1,f2.asc,f3.desc.nullslast
-	var order string
-	if orderFilter, ok := filters["order"]; ok {
-		for i, oFields := range orderFilter {
+	for k, v := range filters {
+		var order, table string
+		if k == "order" {
+			table = mainTable
+		} else if strings.HasSuffix(k, ".order") {
+			table = strings.TrimSuffix(k, ".order")
+		} else {
+			continue
+		}
+		for i, oFields := range v {
 			if i != 0 {
-				order += ", "
+				order += ","
 			}
 			order += oFields
 		}
-		parts.orderFields, err = p.parseOrderCondition(order)
+		fields, err := p.parseOrderCondition(table, order)
 		if err != nil {
-			return QueryParts{}, err
+			return nil, err
 		}
-		delete(filters, "order")
+		parts.orderFields = append(parts.orderFields, fields...)
+		delete(filters, k)
+
 	}
-	//for orderFilter := range
+
 	// LIMIT
 	// limit=100
 	if limitFilter, ok := filters["limit"]; ok {
@@ -605,9 +649,9 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 	parts.whereConditionsTree = &WhereConditionNode{}
 	for _, k := range keys {
 		for _, v := range filters[k] {
-			err = p.parseWhereCondition(k, v, parts.whereConditionsTree)
+			err = p.parseWhereCondition(mainTable, k, v, parts.whereConditionsTree)
 			if err != nil {
-				return QueryParts{}, err
+				return nil, err
 			}
 		}
 	}
@@ -615,12 +659,19 @@ func (p PostgRestParser) parseQuery(filters Filters) (parts QueryParts, err erro
 }
 
 func (p PostgRestParser) getOptions(ctx context.Context) QueryOptions {
-	header := GetHeader(ctx)
+	request := GetRequest(ctx)
 	options := QueryOptions{}
-	if header.Get("Prefer") == "return=representation" {
+	if request.Header.Get("Prefer") == "return=representation" {
 		options.ReturnRepresentation = true
 	}
-	if ap := header.Get("Accept-Profile"); ap != "" {
+	var schemaProfile string
+	switch request.Method {
+	case "GET", "HEAD":
+		schemaProfile = "Accept-Profile"
+	case "POST", "PUT", "PATCH", "DELETE":
+		schemaProfile = "Content-Profile"
+	}
+	if ap := request.Header.Get(schemaProfile); ap != "" {
 		options.Schema = ap
 	}
 	return options

@@ -266,20 +266,25 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 	get "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2"
 		// 		`shouldRespondWith`
 		// 		[json| [{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}] |]
-		{
-			"obtains an array item",
-			"/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2",
-			`[{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}]`,
-			nil,
-			200,
-		},
-		{
-			"obtains an array item",
-			"/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2",
-			`[{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}]`,
-			nil,
-			200,
-		},
+
+		//@@ support for json operators on arrays
+		// {
+		// 	"obtains an array item",
+		// 	"/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2",
+		// 	`[{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}]`,
+		// 	nil,
+		// 	200,
+		// },
+
+		//@@ support for json operators on arrays
+		// {
+		// 	"obtains an array item",
+		// 	"/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2",
+		// 	`[{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}]`,
+		// 	nil,
+		// 	200,
+		// },
+
 		// context "filtering response" $ do
 		// 	it "can filter by properties inside json column" $ do
 		// 	get "/json_table?data->foo->>bar=eq.baz" `shouldRespondWith`

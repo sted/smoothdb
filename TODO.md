@@ -13,10 +13,10 @@
 * Resource embedding
 * Sessions, JWT, Auth
 * Roles
-* Permissions
+* Policies and grants
 * Schema management
-* More types, in order: √ array, √ jsonb, interval, numeric
 * Configuration (shared with other apps) 
+* More types, in order: √ array, √ jsonb, interval, numeric
 * Functions (rpc)
 * Caching
 * Activity / stats
@@ -30,3 +30,4 @@
 * Localizations
 * application/octet-stream as output
 * "singular" response
+* pgx v5

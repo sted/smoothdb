@@ -775,6 +775,27 @@ func TestPostgREST_Query(t *testing.T) {
 			nil,
 			200,
 		},
+		// @@ added by me
+		{
+			"requesting parents and children with filters",
+			"/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)&tasks.name=eq.Code%20w7",
+			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":2,"name":"Code w7"}]}]`,
+			nil,
+			200,
+		},
+		// @@ added by me
+		{
+			"requesting parents and children with two embedded filters",
+			"/projects?select=id,name,clients(*),tasks(*)&id=not.eq.4&clients.id=eq.1&tasks.id=in.(1,3,5)",
+			`[
+				{"id": 1,"name": "Windows 7", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 1,"name": "Design w7","project_id": 1}]},
+				{"id": 2,"name": "Windows 10", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 3,"name": "Design w10","project_id": 2}]},
+				{"id": 3,"name": "IOS", "clients": null, "tasks": [{"id": 5,"name": "Design IOS","project_id": 3 }]},
+				{"id": 5,"name": "Orphan", "clients": null, "tasks": []}
+			]`,
+			nil,
+			200,
+		},
 		//   it "requesting parent and renaming primary key" $
 		// 	get "/projects?select=name,client:clients(clientId:id,name)" `shouldRespondWith`
 		// 	  [json|[
@@ -1448,7 +1469,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"ordering embeded entities with alias",
+			"/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc",
+			`[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
+			nil,
+			200,
+		},
 		//   it "ordering embeded entities, two levels" $
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7","users":[{"id":1,"name":"Angela Martin"}]},{"id":1,"name":"Design w7","users":[{"id":3,"name":"Dwight Schrute"},{"id":1,"name":"Angela Martin"}]}]}]|]
@@ -1457,7 +1484,13 @@ func TestPostgREST_Query(t *testing.T) {
 		//   it "ordering embeded parents does not break things" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]|]
-
+		{
+			"ordering embeded parents does not break things",
+			"/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc",
+			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
+			nil,
+			200,
+		},
 		//   context "order syntax errors" $ do
 		// 	it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
 		// 	  get "/items?order=id.ac" `shouldRespondWith`
@@ -1605,7 +1638,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/Escap3e;?select=ghostBusters(*)" `shouldRespondWith`
 		// 	  [json| [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			"will embed a collection",
+			"/Escap3e;?select=ghostBusters(*)",
+			`[{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}]`,
+			nil,
+			200,
+		},
 		//   it "will select and filter a column that has spaces" $
 		// 	get "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*" `shouldRespondWith`
 		// 	  [json|[
@@ -1885,6 +1924,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/being?select=*,descendant(*)&limit=1" `shouldRespondWith`
 		// 	  [json|[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			"works with child embeds",
+			"/being?select=*,descendant(*)&limit=1",
+			`[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]`,
+			nil,
+			200,
+		},
 		//   it "works with many to many embeds" $
 		// 	get "/being?select=*,part(*)&limit=1" `shouldRespondWith`
 		// 	  [json|[{"being":1,"part":[{"part":1}]}]|]

@@ -73,12 +73,12 @@ func GetDb(ctx context.Context) *Database {
 	return gi.Db
 }
 
-func GetHeader(ctx context.Context) http.Header {
+func GetRequest(ctx context.Context) *http.Request {
 	gi := GetGreenInfo(ctx)
 	if gi.GinContext == nil {
 		return nil
 	}
-	return gi.GinContext.Request.Header
+	return gi.GinContext.Request
 }
 
 func SetRequestParser(ctx context.Context, rp RequestParser) {

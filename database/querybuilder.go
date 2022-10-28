@@ -8,9 +8,9 @@ import (
 
 type QueryBuilder interface {
 	BuildInsert(table string, records []Record, options QueryOptions) (string, []any, error)
-	BuildUpdate(table string, record Record, parts QueryParts, options QueryOptions) (string, []any, error)
-	BuildDelete(table string, parts QueryParts, options QueryOptions) (string, error)
-	BuildSelect(table string, parts QueryParts, options QueryOptions, rels []Relationship) (string, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options QueryOptions) (string, error)
+	BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error)
 	preferredSerializer() ResultSerializer
 }
 
@@ -96,7 +96,7 @@ func prepareField(table, schema string, sfield SelectField) string {
 	return fieldPart
 }
 
-func selectForJoinClause(join Join) (sel string) {
+func selectForJoinClause(join Join, parts *QueryParts) (sel string) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
 	sel += " FROM " + rel.RelatedTable
@@ -109,13 +109,22 @@ func selectForJoinClause(join Join) (sel string) {
 		sel += " = "
 		sel += quoteParts(rel.Table) + "." + quoteParts(rel.Columns[i])
 	}
+	schema, table := splitTableName(rel.RelatedTable)
+	whereClause := whereClause(table, schema, parts.whereConditionsTree)
+	if whereClause != "" {
+		sel += " AND " + whereClause
+	}
+	orderClause := orderClause(table, schema, parts.orderFields)
+	if orderClause != "" {
+		sel += " ORDER BY " + orderClause
+	}
 	return
 }
 
-func selectClause(table, schema string, selectFields []SelectField, rels []Relationship) (selectClause string, joins string, err error) {
+func selectClause(table, schema string, parts *QueryParts, rels []Relationship) (selectClause string, joins string, err error) {
 	joinMap := map[string]Join{}
 
-	for i, sfield := range selectFields {
+	for i, sfield := range parts.selectFields {
 		if i != 0 {
 			selectClause += ", "
 		}
@@ -155,7 +164,7 @@ func selectClause(table, schema string, selectFields []SelectField, rels []Relat
 	}
 	if len(joinMap) > 0 {
 		for relName, join := range joinMap {
-			selectForJoin := selectForJoinClause(join)
+			selectForJoin := selectForJoinClause(join, parts)
 			joins += " LEFT JOIN LATERAL ("
 			switch join.rel.Type {
 			case M2O:
@@ -172,18 +181,22 @@ func selectClause(table, schema string, selectFields []SelectField, rels []Relat
 	return
 }
 
-func orderClause(orderFields []OrderField) string {
-	order := ""
-	for i, ofield := range orderFields {
-		if i != 0 {
+func orderClause(table, schema string, orderFields []OrderField) string {
+	var order string
+	for _, o := range orderFields {
+		if o.field.tablename != table {
+			// skip where filters for other tables
+			continue
+		}
+		if order != "" {
 			order += ", "
 		}
-		order += "\"" + ofield.field.name + "\"" + ofield.field.jsonPath
-		if ofield.descending {
+		order += "\"" + o.field.name + "\"" + o.field.jsonPath
+		if o.descending {
 			order += " DESC"
 		}
-		if ofield.invertNulls {
-			if ofield.descending {
+		if o.invertNulls {
+			if o.descending {
 				order += " NULLS LAST"
 			} else {
 				order += " NULLS FIRST"
@@ -206,7 +219,7 @@ func appendValue(where, value string) string {
 }
 
 func whereClause(table, schema string, node *WhereConditionNode) string {
-	where := ""
+	var where string
 	if node.operator == "" || node.field.name == "" {
 		// It is a root or a boolean operator
 
@@ -222,12 +235,18 @@ func whereClause(table, schema string, node *WhereConditionNode) string {
 		if node.not || node.operator == "OR" {
 			where += "("
 		}
-		for i, n := range node.children {
-			if i != 0 {
-				where += bool_op
+		var children string
+		for _, n := range node.children {
+			if n.field.tablename != table {
+				// skip where filters for other tables
+				continue
 			}
-			where += whereClause(table, schema, n)
+			if children != "" {
+				children += bool_op
+			}
+			children += whereClause(table, schema, n)
 		}
+		where += children
 		if node.not || node.operator == "OR" {
 			where += ")"
 		}
@@ -312,9 +331,8 @@ func (CommonBuilder) BuildInsert(table string, records []Record, options QueryOp
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts QueryParts, options QueryOptions) (update string, valueList []any, err error) {
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions) (update string, valueList []any, err error) {
 	var pairs string
-
 	var i int
 	for key := range record {
 		if pairs != "" {
@@ -325,7 +343,8 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts QueryParts, 
 		pairs += " = $" + strconv.Itoa(i)
 		valueList = append(valueList, record[key])
 	}
-	whereClause := whereClause(table, "", parts.whereConditionsTree)
+	schema := options.Schema
+	whereClause := whereClause(table, schema, parts.whereConditionsTree)
 	update = "UPDATE " + table + " SET " + pairs
 	if whereClause != "" {
 		update += " WHERE " + whereClause
@@ -336,8 +355,9 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts QueryParts, 
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts QueryParts, options QueryOptions) (string, error) {
-	whereClause := whereClause(table, "", parts.whereConditionsTree)
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options QueryOptions) (string, error) {
+	schema := options.Schema
+	whereClause := whereClause(table, schema, parts.whereConditionsTree)
 	delete := "DELETE FROM " + table
 	if whereClause != "" {
 		delete += " WHERE " + whereClause
@@ -352,14 +372,14 @@ type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts QueryParts, options QueryOptions, rels []Relationship) (string, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error) {
 	schema := options.Schema
-	selectClause, joins, err := selectClause(table, schema, parts.selectFields, rels)
+	selectClause, joins, err := selectClause(table, schema, parts, rels)
 	if err != nil {
 		return "", err
 	}
-	orderClause := orderClause(parts.orderFields)
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
+	orderClause := orderClause(table, schema, parts.orderFields)
 	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
 	if joins != "" {
 		query += " " + joins
@@ -387,14 +407,14 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts QueryParts, options QueryOptions, rels []Relationship) (string, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error) {
 	schema := options.Schema
-	selectClause, joins, err := selectClause(table, schema, parts.selectFields, rels)
+	selectClause, joins, err := selectClause(table, schema, parts, rels)
 	if err != nil {
 		return "", err
 	}
-	orderClause := orderClause(parts.orderFields)
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
+	orderClause := orderClause(table, schema, parts.orderFields)
 	query := "SELECT "
 	if selectClause == "*" {
 		query += "json_agg(" + table + ")" + " FROM " + table

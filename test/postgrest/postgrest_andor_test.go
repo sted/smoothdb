@@ -467,6 +467,13 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	  it "in, is, fts can be negated" $
 		// 		get "/entities?and=(id.not.in.(1,3),and(name.not.is.null,text_search_vector.not.fts.foo))&select=id" `shouldRespondWith`
 		// 		  [json|[{ "id": 2}]|] { matchHeaders = [matchContentTypeJson] }
+		{
+			"in, is, fts can be negated",
+			"/entities?and=(id.not.in.(1,3),and(name.not.is.null,text_search_vector.not.fts.foo))&select=id",
+			`[{"id": 2}]`,
+			nil,
+			200,
+		},
 		// {
 		// 	"can handle array operators",
 		// 	"/entities?arr=ov.{2,3}&select=id",
@@ -474,6 +481,13 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	nil,
 		// 	200,
 		// },
+		{
+			"can handle array operators",
+			"/entities?arr=ov.{2,3}&select=id",
+			`[{"id":2},{"id":3}]`,
+			nil,
+			200,
+		},
 		// 	  it "lt, gte, cd can be negated" $
 		// 		get "/entities?and=(arr.not.cd.{1},or(id.not.lt.1,id.not.gte.3))&select=id" `shouldRespondWith`
 		// 		  [json|[{"id": 2}, {"id": 3}]|] { matchHeaders = [matchContentTypeJson] }
@@ -554,6 +568,13 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	nil,
 		// 	200,
 		// },
+		{
+			"gt, lte, ilike can be negated",
+			"/entities?and=(name.not.ilike.*ITY2,or(id.not.gt.4,id.not.lte.1))&select=id",
+			`[{"id":1},{"id":2},{"id":3}]`,
+			nil,
+			200,
+		},
 		// 	it "can have a single condition" $ do
 		// 	  get "/entities?or=(id.eq.1)&select=id" `shouldRespondWith`
 		// 		[json|[{"id":1}]|] { matchHeaders = [matchContentTypeJson] }
@@ -597,8 +618,8 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		[json|[{"id":1}, {"id":2}, {"id":3}, {"id":4}]|] { matchHeaders = [matchContentTypeJson] }
 		{
 			"can have four conditions combining and/or",
-			"/grandchild_entities?or=(%20id.eq.1,%20id.eq.2,%20and(id.in.(1,3),%20id.in.(2,3)),%20id.eq.4%20)&select=id",
-			`[{"id":1}]`,
+			"/grandchild_entities?or=( id.eq.1, id.eq.2, and(id.in.(1,3), id.in.(2,3)), id.eq.4)&select=id",
+			`[{"id":1}, {"id":2}, {"id":3}, {"id":4}]`,
 			nil,
 			200,
 		},
@@ -606,7 +627,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		[json|[{"id":1}]|] { matchHeaders = [matchContentTypeJson] }
 		{
 			"can have four conditions combining and/or",
-			"/grandchild_entities?and=(%20id.eq.1,%20not.or(id.eq.2,%20id.eq.3),%20id.in.(1,4),%20or(id.eq.1,%20id.eq.4)%20)&select=id",
+			"/grandchild_entities?and=( id.eq.1, not.or(id.eq.2, id.eq.3), id.in.(1,4), or(id.eq.1, id.eq.4) )&select=id",
 			`[{"id":1}]`,
 			nil,
 			200,
