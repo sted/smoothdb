@@ -24,6 +24,7 @@ type Table struct {
 type TableUpdate struct {
 	Name        string  `json:"name"`
 	NewName     *string `json:"newname"`
+	NewSchema   *string `json:"newschema"`
 	Owner       *string `json:"owner"`
 	RowSecurity *bool   `json:"rowsecurity"`
 }
@@ -117,7 +118,9 @@ func composeColumnSQL(sql *string, column *Column) {
 }
 
 func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, error) {
-	conn := GetConn(ctx)
+	gi := GetGreenContext(ctx)
+	conn := gi.Conn
+	options := gi.QueryOptions
 
 	var columnList string
 	for _, col := range table.Columns {
@@ -159,13 +162,79 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 	if err != nil {
 		return nil, err
 	}
-	constraints, err := getConstraints(ctx, &table.Name)
+
+	//db.refreshTable(ctx, table.Name)
+
+	if options.ReturnRepresentation {
+		table, _ = db.GetTable(ctx, table.Name)
+		return table, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
+	gi := GetGreenContext(ctx)
+	conn := gi.Conn
+	options := gi.QueryOptions
+
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	fillTableConstraints(table, constraints)
-	db.refreshTable(ctx, table.Name)
-	return table, nil
+	defer tx.Rollback(ctx)
+
+	var alter string
+	prefix := "ALTER TABLE " + table.Name
+
+	// NAME
+	if table.NewName != nil {
+		alter = prefix + " RENAME TO " + *table.NewName
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// SCHEMA
+	if table.NewSchema != nil {
+		alter = prefix + " SET SCHEMA " + *table.NewSchema
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// OWNER
+	if table.Owner != nil {
+		alter = prefix + " OWNER TO " + *table.Owner
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// RLS
+	if table.RowSecurity != nil {
+		if *table.RowSecurity {
+			alter = prefix + " ENABLE ROW LEVEL SECURITY"
+		} else {
+			alter = prefix + " DISABLE ROW LEVEL SECURITY"
+		}
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	//db.refreshTable(ctx, column.Table)
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if options.ReturnRepresentation {
+		table, _ := db.GetTable(ctx, table.Name)
+		return table, nil
+	} else {
+		return nil, nil
+	}
 }
 
 func (db *Database) DeleteTable(ctx context.Context, name string) error {

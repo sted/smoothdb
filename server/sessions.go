@@ -1,29 +1,35 @@
 package server
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 )
 
 type Session struct {
-	Id           string
-	UserId       string
-	UserName     string
-	PasswordHash string
-	Token        string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	Id        string
+	Role      string
+	Token     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
-func NewSession() *Session {
-	MainServer.CurrentID = MainServer.CurrentID + 1
+type SessionManager struct {
+	CurrentID uint64
+	Sessions  map[string]*Session
+}
+
+func (s *SessionManager) NewSession(auth *Auth) *Session {
+	s.CurrentID++
+	now := time.Now()
 	return &Session{
-		Id:           fmt.Sprintf("%d", MainServer.CurrentID),
-		UserId:       "",
-		UserName:     "",
-		PasswordHash: "",
-		Token:        "",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Id:        strconv.FormatUint(s.CurrentID, 10),
+		Role:      auth.Role,
+		Token:     "",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
+}
+
+func (s *SessionManager) getSession(sessionId string) *Session {
+	return s.Sessions[sessionId]
 }

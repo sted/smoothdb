@@ -114,7 +114,7 @@ func TestQueryBuilder(t *testing.T) {
 			t.Fatal(err)
 		}
 		parts, _ := PostgRestParser{}.parseQuery("table", url.Query())
-		query, err := DirectQueryBuilder{}.BuildSelect("table", parts, QueryOptions{}, nil)
+		query, err := DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
 		if err != nil {
 			t.Error(err)
 		}

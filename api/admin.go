@@ -84,6 +84,19 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		}
 	})
 
+	databases.PATCH("/:dbname/tables/:table", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var tableUpdate database.TableUpdate
+		tableUpdate.Name = c.Param("table")
+		c.BindJSON(&tableUpdate)
+		table, err := db.UpdateTable(c, &tableUpdate)
+		if err == nil {
+			c.JSON(http.StatusOK, table)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
 	databases.DELETE("/:dbname/tables/:table", func(c *gin.Context) {
 		db := database.GetDb(c)
 		name := c.Param("table")
@@ -171,6 +184,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...
 		var columnUpdate database.ColumnUpdate
 		columnUpdate.Table = c.Param("table")
 		columnUpdate.Name = c.Param("column")
+		c.BindJSON(&columnUpdate)
 		column, err := db.UpdateColumn(c, &columnUpdate)
 		if err == nil {
 			c.JSON(http.StatusOK, column)

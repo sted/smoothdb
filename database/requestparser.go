@@ -1,7 +1,7 @@
 package database
 
 import (
-	"context"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -10,6 +10,7 @@ import (
 )
 
 type Filters = url.Values
+type Request = http.Request
 
 type Field struct {
 	name      string
@@ -73,7 +74,7 @@ type QueryOptions struct {
 // Initially we will support PostgREST mode and later (perhaps) Django mode.
 type RequestParser interface {
 	parseQuery(mainTable string, filters Filters) (*QueryParts, error)
-	getOptions(ctx context.Context) QueryOptions
+	getOptions(req *Request) *QueryOptions
 }
 
 type PostgRestParser struct {
@@ -658,20 +659,20 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 	return parts, nil
 }
 
-func (p PostgRestParser) getOptions(ctx context.Context) QueryOptions {
-	request := GetRequest(ctx)
-	options := QueryOptions{}
-	if request.Header.Get("Prefer") == "return=representation" {
+func (p PostgRestParser) getOptions(req *Request) *QueryOptions {
+	header := req.Header
+	options := &QueryOptions{}
+	if header.Get("Prefer") == "return=representation" {
 		options.ReturnRepresentation = true
 	}
 	var schemaProfile string
-	switch request.Method {
+	switch req.Method {
 	case "GET", "HEAD":
 		schemaProfile = "Accept-Profile"
 	case "POST", "PUT", "PATCH", "DELETE":
 		schemaProfile = "Content-Profile"
 	}
-	if ap := request.Header.Get(schemaProfile); ap != "" {
+	if ap := header.Get(schemaProfile); ap != "" {
 		options.Schema = ap
 	}
 	return options

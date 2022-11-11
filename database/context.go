@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -10,83 +9,85 @@ import (
 
 var greenTag = "gctx"
 
-type greenCtxKey struct{}
+//type greenCtxKey struct{}
 
-type GreenInfo struct {
+type GreenContext struct {
 	GinContext    *gin.Context
 	Conn          *pgxpool.Conn
 	Db            *Database
 	RequestParser RequestParser
+	QueryOptions  *QueryOptions
 	QueryBuilder  QueryBuilder
-}
-
-func defaultGreenInfo(gctx *gin.Context, conn *pgxpool.Conn, db *Database) *GreenInfo {
-	return &GreenInfo{gctx, conn, db, PostgRestParser{}, DirectQueryBuilder{}}
 }
 
 func AcquireContext(gctx *gin.Context) {
 	var db *Database
 	var err error
 	var conn *pgxpool.Conn
+	request := gctx.Request
+
 	dbname := gctx.Param("dbname")
 	if dbname != "" {
 		db, err = DBE.GetDatabase(gctx, dbname)
 		if err != nil {
 			panic("")
 		}
-		conn = db.AcquireConnection(gctx.Request.Context())
+		conn = db.AcquireConnection(request.Context())
 	} else {
-		conn = DBE.AcquireConnection(gctx.Request.Context())
+		conn = DBE.AcquireConnection(request.Context())
 	}
-	gctx.Set(greenTag, defaultGreenInfo(gctx, conn, db))
+
+	defaultParser := PostgRestParser{}
+	queryOptions := defaultParser.getOptions(request)
+	defaltBuilder := DirectQueryBuilder{}
+
+	gctx.Set(greenTag, &GreenContext{gctx, conn, db, defaultParser, queryOptions, defaltBuilder})
 }
 
-func WithGreenInfo(parent context.Context, gctx *gin.Context) context.Context {
-	gi, ok := gctx.Get(greenTag)
-	if !ok {
-		panic("")
-	}
-	return context.WithValue(parent, greenTag, gi)
-}
+// func WithGreenContext(parent context.Context, gctx *gin.Context) context.Context {
+// 	gi, ok := gctx.Get(greenTag)
+// 	if !ok {
+// 		panic("")
+// 	}
+// 	return context.WithValue(parent, greenTag, gi)
+// }
 
-func GetGreenInfo(ctx context.Context) *GreenInfo {
-	return ctx.Value(greenTag).(*GreenInfo)
+func GetGreenContext(ctx context.Context) *GreenContext {
+	return ctx.Value(greenTag).(*GreenContext)
 }
 
 func WithDb(parent context.Context, db *Database) context.Context {
 	conn := db.AcquireConnection(parent)
-	return context.WithValue(parent, greenTag, defaultGreenInfo(nil, conn, db))
+
+	defaultParser := PostgRestParser{}
+	queryOptions := &QueryOptions{}
+	defaltBuilder := DirectQueryBuilder{}
+
+	//lint:ignore SA1029 should not use built-in type string as key for value; define your own type to avoid collisions
+	return context.WithValue(parent, greenTag, &GreenContext{nil, conn, db, defaultParser, queryOptions, defaltBuilder})
 }
 
 func ReleaseContext(ctx context.Context) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	gi.Conn.Release()
 }
 
 func GetConn(ctx context.Context) *pgxpool.Conn {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	return gi.Conn
 }
 
 func GetDb(ctx context.Context) *Database {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	return gi.Db
 }
 
-func GetRequest(ctx context.Context) *http.Request {
-	gi := GetGreenInfo(ctx)
-	if gi.GinContext == nil {
-		return nil
-	}
-	return gi.GinContext.Request
-}
-
 func SetRequestParser(ctx context.Context, rp RequestParser) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	gi.RequestParser = rp
 }
 
 func SetQueryBuilder(ctx context.Context, qb QueryBuilder) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	gi.QueryBuilder = qb
 }

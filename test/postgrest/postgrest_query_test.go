@@ -7,7 +7,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	s, _ := server.NewServer(":8081", "postgres://localhost:5432/")
+	s, _ := server.NewServer()
 	go s.Start()
 	code := m.Run()
 	os.Exit(code)

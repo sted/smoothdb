@@ -7,10 +7,10 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildInsert(table string, records []Record, options QueryOptions) (string, []any, error)
-	BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions) (string, []any, error)
-	BuildDelete(table string, parts *QueryParts, options QueryOptions) (string, error)
-	BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error)
+	BuildInsert(table string, records []Record, options *QueryOptions) (string, []any, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error)
+	BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error)
 	preferredSerializer() ResultSerializer
 }
 
@@ -293,7 +293,7 @@ func whereClause(table, schema string, node *WhereConditionNode) string {
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, options QueryOptions) (insert string, valueList []any, err error) {
+func (CommonBuilder) BuildInsert(table string, records []Record, options *QueryOptions) (insert string, valueList []any, err error) {
 	var fields string
 	var fieldList []string
 	var values string
@@ -331,7 +331,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, options QueryOp
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions) (update string, valueList []any, err error) {
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions) (update string, valueList []any, err error) {
 	var pairs string
 	var i int
 	for key := range record {
@@ -355,7 +355,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options QueryOptions) (string, error) {
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error) {
 	schema := options.Schema
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
 	delete := "DELETE FROM " + table
@@ -372,7 +372,7 @@ type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error) {
 	schema := options.Schema
 	selectClause, joins, err := selectClause(table, schema, parts, rels)
 	if err != nil {
@@ -407,7 +407,7 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryOptions, rels []Relationship) (string, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error) {
 	schema := options.Schema
 	selectClause, joins, err := selectClause(table, schema, parts, rels)
 	if err != nil {

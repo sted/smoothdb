@@ -6,30 +6,43 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func internalMiddleware(admin bool) gin.HandlerFunc {
+func (server *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var s *Session = nil
+		var session *Session
+		var tokenString string
+		var auth *Auth
+		var err error
+
+		tokenString = extractAuthHeader(c.Request)
+
 		sessionId, _ := c.Cookie("session_id")
 		if sessionId == "" {
-			s = NewSession()
-			c.SetCookie("session_id", s.Id, 0, "", "", true, false)
+
+			if tokenString == "" {
+				if !server.Config.AllowAnon {
+					c.AbortWithError(401, err)
+					return
+				}
+			} else {
+				auth, err = parseAuthHeader(tokenString, server.Config.JWTSecret)
+				if err != nil {
+					c.AbortWithError(401, err)
+					return
+				}
+				session = server.sessionManager.NewSession(auth)
+				c.SetCookie("session_id", session.Id, 600, "", "", false, true)
+			}
 		} else {
-			s = MainServer.Sessions[sessionId]
+			session = server.sessionManager.getSession(sessionId)
+			if session == nil {
+				c.AbortWithError(401, err)
+				return
+			}
 		}
-		if s == nil {
-			return
-		}
+
 		database.AcquireContext(c)
 		c.Next()
 
 		database.ReleaseContext(c)
 	}
-}
-
-func Authenticated() gin.HandlerFunc {
-	return internalMiddleware(false)
-}
-
-func AdminOnly() gin.HandlerFunc {
-	return internalMiddleware(true)
 }

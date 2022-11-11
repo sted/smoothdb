@@ -55,13 +55,13 @@ func (dbe *DBEngine) GetDatabases(ctx context.Context) ([]Database, error) {
 	}
 	defer rows.Close()
 
+	database := Database{}
 	for rows.Next() {
-		database := &Database{}
 		err := rows.Scan(&database.Name, &database.Owner)
 		if err != nil {
 			return databases, err
 		}
-		databases = append(databases, *database)
+		databases = append(databases, database)
 	}
 
 	if err := rows.Err(); err != nil {

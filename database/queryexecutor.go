@@ -5,12 +5,12 @@ import "context"
 type QueryExecutor struct{}
 
 func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	parts, err := gi.RequestParser.parseQuery(table, filters)
 	if err != nil {
 		return nil, err
 	}
-	options := gi.RequestParser.getOptions(ctx)
+	options := gi.QueryOptions
 	schema := options.Schema
 	rels := gi.Db.GetRelationships(_s(table, schema))
 	query, err := gi.QueryBuilder.BuildSelect(table, parts, options, rels)
@@ -33,8 +33,8 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 }
 
 func (QueryExecutor) Insert(ctx context.Context, table string, records []Record) ([]byte, int64, error) {
-	gi := GetGreenInfo(ctx)
-	options := gi.RequestParser.getOptions(ctx)
+	gi := GetGreenContext(ctx)
+	options := gi.QueryOptions
 	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, options)
 	if err != nil {
 		return nil, 0, err
@@ -58,12 +58,12 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record)
 }
 
 func (QueryExecutor) Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	parts, err := gi.RequestParser.parseQuery(table, filters)
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.RequestParser.getOptions(ctx)
+	options := gi.QueryOptions
 	insert, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options)
 	if err != nil {
 		return nil, 0, err
@@ -87,12 +87,12 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 }
 
 func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
-	gi := GetGreenInfo(ctx)
+	gi := GetGreenContext(ctx)
 	parts, err := gi.RequestParser.parseQuery(table, filters)
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.RequestParser.getOptions(ctx)
+	options := gi.QueryOptions
 	delete, err := gi.QueryBuilder.BuildDelete(table, parts, options)
 	if err != nil {
 		return nil, 0, err

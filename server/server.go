@@ -5,28 +5,29 @@ import (
 	"net/http"
 )
 
-var MainServer *Server
-
 type Server struct {
-	DBE  *database.DBEngine
-	HTTP *http.Server
-
-	CurrentID uint
-	Sessions  map[string]*Session
+	Config         *Config
+	DBE            *database.DBEngine
+	HTTP           *http.Server
+	sessionManager SessionManager
 }
 
-func NewServer(addr string, dburl string) (*Server, error) {
+func NewServer() (*Server, error) {
+	config := GetConfig("./config.json")
+
 	// DB Engine
-	dbe, err := database.InitDBEngine(dburl)
+	dbe, err := database.InitDBEngine(config.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// HTTP Server
-	http := InitHTTPServer(addr, dbe)
+	// Main Server
+	server := &Server{Config: config, DBE: dbe}
 
-	MainServer = &Server{dbe, http, 0, map[string]*Session{}}
-	return MainServer, nil
+	// Init HTTP Server
+	server.initHTTPServer(dbe)
+
+	return server, nil
 }
 
 func (s *Server) Start() error {
