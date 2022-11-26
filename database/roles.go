@@ -3,16 +3,18 @@ package database
 import "context"
 
 type Role struct {
-	Name              string
-	IsSuperUSer       bool
-	CanLogin          bool
-	InheritPrivileges bool
-	CanCreateRoles    bool
-	CanCreateDatabase bool
-	CanBypassRLS      bool
+	Name                string
+	IsSuperUSer         bool
+	CanLogin            bool
+	NoInheritPrivileges bool
+	CanCreateRoles      bool
+	CanCreateDatabase   bool
+	CanBypassRLS        bool
 }
 
-const rolesQuery = `SELECT rolname FROM pg_roles`
+const rolesQuery = `SELECT 
+rolname, rolsuper, rolcanlogin, NOT rolinherit, rolcreaterole, rolcreatedb, rolbypassrls
+FROM pg_roles`
 
 func (dbe *DBEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	roles := []Role{}
@@ -25,9 +27,9 @@ func (dbe *DBEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	role := Role{}
 	for rows.Next() {
 		err := rows.Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.InheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
 		if err != nil {
-			return roles, err
+			return nil, err
 		}
 		roles = append(roles, role)
 	}
@@ -38,23 +40,42 @@ func (dbe *DBEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	return roles, nil
 }
 
-func (dbe *DBEngine) getRole(ctx context.Context, name string) (*Role, error) {
+func (dbe *DBEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	role := &Role{}
 	err := dbe.pool.QueryRow(ctx, rolesQuery+" WHERE rolename = $1", name).
 		Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.InheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
 	if err != nil {
 		return nil, err
 	}
 	return role, nil
 }
 
-func (dbe *DBEngine) CreateRole(ctx context.Context, name string) (*Role, error) {
-	_, err := dbe.pool.Exec(ctx, "CREATE ROLE "+name)
+func (dbe *DBEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
+	create := "CREATE ROLE " + role.Name
+	if role.IsSuperUSer {
+		create += " SUPERUSER"
+	}
+	if role.CanLogin {
+		create += " LOGIN"
+	}
+	if role.NoInheritPrivileges {
+		create += " NOINHERIT"
+	}
+	if role.CanCreateRoles {
+		create += " CREATEROLE"
+	}
+	if role.CanCreateDatabase {
+		create += " CREATEDB"
+	}
+	if role.CanBypassRLS {
+		create += " BYPASSRLS"
+	}
+	_, err := dbe.pool.Exec(ctx, create)
 	if err != nil {
 		return nil, err
 	}
-	return dbe.getRole(ctx, name)
+	return dbe.GetRole(ctx, role.Name)
 }
 
 func (dbe *DBEngine) DeleteRole(ctx context.Context, name string) error {

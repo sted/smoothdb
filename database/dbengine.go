@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"fmt"
+	"green/green-ds/config"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -11,20 +13,20 @@ var DBE *DBEngine
 
 // DBEngine represents a database instance (a "cluster")
 type DBEngine struct {
-	connString      string
+	config          *config.Database
 	pool            *pgxpool.Pool
 	activeDatabases map[string]*Database
 	exec            *QueryExecutor
 }
 
 // InitDBEngine creates a connection pool, connects to the engine and initializes it
-func InitDBEngine(connString string) (*DBEngine, error) {
+func InitDBEngine(config *config.Database) (*DBEngine, error) {
 	context := context.Background()
-	pool, err := pgxpool.Connect(context, connString)
+	pool, err := pgxpool.Connect(context, config.URL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot connect with %q (%w)", config.URL, err)
 	}
-	DBE = &DBEngine{connString, pool, map[string]*Database{}, &QueryExecutor{}}
+	DBE = &DBEngine{config, pool, map[string]*Database{}, &QueryExecutor{}}
 	return DBE, nil
 }
 
@@ -78,11 +80,11 @@ func (dbe *DBEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 	err := dbe.pool.QueryRow(ctx, databaseQuery+
 		" AND d.datname = $1", name).Scan(&db.Name, &db.Owner)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("database %q not found or not allowed (%w)", name, err)
 	}
 	err = db.Activate(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot activate database %q (%w)", name, err)
 	}
 	return db, nil
 }

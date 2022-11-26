@@ -17,13 +17,6 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 	if err != nil {
 		return nil, err
 	}
-	if schema != "" {
-		_, err = gi.Conn.Exec(ctx, "SET SCHEMA '"+schema+"'")
-		if err != nil {
-			return nil, err
-		}
-		//query = "SET SCHEMA '" + schema + "';" + query
-	}
 	rows, err := gi.Conn.Query(ctx, query)
 	if err != nil {
 		return nil, err

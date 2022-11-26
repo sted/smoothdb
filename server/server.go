@@ -1,22 +1,23 @@
 package server
 
 import (
+	"green/green-ds/config"
 	"green/green-ds/database"
 	"net/http"
 )
 
 type Server struct {
-	Config         *Config
+	Config         *config.Config
 	DBE            *database.DBEngine
 	HTTP           *http.Server
 	sessionManager SessionManager
 }
 
 func NewServer() (*Server, error) {
-	config := GetConfig("./config.json")
+	config := config.GetConfig("./config.json")
 
 	// DB Engine
-	dbe, err := database.InitDBEngine(config.DatabaseURL)
+	dbe, err := database.InitDBEngine(&config.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +25,10 @@ func NewServer() (*Server, error) {
 	// Main Server
 	server := &Server{Config: config, DBE: dbe}
 
-	// Init HTTP Server
+	// Initialize session manager
+	server.initSessionManager()
+
+	// Initialize HTTP Server
 	server.initHTTPServer(dbe)
 
 	return server, nil

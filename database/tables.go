@@ -9,10 +9,7 @@ import (
 type Table struct {
 	Name        string   `json:"name"`
 	Owner       string   `json:"owner"`
-	Check       []string `json:"check"`
-	Unique      []string `json:"unique"`
-	Primary     string   `json:"primary"`
-	Foreign     []string `json:"foreign"`
+	Constraints []string `json:"constraints"`
 	RowSecurity bool     `json:"rowsecurity"`
 	Temporary   bool     `json:"temporary,omitempty"`
 	Inherits    string   `json:"inherit,omitempty"`
@@ -103,17 +100,8 @@ func composeColumnSQL(sql *string, column *Column) {
 	if column.Default != nil {
 		*sql += " DEFAULT '" + *column.Default + "'"
 	}
-	if column.Check != "" {
-		*sql += " CHECK (" + column.Check + ")"
-	}
-	if column.Unique {
-		*sql += " UNIQUE"
-	}
-	if column.Primary {
-		*sql += " PRIMARY KEY"
-	}
-	if column.Foreign != "" {
-		*sql += " REFERENCES " + column.Foreign
+	for _, constraint := range column.Constraints {
+		*sql += " " + constraint
 	}
 }
 
@@ -135,23 +123,8 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 		create += "TEMP "
 	}
 	create += "TABLE " + table.Name + " (" + columnList
-	if table.Check != nil {
-		for _, check := range table.Check {
-			create += ", CHECK (" + check + ")"
-		}
-	}
-	if table.Unique != nil {
-		for _, unique := range table.Unique {
-			create += ", UNIQUE (" + unique + ")"
-		}
-	}
-	if table.Primary != "" {
-		create += ", PRIMARY KEY (" + table.Primary + ")"
-	}
-	if table.Foreign != nil {
-		for _, foreign := range table.Foreign {
-			create += ",  FOREIGN KEY (" + foreign + ")"
-		}
+	for _, constraint := range table.Constraints {
+		create += ", " + constraint
 	}
 	create += ")"
 	if table.Inherits != "" {

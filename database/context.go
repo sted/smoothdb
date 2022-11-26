@@ -20,7 +20,7 @@ type GreenContext struct {
 	QueryBuilder  QueryBuilder
 }
 
-func AcquireContext(gctx *gin.Context) {
+func AcquireContext(gctx *gin.Context, role string) error {
 	var db *Database
 	var err error
 	var conn *pgxpool.Conn
@@ -30,7 +30,7 @@ func AcquireContext(gctx *gin.Context) {
 	if dbname != "" {
 		db, err = DBE.GetDatabase(gctx, dbname)
 		if err != nil {
-			panic("")
+			return err
 		}
 		conn = db.AcquireConnection(request.Context())
 	} else {
@@ -42,6 +42,22 @@ func AcquireContext(gctx *gin.Context) {
 	defaltBuilder := DirectQueryBuilder{}
 
 	gctx.Set(greenTag, &GreenContext{gctx, conn, db, defaultParser, queryOptions, defaltBuilder})
+
+	var query string
+	if queryOptions.Schema != "" {
+		query = "set_config('search_path', '" + queryOptions.Schema + "', true)"
+	}
+	if role != "" {
+		if query != "" {
+			query += ", "
+		}
+		query += "set_config('role', '" + role + "', true)"
+	}
+	_, err = conn.Exec(gctx, "SELECT "+query)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // func WithGreenContext(parent context.Context, gctx *gin.Context) context.Context {

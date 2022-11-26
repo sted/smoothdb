@@ -2,12 +2,24 @@ package main
 
 import (
 	"encoding/json"
+	"green/green-ds/server"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	s, err := server.NewServer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	go s.Start()
+	code := m.Run()
+	os.Exit(code)
+}
 
 type Test struct {
 	description     string
@@ -38,12 +50,12 @@ func executeTests(t *testing.T, tests []Test) {
 			log.Fatal(err)
 		}
 		if test.expectedResults != "" {
-			var v any
+			var v1, v2 any
 			var j1, j2 []byte
-			_ = json.Unmarshal([]byte(test.expectedResults), &v)
-			j1, _ = json.Marshal(v)
-			_ = json.Unmarshal(body, &v)
-			j2, _ = json.Marshal(v)
+			_ = json.Unmarshal([]byte(test.expectedResults), &v1)
+			j1, _ = json.Marshal(v1)
+			_ = json.Unmarshal(body, &v2)
+			j2, _ = json.Marshal(v2)
 			json1, json2 := string(j1), string(j2)
 			if json1 != json2 {
 				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i, test.description, json1, json2, test.query)

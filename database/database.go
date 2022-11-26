@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -31,11 +32,11 @@ func (db *Database) GetRelationships(table string) []Relationship {
 }
 
 func (db *Database) Activate(ctx context.Context) error {
-	connString := DBE.connString
+	connString := DBE.config.URL
 	if !strings.HasSuffix(connString, "/") {
 		connString += "/"
 	}
-	connString += db.Name + "?pool_max_conns=50"
+	connString += db.Name + "?pool_max_conns=" + strconv.Itoa(int(DBE.config.MaxPoolConnections))
 	pool, err := pgxpool.Connect(ctx, connString)
 	if err != nil {
 		return err

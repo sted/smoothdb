@@ -10,12 +10,13 @@
 √ Alter tables, view and columns
 √ Some more operator: IN, etc
 √ Full Text Search (FTS)
-* Resource embedding
-* Sessions, JWT, Auth
-* Roles
-* Policies and grants
+* Resource embedding: √ one level, nested
+√ Sessions, JWT, Auth
+√ Roles
+* Policies
+* Grants
 * Schema management
-* Configuration (shared with other apps) 
+√ Configuration (shared with other apps) 
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Functions (rpc)
 * Caching

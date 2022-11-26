@@ -14,33 +14,28 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// basic column selection
 			"?select=a,b,c",
-			`SELECT "a", "b", "c" FROM "table"`,
+			`SELECT "table"."a", "table"."b", "table"."c" FROM "table"`,
 		},
 		{
 			// with labels
 			"?select=Aa:a,b,Cc:c",
-			`SELECT "a" AS "Aa", "b", "c" AS "Cc" FROM "table"`,
+			`SELECT "table"."a" AS "Aa", "table"."b", "table"."c" AS "Cc" FROM "table"`,
 		},
 		{
 			// with casts and labels
 			"?select=a::text,bbb:b::integer,c",
-			`SELECT "a"::text, "b"::integer AS "bbb", "c" FROM "table"`,
+			`SELECT "table"."a"::text, "table"."b"::integer AS "bbb", "table"."c" FROM "table"`,
 		},
 		{
 			// skipping a column
 			"?select=a,,c",
-			`SELECT "a", "c" FROM "table"`,
+			`SELECT "table"."a", "table"."c" FROM "table"`,
 		},
 		// {
 		// 	// for resource embedding
 		// 	"?select=a,table2(b,c)",
 		// 	`SELECT a, c FROM "table"`,
 		// },
-		{
-			// with functions
-			"?select=a,,c",
-			`SELECT "a", "c" FROM "table"`,
-		},
 		{
 			// order by
 			"?order=a,b",
@@ -59,52 +54,52 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// simple where
 			"?age=gte.12&age=lte.18&name=eq.pippo",
-			`SELECT * FROM "table" WHERE "age" >= '12' AND "age" <= '18' AND "name" = 'pippo'`,
+			`SELECT * FROM "table" WHERE "table"."age" >= '12' AND "table"."age" <= '18' AND "table"."name" = 'pippo'`,
 		},
 		{
 			// complex where
 			"?grade=gte.90&student=is.true&or=(age.eq.14,not.and(age.gte.11,age.lte.17))",
-			`SELECT * FROM "table" WHERE "grade" >= '90' AND ("age" = '14' OR NOT ("age" >= '11' AND "age" <= '17')) AND "student" IS true`,
+			`SELECT * FROM "table" WHERE "table"."grade" >= '90' AND ("table"."age" = '14' OR NOT ("table"."age" >= '11' AND "table"."age" <= '17')) AND "table"."student" IS true`,
 		},
 		{
 			// complex where 2
 			"?not.or=(age.not.eq.14,and(age.gte.11,age.lte.17))&city=eq.milano",
-			`SELECT * FROM "table" WHERE "city" = 'milano' AND NOT (NOT "age" = '14' OR "age" >= '11' AND "age" <= '17')`,
+			`SELECT * FROM "table" WHERE "table"."city" = 'milano' AND NOT (NOT "table"."age" = '14' OR "table"."age" >= '11' AND "table"."age" <= '17')`,
 		},
 		{
 			// quotes
 			"?&name=eq.\"Stefano,DelliPonti\"&zbackslash=eq.\"\\\\bs\\\"\"",
-			`SELECT * FROM "table" WHERE "name" = 'Stefano,DelliPonti' AND "zbackslash" = '\bs"'`,
+			`SELECT * FROM "table" WHERE "table"."name" = 'Stefano,DelliPonti' AND "table"."zbackslash" = '\bs"'`,
 		},
 		{
 			// in
 			"?age=in.(10,20,30)",
-			`SELECT * FROM "table" WHERE "age" IN ('10', '20', '30')`,
+			`SELECT * FROM "table" WHERE "table"."age" IN ('10', '20', '30')`,
 		},
 		{
 			// range 1
 			"?period=ov.[2017-01-01,2017-06-30]",
-			`SELECT * FROM "table" WHERE "period" && '[2017-01-01,2017-06-30]'`,
+			`SELECT * FROM "table" WHERE "table"."period" && '[2017-01-01,2017-06-30]'`,
 		},
 		{
 			// range 2
 			"?period=cd.(2017-01-01,2017-06-30]",
-			`SELECT * FROM "table" WHERE "period" <@ '(2017-01-01,2017-06-30]'`,
+			`SELECT * FROM "table" WHERE "table"."period" <@ '(2017-01-01,2017-06-30]'`,
 		},
 		{
 			// range 3
 			"?period=adj.(2017-01-01,2017-06-30)",
-			`SELECT * FROM "table" WHERE "period" -|- '(2017-01-01,2017-06-30)'`,
+			`SELECT * FROM "table" WHERE "table"."period" -|- '(2017-01-01,2017-06-30)'`,
 		},
 		{
 			// array
 			"?tags=cd.{cool,swag}",
-			`SELECT * FROM "table" WHERE "tags" <@ '{"cool","swag"}'`,
+			`SELECT * FROM "table" WHERE "table"."tags" <@ '{"cool","swag"}'`,
 		},
 		{
 			// json
 			"?select=a->b->c,b->>c->d->e,pippo:c->d->e::int&jsondata->a->b=eq.{e:{f:2,g:[1,2]}}",
-			`SELECT (a->'b'->'c') AS "c", (b->>'c'->'d'->'e') AS "e", (c->'d'->'e')::int AS "pippo" FROM "table" WHERE "jsondata"->'a'->'b' = '{"e":{"f":2,"g":[1,2]}}'`,
+			`SELECT ("table"."a"->'b'->'c') AS "c", ("table"."b"->>'c'->'d'->'e') AS "e", ("table"."c"->'d'->'e')::int AS "pippo" FROM "table" WHERE "table"."jsondata"->'a'->'b' = '{"e":{"f":2,"g":[1,2]}}'`,
 		},
 	}
 

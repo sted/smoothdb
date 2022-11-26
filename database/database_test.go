@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"green/green-ds/config"
 	"log"
 	"os"
 	"testing"
@@ -13,7 +14,7 @@ var dbe *DBEngine
 
 func TestMain(m *testing.M) {
 
-	dbe, _ = InitDBEngine("postgres://localhost:5432")
+	dbe, _ = InitDBEngine(config.DefaultDatabaseConfig())
 
 	code := m.Run()
 
@@ -24,10 +25,13 @@ func BenchmarkBase(b *testing.B) {
 
 	f_ctx := context.Background()
 
-	db, _ := dbe.CreateDatabase(f_ctx, "bench")
+	db, err := dbe.CreateDatabase(f_ctx, "bench")
 	defer dbe.DeleteDatabase(f_ctx, "bench")
+	if err != nil {
+		b.Fatal(err)
+	}
 
-	ctx := WithDb(context.Background(), db)
+	ctx := WithDb(f_ctx, db)
 	defer ReleaseContext(ctx)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
@@ -80,13 +84,16 @@ func TestBase(t *testing.T) {
 
 	f_ctx := context.Background()
 
-	db, _ := dbe.CreateDatabase(f_ctx, "test_base")
+	db, err := dbe.CreateDatabase(f_ctx, "test_base")
 	defer dbe.DeleteDatabase(f_ctx, "test_base")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := WithDb(context.Background(), db)
 	defer ReleaseContext(ctx)
 
-	_, err := db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+	_, err = db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
 		{Name: "date", Type: "timestamp"},
@@ -134,13 +141,16 @@ func TestDDL(t *testing.T) {
 	ctx := WithDb(context.Background(), db)
 	defer ReleaseContext(ctx)
 
-	table := Table{Name: "b2", Columns: []Column{
-		{Name: "id", Type: "serial", Primary: true},
-		{Name: "name", Type: "text", Default: lo.ToPtr("pippo")},
-		{Name: "number", Type: "integer", Unique: true},
-		{Name: "date", Type: "timestamp", Check: "date > now()"},
-		{Name: "bool", Type: "boolean", NotNull: true}},
-		Check: []string{"number < 100000 and bool"},
+	table := Table{
+		Name: "b2",
+		Columns: []Column{
+			{Name: "id", Type: "serial", Constraints: []string{"PRIMARY KEY"}},
+			{Name: "name", Type: "text", Default: lo.ToPtr("pippo")},
+			{Name: "number", Type: "integer", Constraints: []string{"UNIQUE"}},
+			{Name: "date", Type: "timestamp", Constraints: []string{"CHECK (date > now())"}},
+			{Name: "bool", Type: "boolean", NotNull: true},
+		},
+		Constraints: []string{"CHECK (number < 100000 AND bool)"},
 	}
 
 	t.Run("Create and drop table", func(t *testing.T) {
@@ -154,10 +164,9 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 		if table_.Name != "public.b2" ||
-			table_.Primary != "PRIMARY KEY (id)" ||
-			table_.Check[0] != "CHECK (number < 100000 AND bool)" ||
-			len(table_.Unique) != 0 ||
-			len(table_.Foreign) != 0 {
+			len(table_.Constraints) != 2 ||
+			table_.Constraints[0] != "CHECK (number < 100000 AND bool)" ||
+			table_.Constraints[1] != "PRIMARY KEY (id)" {
 			t.Fatal("the returned table is not correct")
 		}
 		columns, err := db.GetColumns(ctx, "b2")
@@ -175,12 +184,12 @@ func TestDDL(t *testing.T) {
 		}
 		if columns[2].Name != "number" ||
 			columns[2].Type != "integer" ||
-			!columns[2].Unique {
+			columns[2].Constraints[0] != "UNIQUE (number)" {
 			t.Fatal(err)
 		}
 		if columns[3].Name != "date" ||
 			columns[3].Type != "timestamp without time zone" ||
-			columns[3].Check != "CHECK (date > now())" {
+			columns[3].Constraints[0] != "CHECK (date > now())" {
 			t.Fatal(err)
 		}
 		if columns[4].Name != "bool" ||
@@ -254,9 +263,8 @@ func TestDDL(t *testing.T) {
 			Type:    lo.ToPtr("text"),
 			NotNull: lo.ToPtr(true),
 			Default: lo.ToPtr("'pippo'"),
-			Check:   lo.ToPtr("c1 <> 'pluto'"),
-			Unique:  lo.ToPtr(true),
-			Table:   "b4"})
+			//Constraints: []string{"CHECK c1 <> 'pluto'", "UNIQUE"},
+			Table: "b4"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,7 +274,8 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 		if column.Name != "ccc" || column.Type != "text" || column.NotNull != true ||
-			*column.Default != "'pippo'::text" || column.Check != "CHECK (ccc <> 'pluto'::text)" {
+			*column.Default != "'pippo'::text" {
+			//|| column.Check != "CHECK (ccc <> 'pluto'::text)"
 			t.Fatal("column is not correct after the update")
 		}
 		err = db.DeleteTable(ctx, "b4")

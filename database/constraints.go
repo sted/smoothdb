@@ -9,12 +9,12 @@ import (
 )
 
 type Constraint struct {
-	Name       string
-	Type       byte // c: check, u: unique, p: primary, f: foreign
-	Table      string
-	Column     string
-	NumCols    int
-	Definition string
+	Name       string `json:"name"`
+	Type       byte   `json:"type"` // c: check, u: unique, p: primary, f: foreign
+	Table      string `json:"table"`
+	Column     string `json:"column"`
+	NumCols    int    `json:"numcols"`
+	Definition string `json:"definition"`
 }
 
 type ForeignKey struct {
@@ -87,43 +87,19 @@ func getConstraints(ctx context.Context, ftablename *string) ([]Constraint, erro
 }
 
 func fillTableConstraints(table *Table, constraints []Constraint) {
-	table.Check = nil
-	table.Unique = nil
-	table.Primary = ""
-	table.Foreign = nil
+	table.Constraints = nil
 	for _, c := range constraints {
 		if c.Table == table.Name && (c.NumCols > 1 || c.Type == 'p') {
-			switch c.Type {
-			case 'c':
-				table.Check = append(table.Check, c.Definition)
-			case 'u':
-				table.Unique = append(table.Unique, c.Definition)
-			case 'p':
-				table.Primary = c.Definition
-			case 'f':
-				table.Foreign = append(table.Foreign, c.Definition)
-			}
+			table.Constraints = append(table.Constraints, c.Definition)
 		}
 	}
 }
 
 func fillColumnConstraints(column *Column, constraints []Constraint) {
-	column.Check = ""
-	column.Unique = false
-	column.Primary = false
-	column.Foreign = ""
+	column.Constraints = nil
 	for _, c := range constraints {
 		if c.Table == column.Table && c.Column == column.Name && c.NumCols == 1 {
-			switch c.Type {
-			case 'c':
-				column.Check = c.Definition
-			case 'u':
-				column.Unique = true
-			case 'p':
-				column.Primary = true
-			case 'f':
-				column.Foreign = c.Definition
-			}
+			column.Constraints = append(column.Constraints, c.Definition)
 		}
 	}
 }
@@ -139,20 +115,7 @@ func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Con
 func (db *Database) CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
 	conn := GetConn(ctx)
 	create := "ALTER TABLE " + constraint.Table + " ADD "
-	if constraint.Name != "" {
-		create += "CONSTRAINTS " + constraint.Name + " "
-	}
-	switch constraint.Type {
-	case 'c':
-		create += "CHECK "
-	case 'u':
-		create += "UNIQUE "
-	case 'p':
-		create += "PRIMARY "
-	case 'f':
-		create += "FOREIGN KEY "
-	}
-	create += "(" + constraint.Definition + ")"
+	create += constraint.Definition
 
 	_, err := conn.Exec(ctx, create)
 	if err != nil {

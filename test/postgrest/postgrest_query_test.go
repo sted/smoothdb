@@ -1,17 +1,8 @@
 package main
 
 import (
-	"green/green-ds/server"
-	"os"
 	"testing"
 )
-
-func TestMain(m *testing.M) {
-	s, _ := server.NewServer()
-	go s.Start()
-	code := m.Run()
-	os.Exit(code)
-}
 
 func TestPostgREST_Query(t *testing.T) {
 

@@ -3,15 +3,12 @@ package database
 import "context"
 
 type Column struct {
-	Name    string  `json:"name"`
-	Type    string  `json:"type"`
-	NotNull bool    `json:"notnull"`
-	Default *string `json:"default"`
-	Check   string  `json:"check"`
-	Unique  bool    `json:"unique"`
-	Primary bool    `json:"primary"`
-	Foreign string  `json:"foreign"`
-	Table   string  `json:"table,omitempty"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	NotNull     bool     `json:"notnull"`
+	Default     *string  `json:"default"`
+	Constraints []string `json:"constraints"`
+	Table       string   `json:"table,omitempty"`
 }
 
 type ColumnUpdate struct {
@@ -20,10 +17,6 @@ type ColumnUpdate struct {
 	Type    *string `json:"type"`
 	NotNull *bool   `json:"notnull"`
 	Default *string `json:"default"`
-	Check   *string `json:"check"`
-	Unique  *bool   `json:"unique"`
-	Primary *bool   `json:"primary"`
-	Foreign *string `json:"foreign"`
 	Table   string  `json:"-"`
 }
 
@@ -143,18 +136,6 @@ func (db *Database) UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Co
 			alter = prefix + column.Name + " DROP DEFAULT"
 		}
 		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// CHECK
-	if column.Check != nil {
-		if *column.Check != "" {
-			_, err = db.CreateConstraint(ctx, &Constraint{
-				Type: 'c', Table: column.Table, Column: column.Name, Definition: *column.Check})
-		} else {
-			err = db.DeleteConstraint(ctx, column.Table, column.Table+"_"+column.Name+"_check")
-		}
 		if err != nil {
 			return nil, err
 		}

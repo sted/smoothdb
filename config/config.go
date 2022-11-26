@@ -1,4 +1,4 @@
-package server
+package config
 
 import (
 	"encoding/json"
@@ -11,13 +11,23 @@ import (
 	"github.com/tailscale/hujson"
 )
 
+type Database struct {
+	URL                string `comment:"Database URL (default: postgres://localhost:5432)"`
+	MinPoolConnections uint   `comment:"Miminum connections per pool (default: 10)"`
+	MaxPoolConnections uint   `comment:"Maximum connections per pool (default: 100)"`
+	AuthRole           string `comment:"Authorization role (default: auth)"`
+	AnonRole           string `comment:"Anonymous role (default: anon)"`
+	AllowedDatabases   []string
+	SchemaSearchPath   []string
+}
+
 // Config holds the current configuration
 type Config struct {
-	Address     string `comment:"Server address and port"`
-	DatabaseURL string `comment:"Database URL (default: postgres://localhost:5432)"`
-	AllowAnon   bool   `comment:"Allow unauthenticated connections"`
-	JWTSecret   string `comment:"Secret for JWT tokens"`
-	EnableAdmin bool   `comment:"Enable administration of databases and tables"`
+	Address     string   `comment:"Server address and port (default localhost:8081)"`
+	AllowAnon   bool     `comment:"Allow unauthenticated connections"`
+	JWTSecret   string   `comment:"Secret for JWT tokens"`
+	EnableAdmin bool     `comment:"Enable administration of databases and tables"`
+	Database    Database `comment:"Database configuration"`
 }
 
 func WriteConfig(config any) ([]byte, error) {
@@ -42,6 +52,8 @@ func WriteObject(o any) *hujson.Object {
 			value = hujson.String(v.Field(i).String())
 		case reflect.Int:
 			value = hujson.Int(v.Field(i).Int())
+		case reflect.Uint:
+			value = hujson.Uint(v.Field(i).Uint())
 		case reflect.Float32, reflect.Float64:
 			value = hujson.Float(v.Field(i).Float())
 		case reflect.Bool:
@@ -60,19 +72,35 @@ func WriteObject(o any) *hujson.Object {
 	return &obj
 }
 
+func DefaultDatabaseConfig() *Database {
+	return &Database{
+		URL:                "postgres://localhost:5432/",
+		MinPoolConnections: 10,
+		MaxPoolConnections: 100,
+		AuthRole:           "auth",
+		AnonRole:           "anon",
+	}
+}
+
+func DefaultConfig() *Config {
+	return &Config{
+		Address:     ":8081",
+		AllowAnon:   false,
+		JWTSecret:   "",
+		EnableAdmin: false,
+		Database:    *DefaultDatabaseConfig(),
+	}
+}
+
 // GetConfig loads the configuration
 func GetConfig(configFile string) *Config {
 
 	// Defaults
-	config := &Config{
-		Address:     ":8081",
-		DatabaseURL: "postgres://localhost:5432/",
-		AllowAnon:   false,
-	}
+	config := DefaultConfig()
 
 	// Command line flags
 	flag.StringVar(&config.Address, "addr", config.Address, "Address")
-	flag.StringVar(&config.DatabaseURL, "dburl", config.DatabaseURL, "DatabaseURL")
+	flag.StringVar(&config.Database.URL, "dburl", config.Database.URL, "DatabaseURL")
 
 	// Read config file
 	b, err := ioutil.ReadFile(configFile)
