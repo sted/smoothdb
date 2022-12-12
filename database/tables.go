@@ -42,7 +42,7 @@ const tablesQuery = "SELECT  schemaname || '.' || tablename, tableowner, rowsecu
 
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, nil)
+	constraints, err := getConstraints(ctx, conn.Conn(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 
 func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, &name)
+	constraints, err := getConstraints(ctx, conn.Conn(), &name)
 	if err != nil {
 		return nil, err
 	}
@@ -93,12 +93,12 @@ func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 }
 
 func composeColumnSQL(sql *string, column *Column) {
-	*sql += column.Name + " " + column.Type
+	*sql += "\"" + column.Name + "\" " + column.Type
 	if column.NotNull {
 		*sql += " NOT NULL"
 	}
 	if column.Default != nil {
-		*sql += " DEFAULT '" + *column.Default + "'"
+		*sql += " DEFAULT " + *column.Default + ""
 	}
 	for _, constraint := range column.Constraints {
 		*sql += " " + constraint

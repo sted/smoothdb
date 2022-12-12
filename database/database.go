@@ -2,30 +2,24 @@ package database
 
 import (
 	"context"
-	"strconv"
 	"strings"
+	"sync/atomic"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Database struct {
 	Name  string `json:"name"`
 	Owner string `json:"owner"`
 
+	activated           atomic.Bool
 	pool                *pgxpool.Pool
 	cachedTables        map[string]Table
 	cachedConstraints   map[string][]Constraint
 	cachedRelationships map[string][]Relationship
 	exec                *QueryExecutor
 }
-
-// var typeMap = map[string]any{
-// 	"integer":   int32(0),
-// 	"serial":    int32(0),
-// 	"text":      string(""),
-// 	"boolean":   bool(false),
-// 	"timestamp": time.Now(),
-// }
 
 func (db *Database) GetRelationships(table string) []Relationship {
 	return db.cachedRelationships[table]
@@ -36,8 +30,36 @@ func (db *Database) Activate(ctx context.Context) error {
 	if !strings.HasSuffix(connString, "/") {
 		connString += "/"
 	}
-	connString += db.Name + "?pool_max_conns=" + strconv.Itoa(int(DBE.config.MaxPoolConnections))
-	pool, err := pgxpool.Connect(ctx, connString)
+	connString += db.Name
+
+	config, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		return err
+	}
+	if DBE.config.AuthRole != "" {
+		config.ConnConfig.User = DBE.config.AuthRole
+	}
+	config.MinConns = DBE.config.MinPoolConnections
+	config.MaxConns = DBE.config.MaxPoolConnections
+
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		var set string
+		var err error
+		if len(DBE.config.SchemaSearchPath) != 0 {
+			set = "set_config('search_path', '"
+			for i, schema := range DBE.config.SchemaSearchPath {
+				if i != 0 {
+					set += ", "
+				}
+				set += schema
+			}
+			set += "', false)"
+			_, err = conn.Exec(ctx, "SELECT "+set)
+		}
+		return err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -46,11 +68,12 @@ func (db *Database) Activate(ctx context.Context) error {
 	db.cachedConstraints = map[string][]Constraint{}
 	db.cachedRelationships = map[string][]Relationship{}
 	db.exec = DBE.exec
-	DBE.activeDatabases[db.Name] = db
 
-	tempCtx := WithDb(ctx, db)
-	defer ReleaseContext(tempCtx)
-	constraints, err := getConstraints(tempCtx, nil)
+	conn, err := pgx.Connect(ctx, connString)
+	if err != nil {
+		return err
+	}
+	constraints, err := getConstraints(ctx, conn, nil)
 	if err != nil {
 		return err
 	}
@@ -62,25 +85,9 @@ func (db *Database) Activate(ctx context.Context) error {
 			db.cachedRelationships[rels[1].Table] = append(db.cachedRelationships[rels[1].Table], rels[1])
 		}
 	}
+	db.activated.Store(true)
 	return nil
 }
-
-// func fieldsToStruct(columns []Column) reflect.Type {
-// 	var structFields []reflect.StructField
-// 	for _, field := range columns {
-// 		name := strings.TrimPrefix(field.Name, "_")
-// 		newField := reflect.StructField{
-// 			Name: strings.Title(name),
-// 			Type: reflect.TypeOf(typeMap[strings.ToLower(field.Type)]),
-// 			Tag:  reflect.StructTag("`json:\"" + strings.ToLower(field.Name+"\"`")),
-// 		}
-// 		if !field.NotNull {
-// 			newField.Type = reflect.PtrTo(newField.Type)
-// 		}
-// 		structFields = append(structFields, newField)
-// 	}
-// 	return reflect.StructOf(structFields)
-// }
 
 func (db *Database) refreshTable(ctx context.Context, name string) {
 	// table := Table{}

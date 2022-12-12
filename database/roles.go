@@ -16,7 +16,7 @@ const rolesQuery = `SELECT
 rolname, rolsuper, rolcanlogin, NOT rolinherit, rolcreaterole, rolcreatedb, rolbypassrls
 FROM pg_roles`
 
-func (dbe *DBEngine) GetRoles(ctx context.Context) ([]Role, error) {
+func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	roles := []Role{}
 	rows, err := dbe.pool.Query(ctx, rolesQuery)
 	if err != nil {
@@ -40,7 +40,7 @@ func (dbe *DBEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	return roles, nil
 }
 
-func (dbe *DBEngine) GetRole(ctx context.Context, name string) (*Role, error) {
+func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	role := &Role{}
 	err := dbe.pool.QueryRow(ctx, rolesQuery+" WHERE rolename = $1", name).
 		Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
@@ -51,7 +51,7 @@ func (dbe *DBEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	return role, nil
 }
 
-func (dbe *DBEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
+func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
 	create := "CREATE ROLE " + role.Name
 	if role.IsSuperUSer {
 		create += " SUPERUSER"
@@ -78,7 +78,7 @@ func (dbe *DBEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 	return dbe.GetRole(ctx, role.Name)
 }
 
-func (dbe *DBEngine) DeleteRole(ctx context.Context, name string) error {
+func (dbe *DbEngine) DeleteRole(ctx context.Context, name string) error {
 	_, err := dbe.pool.Exec(ctx, "DROP ROLE "+name)
 	return err
 }

@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/samber/lo"
 )
 
@@ -52,8 +53,7 @@ const constraintsQuery = `
 		JOIN pg_class cls ON c.conrelid = cls.oid
 		JOIN pg_attribute att ON c.conrelid = att.attrelid and c.conkey[1] = att.attnum`
 
-func getConstraints(ctx context.Context, ftablename *string) ([]Constraint, error) {
-	conn := GetConn(ctx)
+func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]Constraint, error) {
 	constraints := []Constraint{}
 	query := constraintsQuery
 	if ftablename != nil {
@@ -105,7 +105,8 @@ func fillColumnConstraints(column *Column, constraints []Constraint) {
 }
 
 func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
-	constraints, err := getConstraints(ctx, &tablename)
+	conn := GetConn(ctx)
+	constraints, err := getConstraints(ctx, conn.Conn(), &tablename)
 	if err != nil {
 		return nil, err
 	}

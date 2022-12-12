@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitTestRouter(root *gin.RouterGroup, dbe *database.DBEngine) *gin.RouterGroup {
+func InitTestRouter(root *gin.RouterGroup, dbe *database.DbEngine) *gin.RouterGroup {
 
 	test := root.Group("/test")
 

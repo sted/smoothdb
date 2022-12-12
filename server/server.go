@@ -8,7 +8,7 @@ import (
 
 type Server struct {
 	Config         *config.Config
-	DBE            *database.DBEngine
+	DBE            *database.DbEngine
 	HTTP           *http.Server
 	sessionManager SessionManager
 }
@@ -17,7 +17,7 @@ func NewServer() (*Server, error) {
 	config := config.GetConfig("./config.json")
 
 	// DB Engine
-	dbe, err := database.InitDBEngine(&config.Database)
+	dbe, err := database.InitDbEngine(&config.Database)
 	if err != nil {
 		return nil, err
 	}

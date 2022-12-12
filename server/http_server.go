@@ -9,11 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (server *Server) initHTTPServer(dbe *database.DBEngine) {
+func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(gin.Logger())
+	//router.Use(gin.Logger())
 
 	root := router.Group("/")
 

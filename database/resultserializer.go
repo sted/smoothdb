@@ -8,9 +8,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
+const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
 	Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error)
@@ -236,7 +239,7 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 				d.WriteByte(',')
 			}
 			d.WriteByte('"')
-			d.Write(fds[i].Name)
+			d.WriteString(fds[i].Name)
 			d.WriteString("\":")
 			d.appendType(buf, fd.DataTypeOID)
 		}

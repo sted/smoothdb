@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"testing"
@@ -30,6 +31,9 @@ type Test struct {
 }
 
 func executeTests(t *testing.T, tests []Test) {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
 	for i, test := range tests {
 		query, err := url.Parse("http://localhost:8081/databases/pgrest" + test.query)
 		if err != nil {
@@ -41,7 +45,7 @@ func executeTests(t *testing.T, tests []Test) {
 			log.Fatal(err)
 		}
 		req.Header.Add("Accept-Profile", "test")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Fatal(err)
 		}

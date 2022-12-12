@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitAdminRouter(root *gin.RouterGroup, dbe *database.DBEngine, handlers ...gin.HandlerFunc) *gin.RouterGroup {
+func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...gin.HandlerFunc) *gin.RouterGroup {
 
 	admin := root.Group("/admin", handlers...)
 

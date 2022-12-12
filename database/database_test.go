@@ -10,11 +10,11 @@ import (
 	"github.com/samber/lo"
 )
 
-var dbe *DBEngine
+var dbe *DbEngine
 
 func TestMain(m *testing.M) {
 
-	dbe, _ = InitDBEngine(config.DefaultDatabaseConfig())
+	dbe, _ = InitDbEngine(config.DefaultDatabaseConfig())
 
 	code := m.Run()
 
@@ -145,7 +145,7 @@ func TestDDL(t *testing.T) {
 		Name: "b2",
 		Columns: []Column{
 			{Name: "id", Type: "serial", Constraints: []string{"PRIMARY KEY"}},
-			{Name: "name", Type: "text", Default: lo.ToPtr("pippo")},
+			{Name: "name", Type: "text", Default: lo.ToPtr("'pippo'")},
 			{Name: "number", Type: "integer", Constraints: []string{"UNIQUE"}},
 			{Name: "date", Type: "timestamp", Constraints: []string{"CHECK (date > now())"}},
 			{Name: "bool", Type: "boolean", NotNull: true},

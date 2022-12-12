@@ -17,6 +17,10 @@
 * Grants
 * Schema management
 √ Configuration (shared with other apps) 
+* Reload config
+* Logger
+* Change log level at runtime
+* 
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Functions (rpc)
 * Caching
@@ -31,4 +35,4 @@
 * Localizations
 * application/octet-stream as output
 * "singular" response
-* pgx v5
+√ pgx v5

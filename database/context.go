@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var greenTag = "gctx"
@@ -13,51 +13,47 @@ var greenTag = "gctx"
 
 type GreenContext struct {
 	GinContext    *gin.Context
-	Conn          *pgxpool.Conn
 	Db            *Database
+	Conn          *DbConn
 	RequestParser RequestParser
-	QueryOptions  *QueryOptions
 	QueryBuilder  QueryBuilder
+	QueryOptions  *QueryOptions
 }
 
-func AcquireContext(gctx *gin.Context, role string) error {
+func FillContext(gctx *gin.Context, role string, oldconn *DbConn) (*DbConn, error) {
 	var db *Database
 	var err error
-	var conn *pgxpool.Conn
-	request := gctx.Request
-
 	dbname := gctx.Param("dbname")
 	if dbname != "" {
 		db, err = DBE.GetDatabase(gctx, dbname)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		conn = db.AcquireConnection(request.Context())
-	} else {
-		conn = DBE.AcquireConnection(request.Context())
+	}
+	conn, err := AcquireConnection(gctx, db, role, oldconn)
+	if err != nil {
+		return nil, err
 	}
 
 	defaultParser := PostgRestParser{}
-	queryOptions := defaultParser.getOptions(request)
-	defaltBuilder := DirectQueryBuilder{}
+	defaultBuilder := DirectQueryBuilder{}
+	queryOptions := defaultParser.getOptions(gctx.Request)
+	if queryOptions.Schema == "" {
+		queryOptions.Schema = DBE.defaultSchema
+	}
 
-	gctx.Set(greenTag, &GreenContext{gctx, conn, db, defaultParser, queryOptions, defaltBuilder})
+	gctx.Set(greenTag, &GreenContext{
+		gctx,
+		db, conn,
+		defaultParser, defaultBuilder, queryOptions,
+	})
 
-	var query string
-	if queryOptions.Schema != "" {
-		query = "set_config('search_path', '" + queryOptions.Schema + "', true)"
-	}
-	if role != "" {
-		if query != "" {
-			query += ", "
-		}
-		query += "set_config('role', '" + role + "', true)"
-	}
-	_, err = conn.Exec(gctx, "SELECT "+query)
-	if err != nil {
-		return err
-	}
-	return nil
+	return conn, nil
+}
+
+func ReleaseContext(ctx context.Context) {
+	gi := GetGreenContext(ctx)
+	ReleaseConnection(ctx, gi.Conn)
 }
 
 // func WithGreenContext(parent context.Context, gctx *gin.Context) context.Context {
@@ -80,12 +76,8 @@ func WithDb(parent context.Context, db *Database) context.Context {
 	defaltBuilder := DirectQueryBuilder{}
 
 	//lint:ignore SA1029 should not use built-in type string as key for value; define your own type to avoid collisions
-	return context.WithValue(parent, greenTag, &GreenContext{nil, conn, db, defaultParser, queryOptions, defaltBuilder})
-}
-
-func ReleaseContext(ctx context.Context) {
-	gi := GetGreenContext(ctx)
-	gi.Conn.Release()
+	return context.WithValue(parent, greenTag,
+		&GreenContext{nil, db, conn, defaultParser, defaltBuilder, queryOptions})
 }
 
 func GetConn(ctx context.Context) *pgxpool.Conn {
