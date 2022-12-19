@@ -92,7 +92,7 @@ func (e *ParseError) Error() string { return e.msg }
 // 	"select", "order", "limit", "offset", "not", "and", "or",
 // }
 
-// From https://github.com/PostgREST/postgrest/blob/v9.0.0/src/PostgREST/Query/SqlFragment.hs
+// From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
 var postgRestParserOperators = map[string]string{
 	"eq":     "=",
 	"gte":    ">=",
@@ -222,6 +222,8 @@ func (p *PostgRestParser) reset() {
 }
 
 // General grammar:
+// (should see this, discovered later:
+// https://github.com/PostgREST/postgrest-docs/issues/228#issuecomment-346981443)
 //
 // Filter := Select | Order | Limit | Offset | Where
 //

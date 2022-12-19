@@ -3,13 +3,13 @@ package database
 import "context"
 
 type Role struct {
-	Name                string
-	IsSuperUSer         bool
-	CanLogin            bool
-	NoInheritPrivileges bool
-	CanCreateRoles      bool
-	CanCreateDatabase   bool
-	CanBypassRLS        bool
+	Name                string `json:"name"`
+	IsSuperUSer         bool   `json:"issuperuser"`
+	CanLogin            bool   `json:"canlogin"`
+	NoInheritPrivileges bool   `json:"noinherit"`
+	CanCreateRoles      bool   `json:"cancreateroles"`
+	CanCreateDatabases  bool   `json:"cancreatedatabases"`
+	CanBypassRLS        bool   `json:"canbypassrls"`
 }
 
 const rolesQuery = `SELECT 
@@ -27,7 +27,7 @@ func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	role := Role{}
 	for rows.Next() {
 		err := rows.Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	role := &Role{}
 	err := dbe.pool.QueryRow(ctx, rolesQuery+" WHERE rolename = $1", name).
 		Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabase, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 	if role.CanCreateRoles {
 		create += " CREATEROLE"
 	}
-	if role.CanCreateDatabase {
+	if role.CanCreateDatabases {
 		create += " CREATEDB"
 	}
 	if role.CanBypassRLS {
