@@ -1,34 +1,35 @@
-package main
+package postgrest
 
 import (
+	"green/green-ds/test"
 	"testing"
 )
 
 func TestPostgREST_JSON(t *testing.T) {
 
-	tests := []Test{
+	tests := []test.Test{
 		//	context "Shaping response with select parameter" $ do
 		// 	it "obtains a json subfield one level with casting" $
 		// 	get "/complex_items?id=eq.1&select=settings->>foo::json" `shouldRespondWith`
 		// 		[json| [{"foo":{"int":1,"bar":"baz"}}] |] -- the value of foo here is of type "text"
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"obtains a json subfield one level with casting",
-			"/complex_items?id=eq.1&select=settings->>foo::json",
-			`[{"foo":{"int":1,"bar":"baz"}}]`,
-			nil,
-			200,
+			Description: "obtains a json subfield one level with casting",
+			Query:       "/complex_items?id=eq.1&select=settings->>foo::json",
+			Expected:    `[{"foo":{"int":1,"bar":"baz"}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "renames json subfield one level with casting" $
 		// 	get "/complex_items?id=eq.1&select=myFoo:settings->>foo::json" `shouldRespondWith`
 		// 		[json| [{"myFoo":{"int":1,"bar":"baz"}}] |] -- the value of foo here is of type "text"
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"renames json subfield one level with casting",
-			"/complex_items?id=eq.1&select=myFoo:settings->>foo::json",
-			`[{"myFoo":{"int":1,"bar":"baz"}}]`,
-			nil,
-			200,
+			Description: "renames json subfield one level with casting",
+			Query:       "/complex_items?id=eq.1&select=myFoo:settings->>foo::json",
+			Expected:    `[{"myFoo":{"int":1,"bar":"baz"}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "fails on bad casting (data of the wrong format)" $
 		// 	get "/complex_items?select=settings->foo->>bar::integer"
@@ -45,44 +46,44 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| [{"bar":"baz"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"obtains a json subfield two levels (string)",
-			"/complex_items?id=eq.1&select=settings->foo->>bar",
-			`[{"bar":"baz"}]`,
-			nil,
-			200,
+			Description: "obtains a json subfield two levels (string)",
+			Query:       "/complex_items?id=eq.1&select=settings->foo->>bar",
+			Expected:    `[{"bar":"baz"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "renames json subfield two levels (string)" $
 		// 	get "/complex_items?id=eq.1&select=myBar:settings->foo->>bar" `shouldRespondWith`
 		// 		[json| [{"myBar":"baz"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"renames json subfield two levels (string)",
-			"/complex_items?id=eq.1&select=myBar:settings->foo->>bar",
-			`[{"myBar":"baz"}]`,
-			nil,
-			200,
+			Description: "renames json subfield two levels (string)",
+			Query:       "/complex_items?id=eq.1&select=myBar:settings->foo->>bar",
+			Expected:    `[{"myBar":"baz"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "obtains a json subfield two levels with casting (int)" $
 		// 	get "/complex_items?id=eq.1&select=settings->foo->>int::integer" `shouldRespondWith`
 		// 		[json| [{"int":1}] |] -- the value in the db is an int, but here we expect a string for now
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"obtains a json subfield two levels with casting (int)",
-			"/complex_items?id=eq.1&select=settings->foo->>int::integer",
-			`[{"int":1}]`,
-			nil,
-			200,
+			Description: "obtains a json subfield two levels with casting (int)",
+			Query:       "/complex_items?id=eq.1&select=settings->foo->>int::integer",
+			Expected:    `[{"int":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "renames json subfield two levels with casting (int)" $
 		// 	get "/complex_items?id=eq.1&select=myInt:settings->foo->>int::integer" `shouldRespondWith`
 		// 		[json| [{"myInt":1}] |] -- the value in the db is an int, but here we expect a string for now
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"renames json subfield two levels with casting (int)",
-			"/complex_items?id=eq.1&select=myInt:settings->foo->>int::integer",
-			`[{"myInt":1}]`,
-			nil,
-			200,
+			Description: "renames json subfield two levels with casting (int)",
+			Query:       "/complex_items?id=eq.1&select=myInt:settings->foo->>int::integer",
+			Expected:    `[{"myInt":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	-- TODO the status code for the error is 404, this is because 42883 represents undefined function
 		// 	-- this works fine for /rpc/unexistent requests, but for this case a 500 seems more appropriate
@@ -117,118 +118,118 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		get "/json_arr?select=data->>0::int&id=in.(1,2)" `shouldRespondWith`
 		// 		[json| [{"data":1}, {"data":4}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can get array of ints and alias/cast it",
+			Query:       "/json_arr?select=data->>0::int&id=in.(1,2)",
+			Expected:    `[{"data":1},{"data":4}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 		get "/json_arr?select=idx0:data->>0::int,idx1:data->>1::int&id=in.(1,2)" `shouldRespondWith`
 		// 		[json| [{"idx0":1,"idx1":2}, {"idx0":4,"idx1":5}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can get array of ints and alias/cast it",
-			"/json_arr?select=data->>0::int&id=in.(1,2)",
-			`[{"data":1},{"data":4}]`,
-			nil,
-			200,
-		},
-		{
-			"can get array of ints and alias/cast it",
-			"/json_arr?select=idx0:data->>0::int,idx1:data->>1::int&id=in.(1,2)",
-			`[{"idx0":1,"idx1":2},{"idx0":4,"idx1":5}]`,
-			nil,
-			200,
+			Description: "can get array of ints and alias/cast it",
+			Query:       "/json_arr?select=idx0:data->>0::int,idx1:data->>1::int&id=in.(1,2)",
+			Expected:    `[{"idx0":1,"idx1":2},{"idx0":4,"idx1":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can get nested array of ints" $ do
 		// 		get "/json_arr?select=data->0->>1::int&id=in.(3,4)" `shouldRespondWith`
 		// 		[json| [{"data":8}, {"data":7}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can get nested array of ints",
+			Query:       "/json_arr?select=data->0->>1::int&id=in.(3,4)",
+			Expected:    `[{"data":8},{"data":7}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 		get "/json_arr?select=data->0->0->>1::int&id=in.(3,4)" `shouldRespondWith`
 		// 		[json| [{"data":null}, {"data":6}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can get nested array of ints",
-			"/json_arr?select=data->0->>1::int&id=in.(3,4)",
-			`[{"data":8},{"data":7}]`,
-			nil,
-			200,
-		},
-		{
-			"can get nested array of ints",
-			"/json_arr?select=data->0->0->>1::int&id=in.(3,4)",
-			`[{"data":null},{"data":6}]`,
-			nil,
-			200,
+			Description: "can get nested array of ints",
+			Query:       "/json_arr?select=data->0->0->>1::int&id=in.(3,4)",
+			Expected:    `[{"data":null},{"data":6}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can get array of objects" $ do
 		// 		get "/json_arr?select=data->0->>a&id=in.(5,6)" `shouldRespondWith`
 		// 		[json| [{"a":"A"}, {"a":"[1, 2, 3]"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can get array of objects",
+			Query:       "/json_arr?select=data->0->>a&id=in.(5,6)",
+			Expected:    `[{"a":"A"},{"a":"[1,2,3]"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 		get "/json_arr?select=data->0->a->>2&id=in.(5,6)" `shouldRespondWith`
 		// 		[json| [{"a":null}, {"a":"3"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can get array of objects",
-			"/json_arr?select=data->0->>a&id=in.(5,6)",
-			`[{"a":"A"},{"a":"[1,2,3]"}]`,
-			nil,
-			200,
-		},
-		{
-			"can get array of objects",
-			"/json_arr?select=data->0->a->>2&id=in.(5,6)",
-			`[{"a":null},{"a":"3"}]`,
-			nil,
-			200,
+			Description: "can get array of objects",
+			Query:       "/json_arr?select=data->0->a->>2&id=in.(5,6)",
+			Expected:    `[{"a":null},{"a":"3"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can get array in object keys" $ do
 		// 		get "/json_arr?select=data->c->>0::json&id=in.(7,8)" `shouldRespondWith`
 		// 		[json| [{"c":1}, {"c":{"d": [4,5,6,7,8]}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can get array in object keys",
+			Query:       "/json_arr?select=data->c->>0::json&id=in.(7,8)",
+			Expected:    `[{"c":1},{"c":{"d": [4,5,6,7,8]}}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 		get "/json_arr?select=data->c->0->d->>4::int&id=in.(7,8)" `shouldRespondWith`
 		// 		[json| [{"d":null}, {"d":8}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can get array in object keys",
-			"/json_arr?select=data->c->>0::json&id=in.(7,8)",
-			`[{"c":1},{"c":{"d": [4,5,6,7,8]}}]`,
-			nil,
-			200,
-		},
-		{
-			"can get array in object keys",
-			"/json_arr?select=data->c->0->d->>4::int&id=in.(7,8)",
-			`[{"d":null},{"d":8}]`,
-			nil,
-			200,
+			Description: "can get array in object keys",
+			Query:       "/json_arr?select=data->c->0->d->>4::int&id=in.(7,8)",
+			Expected:    `[{"d":null},{"d":8}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "only treats well formed numbers as indexes" $
 		// 		get "/json_arr?select=data->0->0xy1->1->23-xy-45->1->xy-6->>0::int&id=eq.9" `shouldRespondWith`
 		// 		[json| [{"xy-6":3}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"only treats well formed numbers as indexes",
-			"/json_arr?select=data->0->0xy1->1->23-xy-45->1->xy-6->>0::int&id=eq.9",
-			`[{"xy-6":3}]`,
-			nil,
-			200,
+			Description: "only treats well formed numbers as indexes",
+			Query:       "/json_arr?select=data->0->0xy1->1->23-xy-45->1->xy-6->>0::int&id=eq.9",
+			Expected:    `[{"xy-6":3}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	context "finishing json path with single arrow ->" $ do
 		// 	it "works when finishing with a key" $ do
 		// 		get "/json_arr?select=data->c&id=in.(7,8)" `shouldRespondWith`
 		// 		[json| [{"c":[1,2,3]}, {"c":[{"d": [4,5,6,7,8]}]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when finishing with a key",
+			Query:       "/json_arr?select=data->c&id=in.(7,8)",
+			Expected:    `[{"c":[1,2,3]},{"c":[{"d": [4,5,6,7,8]}]}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 		get "/json_arr?select=data->0->a&id=in.(5,6)" `shouldRespondWith`
 		// 		[json| [{"a":"A"}, {"a":[1,2,3]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"works when finishing with a key",
-			"/json_arr?select=data->c&id=in.(7,8)",
-			`[{"c":[1,2,3]},{"c":[{"d": [4,5,6,7,8]}]}]`,
-			nil,
-			200,
-		},
-		{
-			"works when finishing with a key",
-			"/json_arr?select=data->0->a&id=in.(5,6)",
-			`[{"a":"A"},{"a":[1,2,3]}]`,
-			nil,
-			200,
+			Description: "works when finishing with a key",
+			Query:       "/json_arr?select=data->0->a&id=in.(5,6)",
+			Expected:    `[{"a":"A"},{"a":[1,2,3]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "works when finishing with an index" $ do
 		// 		get "/json_arr?select=data->0->a&id=in.(5,6)" `shouldRespondWith`
@@ -291,53 +292,53 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| [{"data": {"id": 1, "foo": {"bar": "baz"}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter by properties inside json column",
-			"/json_table?data->foo->>bar=eq.baz",
-			`[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
-			nil,
-			200,
+			Description: "can filter by properties inside json column",
+			Query:       "/json_table?data->foo->>bar=eq.baz",
+			Expected:    `[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/json_table?data->foo->>bar=eq.fake" `shouldRespondWith`
 		// 		[json| [] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter by properties inside json column",
-			"/json_table?data->foo->>bar=eq.fake",
-			`[]`,
-			nil,
-			200,
+			Description: "can filter by properties inside json column",
+			Query:       "/json_table?data->foo->>bar=eq.fake",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can filter by properties inside json column using not" $
 		// 	get "/json_table?data->foo->>bar=not.eq.baz" `shouldRespondWith`
 		// 		[json| [] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter by properties inside json column using not",
-			"/json_table?data->foo->>bar=not.eq.baz",
-			`[]`,
-			nil,
-			200,
+			Description: "can filter by properties inside json column using not",
+			Query:       "/json_table?data->foo->>bar=not.eq.baz",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can filter by properties inside json column using ->>" $
 		// 	get "/json_table?data->>id=eq.1" `shouldRespondWith`
 		// 		[json| [{"data": {"id": 1, "foo": {"bar": "baz"}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter by properties inside json column using ->>",
-			"/json_table?data->>id=eq.1",
-			`[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
-			nil,
-			200,
+			Description: "can filter by properties inside json column using ->>",
+			Query:       "/json_table?data->>id=eq.1",
+			Expected:    `[{"data":{"foo":{"bar":"baz"},"id":1}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can be filtered with and/or" $
 		// 	get "/grandchild_entities?or=(jsonb_col->a->>b.eq.foo, jsonb_col->>b.eq.bar)&select=id" `shouldRespondWith`
 		// 		[json|[{id: 4}, {id: 5}]|] { matchStatus = 200, matchHeaders = [matchContentTypeJson] }
 		{
-			"can be filtered with and/or",
-			"/grandchild_entities?or=(jsonb_col->a->>b.eq.foo,jsonb_col->>b.eq.bar)&select=id",
-			`[{"id":4},{"id":5}]`,
-			nil,
-			200,
+			Description: "can be filtered with and/or",
+			Query:       "/grandchild_entities?or=(jsonb_col->a->>b.eq.foo,jsonb_col->>b.eq.bar)&select=id",
+			Expected:    `[{"id":4},{"id":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can filter by array indexes" $ do
 		// 	get "/json_arr?select=data&data->>0=eq.1" `shouldRespondWith`
@@ -358,41 +359,41 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| [{"id":4,"data":{"e": 1}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter jsonb",
-			"/jsonb_test?data=eq.{\"e\":1}",
-			`[{"id":4,"data":{"e": 1}}]`,
-			nil,
-			200,
+			Description: "can filter jsonb",
+			Query:       "/jsonb_test?data=eq.{\"e\":1}",
+			Expected:    `[{"id":4,"data":{"e": 1}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/jsonb_test?data->a=eq.{\"b\":2}" `shouldRespondWith`
 		// 		[json| [{"id":1,"data":{"a": {"b": 2}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter jsonb",
-			"/jsonb_test?data->a=eq.{\"b\":2}",
-			`[{"id":1,"data":{"a": {"b": 2}}}]`,
-			nil,
-			200,
+			Description: "can filter jsonb",
+			Query:       "/jsonb_test?data->a=eq.{\"b\":2}",
+			Expected:    `[{"id":1,"data":{"a": {"b": 2}}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/jsonb_test?data->c=eq.[1,2,3]" `shouldRespondWith`
 		// 		[json| [{"id":2,"data":{"c": [1, 2, 3]}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter jsonb",
-			"/jsonb_test?data->c=eq.[1,2,3]",
-			`[{"id":2,"data":{"c": [1, 2, 3]}}]`,
-			nil,
-			200,
+			Description: "can filter jsonb",
+			Query:       "/jsonb_test?data->c=eq.[1,2,3]",
+			Expected:    `[{"id":2,"data":{"c": [1, 2, 3]}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/jsonb_test?data->0=eq.{\"d\":\"test\"}" `shouldRespondWith`
 		// 		[json| [{"id":3,"data":[{"d": "test"}]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can filter jsonb",
-			"/jsonb_test?data->0=eq.{\"d\":\"test\"}",
-			`[{"id":3,"data":[{"d": "test"}]}]`,
-			nil,
-			200,
+			Description: "can filter jsonb",
+			Query:       "/jsonb_test?data->0=eq.{\"d\":\"test\"}",
+			Expected:    `[{"id":3,"data":[{"d": "test"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 
 		// 	it "can filter composite type field" $
@@ -420,11 +421,11 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| [{"data": {"id": 0}}, {"data": {"id": 1, "foo": {"bar": "baz"}}}, {"data": {"id": 3}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"orders by a json column property asc",
-			"/json_table?order=data->>id.asc",
-			`[{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}},{"data":{"id":3}}]`,
-			nil,
-			200,
+			Description: "orders by a json column property asc",
+			Query:       "/json_table?order=data->>id.asc",
+			Expected:    `[{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}},{"data":{"id":3}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 
 		// 	it "orders by a json column with two level property nulls first" $
@@ -432,11 +433,11 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| [{"data": {"id": 3}}, {"data": {"id": 0}}, {"data": {"id": 1, "foo": {"bar": "baz"}}}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"orders by a json column with two level property nulls first",
-			"/json_table?order=data->foo->>bar.nullsfirst",
-			`[{"data":{"id":3}},{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}}]`,
-			nil,
-			200,
+			Description: "orders by a json column with two level property nulls first",
+			Query:       "/json_table?order=data->foo->>bar.nullsfirst",
+			Expected:    `[{"data":{"id":3}},{"data":{"id":0}},{"data":{"foo":{"bar":"baz"},"id":1}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 
 		// 	it "orders by composite type field" $ do
@@ -519,5 +520,5 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		{ matchStatus = 400, matchHeaders = [matchContentTypeJson] }
 	}
 
-	executeTests(t, tests)
+	test.Execute(t, testConfig, tests)
 }

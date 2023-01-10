@@ -38,6 +38,12 @@ func parseAuthHeader(tokenString string, secret string) (*Auth, error) {
 	}
 }
 
+func GenerateToken(role, secret string) (string, error) {
+	auth := &Auth{Role: role}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth)
+	return token.SignedString([]byte(secret))
+}
+
 func (server *Server) authenticate(c *gin.Context, tokenString string) *Session {
 	var auth *Auth
 	var session *Session
@@ -91,6 +97,7 @@ func (server *Server) authMiddleware() gin.HandlerFunc {
 			} else if session.Token != tokenString {
 				c.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
 				//c.JSON(http.StatusUnauthorized, gin.H{"description": errors.New("jwt mismatch")})
+				server.sessionManager.leaveSession(session)
 				return
 			}
 		}
@@ -103,10 +110,17 @@ func (server *Server) authMiddleware() gin.HandlerFunc {
 			c.AbortWithError(500, err)
 			return
 		}
-		session.DbConn = conn
+		db := database.GetDb(c)
+		if db != nil {
+			// Cache the database connection (excluding dbe connections)
+			session.DbConn = conn
+		}
 
 		c.Next()
 
 		server.sessionManager.leaveSession(session)
+		if db == nil {
+			database.ReleaseConnection(c, conn, false)
+		}
 	}
 }

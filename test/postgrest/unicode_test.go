@@ -1,22 +1,23 @@
-package main
+package postgrest
 
 import (
+	"green/green-ds/test"
 	"testing"
 )
 
 func TestPostgREST_Unicode(t *testing.T) {
 
-	tests := []Test{
+	tests := []test.Test{
 		// 	describe "Reading and writing to unicode schema and table names" $
 		// it "Can read and write values" $ do
 		//   get "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF"
 		//     `shouldRespondWith` "[]"
 		{
-			"Can read and write values",
-			"/%D9%85%D9%88%D8%A7%D8%B1%D8%AF",
-			`[]`,
-			nil,
-			200,
+			Description: "Can read and write values",
+			Query:       "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   request methodPost "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF"
 		//       [("Prefer", "tx=commit"), ("Prefer", "return=representation")]
@@ -39,5 +40,5 @@ func TestPostgREST_Unicode(t *testing.T) {
 		//       }
 	}
 
-	executeTests(t, tests)
+	test.Execute(t, testConfig, tests)
 }

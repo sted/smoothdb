@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"green/green-ds/database"
+	"green/green-ds/logging"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -23,11 +24,13 @@ type SessionManager struct {
 	CurrentID uint64
 	Sessions  map[string]*Session
 	mtx       sync.RWMutex
+	logger    *logging.Logger
 }
 
 func (s *Server) initSessionManager() {
 	sm := &s.sessionManager
 	sm.Sessions = map[string]*Session{}
+	sm.logger = s.Logger
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -41,14 +44,21 @@ func (s *Server) initSessionManager() {
 				if s.InUse.Load() {
 					continue
 				}
-				// Here twe have a session not in use, which cannot be used now
+				// Here we have a session not in use, which cannot be used now
 				// because we hold a W lock on the session manager and making
 				// the session usable requires an R lock
+
 				if now.Sub(s.LastUsedAt) > 5*time.Second {
+
+					// Delete the session
 					delete(sm.Sessions, k)
+
 				} else if now.Sub(s.LastUsedAt) > 1*time.Second {
 					if s.DbConn != nil {
-						database.ReleaseConnection(context.Background(), s.DbConn)
+
+						// Release and detach the database connection from the session
+						// (Acquire and attach are done in the auth middleware)
+						database.ReleaseConnection(context.Background(), s.DbConn, true)
 						s.DbConn = nil
 					}
 				}
@@ -73,6 +83,7 @@ func (s *SessionManager) newSession(auth *Auth) *Session {
 	session.InUse.Store(true)
 	session.LastUsedAt = now
 	s.Sessions[session.Id] = session
+	s.logger.Trace().Str("session", session.Id).Msg("New session")
 	return session
 }
 
@@ -87,6 +98,7 @@ func (s *SessionManager) getSession(sessionId string) *Session {
 	if !swapped {
 		return nil
 	}
+	s.logger.Trace().Str("session", sessionId).Msg("get session")
 	return session
 }
 
@@ -99,5 +111,6 @@ func (s *SessionManager) leaveSession(session *Session) bool {
 		return false
 	}
 	session.LastUsedAt = now
+	s.logger.Trace().Str("session", session.Id).Msg("leave session")
 	return true
 }

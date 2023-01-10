@@ -15,6 +15,7 @@ type GreenContext struct {
 	GinContext    *gin.Context
 	Db            *Database
 	Conn          *DbConn
+	Role          string
 	RequestParser RequestParser
 	QueryBuilder  QueryBuilder
 	QueryOptions  *QueryOptions
@@ -44,16 +45,17 @@ func FillContext(gctx *gin.Context, role string, oldconn *DbConn) (*DbConn, erro
 
 	gctx.Set(greenTag, &GreenContext{
 		gctx,
-		db, conn,
+		db, conn, role,
 		defaultParser, defaultBuilder, queryOptions,
 	})
 
 	return conn, nil
 }
 
+// It is used for testing
 func ReleaseContext(ctx context.Context) {
 	gi := GetGreenContext(ctx)
-	ReleaseConnection(ctx, gi.Conn)
+	ReleaseConnection(ctx, gi.Conn, true)
 }
 
 // func WithGreenContext(parent context.Context, gctx *gin.Context) context.Context {
@@ -65,7 +67,11 @@ func ReleaseContext(ctx context.Context) {
 // }
 
 func GetGreenContext(ctx context.Context) *GreenContext {
-	return ctx.Value(greenTag).(*GreenContext)
+	v := ctx.Value(greenTag)
+	if v == nil {
+		return nil
+	}
+	return v.(*GreenContext)
 }
 
 func WithDb(parent context.Context, db *Database) context.Context {
@@ -77,7 +83,7 @@ func WithDb(parent context.Context, db *Database) context.Context {
 
 	//lint:ignore SA1029 should not use built-in type string as key for value; define your own type to avoid collisions
 	return context.WithValue(parent, greenTag,
-		&GreenContext{nil, db, conn, defaultParser, defaltBuilder, queryOptions})
+		&GreenContext{nil, db, conn, "", defaultParser, defaltBuilder, queryOptions})
 }
 
 func GetConn(ctx context.Context) *pgxpool.Conn {

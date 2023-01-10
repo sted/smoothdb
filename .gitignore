@@ -3,3 +3,6 @@ test.rest
 ISSUES.md
 config.json
 __debug_bin
+green-ds*.log
+
+dist/

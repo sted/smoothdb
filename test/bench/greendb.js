@@ -6,7 +6,7 @@ export const options = {
 
 export default function() {
     
-    const url = "http://localhost:8081/databases/pgrest/projects?select=id,name,clients(*)";
+    const url = "http://localhost:8081/pgrest/projects?select=id,name,clients(*)";
 
     const params = {
         headers: {

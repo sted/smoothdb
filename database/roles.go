@@ -3,22 +3,28 @@ package database
 import "context"
 
 type Role struct {
-	Name                string `json:"name"`
-	IsSuperUSer         bool   `json:"issuperuser"`
-	CanLogin            bool   `json:"canlogin"`
-	NoInheritPrivileges bool   `json:"noinherit"`
-	CanCreateRoles      bool   `json:"cancreateroles"`
-	CanCreateDatabases  bool   `json:"cancreatedatabases"`
-	CanBypassRLS        bool   `json:"canbypassrls"`
+	Name                string   `json:"name"`
+	IsSuperUSer         bool     `json:"issuperuser"`
+	CanLogin            bool     `json:"canlogin"`
+	NoInheritPrivileges bool     `json:"noinherit"`
+	CanCreateRoles      bool     `json:"cancreateroles"`
+	CanCreateDatabases  bool     `json:"cancreatedatabases"`
+	CanBypassRLS        bool     `json:"canbypassrls"`
+	MemberOf            []string `json:"memberof"`
 }
 
-const rolesQuery = `SELECT 
-rolname, rolsuper, rolcanlogin, NOT rolinherit, rolcreaterole, rolcreatedb, rolbypassrls
-FROM pg_roles`
+const rolesQuery = `SELECT r.rolname, r.rolsuper, r.rolcanlogin, NOT r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls,
+ARRAY(SELECT b.rolname
+	FROM pg_catalog.pg_auth_members m
+	JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
+	WHERE m.member = r.oid) as memberof
+FROM pg_catalog.pg_roles r`
 
 func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
+	conn := GetConn(ctx)
 	roles := []Role{}
-	rows, err := dbe.pool.Query(ctx, rolesQuery)
+	query := rolesQuery + ` WHERE r.rolname !~ '^pg_' ORDER BY 1`
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return roles, err
 	}
@@ -27,7 +33,7 @@ func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	role := Role{}
 	for rows.Next() {
 		err := rows.Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS, &role.MemberOf)
 		if err != nil {
 			return nil, err
 		}
@@ -41,10 +47,11 @@ func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 }
 
 func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
+	conn := GetConn(ctx)
 	role := &Role{}
-	err := dbe.pool.QueryRow(ctx, rolesQuery+" WHERE rolename = $1", name).
+	err := conn.QueryRow(ctx, rolesQuery+" WHERE r.rolname = $1", name).
 		Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
-			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS)
+			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS, &role.MemberOf)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +59,7 @@ func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 }
 
 func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
+	conn := GetConn(ctx)
 	create := "CREATE ROLE " + role.Name
 	if role.IsSuperUSer {
 		create += " SUPERUSER"
@@ -71,7 +79,7 @@ func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 	if role.CanBypassRLS {
 		create += " BYPASSRLS"
 	}
-	_, err := dbe.pool.Exec(ctx, create)
+	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +87,7 @@ func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 }
 
 func (dbe *DbEngine) DeleteRole(ctx context.Context, name string) error {
-	_, err := dbe.pool.Exec(ctx, "DROP ROLE "+name)
+	conn := GetConn(ctx)
+	_, err := conn.Exec(ctx, "DROP ROLE "+name)
 	return err
 }

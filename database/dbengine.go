@@ -3,20 +3,25 @@ package database
 import (
 	"context"
 	"fmt"
-	"green/green-ds/config"
 	"sync"
 	"time"
 
+	"green/green-ds/logging"
+
+	zerologadapter "github.com/jackc/pgx-zerolog"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/tracelog"
 )
 
 var DBE *DbEngine
 
 // DbEngine represents a database instance (a "cluster")
 type DbEngine struct {
-	config           *config.Database
+	config           *Config
 	pool             *pgxpool.Pool
+	logger           pgx.QueryTracer
 	activeDatabases  sync.Map
 	allowedDatabases map[string]struct{}
 	exec             *QueryExecutor
@@ -24,32 +29,49 @@ type DbEngine struct {
 }
 
 // InitDbEngine creates a connection pool, connects to the engine and initializes it
-func InitDbEngine(config *config.Database) (*DbEngine, error) {
+func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	context := context.Background()
-	pool, err := pgxpool.New(context, config.URL)
+
+	DBE = &DbEngine{config: dbConfig, exec: &QueryExecutor{}}
+
+	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
-		return nil, fmt.Errorf("cannot connect with %q (%w)", config.URL, err)
+		return nil, err
 	}
-	DBE = &DbEngine{config: config, pool: pool, allowedDatabases: nil, exec: &QueryExecutor{}}
-	if len(config.AllowedDatabases) != 0 {
+	if logger != nil {
+		DBE.logger = &tracelog.TraceLog{
+			Logger:   zerologadapter.NewLogger(*logger.Logger),
+			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
+		}
+		poolConfig.ConnConfig.Tracer = DBE.logger
+	}
+
+	// Create DBE connection pool
+	pool, err := pgxpool.NewWithConfig(context, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect with %q (%w)", dbConfig.URL, err)
+	}
+	DBE.pool = pool
+
+	if len(dbConfig.AllowedDatabases) != 0 {
 		DBE.allowedDatabases = map[string]struct{}{}
-		for _, db := range config.AllowedDatabases {
+		for _, db := range dbConfig.AllowedDatabases {
 			DBE.allowedDatabases[db] = struct{}{}
 		}
 	}
-	if len(config.SchemaSearchPath) != 0 {
-		DBE.defaultSchema = config.SchemaSearchPath[0]
+	if len(dbConfig.SchemaSearchPath) != 0 {
+		DBE.defaultSchema = dbConfig.SchemaSearchPath[0]
 	}
 	// Auth role
-	if config.AuthRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+config.AuthRole+" NOINHERIT;")
+	if dbConfig.AuthRole != "" {
+		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" NOINHERIT;")
 		if err != nil && err.(*pgconn.PgError).Code != "42710" {
 			return nil, err
 		}
 	}
 	// Anon role
-	if config.AnonRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+config.AnonRole+" NOLOGIN")
+	if dbConfig.AnonRole != "" {
+		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AnonRole+" NOLOGIN")
 		if err != nil && err.(*pgconn.PgError).Code != "42710" {
 			return nil, err
 		}
@@ -86,8 +108,9 @@ const databaseQuery = `
 	WHERE datistemplate = false`
 
 func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]Database, error) {
+	conn := GetConn(ctx)
 	databases := []Database{}
-	rows, err := dbe.pool.Query(ctx, databaseQuery)
+	rows, err := conn.Query(ctx, databaseQuery)
 	if err != nil {
 		return databases, err
 	}
@@ -146,15 +169,15 @@ func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*Database
 }
 
 func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
-	db, err := dbe.GetDatabase(ctx, name)
-	if err != nil {
-		return err
-	}
-	db.pool.Close()
+	// db, err := dbe.GetDatabase(ctx, name)
+	// if err != nil {
+	// 	return err
+	// }
+	//db.pool.Close()
 	// SELECT pg_terminate_backend(pg_stat_activity.pid)
 	// FROM pg_stat_activity
 	// WHERE pg_stat_activity.datname = 'target_db'
 	// AND pid <> pg_backend_pid();
-	_, err = dbe.pool.Exec(ctx, "DROP DATABASE "+name)
+	_, err := dbe.pool.Exec(ctx, "DROP DATABASE "+name+" (FORCE)")
 	return err
 }

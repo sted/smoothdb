@@ -5,21 +5,28 @@ import (
 )
 
 type Policy struct {
-	Name       string
-	Table      string
-	Retrictive bool
-	Command    string
-	Roles      []string
-	Using      string
-	Check      string
+	Name       string   `json:"name"`
+	Table      string   `json:"table"`
+	Retrictive bool     `json:"deny"`
+	Command    string   `json:"command"`
+	Roles      []string `json:"roles"`
+	Using      *string  `json:"using"`
+	Check      *string  `json:"check"`
 }
 
 const policyQuery = `
 	SELECT 
 		pol.polname name,
 		c.relnamespace::regnamespace  || '.' || c.relname tablename,
-		NOT pol.polpermissive restrictive,
-		pol.polcmd command,
+		NOT pol.polpermissive deny,
+		CASE pol.polcmd
+            WHEN 'r'::"char" THEN 'SELECT'::text
+            WHEN 'a'::"char" THEN 'INSERT'::text
+            WHEN 'w'::"char" THEN 'UPDATE'::text
+            WHEN 'd'::"char" THEN 'DELETE'::text
+            WHEN '*'::"char" THEN 'ALL'::text
+            ELSE NULL::text
+        END cmd,
 		CASE
 			WHEN pol.polroles = '{0}'::oid[] THEN string_to_array('public'::text, ''::text)::name[]
 			ELSE ARRAY( SELECT pg_authid.rolname
@@ -39,7 +46,7 @@ func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Polic
 	schemaname, tablename := splitTableName(ftablename)
 	query += " WHERE c.relname = '" + tablename + "' AND c.relnamespace::regnamespace = '" + schemaname + "'::regnamespace"
 
-	query += " ORDER BY tablename, type"
+	query += " ORDER BY tablename"
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -64,23 +71,25 @@ func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Polic
 
 func (db *Database) CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 	conn := GetConn(ctx)
-	create := "CREATE POLiCY " + policy.Name + " ON " + policy.Table
+	create := "CREATE POLICY " + policy.Name + " ON " + policy.Table
 	if policy.Retrictive {
 		create += " AS RESTRICTIVE"
 	}
 	create += " FOR " + policy.Command
-	create += " TO "
-	for i, role := range policy.Roles {
-		if i != 0 {
-			create += ", "
+	if len(policy.Roles) != 0 {
+		create += " TO "
+		for i, role := range policy.Roles {
+			if i != 0 {
+				create += ", "
+			}
+			create += role
 		}
-		create += role
 	}
-	if policy.Using != "" {
-		create += " USING (" + policy.Using + ")"
+	if policy.Using != nil {
+		create += " USING (" + *policy.Using + ")"
 	}
-	if policy.Check != "" {
-		create += " WITH CHECK (" + policy.Check + ")"
+	if policy.Check != nil {
+		create += " WITH CHECK (" + *policy.Check + ")"
 	}
 	_, err := conn.Exec(ctx, create)
 	if err != nil {

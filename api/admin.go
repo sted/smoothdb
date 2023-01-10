@@ -49,6 +49,44 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		}
 	})
 
+	// USERS
+
+	users := admin.Group("/users")
+
+	users.GET("/", func(c *gin.Context) {
+		users, _ := dbe.GetUsers(c)
+		c.JSON(http.StatusOK, users)
+	})
+
+	users.GET("/:username", func(c *gin.Context) {
+		name := c.Param("username")
+		db, err := dbe.GetUser(c, name)
+		if err == nil {
+			c.JSON(http.StatusOK, db)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	users.POST("/", func(c *gin.Context) {
+		var userInput database.User
+		c.BindJSON(&userInput)
+		role, err := dbe.CreateUser(c, &userInput)
+		if err == nil {
+			c.JSON(http.StatusCreated, role)
+		} else {
+			prepareInternalServerError(c, err)
+		}
+	})
+
+	users.DELETE("/:username", func(c *gin.Context) {
+		name := c.Param("username")
+		err := dbe.DeleteUser(c, name)
+		if err != nil {
+			prepareInternalServerError(c, err)
+		}
+	})
+
 	// DATABASES
 
 	databases := admin.Group("/databases")

@@ -1,344 +1,343 @@
-package main
+package postgrest
 
 import (
+	"green/green-ds/test"
 	"testing"
 )
 
 func TestPostgREST_Query(t *testing.T) {
 
-	tests := []Test{
+	tests := []test.Test{
 		//	describe "Filtering response" $ do
 		// it "matches with equality" $
 		//   get "/items?id=eq.5"
 		//     `shouldRespondWith` [json| [{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-0/*"] }
 		{
-			"matches with equality",
-			"/items?id=eq.5",
-			`[{"id":5}]`,
-			nil,
-			200,
+			Description: "matches with equality",
+			Query:       "/items?id=eq.5",
+			Expected:    `[{"id":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with equality using not operator" $
 		//   get "/items?id=not.eq.5&order=id"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-13/*"] }
 		{
-			"matches with equality using not operator",
-			"/items?id=not.eq.5&order=id",
-			`[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
-			nil,
-			200,
+			Description: "matches with equality using not operator",
+			Query:       "/items?id=not.eq.5&order=id",
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with more than one condition using not operator" $
 		//   get "/simple_pk?k=like.*yx&extra=not.eq.u" `shouldRespondWith` "[]"
 		{
-			"matches with more than one condition using not operator",
-			"/simple_pk?k=like.*yx&extra=not.eq.u",
-			`[]`,
-			nil,
-			200,
+			Description: "matches with more than one condition using not operator",
+			Query:       "/simple_pk?k=like.*yx&extra=not.eq.u",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with inequality using not operator" $ do
 		//   get "/items?id=not.lt.14&order=id.asc"
 		//     `shouldRespondWith` [json| [{"id":14},{"id":15}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-1/*"] }
+		{
+			Description: "matches with inequality using not operator",
+			Query:       "/items?id=not.lt.14&order=id.asc",
+			Expected:    `[{"id":14},{"id":15}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/items?id=not.gt.2&order=id.asc"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":2}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-1/*"] }
 		{
-			"matches with inequality using not operator",
-			"/items?id=not.lt.14&order=id.asc",
-			`[{"id":14},{"id":15}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with inequality using not operator",
-			"/items?id=not.gt.2&order=id.asc",
-			`[{"id":1},{"id":2}]`,
-			nil,
-			200,
+			Description: "matches with inequality using not operator",
+			Query:       "/items?id=not.gt.2&order=id.asc",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches items IN" $
 		//   get "/items?id=in.(1,3,5)"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":3},{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 		{
-			"matches items IN",
-			"/items?id=in.(1,3,5)",
-			`[{"id":1},{"id":3},{"id":5}]`,
-			nil,
-			200,
+			Description: "matches items IN",
+			Query:       "/items?id=in.(1,3,5)",
+			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches items NOT IN using not operator" $
 		//   get "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":3},{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 		{
-			"matches items NOT IN using not operator",
-			"/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)",
-			`[{"id":1},{"id":3},{"id":5}]`,
-			nil,
-			200,
+			Description: "matches items NOT IN using not operator",
+			Query:       "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)",
+			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches nulls using not operator" $
 		//   get "/no_pk?a=not.is.null" `shouldRespondWith`
 		//     [json| [{"a":"1","b":"0"},{"a":"2","b":"0"}] |]
 		//     { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches nulls using not operator",
-			"/no_pk?a=not.is.null",
-			`[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
-			nil,
-			200,
+			Description: "matches nulls using not operator",
+			Query:       "/no_pk?a=not.is.null",
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches nulls in varchar and numeric fields alike" $ do
 		//   get "/no_pk?a=is.null" `shouldRespondWith`
 		//     [json| [{"a": null, "b": null}] |]
+		{
+			Description: "matches nulls in varchar and numeric fields alike",
+			Query:       "/nullable_integer?a=is.null",
+			Expected:    `[{"a":null}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//     { matchHeaders = [matchContentTypeJson] }
 		//   get "/nullable_integer?a=is.null" `shouldRespondWith` [json|[{"a":null}]|]
 		{
-			"matches nulls in varchar and numeric fields alike",
-			"/no_pk?a=is.null",
-			`[{"a":null,"b":null}]`,
-			nil,
-			200,
-		},
-		{
-			"matches nulls in varchar and numeric fields alike",
-			"/nullable_integer?a=is.null",
-			`[{"a":null}]`,
-			nil,
-			200,
+			Description: "matches nulls in varchar and numeric fields alike",
+			Query:       "/no_pk?a=is.null",
+			Expected:    `[{"a":null,"b":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with trilean values" $ do
 		//   get "/chores?done=is.true" `shouldRespondWith`
 		//     [json| [{"id": 1, "name": "take out the garbage", "done": true }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "matches with trilean values",
+			Query:       "/chores?done=is.true",
+			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/chores?done=is.false" `shouldRespondWith`
 		//     [json| [{"id": 2, "name": "do the laundry", "done": false }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "matches with trilean values",
+			Query:       "/chores?done=is.false",
+			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/chores?done=is.unknown" `shouldRespondWith`
 		//     [json| [{"id": 3, "name": "wash the dishes", "done": null }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with trilean values",
-			"/chores?done=is.true",
-			`[{"id":1,"name":"take out the garbage","done":true}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with trilean values",
-			"/chores?done=is.false",
-			`[{"id":2,"name":"do the laundry","done":false}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with trilean values",
-			"/chores?done=is.unknown",
-			`[{"id":3,"name":"wash the dishes","done":null}]`,
-			nil,
-			200,
+			Description: "matches with trilean values",
+			Query:       "/chores?done=is.unknown",
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with trilean values in upper or mixed case" $ do
 		//   get "/chores?done=is.NULL" `shouldRespondWith`
 		//     [json| [{"id": 3, "name": "wash the dishes", "done": null }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "matches with trilean values in upper or mixed case",
+			Query:       "/chores?done=is.NULL",
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/chores?done=is.TRUE" `shouldRespondWith`
 		//     [json| [{"id": 1, "name": "take out the garbage", "done": true }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "matches with trilean values in upper or mixed case",
+			Query:       "/chores?done=is.TRUE",
+			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/chores?done=is.FAlSe" `shouldRespondWith`
 		//     [json| [{"id": 2, "name": "do the laundry", "done": false }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "matches with trilean values in upper or mixed case",
+			Query:       "/chores?done=is.FAlSe",
+			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/chores?done=is.UnKnOwN" `shouldRespondWith`
 		//     [json| [{"id": 3, "name": "wash the dishes", "done": null }] |]
 		//     { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with trilean values in upper or mixed case",
-			"/chores?done=is.NULL",
-			`[{"id":3,"name":"wash the dishes","done":null}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with trilean values in upper or mixed case",
-			"/chores?done=is.TRUE",
-			`[{"id":1,"name":"take out the garbage","done":true}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with trilean values in upper or mixed case",
-			"/chores?done=is.FAlSe",
-			`[{"id":2,"name":"do the laundry","done":false}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with trilean values in upper or mixed case",
-			"/chores?done=is.UnKnOwN",
-			`[{"id":3,"name":"wash the dishes","done":null}]`,
-			nil,
-			200,
+			Description: "matches with trilean values in upper or mixed case",
+			Query:       "/chores?done=is.UnKnOwN",
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "fails if 'is' used and there's no null or trilean value" $ do
 		//   get "/chores?done=is.nil" `shouldRespondWith` 400
+		{
+			Description: "fails if 'is' used and there's no null or trilean value",
+			Query:       "/chores?done=is.nil",
+			Expected:    "",
+			Headers:     nil,
+			Status:      400,
+		},
 		//   get "/chores?done=is.ok"  `shouldRespondWith` 400
 		{
-			"fails if 'is' used and there's no null or trilean value",
-			"/chores?done=is.nil",
-			"",
-			nil,
-			400,
-		},
-		{
-			"fails if 'is' used and there's no null or trilean value",
-			"/chores?done=is.ok",
-			"",
-			nil,
-			400,
+			Description: "fails if 'is' used and there's no null or trilean value",
+			Query:       "/chores?done=is.ok",
+			Expected:    "",
+			Headers:     nil,
+			Status:      400,
 		},
 		// it "matches with like" $ do
 		//   get "/simple_pk?k=like.*yx" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"}]|]
+		{
+			Description: "matches with like",
+			Query:       "/simple_pk?k=like.*yx",
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=like.xy*" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"}]|]
+		{
+			Description: "matches with like",
+			Query:       "/simple_pk?k=like.xy*",
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=like.*YY*" `shouldRespondWith`
 		//     [json|[{"k":"xYYx","extra":"v"}]|]
 		{
-			"matches with like",
-			"/simple_pk?k=like.*yx",
-			`[{"k":"xyyx","extra":"u"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with like",
-			"/simple_pk?k=like.xy*",
-			`[{"k":"xyyx","extra":"u"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with like",
-			"/simple_pk?k=like.*YY*",
-			`[{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with like",
+			Query:       "/simple_pk?k=like.*YY*",
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with like using not operator" $
 		//   get "/simple_pk?k=not.like.*yx" `shouldRespondWith`
 		//     [json|[{"k":"xYYx","extra":"v"}]|]
 		{
-			"matches with like using not operator",
-			"/simple_pk?k=not.like.*yx",
-			`[{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with like using not operator",
+			Query:       "/simple_pk?k=not.like.*yx",
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ilike" $ do
 		//   get "/simple_pk?k=ilike.xy*&order=extra.asc" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]|]
 		//     { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "matches with ilike",
+			Query:       "/simple_pk?k=ilike.xy*&order=extra.asc",
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=ilike.*YY*&order=extra.asc" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]|]
 		//     { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with ilike",
-			"/simple_pk?k=ilike.xy*&order=extra.asc",
-			`[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with ilike",
-			"/simple_pk?k=ilike.*YY*&order=extra.asc",
-			`[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with ilike",
+			Query:       "/simple_pk?k=ilike.*YY*&order=extra.asc",
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ilike using not operator" $
 		//   get "/simple_pk?k=not.ilike.xy*&order=extra.asc" `shouldRespondWith` "[]"
 		{
-			"matches with ilike using not operator",
-			"/simple_pk?k=not.ilike.xy*&order=extra.asc",
-			`[]`,
-			nil,
-			200,
+			Description: "matches with ilike using not operator",
+			Query:       "/simple_pk?k=not.ilike.xy*&order=extra.asc",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ~" $ do
 		//   get "/simple_pk?k=match.yx$" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"}]|]
+		{
+			Description: "matches with ~",
+			Query:       "/simple_pk?k=match.yx$",
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=match.^xy" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"}]|]
+		{
+			Description: "matches with ~",
+			Query:       "/simple_pk?k=match.^xy",
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=match.YY" `shouldRespondWith`
 		//     [json|[{"k":"xYYx","extra":"v"}]|]
 		{
-			"matches with ~",
-			"/simple_pk?k=match.yx$",
-			`[{"k":"xyyx","extra":"u"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with ~",
-			"/simple_pk?k=match.^xy",
-			`[{"k":"xyyx","extra":"u"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with ~",
-			"/simple_pk?k=match.YY",
-			`[{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with ~",
+			Query:       "/simple_pk?k=match.YY",
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ~ using not operator" $
 		//   get "/simple_pk?k=not.match.yx$" `shouldRespondWith`
 		//     [json|[{"k":"xYYx","extra":"v"}]|]
 		{
-			"matches with ~",
-			"/simple_pk?k=match.YY",
-			`[{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with ~",
+			Query:       "/simple_pk?k=match.YY",
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ~*" $ do
 		//   get "/simple_pk?k=imatch.^xy&order=extra.asc" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]|]
 		//     { matchHeaders = [matchContentTypeJson] }
+
+		{
+			Description: "matches with ~*",
+			Query:       "/simple_pk?k=imatch.^xy&order=extra.asc",
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   get "/simple_pk?k=imatch..*YY.*&order=extra.asc" `shouldRespondWith`
 		//     [json|[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]|]
 		//     { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with ~*",
-			"/simple_pk?k=imatch.^xy&order=extra.asc",
-			`[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
-		},
-		{
-			"matches with ~*",
-			"/simple_pk?k=imatch..*YY.*&order=extra.asc",
-			`[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
-			nil,
-			200,
+			Description: "matches with ~*",
+			Query:       "/simple_pk?k=imatch..*YY.*&order=extra.asc",
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "matches with ~* using not operator" $
 		//   get "/simple_pk?k=not.imatch.^xy&order=extra.asc" `shouldRespondWith` "[]"
 		{
-			"matches with ~* using not operator",
-			"/simple_pk?k=not.imatch.^xy&order=extra.asc",
-			`[]`,
-			nil,
-			200,
+			Description: "matches with ~* using not operator",
+			Query:       "/simple_pk?k=not.imatch.^xy&order=extra.asc",
+			Expected:    `[]`,
+			Headers:     nil,
+			Status:      200,
 		},
 
 		// describe "Full text search operator" $ do
@@ -347,22 +346,22 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	[json| [{"text_search_vector": "'fun':5 'imposs':9 'kind':3" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with to_tsquery",
-			"/tsearch?text_search_vector=fts.impossible",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
-			nil,
-			200,
+			Description: "finds matches with to_tsquery",
+			Query:       "/tsearch?text_search_vector=fts.impossible",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
 		//   get "/tsearch?text_search_vector=fts.fun%26possible" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
-			"/tsearch?text_search_vector=fts.fun%26possible",
-			`[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
-			nil,
-			200,
+			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch?text_search_vector=fts.fun%26possible",
+			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=fts.impossible%7Cpossible" `shouldRespondWith`
 		// 	[json| [
@@ -370,32 +369,32 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	{"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
-			"/tsearch?text_search_vector=fts.impossible%7Cpossible",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
-			nil,
-			200,
+			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch?text_search_vector=fts.impossible%7Cpossible",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=fts.fun%26!possible" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
-			"/tsearch?text_search_vector=fts.fun%26!possible",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
-			nil,
-			200,
+			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch?text_search_vector=fts.fun%26!possible",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "finds matches with plainto_tsquery" $
 		//   get "/tsearch?text_search_vector=plfts.The%20Fat%20Rats" `shouldRespondWith`
 		// 	[json| [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with plainto_tsquery",
-			"/tsearch?text_search_vector=plfts.The%20Fat%20Rats",
-			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
-			nil,
-			200,
+			Description: "finds matches with plainto_tsquery",
+			Query:       "/tsearch?text_search_vector=plfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// when (actualPgVersion >= pgVersion112) $ do
 		//   it "finds matches with websearch_to_tsquery" $
@@ -403,11 +402,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		  [json| [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with websearch_to_tsquery",
-			"/tsearch?text_search_vector=wfts.The%20Fat%20Rats",
-			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
-			nil,
-			200,
+			Description: "finds matches with websearch_to_tsquery",
+			Query:       "/tsearch?text_search_vector=wfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
 		// 	get "/tsearch?text_search_vector=wfts.fun%20and%20possible"
@@ -415,11 +414,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		[json| [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use boolean operators(and, or, -) in websearch_to_tsquery",
-			"/tsearch?text_search_vector=wfts.fun%20and%20possible",
-			`[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
-			nil,
-			200,
+			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch?text_search_vector=wfts.fun%20and%20possible",
+			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/tsearch?text_search_vector=wfts.impossible%20or%20possible"
 		// 	  `shouldRespondWith`
@@ -429,43 +428,43 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use boolean operators(and, or, -) in websearch_to_tsquery",
-			"/tsearch?text_search_vector=wfts.impossible%20or%20possible",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
-			nil,
-			200,
+			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch?text_search_vector=wfts.impossible%20or%20possible",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/tsearch?text_search_vector=wfts.fun%20and%20-possible"
 		// 	  `shouldRespondWith`
 		// 		[json| [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can use boolean operators(and, or, -) in websearch_to_tsquery",
-			"/tsearch?text_search_vector=wfts.fun%20and%20-possible",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
-			nil,
-			200,
+			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch?text_search_vector=wfts.fun%20and%20-possible",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "finds matches with different dictionaries" $ do
 		//   get "/tsearch?text_search_vector=fts(french).amusant" `shouldRespondWith`
 		// 	[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with different dictionaries",
-			"/tsearch?text_search_vector=fts(french).amusant",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
-			nil,
-			200,
+			Description: "finds matches with different dictionaries",
+			Query:       "/tsearch?text_search_vector=fts(french).amusant",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=plfts(french).amusant%20impossible" `shouldRespondWith`
 		// 	[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with different dictionaries",
-			"/tsearch?text_search_vector=plfts(french).amusant%20impossible",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
-			nil,
-			200,
+			Description: "finds matches with different dictionaries",
+			Query:       "/tsearch?text_search_vector=plfts(french).amusant%20impossible",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   when (actualPgVersion >= pgVersion112) $
 		// 	  get "/tsearch?text_search_vector=wfts(french).amusant%20impossible"
@@ -473,11 +472,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			[json| [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with different dictionaries",
-			"/tsearch?text_search_vector=wfts(french).amusant%20impossible",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
-			nil,
-			200,
+			Description: "finds matches with different dictionaries",
+			Query:       "/tsearch?text_search_vector=wfts(french).amusant%20impossible",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// it "can be negated with not operator" $ do
 		//   get "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun" `shouldRespondWith`
@@ -486,11 +485,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can be negated with not operator",
-			"/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be negated with not operator",
+			Query:       "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun" `shouldRespondWith`
 		// 	[json| [
@@ -498,11 +497,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can be negated with not operator",
-			"/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be negated with not operator",
+			Query:       "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats" `shouldRespondWith`
 		// 	[json| [
@@ -512,11 +511,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can be negated with not operator",
-			"/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be negated with not operator",
+			Query:       "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   when (actualPgVersion >= pgVersion112) $
 		// 	  get "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun"
@@ -526,11 +525,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can be negated with not operator",
-			"/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun",
-			`[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be negated with not operator",
+			Query:       "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun",
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// context "Use of the phraseto_tsquery function" $ do
 		//   it "finds matches" $
@@ -538,22 +537,22 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json| [{"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches",
-			"/tsearch?text_search_vector=phfts.The%20Fat%20Cats",
-			`[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
-			nil,
-			200,
+			Description: "finds matches",
+			Query:       "/tsearch?text_search_vector=phfts.The%20Fat%20Cats",
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "finds matches with different dictionaries" $
 		// 	get "/tsearch?text_search_vector=phfts(german).Art%20Spass" `shouldRespondWith`
 		// 	  [json| [{"text_search_vector": "'art':4 'spass':5 'unmog':7" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"finds matches with different dictionaries",
-			"/tsearch?text_search_vector=phfts(german).Art%20Spass",
-			`[{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "finds matches with different dictionaries",
+			Query:       "/tsearch?text_search_vector=phfts(german).Art%20Spass",
+			Expected:    `[{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "can be negated with not operator" $
 		// 	get "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats" `shouldRespondWith`
@@ -564,11 +563,15 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		{"text_search_vector": "'art':4 'spass':5 'unmog':7"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"can be negated with not operator",
-			"/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be negated with not operator",
+			Query:       "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats",
+			Expected: `[
+				{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},
+				{"text_search_vector":"'also':2 'fun':3 'possibl':8"},
+				{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},
+				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers: nil,
+			Status:  200,
 		},
 		//   it "can be used with or query param" $
 		// 	get "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass, text_search_vector.phfts(french).amusant, text_search_vector.fts(english).impossible)" `shouldRespondWith`
@@ -578,22 +581,25 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		{"text_search_vector": "'art':4 'spass':5 'unmog':7"}
 		// 	  ]|] { matchHeaders = [matchContentTypeJson] }
 		{
-			"can be used with or query param",
-			"/tsearch?or=(text_search_vector.phfts(german).Art%20Spass,text_search_vector.phfts(french).amusant,text_search_vector.fts(english).impossible)",
-			`[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			nil,
-			200,
+			Description: "can be used with or query param",
+			Query:       "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass,text_search_vector.phfts(french).amusant,text_search_vector.fts(english).impossible)",
+			Expected: `[
+				{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},
+				{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},
+				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			Headers: nil,
+			Status:  200,
 		},
 		// 	it "matches with computed column" $
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with computed column",
-			"/items?always_true=eq.true&order=id.asc",
-			`[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
-			nil,
-			200,
+			Description: "matches with computed column",
+			Query:       "/items?always_true=eq.true&order=id.asc",
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "order by computed column" $
 		// 	get "/items?order=anti_id.desc" `shouldRespondWith`
@@ -642,98 +648,98 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json|[{"id":2},{"id":3}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with cs operator",
-			"/complex_items?select=id&arr_data=cs.{2}",
-			`[{"id":2},{"id":3}]`,
-			nil,
-			200,
+			Description: "matches with cs operator",
+			Query:       "/complex_items?select=id&arr_data=cs.{2}",
+			Expected:    `[{"id":2},{"id":3}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "matches with cd operator" $
 		// 	get "/complex_items?select=id&arr_data=cd.{1,2,4}" `shouldRespondWith`
 		// 	  [json|[{"id":1},{"id":2}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"matches with cd operator",
-			"/complex_items?select=id&arr_data=cd.{1,2,4}",
-			`[{"id":1},{"id":2}]`,
-			nil,
-			200,
+			Description: "matches with cd operator",
+			Query:       "/complex_items?select=id&arr_data=cd.{1,2,4}",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// describe "Shaping response with select parameter" $ do
 		//   it "selectStar works in absense of parameter" $
 		// 	get "/complex_items?id=eq.3" `shouldRespondWith`
 		// 	  [json|[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]|]
 		{
-			"selectStar works in absense of parameter",
-			"/complex_items?id=eq.3",
-			`[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
-			nil,
-			200,
+			Description: "selectStar works in absense of parameter",
+			Query:       "/complex_items?id=eq.3",
+			Expected:    `[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "dash `-` in column names is accepted" $
 		// 	get "/complex_items?id=eq.3&select=id,field-with_sep" `shouldRespondWith`
 		// 	  [json|[{"id":3,"field-with_sep":1}]|]
 		{
-			"dash `-` in column names is accepted",
-			"/complex_items?id=eq.3&select=id,field-with_sep",
-			`[{"id":3,"field-with_sep":1}]`,
-			nil,
-			200,
+			Description: "dash `-` in column names is accepted",
+			Query:       "/complex_items?id=eq.3&select=id,field-with_sep",
+			Expected:    `[{"id":3,"field-with_sep":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "one simple column" $
 		// 	get "/complex_items?select=id" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"one simple column",
-			"/complex_items?select=id",
-			`[{"id":1},{"id":2},{"id":3}]`,
-			nil,
-			200,
+			Description: "one simple column",
+			Query:       "/complex_items?select=id",
+			Expected:    `[{"id":1},{"id":2},{"id":3}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "rename simple column" $
 		// 	get "/complex_items?id=eq.1&select=myId:id" `shouldRespondWith`
 		// 	  [json| [{"myId":1}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"rename simple column",
-			"/complex_items?id=eq.1&select=myId:id",
-			`[{"myId":1}]`,
-			nil,
-			200,
+			Description: "rename simple column",
+			Query:       "/complex_items?id=eq.1&select=myId:id",
+			Expected:    `[{"myId":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "one simple column with casting (text)" $
 		// 	get "/complex_items?select=id::text" `shouldRespondWith`
 		// 	  [json| [{"id":"1"},{"id":"2"},{"id":"3"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"one simple column with casting (text)",
-			"/complex_items?select=id::text",
-			`[{"id":"1"},{"id":"2"},{"id":"3"}]`,
-			nil,
-			200,
+			Description: "one simple column with casting (text)",
+			Query:       "/complex_items?select=id::text",
+			Expected:    `[{"id":"1"},{"id":"2"},{"id":"3"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "rename simple column with casting" $
 		// 	get "/complex_items?id=eq.1&select=myId:id::text" `shouldRespondWith`
 		// 	  [json| [{"myId":"1"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"rename simple column with casting",
-			"/complex_items?id=eq.1&select=myId:id::text",
-			`[{"myId":"1"}]`,
-			nil,
-			200,
+			Description: "rename simple column with casting",
+			Query:       "/complex_items?id=eq.1&select=myId:id::text",
+			Expected:    `[{"myId":"1"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "json column" $
 		// 	get "/complex_items?id=eq.1&select=settings" `shouldRespondWith`
 		// 	  [json| [{"settings":{"foo":{"int":1,"bar":"baz"}}}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"json column",
-			"/complex_items?id=eq.1&select=settings",
-			`[{"settings":{"foo":{"int":1,"bar":"baz"}}}]`,
-			nil,
-			200,
+			Description: "json column",
+			Query:       "/complex_items?id=eq.1&select=settings",
+			Expected:    `[{"settings":{"foo":{"int":1,"bar":"baz"}}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "fails on bad casting (wrong cast type)" $
 		// 	get "/complex_items?select=id::fakecolumntype"
@@ -749,43 +755,43 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"can cast types with underscore and number",
-			"/oid_test?select=id,oid_col::int,oid_array_col::_int4",
-			`[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]`,
-			nil,
-			200,
+			Description: "can cast types with underscore and number",
+			Query:       "/oid_test?select=id,oid_col::int,oid_array_col::_int4",
+			Expected:    `[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting parents and children" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting parents and children",
-			"/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)",
-			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
-			nil,
-			200,
+			Description: "requesting parents and children",
+			Query:       "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)",
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// @@ added by me
 		{
-			"requesting parents and children with filters",
-			"/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)&tasks.name=eq.Code%20w7",
-			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":2,"name":"Code w7"}]}]`,
-			nil,
-			200,
+			Description: "requesting parents and children with filters",
+			Query:       "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)&tasks.name=eq.Code%20w7",
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":2,"name":"Code w7"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// @@ added by me
 		{
-			"requesting parents and children with two embedded filters",
-			"/projects?select=id,name,clients(*),tasks(*)&id=not.eq.4&clients.id=eq.1&tasks.id=in.(1,3,5)",
-			`[
+			Description: "requesting parents and children with two embedded filters",
+			Query:       "/projects?select=id,name,clients(*),tasks(*)&id=not.eq.4&clients.id=eq.1&tasks.id=in.(1,3,5)",
+			Expected: `[
 				{"id": 1,"name": "Windows 7", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 1,"name": "Design w7","project_id": 1}]},
 				{"id": 2,"name": "Windows 10", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 3,"name": "Design w10","project_id": 2}]},
 				{"id": 3,"name": "IOS", "clients": null, "tasks": [{"id": 5,"name": "Design IOS","project_id": 3 }]},
 				{"id": 5,"name": "Orphan", "clients": null, "tasks": []}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		//   it "requesting parent and renaming primary key" $
 		// 	get "/projects?select=name,client:clients(clientId:id,name)" `shouldRespondWith`
@@ -798,102 +804,102 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  ]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting parent and renaming primary key",
-			"/projects?select=name,client:clients(clientId:id,name)",
-			`[
+			Description: "requesting parent and renaming primary key",
+			Query:       "/projects?select=name,client:clients(clientId:id,name)",
+			Expected: `[
 				{"name":"Windows 7","client":{"name": "Microsoft", "clientId": 1}},
 				{"name":"Windows 10","client":{"name": "Microsoft", "clientId": 1}},
 				{"name":"IOS","client":{"name": "Apple", "clientId": 2}},
 				{"name":"OSX","client":{"name": "Apple", "clientId": 2}},
 				{"name":"Orphan","client":null}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		//   it "requesting parent and specifying/renaming one key of the composite primary key" $ do
 		// 	get "/comments?select=*,users_tasks(userId:user_id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting parent and specifying/renaming one key of the composite primary key",
-			"/comments?select=*,users_tasks(userId:user_id)",
-			`[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]`,
-			nil,
-			200,
+			Description: "requesting parent and specifying/renaming one key of the composite primary key",
+			Query:       "/comments?select=*,users_tasks(userId:user_id)",
+			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	get "/comments?select=*,users_tasks(taskId:task_id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting parent and specifying/renaming one key of the composite primary key",
-			"/comments?select=*,users_tasks(taskId:task_id)",
-			`[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]`,
-			nil,
-			200,
+			Description: "requesting parent and specifying/renaming one key of the composite primary key",
+			Query:       "/comments?select=*,users_tasks(taskId:task_id)",
+			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting parents and children while renaming them" $
 		// 	get "/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)" `shouldRespondWith`
 		// 	  [json|[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting parents and children while renaming them",
-			"/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)",
-			`[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
-			nil,
-			200,
+			Description: "requesting parents and children while renaming them",
+			Query:       "/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)",
+			Expected:    `[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting parents and filtering parent columns" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1}}]|]
 		{
-			"requesting parents and filtering parent columns",
-			"/projects?id=eq.1&select=id, name, clients(id)",
-			`[{"id":1,"name":"Windows 7","clients":{"id":1}}]`,
-			nil,
-			200,
+			Description: "requesting parents and filtering parent columns",
+			Query:       "/projects?id=eq.1&select=id, name, clients(id)",
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "rows with missing parents are included" $
 		// 	get "/projects?id=in.(1,5)&select=id,clients(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"rows with missing parents are included",
-			"/projects?id=in.(1,5)&select=id,clients(id)",
-			`[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]`,
-			nil,
-			200,
+			Description: "rows with missing parents are included",
+			Query:       "/projects?id=in.(1,5)&select=id,clients(id)",
+			Expected:    `[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "rows with no children return [] instead of null" $
 		// 	get "/projects?id=in.(5)&select=id,tasks(id)" `shouldRespondWith`
 		// 	  [json|[{"id":5,"tasks":[]}]|]
 		{
-			"rows with no children return [] instead of null",
-			"/projects?id=in.(5)&select=id,tasks(id)",
-			`[{"id":5,"tasks":[]}]`,
-			nil,
-			200,
+			Description: "rows with no children return [] instead of null",
+			Query:       "/projects?id=in.(5)&select=id,tasks(id)",
+			Expected:    `[{"id":5,"tasks":[]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting children 2 levels" $
 		// 	get "/clients?id=eq.1&select=id,projects(id,tasks(id))" `shouldRespondWith`
 		// 	  [json|[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting children 2 levels",
-			"/clients?id=eq.1&select=id,projects(id,tasks(id))",
-			`[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]`,
-			nil,
-			200,
+			Description: "requesting children 2 levels",
+			Query:       "/clients?id=eq.1&select=id,projects(id,tasks(id))",
+			Expected:    `[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting many<->many relation" $
 		// 	get "/tasks?select=id,users(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting many<->many relation",
-			"/tasks?select=id,users(id)",
-			`[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]`,
-			nil,
-			200,
+			Description: "requesting many<->many relation",
+			Query:       "/tasks?select=id,users(id)",
+			Expected:    `[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "requesting many<->many relation with rename" $
 		// 	get "/tasks?id=eq.1&select=id,theUsers:users(id)" `shouldRespondWith`
@@ -925,11 +931,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json|[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"requesting children with composite key",
-			"/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)",
-			`[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
-			nil,
-			200,
+			Description: "requesting children with composite key",
+			Query:       "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)",
+			Expected:    `[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   -- https://github.com/PostgREST/postgrest/issues/2070
 		//   it "one-to-many embeds without a disambiguation error due to wrongly generated many-to-many relationships" $
@@ -970,14 +976,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			 {"name":"Murcielago","year":2001,"car_brands":{"name":"Lamborghini"}}] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
 		{
-			"can request a table as parent from a partitioned table",
-			"/car_models?name=in.(DeLorean,Murcielago)&select=name,year,car_brands(name)&order=name.asc",
-			`[
+			Description: "can request a table as parent from a partitioned table",
+			Query:       "/car_models?name=in.(DeLorean,Murcielago)&select=name,year,car_brands(name)&order=name.asc",
+			Expected: `[
 				{"name":"DeLorean","year":1981,"car_brands":{"name":"DMC"}},
 				{"name":"Murcielago","year":2001,"car_brands":{"name":"Lamborghini"}}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 	  it "can request partitioned tables as children from a table" $
 		// 		get "/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc" `shouldRespondWith`
@@ -987,15 +993,15 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			 {"name":"Lamborghini","car_models":[{"name":"Murcielago","year":2001},{"name":"Veneno","year":2013}]}] |]
 		// 		  { matchHeaders = [matchContentTypeJson] }
 		{
-			"can request partitioned tables as children from a table",
-			"/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc",
-			`[
+			Description: "can request partitioned tables as children from a table",
+			Query:       "/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc",
+			Expected: `[
 				{"name":"DMC","car_models":[{"name":"DeLorean","year":1981}]},
 				{"name":"Ferrari","car_models":[{"name":"F310-B","year":1997}]},
 				{"name":"Lamborghini","car_models":[{"name":"Murcielago","year":2001},{"name":"Veneno","year":2013}]}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 	  when (actualPgVersion >= pgVersion121) $ do
 		// 		it "can request tables as children from a partitioned table" $
@@ -1005,14 +1011,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			   {"name":"F310-B","year":1997,"car_racers":[{"name":"Michael Schumacher"}]}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can request tables as children from a partitioned table",
-			"/car_models?name=in.(DeLorean,F310-B)&select=name,year,car_racers(name)&order=name.asc",
-			`[
+			Description: "can request tables as children from a partitioned table",
+			Query:       "/car_models?name=in.(DeLorean,F310-B)&select=name,year,car_racers(name)&order=name.asc",
+			Expected: `[
 				{"name":"DeLorean","year":1981,"car_racers":[]},
 				{"name":"F310-B","year":1997,"car_racers":[{"name":"Michael Schumacher"}]}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 		it "can request a partitioned table as parent from a table" $
 		// 		  get "/car_racers?select=name,car_models(name,year)&order=name.asc" `shouldRespondWith`
@@ -1021,14 +1027,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			   {"name":"Michael Schumacher","car_models":{"name":"F310-B","year":1997}}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can request a partitioned table as parent from a table",
-			"/car_racers?select=name,car_models(name,year)&order=name.asc",
-			`[
+			Description: "can request a partitioned table as parent from a table",
+			Query:       "/car_racers?select=name,car_models(name,year)&order=name.asc",
+			Expected: `[
 				{"name":"Alain Prost","car_models":null},
 				{"name":"Michael Schumacher","car_models":{"name":"F310-B","year":1997}}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 		it "can request partitioned tables as children from a partitioned table" $
 		// 		  get "/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc" `shouldRespondWith`
@@ -1038,15 +1044,15 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			   {"name":"Veneno","year":2013,"car_model_sales":[]}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can request partitioned tables as children from a partitioned table",
-			"/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc",
-			`[
+			Description: "can request partitioned tables as children from a partitioned table",
+			Query:       "/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc",
+			Expected: `[
 				{"name":"DeLorean","year":1981,"car_model_sales":[{"date":"2021-01-14","quantity":7},{"date":"2021-01-15","quantity":9}]},
 				{"name":"Murcielago","year":2001,"car_model_sales":[{"date":"2021-02-11","quantity":1},{"date":"2021-02-12","quantity":3}]},
 				{"name":"Veneno","year":2013,"car_model_sales":[]}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 		it "can request a partitioned table as parent from a partitioned table" $ do
 		// 		  get "/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc" `shouldRespondWith`
@@ -1055,14 +1061,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			   {"date":"2021-02-11","quantity":1,"car_models":{"name":"Murcielago","year":2001}}] |]
 		// 			{ matchHeaders = [matchContentTypeJson] }
 		{
-			"can request a partitioned table as parent from a partitioned table",
-			"/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc",
-			`[
+			Description: "can request a partitioned table as parent from a partitioned table",
+			Query:       "/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc",
+			Expected: `[
 				{"date":"2021-01-15","quantity":9,"car_models":{"name":"DeLorean","year":1981}},
 				{"date":"2021-02-11","quantity":1,"car_models":{"name":"Murcielago","year":2001}}
 			]`,
-			nil,
-			200,
+			Headers: nil,
+			Status:  200,
 		},
 		// 		it "can request many to many relationships between partitioned tables ignoring the intermediate table partitions" $
 		// 		  get "/car_models?select=name,year,car_dealers(name,city)&order=name.asc&limit=4" `shouldRespondWith`
@@ -1123,11 +1129,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	it "can detect fk relations through views to tables in the public schema" $
 		// 	  get "/consumers_view?select=*,orders_view(*)" `shouldRespondWith` 200
 		{
-			"can detect fk relations through views to tables in the public schema",
-			"/consumers_view?select=*,orders_view(*)",
-			``,
-			nil,
-			200,
+			Description: "can detect fk relations through views to tables in the public schema",
+			Query:       "/consumers_view?select=*,orders_view(*)",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can detect fk relations through materialized views to tables in the public schema" $
 		// 	  get "/materialized_projects?select=*,users(*)" `shouldRespondWith` 200
@@ -1137,11 +1143,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		`shouldRespondWith`
 		// 		  [json|[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]|]
 		{
-			"can request two parents",
-			"/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
-			`[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
-			nil,
-			200,
+			Description: "can request two parents",
+			Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
+			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "can detect relations in views from exposed schema that are based on tables in private schema and have columns renames" $
 		// 	  get "/articles?id=eq.1&select=id,articleStars(users(*))" `shouldRespondWith`
@@ -1209,11 +1215,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	it "works when having a capitalized table name and camelCase fk column" $
 		// 	  get "/foos?select=*,bars(*)" `shouldRespondWith` 200
 		{
-			"works when having a capitalized table name and camelCase fk column",
-			"/foos?select=*,bars(*)",
-			``,
-			nil,
-			200,
+			Description: "works when having a capitalized table name and camelCase fk column",
+			Query:       "/foos?select=*,bars(*)",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "works when embedding a view with a table that has a long compound pk" $ do
 		// 	  get "/player_view?select=id,contract(purchase_price)&id=in.(1,3,5,7)" `shouldRespondWith`
@@ -1324,11 +1330,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			"by a column asc",
-			"/items?id=lte.2&order=id.asc",
-			`[{"id":1},{"id":2}]`,
-			nil,
-			200,
+			Description: "by a column asc",
+			Query:       "/items?id=lte.2&order=id.asc",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by a column desc" $
 		// 	get "/items?id=lte.2&order=id.desc"
@@ -1337,11 +1343,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			"by a column desc",
-			"/items?id=lte.2&order=id.desc",
-			`[{"id":2},{"id":1}]`,
-			nil,
-			200,
+			Description: "by a column desc",
+			Query:       "/items?id=lte.2&order=id.desc",
+			Expected:    `[{"id":2},{"id":1}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by a column with nulls first" $
 		// 	get "/no_pk?order=a.nullsfirst"
@@ -1353,11 +1359,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			"by a column with nulls first",
-			"/no_pk?order=a.nullsfirst",
-			`[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
-			nil,
-			200,
+			Description: "by a column with nulls first",
+			Query:       "/no_pk?order=a.nullsfirst",
+			Expected:    `[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by a column asc with nulls last" $
 		// 	get "/no_pk?order=a.asc.nullslast"
@@ -1368,11 +1374,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			"by a column asc with nulls last",
-			"/no_pk?order=a.asc.nullslast",
-			`[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
-			nil,
-			200,
+			Description: "by a column asc with nulls last",
+			Query:       "/no_pk?order=a.asc.nullslast",
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by a column desc with nulls first" $
 		// 	get "/no_pk?order=a.desc.nullsfirst"
@@ -1383,11 +1389,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			"by a column desc with nulls first",
-			"/no_pk?order=a.desc.nullsfirst",
-			`[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
-			nil,
-			200,
+			Description: "by a column desc with nulls first",
+			Query:       "/no_pk?order=a.desc.nullsfirst",
+			Expected:    `[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by a column desc with nulls last" $
 		// 	get "/no_pk?order=a.desc.nullslast"
@@ -1398,11 +1404,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			"by a column desc with nulls last",
-			"/no_pk?order=a.desc.nullslast",
-			`[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
-			nil,
-			200,
+			Description: "by a column desc with nulls last",
+			Query:       "/no_pk?order=a.desc.nullslast",
+			Expected:    `[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "by two columns with nulls and direction specified" $
 		// 	get "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc"
@@ -1417,11 +1423,16 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-4/*"]
 		// 	  }
 		{
-			"by two columns with nulls and direction specified",
-			"/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc",
-			`[{"client_id":2,"id":4,"name":"OSX"},{"client_id":2,"id":3,"name":"IOS"},{"client_id":1,"id":2,"name":"Windows 10"},{"client_id":1,"id":1,"name":"Windows 7"},{"client_id":null,"id":5,"name":"Orphan"}]`,
-			nil,
-			200,
+			Description: "by two columns with nulls and direction specified",
+			Query:       "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc",
+			Expected: `[
+				{"client_id":2,"id":4,"name":"OSX"},
+				{"client_id":2,"id":3,"name":"IOS"},
+				{"client_id":1,"id":2,"name":"Windows 10"},
+				{"client_id":1,"id":1,"name":"Windows 7"},
+				{"client_id":null,"id":5,"name":"Orphan"}]`,
+			Headers: nil,
+			Status:  200,
 		},
 		//   it "by a column with no direction or nulls specified" $
 		// 	get "/items?id=lte.2&order=id"
@@ -1430,42 +1441,42 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			"by a column with no direction or nulls specified",
-			"/items?id=lte.2&order=id",
-			`[{"id":1},{"id":2}]`,
-			nil,
-			200,
+			Description: "by a column with no direction or nulls specified",
+			Query:       "/items?id=lte.2&order=id",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "without other constraints" $
 		// 	get "/items?order=id.asc" `shouldRespondWith` 200
 		{
-			"without other constraints",
-			"/items?order=id.asc",
-			``,
-			nil,
-			200,
+			Description: "without other constraints",
+			Query:       "/items?order=id.asc",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "ordering embeded entities" $
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"ordering embeded entities",
-			"/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc",
-			`[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
-			nil,
-			200,
+			Description: "ordering embeded entities",
+			Query:       "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc",
+			Expected:    `[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "ordering embeded entities with alias" $
 		// 	get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"ordering embeded entities with alias",
-			"/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc",
-			`[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
-			nil,
-			200,
+			Description: "ordering embeded entities with alias",
+			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc",
+			Expected:    `[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "ordering embeded entities, two levels" $
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc" `shouldRespondWith`
@@ -1476,11 +1487,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]|]
 		{
-			"ordering embeded parents does not break things",
-			"/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc",
-			`[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
-			nil,
-			200,
+			Description: "ordering embeded parents does not break things",
+			Query:       "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc",
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   context "order syntax errors" $ do
 		// 	it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
@@ -1596,22 +1607,22 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/Escap3e;" `shouldRespondWith`
 		// 	  [json| [{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can query as normal",
+			Query:       "/Escap3e;",
+			Expected:    `[{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	get "/ghostBusters" `shouldRespondWith`
 		// 	  [json| [{"escapeId":1},{"escapeId":3},{"escapeId":5}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"can query as normal",
-			"/Escap3e;",
-			`[{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}]`,
-			nil,
-			200,
-		},
-		{
-			"can query as normal",
-			"/ghostBusters",
-			`[{"escapeId":1},{"escapeId":3},{"escapeId":5}]`,
-			nil,
-			200,
+			Description: "can query as normal",
+			Query:       "/ghostBusters",
+			Expected:    `[{"escapeId":1},{"escapeId":3},{"escapeId":5}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "fails if an operator is not given" $
 		// 	get "/ghostBusters?id=0" `shouldRespondWith` [json| {"details":"Failed to parse [(\"id\",\"0\")]","message":"Unexpected param or filter missing operator","code":"PGRST104","hint":null} |]
@@ -1619,22 +1630,22 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
 		{
-			"fails if an operator is not given",
-			"/ghostBusters?id=0",
-			``,
-			nil,
-			400,
+			Description: "fails if an operator is not given",
+			Query:       "/ghostBusters?id=0",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      400,
 		},
 		//   it "will embed a collection" $
 		// 	get "/Escap3e;?select=ghostBusters(*)" `shouldRespondWith`
 		// 	  [json| [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"will embed a collection",
-			"/Escap3e;?select=ghostBusters(*)",
-			`[{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}]`,
-			nil,
-			200,
+			Description: "will embed a collection",
+			Query:       "/Escap3e;?select=ghostBusters(*)",
+			Expected:    `[{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "will select and filter a column that has spaces" $
 		// 	get "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*" `shouldRespondWith`
@@ -1645,33 +1656,33 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"will select and filter a column that has spaces",
-			"/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*",
-			`[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
-			nil,
-			200,
+			Description: "will select and filter a column that has spaces",
+			Query:       "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*",
+			Expected:    `[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "will select and filter a quoted column that has PostgREST reserved characters" $
 		// 	get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" `shouldRespondWith`
 		// 	  [json|[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"will select and filter a quoted column that has PostgREST reserved characters",
-			"/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
-			`[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]`,
-			nil,
-			200,
+			Description: "will select and filter a quoted column that has PostgREST reserved characters",
+			Query:       "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
+			Expected:    `[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "will select and filter a column that has dollars in(without double quoting)" $
 		// 	get "/do$llar$s?select=a$num$&a$num$=eq.100" `shouldRespondWith`
 		// 	  [json|[{"a$num$":100}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"will select and filter a column that has dollars in(without double quoting)",
-			"/do$llar$s?select=a$num$&a$num$=eq.100",
-			`[{"a$num$":100}]`,
-			nil,
-			200,
+			Description: "will select and filter a column that has dollars in(without double quoting)",
+			Query:       "/do$llar$s?select=a$num$&a$num$=eq.100",
+			Expected:    `[{"a$num$":100}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// context "binary output" $ do
 		//   it "can query if a single column is selected" $
@@ -1737,57 +1748,57 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json| [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"succeeds when only quoted values are present",
-			"/w_or_wo_comma_names?name=in.(\"Hebdon,%20John\")",
-			`[{"name":"Hebdon, John"}]`,
-			nil,
-			200,
+			Description: "succeeds when only quoted values are present",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Hebdon,%20John\")",
+			Expected:    `[{"name":"Hebdon, John"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		{
-			"succeeds when only quoted values are present",
-			"/w_or_wo_comma_names?name=in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)",
-			`[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
-			nil,
-			200,
+			Description: "succeeds when only quoted values are present",
+			Query:       "/w_or_wo_comma_names?name=in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)",
+			Expected:    `[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		{
-			"succeeds when only quoted values are present",
-			"/w_or_wo_comma_names?name=not.in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)&limit=3",
-			`[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
-			nil,
-			200,
+			Description: "succeeds when only quoted values are present",
+			Query:       "/w_or_wo_comma_names?name=not.in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)&limit=3",
+			Expected:    `[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 
 		//   it "succeeds w/ and w/o quoted values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")" `shouldRespondWith`
 		// 	  [json| [{"name":"Hebdon, John"},{"name":"David White"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "succeeds w/ and w/o quoted values",
+			Query:       "/w_or_wo_comma_names?name=in.(David%20White,\"Hebdon,%20John\")",
+			Expected:    `[{"name":"Hebdon, John"},{"name":"David White"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",Larry Thompson,\"Smith, Joseph\")&limit=3" `shouldRespondWith`
 		// 	  [json| [ { "name": "Williams, Mary" }, { "name": "David White" }, { "name": "Double O Seven(007)" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "succeeds w/ and w/o quoted values",
+			Query:       "/w_or_wo_comma_names?name=not.in.(\"Hebdon,%20John\",Larry%20Thompson,\"Smith,%20Joseph\")&limit=3",
+			Expected:    `[{"name":"Williams, Mary"},{"name":"David White"},{"name":"Double O Seven(007)"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")" `shouldRespondWith`
 		// 	  [json| [{"name":"Double O Seven(007)"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"succeeds w/ and w/o quoted values",
-			"/w_or_wo_comma_names?name=in.(David%20White,\"Hebdon,%20John\")",
-			`[{"name":"Hebdon, John"},{"name":"David White"}]`,
-			nil,
-			200,
-		},
-		{
-			"succeeds w/ and w/o quoted values",
-			"/w_or_wo_comma_names?name=not.in.(\"Hebdon,%20John\",Larry%20Thompson,\"Smith,%20Joseph\")&limit=3",
-			`[{"name":"Williams, Mary"},{"name":"David White"},{"name":"Double O Seven(007)"}]`,
-			nil,
-			200,
-		},
-		{
-			"succeeds w/ and w/o quoted values",
-			"/w_or_wo_comma_names?name=in.(\"Double%20O%20Seven(007)\")",
-			`[{"name":"Double O Seven(007)"}]`,
-			nil,
-			200,
+			Description: "succeeds w/ and w/o quoted values",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Double%20O%20Seven(007)\")",
+			Expected:    `[{"name":"Double O Seven(007)"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   context "escaped chars" $ do
 		// 	it "accepts escaped double quotes" $
@@ -1795,65 +1806,65 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		[json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"accepts escaped double quotes",
-			"/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")",
-			`[{"name":"Double\"Quote\"McGraw\""}]`,
-			nil,
-			200,
+			Description: "accepts escaped double quotes",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")",
+			Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "accepts escaped backslashes" $ do
 		// 	  get "/w_or_wo_comma_names?name=in.(\"\\\\\")" `shouldRespondWith`
 		// 		[json| [{ "name": "\\" }] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "accepts escaped backslashes",
+			Query:       "/w_or_wo_comma_names?name=in.(\"\\\\\")",
+			Expected:    `[{"name":"\\"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	  get "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")" `shouldRespondWith`
 		// 		[json| [ { "name": "/\\Slash/\\Beast/\\" } ] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"accepts escaped backslashes",
-			"/w_or_wo_comma_names?name=in.(\"\\\\\")",
-			`[{"name":"\\"}]`,
-			nil,
-			200,
-		},
-		{
-			"accepts escaped backslashes",
-			"/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")",
-			`[{"name":"/\\Slash/\\Beast/\\"}]`,
-			nil,
-			200,
+			Description: "accepts escaped backslashes",
+			Query:       "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")",
+			Expected:    `[{"name":"/\\Slash/\\Beast/\\"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// 	it "passes any escaped char as the same char" $
 		// 	  get "/w_or_wo_comma_names?name=in.(\"D\\a\\vid W\\h\\ite\")" `shouldRespondWith`
 		// 		[json| [{ "name": "David White" }] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
-			"passes any escaped char as the same char",
-			"/w_or_wo_comma_names?name=in.(\"D\\a\\vid%20W\\h\\ite\")",
-			`[{"name":"David White"}]`,
-			nil,
-			200,
+			Description: "passes any escaped char as the same char",
+			Query:       "/w_or_wo_comma_names?name=in.(\"D\\a\\vid%20W\\h\\ite\")",
+			Expected:    `[{"name":"David White"}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		// describe "IN values without quotes" $ do
 		//   it "accepts single double quotes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\")" `shouldRespondWith`
 		// 	  [json| [{ "name": "\"" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "accepts single double quotes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(\")",
+			Expected:    `[{"name":"\""}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" `shouldRespondWith`
 		// 	  [json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"accepts single double quotes as values",
-			"/w_or_wo_comma_names?name=in.(\")",
-			`[{"name":"\""}]`,
-			nil,
-			200,
-		},
-		{
-			"accepts single double quotes as values",
-			"/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
-			`[{"name":"Double\"Quote\"McGraw\""}]`,
-			nil,
-			200,
+			Description: "accepts single double quotes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
+			Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "accepts backslashes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\\)" `shouldRespondWith`
@@ -1916,11 +1927,11 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json|[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
-			"works with child embeds",
-			"/being?select=*,descendant(*)&limit=1",
-			`[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]`,
-			nil,
-			200,
+			Description: "works with child embeds",
+			Query:       "/being?select=*,descendant(*)&limit=1",
+			Expected:    `[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]`,
+			Headers:     nil,
+			Status:      200,
 		},
 		//   it "works with many to many embeds" $
 		// 	get "/being?select=*,part(*)&limit=1" `shouldRespondWith`
@@ -1957,5 +1968,5 @@ func TestPostgREST_Query(t *testing.T) {
 
 	}
 
-	executeTests(t, tests)
+	test.Execute(t, testConfig, tests)
 }

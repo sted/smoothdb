@@ -41,6 +41,7 @@ func (db *Database) Activate(ctx context.Context) error {
 	}
 	config.MinConns = DBE.config.MinPoolConnections
 	config.MaxConns = DBE.config.MaxPoolConnections
+	config.ConnConfig.Tracer = DBE.logger
 
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		var set string

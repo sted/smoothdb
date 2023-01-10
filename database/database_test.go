@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"green/green-ds/config"
 	"log"
 	"os"
 	"testing"
@@ -14,7 +13,7 @@ var dbe *DbEngine
 
 func TestMain(m *testing.M) {
 
-	dbe, _ = InitDbEngine(config.DefaultDatabaseConfig())
+	dbe, _ = InitDbEngine(DefaultConfig(), nil)
 
 	code := m.Run()
 

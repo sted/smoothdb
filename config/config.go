@@ -2,33 +2,12 @@ package config
 
 import (
 	"encoding/json"
-	"flag"
-	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
 
 	"github.com/tailscale/hujson"
 )
-
-type Database struct {
-	URL                string   `comment:"Database URL (default: postgres://localhost:5432)"`
-	MinPoolConnections int32    `comment:"Miminum connections per pool (default: 10)"`
-	MaxPoolConnections int32    `comment:"Maximum connections per pool (default: 100)"`
-	AuthRole           string   `comment:"Authorization role (default: auth)"`
-	AnonRole           string   `comment:"Anonymous role (default: anon)"`
-	AllowedDatabases   []string `comment:"Allowed databases (default: [] for all)"`
-	SchemaSearchPath   []string `comment:"Schema search path (default: [] for default Postgres search path)"`
-}
-
-// Config holds the current configuration
-type Config struct {
-	Address     string   `comment:"Server address and port (default localhost:8081)"`
-	AllowAnon   bool     `comment:"Allow unauthenticated connections"`
-	JWTSecret   string   `comment:"Secret for JWT tokens"`
-	EnableAdmin bool     `comment:"Enable administration of databases and tables"`
-	Database    Database `comment:"Database configuration"`
-}
 
 func WriteConfig(config any) ([]byte, error) {
 	json := WriteObject(config)
@@ -87,38 +66,11 @@ func WriteArray(a any) *hujson.Array {
 	return &array
 }
 
-func DefaultDatabaseConfig() *Database {
-	return &Database{
-		URL:                "postgres://localhost:5432/",
-		MinPoolConnections: 10,
-		MaxPoolConnections: 100,
-		AuthRole:           "auth",
-		AnonRole:           "anon",
-	}
-}
-
-func DefaultConfig() *Config {
-	return &Config{
-		Address:     ":8081",
-		AllowAnon:   false,
-		JWTSecret:   "",
-		EnableAdmin: false,
-		Database:    *DefaultDatabaseConfig(),
-	}
-}
-
 // GetConfig loads the configuration
-func GetConfig(configFile string) *Config {
-
-	// Defaults
-	config := DefaultConfig()
-
-	// Command line flags
-	flag.StringVar(&config.Address, "addr", config.Address, "Address")
-	flag.StringVar(&config.Database.URL, "dburl", config.Database.URL, "DatabaseURL")
+func GetConfig[C any](config *C, configFile string) *C {
 
 	// Read config file
-	b, err := ioutil.ReadFile(configFile)
+	b, err := os.ReadFile(configFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("Error reading the configuration file (%s)", err)
@@ -137,10 +89,9 @@ func GetConfig(configFile string) *Config {
 	}
 	// Update config file
 	b, _ = WriteConfig(config)
-	err = ioutil.WriteFile(configFile, b, 0777)
+	err = os.WriteFile(configFile, b, 0777)
 	if err != nil {
 		log.Printf("Error writing the configuration file (%s)", err)
 	}
-	flag.Parse()
 	return config
 }

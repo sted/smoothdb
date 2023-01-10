@@ -18,7 +18,7 @@
 * Schema management
 √ Configuration (shared with other apps) 
 * Reload config
-* Logger
+√ Logger
 * Change log level at runtime
 * 
 * More types, in order: √ array, √ jsonb, interval, numeric

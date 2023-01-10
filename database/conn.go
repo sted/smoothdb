@@ -22,7 +22,9 @@ func AcquireConnection(ctx context.Context, db *Database, role string, oldconn *
 		return nil, errors.New("no available connections")
 	}
 
-	if oldconn == nil && role != "" {
+	// check for db != nil : do not set role for dbe connections
+	// check for oldconn == nil : set role only on the first acquire
+	if db != nil && oldconn == nil && role != "" {
 		_, err := conn.Exec(ctx, "SET ROLE "+role)
 		if err != nil {
 			return nil, err
@@ -32,10 +34,12 @@ func AcquireConnection(ctx context.Context, db *Database, role string, oldconn *
 	return conn, nil
 }
 
-func ReleaseConnection(ctx context.Context, conn *DbConn) error {
-	_, err := conn.Exec(ctx, "SET ROLE NONE")
-	if err != nil {
-		return err
+func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error {
+	if resetRole {
+		_, err := conn.Exec(ctx, "SET ROLE NONE")
+		if err != nil {
+			return err
+		}
 	}
 	conn.Release()
 	return nil

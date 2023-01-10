@@ -11,9 +11,10 @@ type Table struct {
 	Owner       string   `json:"owner"`
 	Constraints []string `json:"constraints"`
 	RowSecurity bool     `json:"rowsecurity"`
-	Temporary   bool     `json:"temporary,omitempty"`
-	Inherits    string   `json:"inherit,omitempty"`
 	Columns     []Column `json:"columns,omitempty"`
+	Inherits    string   `json:"inherit,omitempty"`
+	Temporary   bool     `json:"temporary,omitempty"`
+	IfNotExists bool     `json:"ifnotexists,omitempty"`
 
 	Struct reflect.Type `json:"-"`
 }
@@ -122,7 +123,12 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 	if table.Temporary {
 		create += "TEMP "
 	}
-	create += "TABLE " + table.Name + " (" + columnList
+	create += "TABLE "
+	if table.IfNotExists {
+		create += "IF NOT EXISTS "
+	}
+	create += table.Name
+	create += " (" + columnList
 	for _, constraint := range table.Constraints {
 		create += ", " + constraint
 	}

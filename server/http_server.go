@@ -14,6 +14,7 @@ func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	//router.Use(gin.Logger())
+	router.Use(ZeroLogger(server.Logger))
 
 	root := router.Group("/")
 

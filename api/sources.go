@@ -9,7 +9,7 @@ import (
 
 func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.RouterGroup {
 
-	databases := root.Group("/databases", handlers...)
+	databases := root.Group("/", handlers...)
 
 	// RECORDS
 
