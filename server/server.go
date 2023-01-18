@@ -1,45 +1,30 @@
 package server
 
 import (
-	"flag"
-	"green/green-ds/config"
+	"context"
 	"green/green-ds/database"
 	"green/green-ds/logging"
 	"net/http"
-	"os"
 )
 
 type Server struct {
-	Config         *Config
-	Logger         *logging.Logger
-	DBE            *database.DbEngine
-	HTTP           *http.Server
-	sessionManager SessionManager
-}
-
-func getConfig(filepath string) *Config {
-	// Defaults
-	c := DefaultConfig()
-
-	// Environment
-	dburl := os.Getenv("DATABASE_URL")
-	if dburl != "" {
-		c.Database.URL = dburl
-	}
-
-	// Command line flags
-	flag.StringVar(&c.Address, "addr", c.Address, "Address")
-	flag.StringVar(&c.Database.URL, "dburl", c.Database.URL, "DatabaseURL")
-
-	c = config.GetConfig(c, filepath)
-	flag.Parse()
-
-	return c
+	Config            *Config
+	Logger            *logging.Logger
+	DBE               *database.DbEngine
+	HTTP              *http.Server
+	sessionManager    SessionManager
+	shutdown          chan struct{}
+	shutdownCompleted chan struct{}
 }
 
 func NewServer() (*Server, error) {
-	config := getConfig("./config.json")
+	return NewServerWithConfig(nil, "./config.json")
+}
 
+func NewServerWithConfig(c *Config, configPath string) (*Server, error) {
+	config := getConfig(c, configPath)
+
+	// Logger
 	logger := logging.InitLogger(&config.Logging)
 
 	// DB Engine
@@ -49,7 +34,13 @@ func NewServer() (*Server, error) {
 	}
 
 	// Main Server
-	s := &Server{Config: config, Logger: logger, DBE: dbe}
+	s := &Server{
+		Config:            config,
+		Logger:            logger,
+		DBE:               dbe,
+		shutdown:          make(chan struct{}),
+		shutdownCompleted: make(chan struct{}),
+	}
 
 	// Initialize session manager
 	s.initSessionManager()
@@ -61,5 +52,20 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) Start() error {
-	return s.HTTP.ListenAndServe()
+	err := s.HTTP.ListenAndServe()
+	if err == http.ErrServerClosed {
+		// wait for graceful shutdown
+		<-s.shutdownCompleted
+	}
+	return err
+}
+
+func (s *Server) Shutdown(ctx context.Context) {
+	// HTTP server shutdown
+	s.HTTP.Shutdown(ctx)
+	// Close goroutines (now just the checker in the service manager)
+	close(s.shutdown)
+	// Close database pools
+	s.DBE.Close()
+	close(s.shutdownCompleted)
 }

@@ -36,35 +36,47 @@ func (s *Server) initSessionManager() {
 		ticker := time.NewTicker(1 * time.Second)
 
 		for {
-			<-ticker.C
-			now := time.Now()
-			sm.mtx.Lock()
+			select {
+			case <-ticker.C:
+				now := time.Now()
+				sm.mtx.Lock()
 
-			for k, s := range sm.Sessions {
-				if s.InUse.Load() {
-					continue
-				}
-				// Here we have a session not in use, which cannot be used now
-				// because we hold a W lock on the session manager and making
-				// the session usable requires an R lock
+				for k, s := range sm.Sessions {
+					if s.InUse.Load() {
+						continue
+					}
+					// Here we have a session not in use, which cannot be used now
+					// because we hold a W lock on the session manager and making
+					// the session usable requires an R lock
 
-				if now.Sub(s.LastUsedAt) > 5*time.Second {
+					if now.Sub(s.LastUsedAt) > 5*time.Second {
 
-					// Delete the session
-					delete(sm.Sessions, k)
+						// Delete the session
+						delete(sm.Sessions, k)
 
-				} else if now.Sub(s.LastUsedAt) > 1*time.Second {
-					if s.DbConn != nil {
+					} else if now.Sub(s.LastUsedAt) > 1*time.Second {
+						if s.DbConn != nil {
 
-						// Release and detach the database connection from the session
-						// (Acquire and attach are done in the auth middleware)
-						database.ReleaseConnection(context.Background(), s.DbConn, true)
-						s.DbConn = nil
+							// Release and detach the database connection from the session
+							// (Acquire and attach are done in the auth middleware)
+							err := database.ReleaseConnection(context.Background(), s.DbConn, true)
+							sm.logger.Err(err).Msg("error releasing an expired session")
+							s.DbConn = nil
+						}
 					}
 				}
-			}
 
-			sm.mtx.Unlock()
+				sm.mtx.Unlock()
+
+			case <-s.shutdown:
+				for k, s := range sm.Sessions {
+					if s.DbConn != nil {
+						database.ReleaseConnection(context.Background(), s.DbConn, false)
+					}
+					delete(sm.Sessions, k)
+				}
+				return
+			}
 		}
 	}()
 }
@@ -98,7 +110,6 @@ func (s *SessionManager) getSession(sessionId string) *Session {
 	if !swapped {
 		return nil
 	}
-	s.logger.Trace().Str("session", sessionId).Msg("get session")
 	return session
 }
 
@@ -111,6 +122,5 @@ func (s *SessionManager) leaveSession(session *Session) bool {
 		return false
 	}
 	session.LastUsedAt = now
-	s.logger.Trace().Str("session", session.Id).Msg("leave session")
 	return true
 }

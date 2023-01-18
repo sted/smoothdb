@@ -25,7 +25,12 @@ func (db *Database) GetRelationships(table string) []Relationship {
 	return db.cachedRelationships[table]
 }
 
+// Activate initializes a database and start its connection pool.
+// It signal a db as activated even if there is an error, which
+// is managed in DBE
 func (db *Database) Activate(ctx context.Context) error {
+	defer db.activated.Store(true)
+
 	connString := DBE.config.URL
 	if !strings.HasSuffix(connString, "/") {
 		connString += "/"
@@ -86,8 +91,11 @@ func (db *Database) Activate(ctx context.Context) error {
 			db.cachedRelationships[rels[1].Table] = append(db.cachedRelationships[rels[1].Table], rels[1])
 		}
 	}
-	db.activated.Store(true)
 	return nil
+}
+
+func (db *Database) Close() {
+	db.pool.Close()
 }
 
 func (db *Database) refreshTable(ctx context.Context, name string) {

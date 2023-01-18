@@ -21,9 +21,9 @@ func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	root.GET("/", func(c *gin.Context) {
 		c.String(http.StatusOK, "Green")
 	})
-	authMiddleware := server.authMiddleware()
+	authMiddleware := server.middleware()
 
-	if server.Config.EnableAdmin {
+	if server.Config.EnableAdminRoute {
 		api.InitAdminRouter(root, dbe, authMiddleware)
 	}
 	api.InitSourcesRouter(root, authMiddleware)

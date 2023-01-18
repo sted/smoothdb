@@ -13,26 +13,27 @@
 * Resource embedding: √ one level, nested
 √ Sessions, JWT, Auth
 √ Roles
-* Policies
-* Grants
-* Schema management
+√ Policies
+√ Grants
 √ Configuration (shared with other apps) 
-* Reload config
 √ Logger
+√ pgx v5
+* Schema management
+* Reload config
 * Change log level at runtime
-* 
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Functions (rpc)
 * Caching
 * Activity / stats
-* Migrations (Tern?)
 * Indexes
 * Triggers
 * Upsert
 * Table inheritance
 * M x N Relationships
-* Versioning
-* Localizations
 * application/octet-stream as output
 * "singular" response
-√ pgx v5
+
+Upper layer:
+* Migrations (Tern?)
+* Versioning
+* Localizations

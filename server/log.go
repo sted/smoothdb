@@ -98,8 +98,10 @@ func ZeroLogger(logger *logging.Logger) gin.HandlerFunc {
 		// event.Int(DataLengthFieldName, ctx.Writer.Size())
 
 		// Message
-		message := ctx.Errors.String()
-		if message == "" {
+		var message string
+		if len(ctx.Errors) > 0 {
+			message = ctx.Errors[0].Error()
+		} else {
 			message = "Request"
 		}
 

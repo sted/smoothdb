@@ -49,9 +49,15 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	// Create DBE connection pool
 	pool, err := pgxpool.NewWithConfig(context, poolConfig)
 	if err != nil {
-		return nil, fmt.Errorf("cannot connect with %q (%w)", dbConfig.URL, err)
+		return nil, fmt.Errorf("cannot create pool with %q (%w)", dbConfig.URL, err)
 	}
 	DBE.pool = pool
+
+	// Test connection
+	err = pool.Ping(context)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect with %q (%w)", dbConfig.URL, err)
+	}
 
 	if len(dbConfig.AllowedDatabases) != 0 {
 		DBE.allowedDatabases = map[string]struct{}{}
@@ -64,7 +70,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	}
 	// Auth role
 	if dbConfig.AuthRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" NOINHERIT;")
+		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" NOINHERIT")
 		if err != nil && err.(*pgconn.PgError).Code != "42710" {
 			return nil, err
 		}
@@ -75,8 +81,25 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 		if err != nil && err.(*pgconn.PgError).Code != "42710" {
 			return nil, err
 		}
+		// Grant anon to auth
+		if dbConfig.AuthRole != "" {
+			_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+dbConfig.AuthRole)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
+
 	return DBE, nil
+}
+
+func (dbe *DbEngine) Close() {
+	dbe.pool.Close()
+	dbe.activeDatabases.Range(func(k, v any) bool {
+		v.(*Database).Close()
+		dbe.activeDatabases.Delete(k)
+		return true
+	})
 }
 
 func (dbe *DbEngine) AcquireConnection(ctx context.Context) *pgxpool.Conn {
@@ -150,10 +173,12 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 		err := dbe.pool.QueryRow(ctx, databaseQuery+
 			" AND d.datname = $1", name).Scan(&db.Name, &db.Owner)
 		if err != nil {
+			dbe.activeDatabases.Delete(name)
 			return nil, fmt.Errorf("database %q not found or not allowed (%w)", name, err)
 		}
 		err = db.Activate(ctx)
 		if err != nil {
+			dbe.activeDatabases.Delete(name)
 			return nil, fmt.Errorf("cannot activate database %q (%w)", name, err)
 		}
 	}

@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"fmt"
-	"green/green-ds/database"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -73,54 +72,4 @@ func (server *Server) authenticate(c *gin.Context, tokenString string) *Session 
 	c.SetCookie("session_id", session.Id, 60, "", "", false, true)
 
 	return session
-}
-
-func (server *Server) authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var session *Session
-
-		tokenString := extractAuthHeader(c.Request)
-
-		sessionId, _ := c.Cookie("session_id")
-		if sessionId == "" {
-			// no previous session
-
-			session = server.authenticate(c, tokenString)
-		} else {
-			// we have a previous session id
-
-			session = server.sessionManager.getSession(sessionId)
-			if session == nil {
-				// session not found, try to reauthenticate
-
-				session = server.authenticate(c, tokenString)
-			} else if session.Token != tokenString {
-				c.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
-				//c.JSON(http.StatusUnauthorized, gin.H{"description": errors.New("jwt mismatch")})
-				server.sessionManager.leaveSession(session)
-				return
-			}
-		}
-		if session == nil {
-			return
-		}
-
-		conn, err := database.FillContext(c, session.Role, session.DbConn)
-		if err != nil {
-			c.AbortWithError(500, err)
-			return
-		}
-		db := database.GetDb(c)
-		if db != nil {
-			// Cache the database connection (excluding dbe connections)
-			session.DbConn = conn
-		}
-
-		c.Next()
-
-		server.sessionManager.leaveSession(session)
-		if db == nil {
-			database.ReleaseConnection(c, conn, false)
-		}
-	}
 }
