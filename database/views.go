@@ -3,29 +3,42 @@ package database
 import "context"
 
 type View struct {
-	Name       string `json:"name"`
-	Owner      string `json:"owner"`
-	Definition string `json:"definition"`
-	Temporary  bool   `json:"temporary,omitempty"`
+	Name         string `json:"name"`
+	Owner        string `json:"owner"`
+	Definition   string `json:"definition"`
+	Materialized bool   `json:"materialized"`
 }
+
+const viewsQuery = `
+	SELECT n.nspname || '.' || c.relname,                                  
+		pg_get_userbyid(c.relowner) AS viewowner,               
+		pg_get_viewdef(c.oid) AS definition,
+		c.relkind                  
+	FROM (pg_class c                                         
+		LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
+	WHERE (c.relkind = ANY (ARRAY['v'::"char", 'm'::"char"]))`
 
 func (db *Database) GetViews(ctx context.Context) ([]View, error) {
 	conn := GetConn(ctx)
 	views := []View{}
-	rows, err := conn.Query(ctx, `
-		SELECT viewname, viewowner, definition 
-		FROM pg_views
-		WHERE schemaname = 'public'`)
+	rows, err := conn.Query(ctx, viewsQuery+
+		" AND n.nspname <> 'pg_catalog' AND n.nspname <> 'information_schema' ORDER BY 1")
 	if err != nil {
 		return views, err
 	}
 	defer rows.Close()
 
 	view := View{}
+	var kind byte
 	for rows.Next() {
-		err := rows.Scan(&view.Name, &view.Owner, &view.Definition)
+		err := rows.Scan(&view.Name, &view.Owner, &view.Definition, &kind)
 		if err != nil {
 			return views, err
+		}
+		if kind == 'v' {
+			view.Materialized = false
+		} else {
+			view.Materialized = true
 		}
 		views = append(views, view)
 	}
@@ -37,14 +50,20 @@ func (db *Database) GetViews(ctx context.Context) ([]View, error) {
 
 func (db *Database) GetView(ctx context.Context, name string) (*View, error) {
 	conn := GetConn(ctx)
+
+	schemaname, viewname := splitTableName(name)
 	view := View{}
-	err := conn.QueryRow(ctx, `
-		SELECT viewname, viewowner, definition 
-		FROM pg_views
-		WHERE viewname = $1`, name).
-		Scan(&view.Name, &view.Owner)
+	var kind byte
+	err := conn.QueryRow(ctx, viewsQuery+
+		" AND c.relname = $1 AND n.nspname = $2", viewname, schemaname).
+		Scan(&view.Name, &view.Owner, &kind)
 	if err != nil {
 		return nil, err
+	}
+	if kind == 'v' {
+		view.Materialized = false
+	} else {
+		view.Materialized = true
 	}
 	return &view, nil
 }
@@ -52,8 +71,8 @@ func (db *Database) GetView(ctx context.Context, name string) (*View, error) {
 func (db *Database) CreateView(ctx context.Context, view *View) (*View, error) {
 	conn := GetConn(ctx)
 	create := "CREATE "
-	if view.Temporary {
-		create += "TEMP "
+	if view.Materialized {
+		create += "MATERIALIZED "
 	}
 	create += "VIEW " + view.Name + " AS " + view.Definition
 	_, err := conn.Exec(ctx, create)

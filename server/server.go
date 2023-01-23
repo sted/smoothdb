@@ -17,12 +17,18 @@ type Server struct {
 	shutdownCompleted chan struct{}
 }
 
-func NewServer() (*Server, error) {
-	return NewServerWithConfig(nil, "./config.json")
+type ConfigOptions struct {
+	ConfigFilePath string
+	SkipFlags      bool
+	SkipEnv        bool
 }
 
-func NewServerWithConfig(c *Config, configPath string) (*Server, error) {
-	config := getConfig(c, configPath)
+func NewServer() (*Server, error) {
+	return NewServerWithConfig(nil, &ConfigOptions{ConfigFilePath: "./config.json"})
+}
+
+func NewServerWithConfig(c *Config, opts *ConfigOptions) (*Server, error) {
+	config := getConfig(c, opts)
 
 	// Logger
 	logger := logging.InitLogger(&config.Logging)

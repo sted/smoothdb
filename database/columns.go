@@ -22,8 +22,8 @@ type ColumnUpdate struct {
 
 const columnsQuery = `
 	SELECT column_name, data_type, is_nullable, column_default, table_schema || '.' || table_name
-		FROM information_schema.columns
-		WHERE table_name = $1 AND table_schema = $2`
+	FROM information_schema.columns
+	WHERE table_name = $1 AND table_schema = $2`
 
 func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	conn := GetConn(ctx)

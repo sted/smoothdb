@@ -34,8 +34,9 @@ const privilegesRelationQuery = `
 	FROM pg_catalog.pg_class c 
 	LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace 
 	WHERE c.relkind IN ('r','v','m','S','f','p') AND 
-		n.nspname !~ '^pg_' AND  
-		pg_table_is_visible(c.oid)`
+		n.nspname !~ '^pg_'`
+
+//AND  pg_table_is_visible(c.oid)
 
 func parsePrivilege(s string, priv *Privilege) error {
 	var privilegeLetters string

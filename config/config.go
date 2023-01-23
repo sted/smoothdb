@@ -67,14 +67,14 @@ func WriteArray(a any) *hujson.Array {
 }
 
 // GetConfig loads the configuration
-func GetConfig[C any](config *C, configFile string) *C {
+func GetConfig(config any, configFile string) {
 
 	// Read config file
 	b, err := os.ReadFile(configFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("Error reading the configuration file (%s)", err)
-			return nil
+			return
 		}
 	} else {
 		b, err = hujson.Standardize(b)
@@ -93,5 +93,4 @@ func GetConfig[C any](config *C, configFile string) *C {
 	if err != nil {
 		log.Printf("Error writing the configuration file (%s)", err)
 	}
-	return config
 }

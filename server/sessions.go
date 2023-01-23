@@ -49,20 +49,20 @@ func (s *Server) initSessionManager() {
 					// because we hold a W lock on the session manager and making
 					// the session usable requires an R lock
 
-					if now.Sub(s.LastUsedAt) > 5*time.Second {
+					passedTime := now.Sub(s.LastUsedAt)
+
+					if passedTime > 5*time.Second {
 
 						// Delete the session
 						delete(sm.Sessions, k)
 
-					} else if now.Sub(s.LastUsedAt) > 1*time.Second {
-						if s.DbConn != nil {
+					} else if passedTime > 1*time.Second && s.DbConn != nil {
 
-							// Release and detach the database connection from the session
-							// (Acquire and attach are done in the auth middleware)
-							err := database.ReleaseConnection(context.Background(), s.DbConn, true)
-							sm.logger.Err(err).Msg("error releasing an expired session")
-							s.DbConn = nil
-						}
+						// Release and detach the database connection from the session
+						// (Acquire and attach are done in the auth middleware)
+						err := database.ReleaseConnection(context.Background(), s.DbConn, true)
+						sm.logger.Err(err).Msg("error releasing an expired session")
+						s.DbConn = nil
 					}
 				}
 

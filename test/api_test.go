@@ -8,16 +8,25 @@ import (
 )
 
 var (
+	adminToken string
 	pippoToken string
 	plutoToken string
 )
 
 func TestMain(m *testing.M) {
-	c := &server.Config{AllowAnon: false}
-	s, err := server.NewServerWithConfig(c, "../config.json")
+	c := &server.Config{
+		AllowAnon:        false,
+		EnableAdminRoute: true,
+	}
+	s, err := server.NewServerWithConfig(c,
+		&server.ConfigOptions{
+			ConfigFilePath: "../config.json",
+			SkipFlags:      true,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
+	adminToken, _ = server.GenerateToken("sted", s.Config.JWTSecret)
 	pippoToken, _ = server.GenerateToken("pippo", s.Config.JWTSecret)
 	plutoToken, _ = server.GenerateToken("pluto", s.Config.JWTSecret)
 
@@ -117,7 +126,8 @@ func TestMain(m *testing.M) {
 func TestPolicies(t *testing.T) {
 
 	cmdConfig := TestConfig{
-		BaseUrl: "http://localhost:8081/admin",
+		BaseUrl:       "http://localhost:8081/admin",
+		CommonHeaders: map[string]string{"Authorization": adminToken},
 	}
 
 	commands := []Test{

@@ -51,9 +51,11 @@ func (server *Server) middleware() gin.HandlerFunc {
 
 		c.Next()
 
-		server.sessionManager.leaveSession(session)
-		if db == nil && conn != nil {
-			database.ReleaseConnection(c, conn, false)
+		if session != nil {
+			server.sessionManager.leaveSession(session)
+			if db == nil && conn != nil {
+				database.ReleaseConnection(c, conn, false)
+			}
 		}
 
 		// Error handling

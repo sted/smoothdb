@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"green/green-ds/config"
@@ -9,6 +8,8 @@ import (
 	"green/green-ds/logging"
 	"os"
 	"strings"
+
+	"github.com/imdario/mergo"
 )
 
 // Config holds the current configuration
@@ -72,39 +73,50 @@ Server Options:
 	-h, --help                       Show this message
 `
 
-func getFlags(c *Config, configPath *string) *flag.FlagSet {
+func getFlags(defaultConfigPath string) (*Config, string) {
+	c := &Config{}
+	var configPath string
+
 	flags := flag.NewFlagSet("", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Printf("%s\n", usageStr)
 		os.Exit(0)
 	}
-	flags.StringVar(configPath, "c", *configPath, "Configuration file")
-	flags.StringVar(configPath, "config", *configPath, "Configuration file")
+	flags.StringVar(&configPath, "c", defaultConfigPath, "Configuration file")
+	flags.StringVar(&configPath, "config", defaultConfigPath, "Configuration file")
 	flags.StringVar(&c.Address, "a", c.Address, "Address")
 	flags.StringVar(&c.Address, "addr", c.Address, "Address")
 	flags.StringVar(&c.Database.URL, "d", c.Database.URL, "DatabaseURL")
 	flags.StringVar(&c.Database.URL, "dburl", c.Database.URL, "DatabaseURL")
-	return flags
+	flags.Parse(os.Args[1:])
+	return c, configPath
 }
 
-func getConfig(base *Config, configPath string) *Config {
-	// Defaults
-	c := defaultConfig()
+func getConfig(base *Config, opts *ConfigOptions) *Config {
 
-	//
-	if base != nil {
-		b, _ := json.Marshal(base)
-		_ = json.Unmarshal(b, c)
+	// Defaults
+	cfg := defaultConfig()
+
+	// Command line
+	var cliConfig *Config
+	configPath := opts.ConfigFilePath
+	if !opts.SkipFlags {
+		cliConfig, configPath = getFlags(opts.ConfigFilePath)
 	}
 
+	// Configuration file
+	config.GetConfig(cfg, configPath)
+
+	if base != nil {
+		mergo.MergeWithOverwrite(cfg, base)
+	}
 	// Environment
-	getEnvironment(c)
+	if !opts.SkipEnv {
+		getEnvironment(cfg)
+	}
+	if !opts.SkipFlags {
+		mergo.MergeWithOverwrite(cfg, cliConfig)
+	}
 
-	// Command line flags
-	flags := getFlags(c, &configPath)
-
-	c = config.GetConfig(c, configPath)
-	flags.Parse(os.Args[1:])
-
-	return c
+	return cfg
 }

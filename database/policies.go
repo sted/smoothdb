@@ -20,13 +20,13 @@ const policyQuery = `
 		c.relnamespace::regnamespace  || '.' || c.relname tablename,
 		NOT pol.polpermissive deny,
 		CASE pol.polcmd
-            WHEN 'r'::"char" THEN 'SELECT'::text
-            WHEN 'a'::"char" THEN 'INSERT'::text
-            WHEN 'w'::"char" THEN 'UPDATE'::text
-            WHEN 'd'::"char" THEN 'DELETE'::text
-            WHEN '*'::"char" THEN 'ALL'::text
-            ELSE NULL::text
-        END cmd,
+			WHEN 'r'::"char" THEN 'SELECT'::text
+			WHEN 'a'::"char" THEN 'INSERT'::text
+			WHEN 'w'::"char" THEN 'UPDATE'::text
+			WHEN 'd'::"char" THEN 'DELETE'::text
+			WHEN '*'::"char" THEN 'ALL'::text
+			ELSE NULL::text
+		END cmd,
 		CASE
 			WHEN pol.polroles = '{0}'::oid[] THEN string_to_array('public'::text, ''::text)::name[]
 			ELSE ARRAY( SELECT pg_authid.rolname
@@ -36,8 +36,8 @@ const policyQuery = `
 		END roles,
 		pg_get_expr(pol.polqual, pol.polrelid) using,
 		pg_get_expr(pol.polwithcheck, pol.polrelid) check
-   	FROM pg_policy pol
-    	JOIN pg_class c ON c.oid = pol.polrelid`
+	FROM pg_policy pol
+		JOIN pg_class c ON c.oid = pol.polrelid`
 
 func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	conn := GetConn(ctx)

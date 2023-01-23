@@ -13,12 +13,13 @@ type Role struct {
 	MemberOf            []string `json:"memberof"`
 }
 
-const rolesQuery = `SELECT r.rolname, r.rolsuper, r.rolcanlogin, NOT r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls,
-ARRAY(SELECT b.rolname
-	FROM pg_catalog.pg_auth_members m
-	JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
+const rolesQuery = `
+	SELECT r.rolname, r.rolsuper, r.rolcanlogin, NOT r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls,
+		ARRAY(SELECT b.rolname
+			FROM pg_catalog.pg_auth_members m
+			JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
 	WHERE m.member = r.oid) as memberof
-FROM pg_catalog.pg_roles r`
+	FROM pg_catalog.pg_roles r`
 
 func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	conn := GetConn(ctx)

@@ -13,7 +13,6 @@ type Table struct {
 	RowSecurity bool     `json:"rowsecurity"`
 	Columns     []Column `json:"columns,omitempty"`
 	Inherits    string   `json:"inherit,omitempty"`
-	Temporary   bool     `json:"temporary,omitempty"`
 	IfNotExists bool     `json:"ifnotexists,omitempty"`
 
 	Struct reflect.Type `json:"-"`
@@ -39,7 +38,9 @@ func splitTableName(name string) (schemaname, tablename string) {
 	return
 }
 
-const tablesQuery = "SELECT  schemaname || '.' || tablename, tableowner, rowsecurity FROM pg_tables"
+const tablesQuery = `
+	SELECT  schemaname || '.' || tablename, tableowner, rowsecurity 
+	FROM pg_tables`
 
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
@@ -49,7 +50,7 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	}
 	tables := []Table{}
 	rows, err := conn.Query(ctx, tablesQuery+
-		" WHERE schemaname <> 'pg_catalog' AND schemaname <> 'information_schema'")
+		" WHERE schemaname <> 'pg_catalog' AND schemaname <> 'information_schema' ORDER BY 1")
 	if err != nil {
 		return tables, err
 	}
@@ -120,9 +121,6 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 	}
 
 	create := "CREATE "
-	if table.Temporary {
-		create += "TEMP "
-	}
 	create += "TABLE "
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "

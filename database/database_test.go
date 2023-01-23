@@ -203,7 +203,7 @@ func TestDDL(t *testing.T) {
 	})
 
 	t.Run("Add and drop columns", func(t *testing.T) {
-		_, err := db.CreateTable(ctx, &Table{Name: "b3", Temporary: false})
+		_, err := db.CreateTable(ctx, &Table{Name: "b3"})
 		if err != nil {
 			t.Fatal(err)
 		}
