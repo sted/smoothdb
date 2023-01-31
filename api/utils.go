@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func prepareInputRecords(c *gin.Context) ([]database.Record, error) {
@@ -44,6 +45,23 @@ func prepareBadRequest(c *gin.Context, err error) {
 	c.JSON(http.StatusBadRequest, gin.H{"description": err.Error()})
 }
 
-func prepareInternalServerError(c *gin.Context, err error) {
-	c.JSON(http.StatusInternalServerError, gin.H{"description": err.Error()})
+func prepareServerError(c *gin.Context, err error) {
+	if _, ok := err.(*pgconn.PgError); ok {
+		dberr := err.(*pgconn.PgError)
+		var status int
+		switch dberr.Code {
+		case "42501":
+			status = http.StatusUnauthorized
+		default:
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{
+			"code":    dberr.Code,
+			"message": dberr.Message,
+			"hint":    dberr.Hint,
+		})
+
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+	}
 }

@@ -75,7 +75,12 @@ func GetGreenContext(ctx context.Context) *GreenContext {
 }
 
 func WithDb(parent context.Context, db *Database) context.Context {
-	conn := db.AcquireConnection(parent)
+	var conn *DbConn
+	if db != nil {
+		conn = db.AcquireConnection(parent)
+	} else {
+		conn = DBE.AcquireConnection(parent)
+	}
 
 	defaultParser := PostgRestParser{}
 	queryOptions := &QueryOptions{}

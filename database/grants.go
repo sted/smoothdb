@@ -8,11 +8,12 @@ import (
 type Privilege struct {
 	TargetName   string   `json:"targetname"`
 	TargetSchema string   `json:"targetschema,omitempty"`
-	TargetType   string   `json:"targettype"` // database, table, function
+	TargetType   string   `json:"targettype"`        // database, schema, table, column, function
+	Columns      []string `json:"columns,omitempty"` // to insert column privileges
 	Types        []string `json:"types"`
-	ACL          string   `json:"acl"`
 	Grantee      string   `json:"grantee"`
 	Grantor      string   `json:"grantor"`
+	ACL          string   `json:"acl"`
 }
 
 const privilegesDatabaseQuery = `
@@ -52,7 +53,7 @@ func parsePrivilege(s string, priv *Privilege) error {
 			priv.Grantor = s[i+1:]
 		}
 	}
-
+	priv.Types = nil
 	for _, l := range privilegeLetters {
 		switch l {
 		case 'r':
@@ -143,8 +144,8 @@ func (db *Database) GetPrivileges(ctx context.Context, targetType string, target
 	}
 	defer rows.Close()
 
-	privilege := Privilege{TargetType: targetType}
 	for rows.Next() {
+		privilege := Privilege{TargetType: targetType}
 		err := rows.Scan(&privilege.TargetName, &privilege.TargetSchema, &privilege.TargetType, &privilege.ACL)
 		if err != nil {
 			return nil, err
@@ -165,13 +166,18 @@ func (db *Database) GetPrivileges(ctx context.Context, targetType string, target
 func (db *Database) CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, error) {
 	conn := GetConn(ctx)
 	create := "GRANT "
-	for i, t := range privilege.Types {
-		if i != 0 {
-			create += ", "
+	if len(privilege.Types) != 0 {
+		for i, t := range privilege.Types {
+			if i != 0 {
+				create += ", "
+			}
+			create += t
 		}
-		create += t
+		create += " ON " + privilege.TargetType + " " + privilege.TargetName
+	} else {
+		// grant role to role
+		create += privilege.TargetName
 	}
-	create += " ON " + privilege.TargetType + " " + privilege.TargetName
 	create += " TO " + privilege.Grantee
 	// to implement: with grant option
 
@@ -185,15 +191,21 @@ func (db *Database) CreatePrivilege(ctx context.Context, privilege *Privilege) (
 func (db *Database) DeletePrivilege(ctx context.Context, privilege *Privilege) error {
 	conn := GetConn(ctx)
 	delete := "REVOKE "
-	for i, t := range privilege.Types {
-		if i != 0 {
-			delete += ", "
+	if len(privilege.Types) != 0 {
+		for i, t := range privilege.Types {
+			if i != 0 {
+				delete += ", "
+			}
+			delete += t
 		}
-		delete += t
+		delete += " ON " + privilege.TargetType + " " + privilege.TargetName
+	} else {
+		// revoke role from role
+		delete += privilege.TargetName
 	}
-	delete += " ON " + privilege.TargetType + " " + privilege.TargetName
 	delete += " FROM " + privilege.Grantee
 	// to implement: with grant option
+
 	_, err := conn.Exec(ctx, delete)
 	return err
 }

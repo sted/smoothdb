@@ -95,7 +95,6 @@ func (s *SessionManager) newSession(auth *Auth) *Session {
 	session.InUse.Store(true)
 	session.LastUsedAt = now
 	s.Sessions[session.Id] = session
-	s.logger.Trace().Str("session", session.Id).Msg("New session")
 	return session
 }
 

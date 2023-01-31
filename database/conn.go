@@ -11,20 +11,20 @@ type DbConn = pgxpool.Conn
 
 func AcquireConnection(ctx context.Context, db *Database, role string, oldconn *DbConn) (*DbConn, error) {
 	conn := oldconn
-	if db != nil {
-		if conn == nil {
+	if conn == nil {
+		if db != nil {
 			conn = db.AcquireConnection(ctx)
+
+		} else {
+			conn = DBE.AcquireConnection(ctx)
 		}
-	} else {
-		conn = DBE.AcquireConnection(ctx)
 	}
 	if conn == nil {
 		return nil, errors.New("no available connections")
 	}
 
-	// check for db != nil : do not set role for dbe connections
 	// check for oldconn == nil : set role only on the first acquire
-	if db != nil && oldconn == nil && role != "" {
+	if oldconn == nil && role != "" {
 		_, err := conn.Exec(ctx, "SET ROLE "+role)
 		if err != nil {
 			return nil, err

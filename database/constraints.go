@@ -56,15 +56,17 @@ const constraintsQuery = `
 func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]Constraint, error) {
 	constraints := []Constraint{}
 	query := constraintsQuery
+	var args []any
 	if ftablename != nil {
 		schemaname, tablename := splitTableName(*ftablename)
-		query += " WHERE cls.relname = '" + tablename + "' AND c.connamespace::regnamespace = '" + schemaname + "'::regnamespace"
+		query += " WHERE cls.relname = $1 AND c.connamespace::regnamespace = $2::regnamespace"
+		args = append(args, tablename, schemaname)
 	} else {
 		query += " WHERE c.connamespace::regnamespace <> 'pg_catalog'::regnamespace"
 		query += " AND c.connamespace::regnamespace <> 'information_schema'::regnamespace"
 	}
 	query += " ORDER BY tablename, type"
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

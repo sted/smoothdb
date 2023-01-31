@@ -10,19 +10,19 @@ import (
 )
 
 func (server *Server) middleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
+	return func(ctx *gin.Context) {
 		var session *Session
-		var db *database.Database
+		//var db *database.Database
 		var conn *pgxpool.Conn
 		var err error
 
-		tokenString := extractAuthHeader(c.Request)
+		tokenString := extractAuthHeader(ctx.Request)
 
-		sessionId, _ := c.Cookie("session_id")
+		sessionId, _ := ctx.Cookie("session_id")
 		if sessionId == "" {
 			// no previous session
 
-			session = server.authenticate(c, tokenString)
+			session = server.authenticate(ctx, tokenString)
 		} else {
 			// we have a previous session id
 
@@ -30,37 +30,37 @@ func (server *Server) middleware() gin.HandlerFunc {
 			if session == nil {
 				// session not found, try to reauthenticate
 
-				session = server.authenticate(c, tokenString)
+				session = server.authenticate(ctx, tokenString)
 			} else if session.Token != tokenString {
-				c.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
+				ctx.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
 				session = nil
 			}
 		}
 		if session != nil {
-			conn, err = database.FillContext(c, session.Role, session.DbConn)
+			conn, err = database.FillContext(ctx, session.Role, session.DbConn)
 			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
+				ctx.AbortWithError(http.StatusInternalServerError, err)
 			} else {
-				db = database.GetDb(c)
-				if db != nil {
-					// Cache the database connection (excluding dbe connections)
-					session.DbConn = conn
-				}
+				//db = database.GetDb(ctx)
+				//if db != nil {
+				// Cache the database connection (excluding dbe connections)
+				session.DbConn = conn
+				//}
 			}
 		}
 
-		c.Next()
+		ctx.Next()
 
 		if session != nil {
 			server.sessionManager.leaveSession(session)
-			if db == nil && conn != nil {
-				database.ReleaseConnection(c, conn, false)
-			}
+			//if db == nil && conn != nil {
+			// 	database.ReleaseConnection(ctx, conn, false)
+			// }
 		}
 
 		// Error handling
-		if len(c.Errors) > 0 {
-			c.JSON(-1, gin.H{"error": c.Errors[0].Error()})
+		if len(ctx.Errors) > 0 {
+			ctx.JSON(-1, gin.H{"error": ctx.Errors[0].Error()})
 		}
 	}
 }

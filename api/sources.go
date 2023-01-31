@@ -23,7 +23,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		} else if _, ok := err.(*database.ParseError); ok {
 			prepareBadRequest(c, err)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -32,7 +32,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 		data, count, err := db.CreateRecords(c, sourcename, records)
 		if err == nil {
@@ -43,7 +43,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusCreated, string(data))
 			}
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -52,7 +52,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 		data, count, err := db.UpdateRecords(c, sourcename, records[0], c.Request.URL.Query())
 		if err == nil {
@@ -63,7 +63,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusOK, string(data))
 			}
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -79,7 +79,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusOK, string(data))
 			}
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 

@@ -108,14 +108,14 @@ func getConfig(base *Config, opts *ConfigOptions) *Config {
 	config.GetConfig(cfg, configPath)
 
 	if base != nil {
-		mergo.MergeWithOverwrite(cfg, base)
+		mergo.Merge(cfg, base, mergo.WithOverride)
 	}
 	// Environment
 	if !opts.SkipEnv {
 		getEnvironment(cfg)
 	}
 	if !opts.SkipFlags {
-		mergo.MergeWithOverwrite(cfg, cliConfig)
+		mergo.Merge(cfg, cliConfig, mergo.WithOverride)
 	}
 
 	return cfg

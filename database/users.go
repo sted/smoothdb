@@ -10,7 +10,7 @@ type User struct {
 const usersQuery = `SELECT b.rolname
 	FROM pg_catalog.pg_auth_members m
 		JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
-	WHERE m.member = (SELECT r.oid FROM pg_roles r WHERE r.rolname = 'auth')`
+	WHERE m.member = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = 'auth')`
 
 func (dbe *DbEngine) GetUsers(ctx context.Context) ([]User, error) {
 	conn := GetConn(ctx)
@@ -56,14 +56,14 @@ func (dbe *DbEngine) CreateUser(ctx context.Context, role *User) (*User, error) 
 	}
 	defer tx.Rollback(ctx)
 
-	create := "CREATE ROLE " + role.Name
+	create := "CREATE ROLE \"" + role.Name + "\""
 	create += " NOLOGIN"
 	_, err = tx.Exec(ctx, create)
 	if err != nil {
 		return nil, err
 	}
 
-	grant := "GRANT " + role.Name + " TO " + dbe.config.AuthRole
+	grant := "GRANT \"" + role.Name + "\" TO \"" + dbe.config.AuthRole + "\""
 	_, err = tx.Exec(ctx, grant)
 	if err != nil {
 		return nil, err
@@ -78,6 +78,6 @@ func (dbe *DbEngine) CreateUser(ctx context.Context, role *User) (*User, error) 
 
 func (dbe *DbEngine) DeleteUser(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP ROLE "+name)
+	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
 	return err
 }

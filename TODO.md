@@ -32,6 +32,7 @@
 * M x N Relationships
 * application/octet-stream as output
 * "singular" response
+* Encryption
 
 Upper layer:
 * Migrations (Tern?)

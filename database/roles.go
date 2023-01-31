@@ -4,7 +4,7 @@ import "context"
 
 type Role struct {
 	Name                string   `json:"name"`
-	IsSuperUSer         bool     `json:"issuperuser"`
+	IsSuperUser         bool     `json:"issuperuser"`
 	CanLogin            bool     `json:"canlogin"`
 	NoInheritPrivileges bool     `json:"noinherit"`
 	CanCreateRoles      bool     `json:"cancreateroles"`
@@ -33,7 +33,7 @@ func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 
 	role := Role{}
 	for rows.Next() {
-		err := rows.Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
+		err := rows.Scan(&role.Name, &role.IsSuperUser, &role.CanLogin,
 			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS, &role.MemberOf)
 		if err != nil {
 			return nil, err
@@ -51,7 +51,7 @@ func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	conn := GetConn(ctx)
 	role := &Role{}
 	err := conn.QueryRow(ctx, rolesQuery+" WHERE r.rolname = $1", name).
-		Scan(&role.Name, &role.IsSuperUSer, &role.CanLogin,
+		Scan(&role.Name, &role.IsSuperUser, &role.CanLogin,
 			&role.NoInheritPrivileges, &role.CanCreateRoles, &role.CanCreateDatabases, &role.CanBypassRLS, &role.MemberOf)
 	if err != nil {
 		return nil, err
@@ -61,8 +61,8 @@ func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 
 func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
 	conn := GetConn(ctx)
-	create := "CREATE ROLE " + role.Name
-	if role.IsSuperUSer {
+	create := "CREATE ROLE \"" + role.Name + "\""
+	if role.IsSuperUser {
 		create += " SUPERUSER"
 	}
 	if role.CanLogin {
@@ -89,6 +89,6 @@ func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 
 func (dbe *DbEngine) DeleteRole(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP ROLE "+name)
+	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
 	return err
 }

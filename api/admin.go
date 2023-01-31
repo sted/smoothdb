@@ -26,7 +26,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, role)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -38,7 +38,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, role)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -47,7 +47,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := dbe.DeleteRole(c, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -66,7 +66,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, user)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -77,7 +77,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, user)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -85,7 +85,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		name := c.Param("username")
 		err := dbe.DeleteUser(c, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -111,7 +111,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, privileges)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	}
 	grants.GET("/", grantsGetHandler)
@@ -126,23 +126,26 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		targetType := c.Param("targettype")
 		targetName := c.Param("targetname")
 
-		if targetType == "" {
-			targetType = "database"
-			targetName = dbname
-		}
-
 		var privilegeInput database.Privilege
-		privilegeInput.TargetType = targetType
-		privilegeInput.TargetName = targetName
+		if dbname != "" {
+			if targetType == "" {
+				targetType = "database"
+				targetName = dbname
+			}
+
+			privilegeInput.TargetType = targetType
+			privilegeInput.TargetName = targetName
+		}
 		c.BindJSON(&privilegeInput)
 
 		priv, err := db.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
 			c.JSON(http.StatusCreated, priv)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	}
+	grants.POST("/", grantsPostHandler)
 	grants.POST("/:dbname", grantsPostHandler)
 	grants.POST("/:dbname/:targettype/:targetname", grantsPostHandler)
 
@@ -165,7 +168,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeletePrivilege(c, &privilegeInput)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	}
 	grants.DELETE("/:dbname", grantsDeleteHandler)
@@ -187,7 +190,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, db)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -199,7 +202,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, database)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -208,7 +211,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := dbe.DeleteDatabase(c, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -221,7 +224,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, tables)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -233,7 +236,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, table)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -246,7 +249,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, table)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -260,7 +263,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, table)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -270,7 +273,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeleteTable(c, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -283,7 +286,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, views)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -295,7 +298,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, view)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -308,7 +311,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, view)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -318,7 +321,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeleteView(c, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -332,7 +335,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, columns)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -349,7 +352,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, column)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -364,7 +367,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, column)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -375,7 +378,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeleteColumn(c, table, column, false)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -389,7 +392,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, constraints)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -403,7 +406,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, constant)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -414,7 +417,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeleteConstraint(c, table, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -428,7 +431,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusOK, policies)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -442,7 +445,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		if err == nil {
 			c.JSON(http.StatusCreated, policy)
 		} else {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 
@@ -453,7 +456,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 		err := db.DeletePolicy(c, table, name)
 		if err != nil {
-			prepareInternalServerError(c, err)
+			prepareServerError(c, err)
 		}
 	})
 

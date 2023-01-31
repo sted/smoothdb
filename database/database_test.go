@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 
 func BenchmarkBase(b *testing.B) {
 
-	f_ctx := context.Background()
+	f_ctx := WithDb(context.Background(), nil)
 
 	db, err := dbe.CreateDatabase(f_ctx, "bench")
 	defer dbe.DeleteDatabase(f_ctx, "bench")
@@ -81,7 +81,7 @@ func BenchmarkBase(b *testing.B) {
 
 func TestBase(t *testing.T) {
 
-	f_ctx := context.Background()
+	f_ctx := WithDb(context.Background(), nil)
 
 	db, err := dbe.CreateDatabase(f_ctx, "test_base")
 	defer dbe.DeleteDatabase(f_ctx, "test_base")
@@ -132,7 +132,7 @@ func TestBase(t *testing.T) {
 
 func TestDDL(t *testing.T) {
 
-	f_ctx := context.Background()
+	f_ctx := WithDb(context.Background(), nil)
 
 	db, _ := dbe.CreateDatabase(f_ctx, "test_ddl")
 	defer dbe.DeleteDatabase(f_ctx, "test_ddl")

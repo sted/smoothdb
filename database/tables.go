@@ -125,7 +125,7 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
 	}
-	create += table.Name
+	create += "\"" + table.Name + "\""
 	create += " (" + columnList
 	for _, constraint := range table.Constraints {
 		create += ", " + constraint
@@ -162,11 +162,11 @@ func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table
 	defer tx.Rollback(ctx)
 
 	var alter string
-	prefix := "ALTER TABLE " + table.Name
+	prefix := "ALTER TABLE \"" + table.Name + "\""
 
 	// NAME
 	if table.NewName != nil {
-		alter = prefix + " RENAME TO " + *table.NewName
+		alter = prefix + " RENAME TO \"" + *table.NewName + "\"qq"
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return nil, err
@@ -216,7 +216,7 @@ func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table
 
 func (db *Database) DeleteTable(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP TABLE "+name)
+	_, err := conn.Exec(ctx, "DROP TABLE \""+name+"\"")
 	if err != nil {
 		return err
 	}
