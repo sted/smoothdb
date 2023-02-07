@@ -61,7 +61,9 @@ func (s *Server) initSessionManager() {
 						// Release and detach the database connection from the session
 						// (Acquire and attach are done in the auth middleware)
 						err := database.ReleaseConnection(context.Background(), s.DbConn, true)
-						sm.logger.Err(err).Msg("error releasing an expired session")
+						if err != nil {
+							sm.logger.Err(err).Msg("error releasing an expired session")
+						}
 						s.DbConn = nil
 					}
 				}

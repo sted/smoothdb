@@ -52,6 +52,12 @@ func prepareServerError(c *gin.Context, err error) {
 		switch dberr.Code {
 		case "42501":
 			status = http.StatusUnauthorized
+		case "42P01":
+			status = http.StatusNotFound
+		case "42P04", // duplicate database
+			"42P06", // duplicate schema
+			"42P07": // duplicate table
+			status = http.StatusConflict
 		default:
 			status = http.StatusInternalServerError
 		}

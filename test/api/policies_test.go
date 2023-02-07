@@ -1,4 +1,4 @@
-package api
+package test_api
 
 import (
 	"green/green-ds/test"
@@ -13,17 +13,17 @@ func TestPolicies(t *testing.T) {
 	}
 
 	commands := []test.Command{
-		// drop table table1
+		// drop table table_policies
 		{
 			Method: "DELETE",
-			Query:  "/databases/dbtest/tables/table1",
+			Query:  "/databases/dbtest/tables/table_policies",
 		},
-		// create table table1
+		// create table table_policies
 		{
 			Method: "POST",
 			Query:  "/databases/dbtest/tables",
 			Body: `{
-				"name": "table1", 
+				"name": "table_policies", 
 				"columns": [
 					{"name": "name", "type": "text", "notnull": true},
 					{"name": "creator", "type": "text", "default": "current_user"}
@@ -32,27 +32,27 @@ func TestPolicies(t *testing.T) {
 		// enable row level security
 		{
 			Method: "PATCH",
-			Query:  "/databases/dbtest/tables/table1",
+			Query:  "/databases/dbtest/tables/table_policies",
 			Body: `{
 				"rowsecurity": true
 				}`,
 		},
-		// grant public access to table1
+		// grant public access to table_policies
 		{
 			Method: "POST",
-			Query:  "/grants/dbtest/table/table1",
+			Query:  "/grants/dbtest/table/table_policies",
 			Body:   `{"types": ["all"], "grantee": "public"}`,
 		},
 		// create policy for select
 		{
 			Method: "POST",
-			Query:  "/databases/dbtest/tables/table1/policies",
+			Query:  "/databases/dbtest/tables/table_policies/policies",
 			Body:   `{"name": "perm_read", "command": "select", "roles": ["public"], "using": "creator = current_user"}`,
 		},
 		// create policy for insert
 		{
 			Method: "POST",
-			Query:  "/databases/dbtest/tables/table1/policies",
+			Query:  "/databases/dbtest/tables/table_policies/policies",
 			Body:   `{"name": "perm_write", "command": "insert",  "check": "name = current_user"}`,
 		},
 	}
@@ -68,7 +68,7 @@ func TestPolicies(t *testing.T) {
 		{
 			Description: "create a record",
 			Method:      "POST",
-			Query:       "/table1",
+			Query:       "/table_policies",
 			Body:        `{"name": "user1"}`,
 			Headers:     map[string]string{"Authorization": user1Token},
 			Status:      201,
@@ -76,7 +76,7 @@ func TestPolicies(t *testing.T) {
 		{
 			Description: "create a record",
 			Method:      "POST",
-			Query:       "/table1",
+			Query:       "/table_policies",
 			Body:        `{"name": "user2"}`,
 			Headers:     map[string]string{"Authorization": user2Token},
 			Status:      201,
@@ -84,7 +84,7 @@ func TestPolicies(t *testing.T) {
 		{
 			Description: "select",
 			Method:      "GET",
-			Query:       "/table1?select=name",
+			Query:       "/table_policies?select=name",
 			Expected:    `[{"name": "user1"}]`,
 			Headers:     map[string]string{"Authorization": user1Token},
 			Status:      200,
@@ -92,7 +92,7 @@ func TestPolicies(t *testing.T) {
 		{
 			Description: "select",
 			Method:      "GET",
-			Query:       "/table1?select=name",
+			Query:       "/table_policies?select=name",
 			Expected:    `[{"name": "user2"}]`,
 			Headers:     map[string]string{"Authorization": user2Token},
 			Status:      200,
@@ -100,7 +100,7 @@ func TestPolicies(t *testing.T) {
 		{
 			Description: "create a record with wrong name",
 			Method:      "POST",
-			Query:       "/table1",
+			Query:       "/table_policies",
 			Body:        `{"name": "user3"}`,
 			Headers:     map[string]string{"Authorization": user1Token},
 			Status:      401,

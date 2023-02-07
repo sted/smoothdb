@@ -1,4 +1,4 @@
-package api
+package test_api
 
 import (
 	"green/green-ds/test"
@@ -49,6 +49,15 @@ func TestGrants(t *testing.T) {
 				"grantee": "user1"
 				}`,
 			Status: 201,
+		},
+		{
+			Description: "verify grants",
+			Method:      "GET",
+			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Expected: `[{"targetname":"dbtest","targettype":"database","types":["TEMPORARY","CONNECT"],"grantee":"","grantor":"admin","acl":"=Tc/admin"},
+				{"targetname":"dbtest","targettype":"database","types":["CREATE","TEMPORARY","CONNECT"],"grantee":"admin","grantor":"admin","acl":"admin=CTc/admin"},
+				{"targetname":"dbtest","targettype":"database","types":["CREATE","CONNECT"],"grantee":"user1","grantor":"admin","acl":"user1=Cc/admin"}]`,
+			Status: 200,
 		},
 		{
 			Description: "grant select, insert to user1",
@@ -131,7 +140,7 @@ func TestGrants(t *testing.T) {
 			Query:       "/table_grants",
 			Body:        `{"name": "user2-update"}`,
 			Headers:     map[string]string{"Authorization": user2Token},
-			Status:      200,
+			Status:      204,
 		},
 		{
 			Description: "fail to delete records",
@@ -145,7 +154,7 @@ func TestGrants(t *testing.T) {
 			Method:      "DELETE",
 			Query:       "/table_grants",
 			Headers:     map[string]string{"Authorization": user2Token},
-			Status:      200,
+			Status:      204,
 		},
 		{
 			Description: "verify grants",

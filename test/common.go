@@ -11,9 +11,11 @@ import (
 	"testing"
 )
 
+type Headers map[string]string
+
 type Config struct {
 	BaseUrl       string
-	CommonHeaders map[string]string
+	CommonHeaders Headers
 	NoCookies     bool
 }
 
@@ -22,7 +24,7 @@ type Command struct {
 	Method      string
 	Query       string
 	Body        string
-	Headers     map[string]string
+	Headers     Headers
 }
 
 // We don't embed Command to simplify tests writing

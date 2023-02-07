@@ -46,7 +46,9 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		name := c.Param("rolename")
 
 		err := dbe.DeleteRole(c, name)
-		if err != nil {
+		if err == nil {
+			c.Status(http.StatusNoContent)
+		} else {
 			prepareServerError(c, err)
 		}
 	})
@@ -84,7 +86,9 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 	users.DELETE("/:username", func(c *gin.Context) {
 		name := c.Param("username")
 		err := dbe.DeleteUser(c, name)
-		if err != nil {
+		if err == nil {
+			c.Status(http.StatusNoContent)
+		} else {
 			prepareServerError(c, err)
 		}
 	})
@@ -215,6 +219,44 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		}
 	})
 
+	// SCHEMAS
+
+	databases.GET("/:dbname/schemas", func(c *gin.Context) {
+		db := database.GetDb(c)
+
+		schemas, err := db.GetSchemas(c)
+		if err == nil {
+			c.JSON(http.StatusOK, schemas)
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
+	databases.POST("/:dbname/schemas/", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var schemaInput database.Schema
+		c.BindJSON(&schemaInput)
+
+		schema, err := db.CreateSchema(c, schemaInput.Name)
+		if err == nil {
+			c.JSON(http.StatusCreated, schema)
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
+	databases.DELETE("/:dbname/schemas/:schema", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("schema")
+
+		err := db.DeleteSchema(c, name)
+		if err == nil {
+			c.Status(http.StatusNoContent)
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
 	// TABLES
 
 	databases.GET("/:dbname/tables", func(c *gin.Context) {
@@ -272,7 +314,9 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		name := c.Param("table")
 
 		err := db.DeleteTable(c, name)
-		if err != nil {
+		if err == nil {
+			c.Status(http.StatusNoContent)
+		} else {
 			prepareServerError(c, err)
 		}
 	})

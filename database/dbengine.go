@@ -125,15 +125,13 @@ func (dbe *DbEngine) IsDatabaseAllowed(name string) bool {
 }
 
 const databaseQuery = `
-	SELECT d.datname, a.rolname 
-	FROM pg_database d
-	LEFT JOIN pg_authid a ON d.datdba = a.oid 
-	WHERE datistemplate = false`
+	SELECT d.datname, pg_catalog.pg_get_userbyid(d.datdba)
+	FROM pg_catalog.pg_database d`
 
 func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]Database, error) {
 	conn := GetConn(ctx)
 	databases := []Database{}
-	rows, err := conn.Query(ctx, databaseQuery)
+	rows, err := conn.Query(ctx, databaseQuery+" WHERE d.datistemplate = false ORDER BY 1;")
 	if err != nil {
 		return databases, err
 	}
@@ -171,7 +169,7 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*Database, e
 		}
 	} else {
 		err := dbe.pool.QueryRow(ctx, databaseQuery+
-			" AND d.datname = $1", name).Scan(&db.Name, &db.Owner)
+			" WHERE d.datname = $1", name).Scan(&db.Name, &db.Owner)
 		if err != nil {
 			dbe.activeDatabases.Delete(name)
 			return nil, fmt.Errorf("database %q not found or not allowed (%w)", name, err)

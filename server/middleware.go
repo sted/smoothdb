@@ -6,14 +6,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (server *Server) middleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var session *Session
-		//var db *database.Database
-		var conn *pgxpool.Conn
+		var conn *database.DbConn
 		var err error
 
 		tokenString := extractAuthHeader(ctx.Request)
@@ -41,21 +39,19 @@ func (server *Server) middleware() gin.HandlerFunc {
 			if err != nil {
 				ctx.AbortWithError(http.StatusInternalServerError, err)
 			} else {
-				//db = database.GetDb(ctx)
-				//if db != nil {
-				// Cache the database connection (excluding dbe connections)
+				// Cache the database connection
 				session.DbConn = conn
-				//}
 			}
 		}
 
 		ctx.Next()
 
 		if session != nil {
+			if database.HasTX(conn) {
+				database.ReleaseConnection(ctx, conn, false)
+				session.DbConn = nil
+			}
 			server.sessionManager.leaveSession(session)
-			//if db == nil && conn != nil {
-			// 	database.ReleaseConnection(ctx, conn, false)
-			// }
 		}
 
 		// Error handling

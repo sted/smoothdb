@@ -137,7 +137,7 @@ func orderClause(table, schema string, orderFields []OrderField) string {
 		if order != "" {
 			order += ", "
 		}
-		order += "\"" + o.field.name + "\"" + o.field.jsonPath
+		order += _stq(o.field.name, schema, table) + o.field.jsonPath
 		if o.descending {
 			order += " DESC"
 		}
@@ -270,7 +270,8 @@ func (CommonBuilder) BuildInsert(table string, records []Record, options *QueryO
 		}
 		j = 0
 	}
-	insert = "INSERT INTO " + table + " (" + fields + ") VALUES (" + values + ")"
+	schema := options.Schema
+	insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
 	if options.ReturnRepresentation {
 		insert += " RETURNING *"
 	}
@@ -291,7 +292,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	}
 	schema := options.Schema
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
-	update = "UPDATE " + table + " SET " + pairs
+	update = "UPDATE " + _sq(table, schema) + " SET " + pairs
 	if whereClause != "" {
 		update += " WHERE " + whereClause
 	}
@@ -304,7 +305,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error) {
 	schema := options.Schema
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
-	delete := "DELETE FROM " + table
+	delete := "DELETE FROM " + _sq(table, schema)
 	if whereClause != "" {
 		delete += " WHERE " + whereClause
 	}

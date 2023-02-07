@@ -7,7 +7,8 @@ type Config struct {
 	AuthRole           string   `comment:"Authorization role (default: auth)"`
 	AnonRole           string   `comment:"Anonymous role (default: anon)"`
 	AllowedDatabases   []string `comment:"Allowed databases (default: [] for all)"`
-	SchemaSearchPath   []string `comment:"Schema search path (default: [] for default Postgres search path)"`
+	SchemaSearchPath   []string `comment:"Schema search path (default: [] for Postgres search path)"`
+	TransactionEnd     string   `comment:"How to end a tx: none, commit, rollback (default: none)"`
 }
 
 func DefaultConfig() *Config {
@@ -17,5 +18,6 @@ func DefaultConfig() *Config {
 		MaxPoolConnections: 100,
 		AuthRole:           "auth",
 		AnonRole:           "anon",
+		TransactionEnd:     "none",
 	}
 }

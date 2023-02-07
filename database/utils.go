@@ -35,18 +35,22 @@ func normalize(rel, schema, table string, quote bool) string {
 	return quoteIf(rel, quote)
 }
 
+// _s adds schema
 func _s(rel, schema string) string {
 	return normalize(rel, schema, "", false)
 }
 
+// _sq adds schema and quotes
 func _sq(rel, schema string) string {
 	return normalize(rel, schema, "", true)
 }
 
+// _st adds schema and table
 func _st(rel, schema, table string) string {
 	return normalize(rel, schema, table, false)
 }
 
+// _st adds schema, table and quotes
 func _stq(rel, schema, table string) string {
 	return normalize(rel, schema, table, true)
 }

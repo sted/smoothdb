@@ -57,12 +57,12 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options)
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options)
 	if err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		rows, err := gi.Conn.Query(ctx, insert, values...)
+		rows, err := gi.Conn.Query(ctx, update, values...)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -71,7 +71,7 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 		return data, 0, err
 
 	} else {
-		tag, err := gi.Conn.Exec(ctx, insert, values...)
+		tag, err := gi.Conn.Exec(ctx, update, values...)
 		if err != nil {
 			return nil, 0, err
 		}

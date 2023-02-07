@@ -66,6 +66,8 @@ type QueryParts struct {
 
 type QueryOptions struct {
 	ReturnRepresentation bool
+	TxCommit             bool
+	TxRollback           bool
 	Schema               string
 }
 
@@ -664,9 +666,19 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 func (p PostgRestParser) getOptions(req *Request) *QueryOptions {
 	header := req.Header
 	options := &QueryOptions{}
-	if header.Get("Prefer") == "return=representation" {
-		options.ReturnRepresentation = true
+
+	preferValues := header.Values("Prefer")
+	for _, prefer := range preferValues {
+		switch prefer {
+		case "return=representation":
+			options.ReturnRepresentation = true
+		case "tx=commit":
+			options.TxCommit = true
+		case "tx=rollback":
+			options.TxRollback = true
+		}
 	}
+
 	var schemaProfile string
 	switch req.Method {
 	case "GET", "HEAD":
@@ -677,5 +689,6 @@ func (p PostgRestParser) getOptions(req *Request) *QueryOptions {
 	if ap := header.Get(schemaProfile); ap != "" {
 		options.Schema = ap
 	}
+
 	return options
 }

@@ -39,17 +39,17 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// order by
 			"?order=a,b",
-			`SELECT * FROM "table" ORDER BY "a", "b"`,
+			`SELECT * FROM "table" ORDER BY "table"."a", "table"."b"`,
 		},
 		{
 			// complex order by
 			"?order=a.desc,b.asc,c.nullslast,d.desc.nullslast,e.asc.nullsfirst",
-			`SELECT * FROM "table" ORDER BY "a" DESC, "b", "c", "d" DESC NULLS LAST, "e" NULLS FIRST`,
+			`SELECT * FROM "table" ORDER BY "table"."a" DESC, "table"."b", "table"."c", "table"."d" DESC NULLS LAST, "table"."e" NULLS FIRST`,
 		},
 		{
 			// limit and offest
 			"?order=a,b&limit=20&offset=100",
-			`SELECT * FROM "table" ORDER BY "a", "b" LIMIT 20 OFFSET 100`,
+			`SELECT * FROM "table" ORDER BY "table"."a", "table"."b" LIMIT 20 OFFSET 100`,
 		},
 		{
 			// simple where

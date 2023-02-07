@@ -32,7 +32,8 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
 		if err != nil {
-			prepareServerError(c, err)
+			prepareBadRequest(c, err)
+			return
 		}
 		data, count, err := db.CreateRecords(c, sourcename, records)
 		if err == nil {
@@ -52,12 +53,13 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
 		if err != nil {
-			prepareServerError(c, err)
+			prepareBadRequest(c, err)
+			return
 		}
-		data, count, err := db.UpdateRecords(c, sourcename, records[0], c.Request.URL.Query())
+		data, _, err := db.UpdateRecords(c, sourcename, records[0], c.Request.URL.Query())
 		if err == nil {
 			if data == nil {
-				c.JSON(http.StatusOK, count)
+				c.Status(http.StatusNoContent)
 			} else {
 				c.Writer.Header().Set("Content-Type", "application/json")
 				c.String(http.StatusOK, string(data))
@@ -70,10 +72,10 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 	databases.DELETE("/:dbname/:sourcename", func(c *gin.Context) {
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
-		data, count, err := db.DeleteRecords(c, sourcename, c.Request.URL.Query())
+		data, _, err := db.DeleteRecords(c, sourcename, c.Request.URL.Query())
 		if err == nil {
 			if data == nil {
-				c.JSON(http.StatusOK, count)
+				c.Status(http.StatusNoContent)
 			} else {
 				c.Writer.Header().Set("Content-Type", "application/json")
 				c.String(http.StatusOK, string(data))

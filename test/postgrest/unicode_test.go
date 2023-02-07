@@ -16,7 +16,7 @@ func TestPostgREST_Unicode(t *testing.T) {
 			Description: "Can read and write values",
 			Query:       "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF",
 			Expected:    `[]`,
-			Headers:     nil,
+			Headers:     map[string]string{"Accept-Profile": "تست"},
 			Status:      200,
 		},
 		//   request methodPost "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF"

@@ -1,6 +1,7 @@
 package postgrest
 
 import (
+	"green/green-ds/database"
 	"green/green-ds/logging"
 	"green/green-ds/server"
 	"green/green-ds/test"
@@ -19,6 +20,10 @@ func TestMain(m *testing.M) {
 			FileLogging: false,
 			StdOut:      true,
 		},
+		Database: database.Config{
+			SchemaSearchPath: []string{"public", "test"},
+			TransactionEnd:   "rollback-allow-override",
+		},
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
@@ -34,14 +39,15 @@ func TestMain(m *testing.M) {
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: map[string]string{"Authorization": postgresToken},
+		CommonHeaders: test.Headers{"Authorization": postgresToken},
 	}
 
 	testConfig = test.Config{
 		BaseUrl: "http://localhost:8081/api/pgrest",
-		CommonHeaders: map[string]string{
-			"Authorization":  anonymousToken,
-			"Accept-Profile": "test",
+		CommonHeaders: test.Headers{
+			"Authorization":   anonymousToken,
+			"Accept-Profile":  "test",
+			"Content-Profile": "test",
 		},
 	}
 

@@ -18,7 +18,7 @@
 √ Configuration (shared with other apps) 
 √ Logger
 √ pgx v5
-* Schema management
+√ Schema management
 * Reload config
 * Change log level at runtime
 * More types, in order: √ array, √ jsonb, interval, numeric
@@ -33,6 +33,7 @@
 * application/octet-stream as output
 * "singular" response
 * Encryption
+* TLS
 
 Upper layer:
 * Migrations (Tern?)

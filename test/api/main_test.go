@@ -1,4 +1,4 @@
-package api
+package test_api
 
 import (
 	"green/green-ds/logging"
@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: map[string]string{"Authorization": postgresToken},
+		CommonHeaders: test.Headers{"Authorization": postgresToken},
 		NoCookies:     true,
 	}
 
@@ -84,12 +84,18 @@ func TestMain(m *testing.M) {
 				"name": "user2"
 			}`,
 		},
+		// delete database dbtest
+		{
+			Method:  "DELETE",
+			Query:   "/databases/dbtest",
+			Headers: test.Headers{"Authorization": adminToken},
+		},
 		// create database dbtest
 		{
 			Method:  "POST",
 			Query:   "/databases",
 			Body:    `{"name": "dbtest"}`,
-			Headers: map[string]string{"Authorization": adminToken},
+			Headers: test.Headers{"Authorization": adminToken},
 		},
 	}
 	test.Prepare(cmdConfig, commands)
