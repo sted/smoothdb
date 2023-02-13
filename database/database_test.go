@@ -42,7 +42,7 @@ func BenchmarkBase(b *testing.B) {
 	for i := 0; i < 10000; i++ {
 		_, _, err := db.CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
-			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}})
+			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -103,7 +103,7 @@ func TestBase(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		db.CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true},
-			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}})
+			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}}, nil)
 	}
 
 	t.Run("Select1", func(t *testing.T) {

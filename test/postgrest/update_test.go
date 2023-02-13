@@ -213,15 +213,6 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[{ "a": "1", "b": null }]`,
 			Status:      200,
 		},
-		{
-			Description: "put value back for other tests",
-			Method:      "PATCH",
-			Query:       "/no_pk?a=eq.1",
-			Body:        `{ "b": "0" }`, // quoted
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
-		},
 		//       context "filtering by a computed column" $ do
 		//         it "is successful" $
 		//           request methodPatch
@@ -269,6 +260,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             [json| { id: 99 } |]
 		//             `shouldRespondWith` [json| [{id:99}] |]
 		//             { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "with representation requested can provide a representation",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1",
+			Body:        `{ "id": 99 }`, // quoted
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{"id":99}]`,
+			Status:      200,
+		},
 		//           -- put value back for other tests
 		//           void $ request methodPatch "/items?id=eq.99" [] [json| { "id":1 } |]
 
@@ -279,7 +279,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, always_true: true }] |]
 		//             { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can return computed columns",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1&select=id,always_true",
+			Body:        `{ "id": 1 }`, // quoted
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "id": 1, "always_true": true }]`,
+			Status:      200,
+		},
 		//         it "can select overloaded computed columns" $ do
 		//           request methodPatch
 		//             "/items?id=eq.1&select=id,computed_overload"
@@ -287,13 +295,30 @@ func TestPostgREST_Update(t *testing.T) {
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, computed_overload: true }] |]
 		//             { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can select overloaded computed columns",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1&select=id,computed_overload",
+			Body:        `{ "id": 1 }`, // quoted
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "id": 1, "computed_overload": true }]`,
+			Status:      200,
+		},
 		//           request methodPatch
 		//             "/items2?id=eq.1&select=id,computed_overload"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, computed_overload: true }] |]
 		//             { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can select overloaded computed columns",
+			Method:      "PATCH",
+			Query:       "/items2?id=eq.1&select=id,computed_overload",
+			Body:        `{ "id": 1 }`, // quoted
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "id": 1, "computed_overload": true }]`,
+			Status:      200,
+		},
 		//       it "ignores ?select= when return not set or return=minimal" $ do
 		//         request methodPatch "/items?id=eq.1&select=id"
 		//             [] [json| { id:1 } |]
@@ -303,6 +328,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             , matchHeaders = [ matchHeaderAbsent hContentType
 		//                              , "Content-Range" <:> "0-0/*" ]
 		//             }
+		{
+			Description: "ignores ?select= when return not set or return=minimal",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1&select=id",
+			Body:        `{ "id": 1 }`, // quoted
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//         request methodPatch "/items?id=eq.1&select=id"
 		//             [("Prefer", "return=minimal")]
 		//             [json| { id:1 } |]
@@ -312,7 +346,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             , matchHeaders = [ matchHeaderAbsent hContentType
 		//                              , "Content-Range" <:> "0-0/*" ]
 		//             }
-
+		{
+			Description: "ignores ?select= when return not set or return=minimal",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1&select=id",
+			Body:        `{ "id": 1 }`, // quoted
+			Headers:     test.Headers{"Prefer": "return=minimal"},
+			Expected:    ``,
+			Status:      204,
+		},
 		//       context "when patching with an empty body" $ do
 		//         it "makes no updates and returns 204 without return= and without ?select=" $ do
 		//           request methodPatch "/items"
@@ -324,7 +366,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//           request methodPatch "/items"
 		//               []
 		//               [json| [] |]
@@ -334,7 +384,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items",
+			Body:        `[]`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//           request methodPatch "/items"
 		//               []
 		//               [json| [{}] |]
@@ -344,7 +402,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items",
+			Body:        `[{}]`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//         it "makes no updates and returns 204 without return= and with ?select=" $ do
 		//           request methodPatch "/items?select=id"
 		//               []
@@ -355,7 +421,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items?select=id",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//           request methodPatch "/items?select=id"
 		//               []
 		//               [json| [] |]
@@ -365,7 +439,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items?select=id",
+			Body:        `[]`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//           request methodPatch "/items?select=id"
 		//               []
 		//               [json| [{}] |]
@@ -375,7 +457,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = [ matchHeaderAbsent hContentType
 		//                                , "Content-Range" <:> "*/*" ]
 		//               }
-
+		{
+			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items?select=id",
+			Body:        `[{}]`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      204,
+		},
 		//         it "makes no updates and returns 200 with return=rep and without ?select=" $
 		//           request methodPatch "/items" [("Prefer", "return=representation")] [json| {} |]
 		//             `shouldRespondWith` "[]"
@@ -383,6 +473,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               matchStatus  = 200,
 		//               matchHeaders = ["Content-Range" <:> "*/*"]
 		//             }
+		{
+			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[]`,
+			Status:      200,
+		},
 
 		//         it "makes no updates and returns 200 with return=rep and with ?select=" $
 		//           request methodPatch "/items?select=id" [("Prefer", "return=representation")] [json| {} |]
@@ -391,6 +490,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               matchStatus  = 200,
 		//               matchHeaders = ["Content-Range" <:> "*/*"]
 		//             }
+		{
+			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items?select=id",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[]`,
+			Status:      200,
+		},
 
 		//         it "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns" $
 		//           request methodPatch "/items?select=id,computed_overload" [("Prefer", "return=representation")] [json| {} |]
@@ -399,6 +507,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               matchStatus  = 200,
 		//               matchHeaders = ["Content-Range" <:> "*/*"]
 		//             }
+		{
+			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Method:      "PATCH",
+			Query:       "/items?select=id,computed_overload",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[]`,
+			Status:      200,
+		},
 
 		//     context "with unicode values" $
 		//       it "succeeds and returns values intact" $ do
@@ -407,7 +524,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             [json| { "a":"圍棋", "b":"￥" } |]
 		//           `shouldRespondWith`
 		//             [json|[ { "a":"圍棋", "b":"￥" } ]|]
-
+		{
+			Description: "with unicode values succeeds and returns values intact",
+			Method:      "PATCH",
+			Query:       "/no_pk?a=eq.1",
+			Body:        `{ "a":"圍棋", "b":"￥" }`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "a":"圍棋", "b":"￥" }]`,
+			Status:      200,
+		},
 		//     context "PATCH with ?columns parameter" $ do
 		//       it "ignores json keys not included in ?columns" $ do
 		//         request methodPatch "/articles?id=eq.1&columns=body"
@@ -415,11 +540,26 @@ func TestPostgREST_Update(t *testing.T) {
 		//             [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |]
 		//           `shouldRespondWith`
 		//             [json|[{"id": 1, "body": "Some real content", "owner": "postgrest_test_anonymous"}]|]
-
+		{
+			Description: "PATCH with ?columns parameter ignores json keys not included in ?columns",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.1&columns=body",
+			Body:        `{"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{"id": 1, "body": "Some real content", "owner": "postgrest_test_anonymous"}]`,
+			Status:      200,
+		},
 		//       it "ignores json keys and gives 200 if no record updated" $
 		//         request methodPatch "/articles?id=eq.2001&columns=body" [("Prefer", "return=representation")]
 		//           [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |] `shouldRespondWith` 200
-
+		{
+			Description: "PATCH with ?columns parameter ignores json keys and gives 200 if no record updated",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.2001&columns=body",
+			Body:        `{"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Status:      200,
+		},
 		//       it "disallows ?columns which don't exist" $ do
 		//         request methodPatch "/articles?id=eq.1&columns=helicopter"
 		//           [("Prefer", "return=representation")]
@@ -441,7 +581,16 @@ func TestPostgREST_Update(t *testing.T) {
 		//           { matchStatus  = 404
 		//           , matchHeaders = []
 		//           }
-
+		// {
+		// 	Description: "PATCH with ?columns parameter returns missing table error even if also has invalid ?columns",
+		// 	Method:      "PATCH",
+		// 	Query:       "/garlic?columns=helicopter",
+		// 	//Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`, // @@ accepts multiple records?
+		// 	Body:     `[{"id": 204, "body": "yyy"}]`,
+		// 	Headers:  test.Headers{"Prefer": "return=representation"},
+		// 	Expected: ``,
+		// 	Status:   404, //@@ returns 500
+		// },
 		//   context "tables with self reference foreign keys" $ do
 		//     it "embeds children after update" $
 		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name)"

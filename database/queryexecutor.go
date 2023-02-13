@@ -25,10 +25,14 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 	return gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
 }
 
-func (QueryExecutor) Insert(ctx context.Context, table string, records []Record) ([]byte, int64, error) {
+func (QueryExecutor) Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
 	gi := GetGreenContext(ctx)
+	parts, err := gi.RequestParser.parseQuery(table, filters)
+	if err != nil {
+		return nil, 0, err
+	}
 	options := gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, options)
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options)
 	if err != nil {
 		return nil, 0, err
 	}

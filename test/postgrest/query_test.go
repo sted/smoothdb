@@ -16,8 +16,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with equality",
 			Query:       "/items?id=eq.5",
-			Expected:    `[{"id":5}]`,
 			Headers:     nil,
+			Expected:    `[{"id":5}]`,
 			Status:      200,
 		},
 		// it "matches with equality using not operator" $
@@ -27,8 +27,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with equality using not operator",
 			Query:       "/items?id=not.eq.5&order=id",
-			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Status:      200,
 		},
 		// it "matches with more than one condition using not operator" $
@@ -36,8 +36,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with more than one condition using not operator",
 			Query:       "/simple_pk?k=like.*yx&extra=not.eq.u",
-			Expected:    `[]`,
 			Headers:     nil,
+			Expected:    `[]`,
 			Status:      200,
 		},
 		// it "matches with inequality using not operator" $ do
@@ -47,8 +47,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with inequality using not operator",
 			Query:       "/items?id=not.lt.14&order=id.asc",
-			Expected:    `[{"id":14},{"id":15}]`,
 			Headers:     nil,
+			Expected:    `[{"id":14},{"id":15}]`,
 			Status:      200,
 		},
 		//   get "/items?id=not.gt.2&order=id.asc"
@@ -57,8 +57,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with inequality using not operator",
 			Query:       "/items?id=not.gt.2&order=id.asc",
-			Expected:    `[{"id":1},{"id":2}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
 		// it "matches items IN" $
@@ -68,8 +68,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches items IN",
 			Query:       "/items?id=in.(1,3,5)",
-			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
 			Status:      200,
 		},
 		// it "matches items NOT IN using not operator" $
@@ -79,8 +79,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches items NOT IN using not operator",
 			Query:       "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)",
-			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
 			Status:      200,
 		},
 		// it "matches nulls using not operator" $
@@ -90,8 +90,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches nulls using not operator",
 			Query:       "/no_pk?a=not.is.null",
-			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
 			Headers:     nil,
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
 			Status:      200,
 		},
 		// it "matches nulls in varchar and numeric fields alike" $ do
@@ -100,8 +100,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches nulls in varchar and numeric fields alike",
 			Query:       "/nullable_integer?a=is.null",
-			Expected:    `[{"a":null}]`,
 			Headers:     nil,
+			Expected:    `[{"a":null}]`,
 			Status:      200,
 		},
 		//     { matchHeaders = [matchContentTypeJson] }
@@ -109,8 +109,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches nulls in varchar and numeric fields alike",
 			Query:       "/no_pk?a=is.null",
-			Expected:    `[{"a":null,"b":null}]`,
 			Headers:     nil,
+			Expected:    `[{"a":null,"b":null}]`,
 			Status:      200,
 		},
 		// it "matches with trilean values" $ do
@@ -120,8 +120,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values",
 			Query:       "/chores?done=is.true",
-			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
 			Status:      200,
 		},
 		//   get "/chores?done=is.false" `shouldRespondWith`
@@ -130,8 +130,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values",
 			Query:       "/chores?done=is.false",
-			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
 			Headers:     nil,
+			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
 			Status:      200,
 		},
 		//   get "/chores?done=is.unknown" `shouldRespondWith`
@@ -140,8 +140,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values",
 			Query:       "/chores?done=is.unknown",
-			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Headers:     nil,
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Status:      200,
 		},
 		// it "matches with trilean values in upper or mixed case" $ do
@@ -151,8 +151,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values in upper or mixed case",
 			Query:       "/chores?done=is.NULL",
-			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Headers:     nil,
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Status:      200,
 		},
 		//   get "/chores?done=is.TRUE" `shouldRespondWith`
@@ -161,8 +161,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values in upper or mixed case",
 			Query:       "/chores?done=is.TRUE",
-			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"take out the garbage","done":true}]`,
 			Status:      200,
 		},
 		//   get "/chores?done=is.FAlSe" `shouldRespondWith`
@@ -171,8 +171,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values in upper or mixed case",
 			Query:       "/chores?done=is.FAlSe",
-			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
 			Headers:     nil,
+			Expected:    `[{"id":2,"name":"do the laundry","done":false}]`,
 			Status:      200,
 		},
 		//   get "/chores?done=is.UnKnOwN" `shouldRespondWith`
@@ -181,8 +181,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with trilean values in upper or mixed case",
 			Query:       "/chores?done=is.UnKnOwN",
-			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Headers:     nil,
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
 			Status:      200,
 		},
 		// it "fails if 'is' used and there's no null or trilean value" $ do
@@ -190,16 +190,16 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "fails if 'is' used and there's no null or trilean value",
 			Query:       "/chores?done=is.nil",
-			Expected:    "",
 			Headers:     nil,
+			Expected:    "",
 			Status:      400,
 		},
 		//   get "/chores?done=is.ok"  `shouldRespondWith` 400
 		{
 			Description: "fails if 'is' used and there's no null or trilean value",
 			Query:       "/chores?done=is.ok",
-			Expected:    "",
 			Headers:     nil,
+			Expected:    "",
 			Status:      400,
 		},
 		// it "matches with like" $ do
@@ -208,8 +208,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with like",
 			Query:       "/simple_pk?k=like.*yx",
-			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=like.xy*" `shouldRespondWith`
@@ -217,8 +217,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with like",
 			Query:       "/simple_pk?k=like.xy*",
-			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=like.*YY*" `shouldRespondWith`
@@ -226,8 +226,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with like",
 			Query:       "/simple_pk?k=like.*YY*",
-			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with like using not operator" $
@@ -236,8 +236,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with like using not operator",
 			Query:       "/simple_pk?k=not.like.*yx",
-			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with ilike" $ do
@@ -247,8 +247,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ilike",
 			Query:       "/simple_pk?k=ilike.xy*&order=extra.asc",
-			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=ilike.*YY*&order=extra.asc" `shouldRespondWith`
@@ -257,8 +257,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ilike",
 			Query:       "/simple_pk?k=ilike.*YY*&order=extra.asc",
-			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with ilike using not operator" $
@@ -266,8 +266,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ilike using not operator",
 			Query:       "/simple_pk?k=not.ilike.xy*&order=extra.asc",
-			Expected:    `[]`,
 			Headers:     nil,
+			Expected:    `[]`,
 			Status:      200,
 		},
 		// it "matches with ~" $ do
@@ -276,8 +276,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~",
 			Query:       "/simple_pk?k=match.yx$",
-			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=match.^xy" `shouldRespondWith`
@@ -285,8 +285,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~",
 			Query:       "/simple_pk?k=match.^xy",
-			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=match.YY" `shouldRespondWith`
@@ -294,8 +294,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~",
 			Query:       "/simple_pk?k=match.YY",
-			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with ~ using not operator" $
@@ -304,8 +304,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~",
 			Query:       "/simple_pk?k=match.YY",
-			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with ~*" $ do
@@ -316,8 +316,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~*",
 			Query:       "/simple_pk?k=imatch.^xy&order=extra.asc",
-			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		//   get "/simple_pk?k=imatch..*YY.*&order=extra.asc" `shouldRespondWith`
@@ -326,8 +326,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~*",
 			Query:       "/simple_pk?k=imatch..*YY.*&order=extra.asc",
-			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Headers:     nil,
+			Expected:    `[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
 		},
 		// it "matches with ~* using not operator" $
@@ -335,8 +335,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with ~* using not operator",
 			Query:       "/simple_pk?k=not.imatch.^xy&order=extra.asc",
-			Expected:    `[]`,
 			Headers:     nil,
+			Expected:    `[]`,
 			Status:      200,
 		},
 
@@ -348,8 +348,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with to_tsquery",
 			Query:       "/tsearch?text_search_vector=fts.impossible",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Status:      200,
 		},
 		// it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
@@ -359,8 +359,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
 			Query:       "/tsearch?text_search_vector=fts.fun%26possible",
-			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=fts.impossible%7Cpossible" `shouldRespondWith`
@@ -371,8 +371,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
 			Query:       "/tsearch?text_search_vector=fts.impossible%7Cpossible",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=fts.fun%26!possible" `shouldRespondWith`
@@ -381,8 +381,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
 			Query:       "/tsearch?text_search_vector=fts.fun%26!possible",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Status:      200,
 		},
 		// it "finds matches with plainto_tsquery" $
@@ -392,8 +392,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with plainto_tsquery",
 			Query:       "/tsearch?text_search_vector=plfts.The%20Fat%20Rats",
-			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Status:      200,
 		},
 		// when (actualPgVersion >= pgVersion112) $ do
@@ -404,8 +404,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with websearch_to_tsquery",
 			Query:       "/tsearch?text_search_vector=wfts.The%20Fat%20Rats",
-			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Status:      200,
 		},
 		//   it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
@@ -416,8 +416,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
 			Query:       "/tsearch?text_search_vector=wfts.fun%20and%20possible",
-			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Status:      200,
 		},
 		// 	get "/tsearch?text_search_vector=wfts.impossible%20or%20possible"
@@ -430,8 +430,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
 			Query:       "/tsearch?text_search_vector=wfts.impossible%20or%20possible",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"}]`,
 			Status:      200,
 		},
 		// 	get "/tsearch?text_search_vector=wfts.fun%20and%20-possible"
@@ -441,8 +441,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can use boolean operators(and, or, -) in websearch_to_tsquery",
 			Query:       "/tsearch?text_search_vector=wfts.fun%20and%20-possible",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			Status:      200,
 		},
 		// it "finds matches with different dictionaries" $ do
@@ -452,8 +452,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with different dictionaries",
 			Query:       "/tsearch?text_search_vector=fts(french).amusant",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=plfts(french).amusant%20impossible" `shouldRespondWith`
@@ -462,8 +462,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with different dictionaries",
 			Query:       "/tsearch?text_search_vector=plfts(french).amusant%20impossible",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Status:      200,
 		},
 		//   when (actualPgVersion >= pgVersion112) $
@@ -474,8 +474,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with different dictionaries",
 			Query:       "/tsearch?text_search_vector=wfts(french).amusant%20impossible",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"}]`,
 			Status:      200,
 		},
 		// it "can be negated with not operator" $ do
@@ -487,8 +487,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be negated with not operator",
 			Query:       "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun" `shouldRespondWith`
@@ -499,8 +499,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be negated with not operator",
 			Query:       "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status:      200,
 		},
 		//   get "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats" `shouldRespondWith`
@@ -513,8 +513,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be negated with not operator",
 			Query:       "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats",
-			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},{"text_search_vector":"'also':2 'fun':3 'possibl':8"},{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status:      200,
 		},
 		//   when (actualPgVersion >= pgVersion112) $
@@ -527,8 +527,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be negated with not operator",
 			Query:       "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun",
-			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status:      200,
 		},
 		// context "Use of the phraseto_tsquery function" $ do
@@ -539,8 +539,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches",
 			Query:       "/tsearch?text_search_vector=phfts.The%20Fat%20Cats",
-			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'ate':3 'cat':2 'fat':1 'rat':4"}]`,
 			Status:      200,
 		},
 		//   it "finds matches with different dictionaries" $
@@ -550,8 +550,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "finds matches with different dictionaries",
 			Query:       "/tsearch?text_search_vector=phfts(german).Art%20Spass",
-			Expected:    `[{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Headers:     nil,
+			Expected:    `[{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status:      200,
 		},
 		//   it "can be negated with not operator" $
@@ -565,13 +565,13 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be negated with not operator",
 			Query:       "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats",
+			Headers:     nil,
 			Expected: `[
 				{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},
 				{"text_search_vector":"'also':2 'fun':3 'possibl':8"},
 				{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},
 				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		//   it "can be used with or query param" $
 		// 	get "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass, text_search_vector.phfts(french).amusant, text_search_vector.fts(english).impossible)" `shouldRespondWith`
@@ -583,12 +583,12 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can be used with or query param",
 			Query:       "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass,text_search_vector.phfts(french).amusant,text_search_vector.fts(english).impossible)",
+			Headers:     nil,
 			Expected: `[
 				{"text_search_vector":"'fun':5 'imposs':9 'kind':3"},
 				{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},
 				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 	it "matches with computed column" $
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
@@ -597,8 +597,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with computed column",
 			Query:       "/items?always_true=eq.true&order=id.asc",
-			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Status:      200,
 		},
 		//   it "order by computed column" $
@@ -608,8 +608,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "order by computed column",
 			Query:       "/items?order=anti_id.desc",
-			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			Status:      200,
 		},
 		//   it "cannot access a computed column that is outside of the config schema" $
@@ -656,8 +656,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with cs operator",
 			Query:       "/complex_items?select=id&arr_data=cs.{2}",
-			Expected:    `[{"id":2},{"id":3}]`,
 			Headers:     nil,
+			Expected:    `[{"id":2},{"id":3}]`,
 			Status:      200,
 		},
 		//   it "matches with cd operator" $
@@ -667,8 +667,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "matches with cd operator",
 			Query:       "/complex_items?select=id&arr_data=cd.{1,2,4}",
-			Expected:    `[{"id":1},{"id":2}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
 		// describe "Shaping response with select parameter" $ do
@@ -678,8 +678,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "selectStar works in absense of parameter",
 			Query:       "/complex_items?id=eq.3",
-			Expected:    `[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
 			Headers:     nil,
+			Expected:    `[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
 			Status:      200,
 		},
 		//   it "dash `-` in column names is accepted" $
@@ -688,8 +688,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "dash `-` in column names is accepted",
 			Query:       "/complex_items?id=eq.3&select=id,field-with_sep",
-			Expected:    `[{"id":3,"field-with_sep":1}]`,
 			Headers:     nil,
+			Expected:    `[{"id":3,"field-with_sep":1}]`,
 			Status:      200,
 		},
 		//   it "one simple column" $
@@ -699,8 +699,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "one simple column",
 			Query:       "/complex_items?select=id",
-			Expected:    `[{"id":1},{"id":2},{"id":3}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2},{"id":3}]`,
 			Status:      200,
 		},
 		//   it "rename simple column" $
@@ -710,8 +710,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "rename simple column",
 			Query:       "/complex_items?id=eq.1&select=myId:id",
-			Expected:    `[{"myId":1}]`,
 			Headers:     nil,
+			Expected:    `[{"myId":1}]`,
 			Status:      200,
 		},
 		//   it "one simple column with casting (text)" $
@@ -721,8 +721,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "one simple column with casting (text)",
 			Query:       "/complex_items?select=id::text",
-			Expected:    `[{"id":"1"},{"id":"2"},{"id":"3"}]`,
 			Headers:     nil,
+			Expected:    `[{"id":"1"},{"id":"2"},{"id":"3"}]`,
 			Status:      200,
 		},
 		//   it "rename simple column with casting" $
@@ -732,8 +732,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "rename simple column with casting",
 			Query:       "/complex_items?id=eq.1&select=myId:id::text",
-			Expected:    `[{"myId":"1"}]`,
 			Headers:     nil,
+			Expected:    `[{"myId":"1"}]`,
 			Status:      200,
 		},
 		//   it "json column" $
@@ -743,8 +743,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "json column",
 			Query:       "/complex_items?id=eq.1&select=settings",
-			Expected:    `[{"settings":{"foo":{"int":1,"bar":"baz"}}}]`,
 			Headers:     nil,
+			Expected:    `[{"settings":{"foo":{"int":1,"bar":"baz"}}}]`,
 			Status:      200,
 		},
 		//   it "fails on bad casting (wrong cast type)" $
@@ -763,8 +763,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can cast types with underscore and number",
 			Query:       "/oid_test?select=id,oid_col::int,oid_array_col::_int4",
-			Expected:    `[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"oid_col":12345,"oid_array_col":[1,2,3,4,5]}]`,
 			Status:      200,
 		},
 		//   it "requesting parents and children" $
@@ -774,30 +774,30 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parents and children",
 			Query:       "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)",
-			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
 			Status:      200,
 		},
 		// @@ added by me
 		{
 			Description: "requesting parents and children with filters",
 			Query:       "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)&tasks.name=eq.Code%20w7",
-			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":2,"name":"Code w7"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":2,"name":"Code w7"}]}]`,
 			Status:      200,
 		},
 		// @@ added by me
 		{
 			Description: "requesting parents and children with two embedded filters",
 			Query:       "/projects?select=id,name,clients(*),tasks(*)&id=not.eq.4&clients.id=eq.1&tasks.id=in.(1,3,5)",
+			Headers:     nil,
 			Expected: `[
 				{"id": 1,"name": "Windows 7", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 1,"name": "Design w7","project_id": 1}]},
 				{"id": 2,"name": "Windows 10", "clients": {"id": 1,"name": "Microsoft"}, "tasks": [{"id": 3,"name": "Design w10","project_id": 2}]},
 				{"id": 3,"name": "IOS", "clients": null, "tasks": [{"id": 5,"name": "Design IOS","project_id": 3 }]},
 				{"id": 5,"name": "Orphan", "clients": null, "tasks": []}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		//   it "requesting parent and renaming primary key" $
 		// 	get "/projects?select=name,client:clients(clientId:id,name)" `shouldRespondWith`
@@ -812,6 +812,7 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parent and renaming primary key",
 			Query:       "/projects?select=name,client:clients(clientId:id,name)",
+			Headers:     nil,
 			Expected: `[
 				{"name":"Windows 7","client":{"name": "Microsoft", "clientId": 1}},
 				{"name":"Windows 10","client":{"name": "Microsoft", "clientId": 1}},
@@ -819,8 +820,7 @@ func TestPostgREST_Query(t *testing.T) {
 				{"name":"OSX","client":{"name": "Apple", "clientId": 2}},
 				{"name":"Orphan","client":null}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		//   it "requesting parent and specifying/renaming one key of the composite primary key" $ do
 		// 	get "/comments?select=*,users_tasks(userId:user_id)" `shouldRespondWith`
@@ -829,8 +829,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parent and specifying/renaming one key of the composite primary key",
 			Query:       "/comments?select=*,users_tasks(userId:user_id)",
-			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"userId": 2}}]`,
 			Status:      200,
 		},
 		// 	get "/comments?select=*,users_tasks(taskId:task_id)" `shouldRespondWith`
@@ -839,8 +839,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parent and specifying/renaming one key of the composite primary key",
 			Query:       "/comments?select=*,users_tasks(taskId:task_id)",
-			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"commenter_id":1,"user_id":2,"task_id":6,"content":"Needs to be delivered ASAP","users_tasks":{"taskId": 6}}]`,
 			Status:      200,
 		},
 		//   it "requesting parents and children while renaming them" $
@@ -850,8 +850,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parents and children while renaming them",
 			Query:       "/projects?id=eq.1&select=myId:id, name, project_client:clients(*), project_tasks:tasks(id, name)",
-			Expected:    `[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"myId":1,"name":"Windows 7","project_client":{"id":1,"name":"Microsoft"},"project_tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
 			Status:      200,
 		},
 		//   it "requesting parents and filtering parent columns" $
@@ -860,8 +860,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting parents and filtering parent columns",
 			Query:       "/projects?id=eq.1&select=id, name, clients(id)",
-			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1}}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1}}]`,
 			Status:      200,
 		},
 		//   it "rows with missing parents are included" $
@@ -871,8 +871,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "rows with missing parents are included",
 			Query:       "/projects?id=in.(1,5)&select=id,clients(id)",
-			Expected:    `[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"clients":{"id":1}},{"id":5,"clients":null}]`,
 			Status:      200,
 		},
 		//   it "rows with no children return [] instead of null" $
@@ -881,8 +881,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "rows with no children return [] instead of null",
 			Query:       "/projects?id=in.(5)&select=id,tasks(id)",
-			Expected:    `[{"id":5,"tasks":[]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":5,"tasks":[]}]`,
 			Status:      200,
 		},
 		//   it "requesting children 2 levels" $
@@ -943,8 +943,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "requesting children with composite key",
 			Query:       "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)",
-			Expected:    `[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
 			Status:      200,
 		},
 		//   -- https://github.com/PostgREST/postgrest/issues/2070
@@ -988,12 +988,12 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request a table as parent from a partitioned table",
 			Query:       "/car_models?name=in.(DeLorean,Murcielago)&select=name,year,car_brands(name)&order=name.asc",
+			Headers:     nil,
 			Expected: `[
 				{"name":"DeLorean","year":1981,"car_brands":{"name":"DMC"}},
 				{"name":"Murcielago","year":2001,"car_brands":{"name":"Lamborghini"}}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 	  it "can request partitioned tables as children from a table" $
 		// 		get "/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc" `shouldRespondWith`
@@ -1005,13 +1005,13 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request partitioned tables as children from a table",
 			Query:       "/car_brands?select=name,car_models(name,year)&order=name.asc&car_models.order=name.asc",
+			Headers:     nil,
 			Expected: `[
 				{"name":"DMC","car_models":[{"name":"DeLorean","year":1981}]},
 				{"name":"Ferrari","car_models":[{"name":"F310-B","year":1997}]},
 				{"name":"Lamborghini","car_models":[{"name":"Murcielago","year":2001},{"name":"Veneno","year":2013}]}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 	  when (actualPgVersion >= pgVersion121) $ do
 		// 		it "can request tables as children from a partitioned table" $
@@ -1023,12 +1023,12 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request tables as children from a partitioned table",
 			Query:       "/car_models?name=in.(DeLorean,F310-B)&select=name,year,car_racers(name)&order=name.asc",
+			Headers:     nil,
 			Expected: `[
 				{"name":"DeLorean","year":1981,"car_racers":[]},
 				{"name":"F310-B","year":1997,"car_racers":[{"name":"Michael Schumacher"}]}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 		it "can request a partitioned table as parent from a table" $
 		// 		  get "/car_racers?select=name,car_models(name,year)&order=name.asc" `shouldRespondWith`
@@ -1039,12 +1039,12 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request a partitioned table as parent from a table",
 			Query:       "/car_racers?select=name,car_models(name,year)&order=name.asc",
+			Headers:     nil,
 			Expected: `[
 				{"name":"Alain Prost","car_models":null},
 				{"name":"Michael Schumacher","car_models":{"name":"F310-B","year":1997}}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 		it "can request partitioned tables as children from a partitioned table" $
 		// 		  get "/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc" `shouldRespondWith`
@@ -1056,13 +1056,13 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request partitioned tables as children from a partitioned table",
 			Query:       "/car_models?name=in.(DeLorean,Murcielago,Veneno)&select=name,year,car_model_sales(date,quantity)&order=name.asc",
+			Headers:     nil,
 			Expected: `[
 				{"name":"DeLorean","year":1981,"car_model_sales":[{"date":"2021-01-14","quantity":7},{"date":"2021-01-15","quantity":9}]},
 				{"name":"Murcielago","year":2001,"car_model_sales":[{"date":"2021-02-11","quantity":1},{"date":"2021-02-12","quantity":3}]},
 				{"name":"Veneno","year":2013,"car_model_sales":[]}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 		it "can request a partitioned table as parent from a partitioned table" $ do
 		// 		  get "/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc" `shouldRespondWith`
@@ -1073,12 +1073,12 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can request a partitioned table as parent from a partitioned table",
 			Query:       "/car_model_sales?date=in.(2021-01-15,2021-02-11)&select=date,quantity,car_models(name,year)&order=date.asc",
+			Headers:     nil,
 			Expected: `[
 				{"date":"2021-01-15","quantity":9,"car_models":{"name":"DeLorean","year":1981}},
 				{"date":"2021-02-11","quantity":1,"car_models":{"name":"Murcielago","year":2001}}
 			]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		// 		it "can request many to many relationships between partitioned tables ignoring the intermediate table partitions" $
 		// 		  get "/car_models?select=name,year,car_dealers(name,city)&order=name.asc&limit=4" `shouldRespondWith`
@@ -1348,8 +1348,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column asc",
 			Query:       "/items?id=lte.2&order=id.asc",
-			Expected:    `[{"id":1},{"id":2}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
 		//   it "by a column desc" $
@@ -1361,8 +1361,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column desc",
 			Query:       "/items?id=lte.2&order=id.desc",
-			Expected:    `[{"id":2},{"id":1}]`,
 			Headers:     nil,
+			Expected:    `[{"id":2},{"id":1}]`,
 			Status:      200,
 		},
 		//   it "by a column with nulls first" $
@@ -1377,8 +1377,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column with nulls first",
 			Query:       "/no_pk?order=a.nullsfirst",
-			Expected:    `[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
 			Headers:     nil,
+			Expected:    `[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
 			Status:      200,
 		},
 		//   it "by a column asc with nulls last" $
@@ -1392,8 +1392,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column asc with nulls last",
 			Query:       "/no_pk?order=a.asc.nullslast",
-			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
 			Headers:     nil,
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
 			Status:      200,
 		},
 		//   it "by a column desc with nulls first" $
@@ -1407,8 +1407,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column desc with nulls first",
 			Query:       "/no_pk?order=a.desc.nullsfirst",
-			Expected:    `[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
 			Headers:     nil,
+			Expected:    `[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
 			Status:      200,
 		},
 		//   it "by a column desc with nulls last" $
@@ -1422,8 +1422,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column desc with nulls last",
 			Query:       "/no_pk?order=a.desc.nullslast",
-			Expected:    `[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
 			Headers:     nil,
+			Expected:    `[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
 			Status:      200,
 		},
 		//   it "by two columns with nulls and direction specified" $
@@ -1441,14 +1441,14 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by two columns with nulls and direction specified",
 			Query:       "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc",
+			Headers:     nil,
 			Expected: `[
 				{"client_id":2,"id":4,"name":"OSX"},
 				{"client_id":2,"id":3,"name":"IOS"},
 				{"client_id":1,"id":2,"name":"Windows 10"},
 				{"client_id":1,"id":1,"name":"Windows 7"},
 				{"client_id":null,"id":5,"name":"Orphan"}]`,
-			Headers: nil,
-			Status:  200,
+			Status: 200,
 		},
 		//   it "by a column with no direction or nulls specified" $
 		// 	get "/items?id=lte.2&order=id"
@@ -1459,8 +1459,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "by a column with no direction or nulls specified",
 			Query:       "/items?id=lte.2&order=id",
-			Expected:    `[{"id":1},{"id":2}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
 		//   it "without other constraints" $
@@ -1468,8 +1468,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "without other constraints",
 			Query:       "/items?order=id.asc",
-			Expected:    ``,
 			Headers:     nil,
+			Expected:    ``,
 			Status:      200,
 		},
 		//   it "ordering embeded entities" $
@@ -1479,8 +1479,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "ordering embeded entities",
 			Query:       "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc",
-			Expected:    `[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Status:      200,
 		},
 		//   it "ordering embeded entities with alias" $
@@ -1490,8 +1490,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "ordering embeded entities with alias",
 			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc",
-			Expected:    `[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Status:      200,
 		},
 		//   it "ordering embeded entities, two levels" $
@@ -1505,8 +1505,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "ordering embeded parents does not break things",
 			Query:       "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc",
-			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
 			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
 			Status:      200,
 		},
 		//   context "order syntax errors" $ do
@@ -1626,8 +1626,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can query as normal",
 			Query:       "/Escap3e;",
-			Expected:    `[{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}]`,
 			Headers:     nil,
+			Expected:    `[{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}]`,
 			Status:      200,
 		},
 		// 	get "/ghostBusters" `shouldRespondWith`
@@ -1636,8 +1636,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "can query as normal",
 			Query:       "/ghostBusters",
-			Expected:    `[{"escapeId":1},{"escapeId":3},{"escapeId":5}]`,
 			Headers:     nil,
+			Expected:    `[{"escapeId":1},{"escapeId":3},{"escapeId":5}]`,
 			Status:      200,
 		},
 		//   it "fails if an operator is not given" $
@@ -1648,8 +1648,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "fails if an operator is not given",
 			Query:       "/ghostBusters?id=0",
-			Expected:    ``,
 			Headers:     nil,
+			Expected:    ``,
 			Status:      400,
 		},
 		//   it "will embed a collection" $
@@ -1676,8 +1676,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "will select and filter a column that has spaces",
 			Query:       "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*",
-			Expected:    `[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
 			Headers:     nil,
+			Expected:    `[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
 			Status:      200,
 		},
 		//   it "will select and filter a quoted column that has PostgREST reserved characters" $
@@ -1772,22 +1772,22 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "succeeds when only quoted values are present",
 			Query:       "/w_or_wo_comma_names?name=in.(\"Hebdon,%20John\")",
-			Expected:    `[{"name":"Hebdon, John"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Hebdon, John"}]`,
 			Status:      200,
 		},
 		{
 			Description: "succeeds when only quoted values are present",
 			Query:       "/w_or_wo_comma_names?name=in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)",
-			Expected:    `[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
 			Status:      200,
 		},
 		{
 			Description: "succeeds when only quoted values are present",
 			Query:       "/w_or_wo_comma_names?name=not.in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)&limit=3",
-			Expected:    `[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
 			Status:      200,
 		},
 
@@ -1798,8 +1798,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "succeeds w/ and w/o quoted values",
 			Query:       "/w_or_wo_comma_names?name=in.(David%20White,\"Hebdon,%20John\")",
-			Expected:    `[{"name":"Hebdon, John"},{"name":"David White"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Hebdon, John"},{"name":"David White"}]`,
 			Status:      200,
 		},
 		// 	get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",Larry Thompson,\"Smith, Joseph\")&limit=3" `shouldRespondWith`
@@ -1808,8 +1808,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "succeeds w/ and w/o quoted values",
 			Query:       "/w_or_wo_comma_names?name=not.in.(\"Hebdon,%20John\",Larry%20Thompson,\"Smith,%20Joseph\")&limit=3",
-			Expected:    `[{"name":"Williams, Mary"},{"name":"David White"},{"name":"Double O Seven(007)"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Williams, Mary"},{"name":"David White"},{"name":"Double O Seven(007)"}]`,
 			Status:      200,
 		},
 		// 	get "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")" `shouldRespondWith`
@@ -1818,8 +1818,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "succeeds w/ and w/o quoted values",
 			Query:       "/w_or_wo_comma_names?name=in.(\"Double%20O%20Seven(007)\")",
-			Expected:    `[{"name":"Double O Seven(007)"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Double O Seven(007)"}]`,
 			Status:      200,
 		},
 		//   context "escaped chars" $ do
@@ -1830,8 +1830,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "accepts escaped double quotes",
 			Query:       "/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")",
-			Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
 			Status:      200,
 		},
 		// 	it "accepts escaped backslashes" $ do
@@ -1841,8 +1841,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "accepts escaped backslashes",
 			Query:       "/w_or_wo_comma_names?name=in.(\"\\\\\")",
-			Expected:    `[{"name":"\\"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"\\"}]`,
 			Status:      200,
 		},
 		// 	  get "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")" `shouldRespondWith`
@@ -1851,8 +1851,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "accepts escaped backslashes",
 			Query:       "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")",
-			Expected:    `[{"name":"/\\Slash/\\Beast/\\"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"/\\Slash/\\Beast/\\"}]`,
 			Status:      200,
 		},
 		// 	it "passes any escaped char as the same char" $
@@ -1862,8 +1862,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "passes any escaped char as the same char",
 			Query:       "/w_or_wo_comma_names?name=in.(\"D\\a\\vid%20W\\h\\ite\")",
-			Expected:    `[{"name":"David White"}]`,
 			Headers:     nil,
+			Expected:    `[{"name":"David White"}]`,
 			Status:      200,
 		},
 		// describe "IN values without quotes" $ do
@@ -1955,8 +1955,8 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "works with child embeds",
 			Query:       "/being?select=*,descendant(*)&limit=1",
-			Expected:    `[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]`,
 			Headers:     nil,
+			Expected:    `[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]`,
 			Status:      200,
 		},
 		//   it "works with many to many embeds" $

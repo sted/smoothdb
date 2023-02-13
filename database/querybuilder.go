@@ -1,13 +1,12 @@
 package database
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
 
 type QueryBuilder interface {
-	BuildInsert(table string, records []Record, options *QueryOptions) (string, []any, error)
+	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions) (string, []any, error)
 	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions) (string, []any, error)
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error)
 	BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error)
@@ -237,18 +236,40 @@ func whereClause(table, schema string, node *WhereConditionNode) string {
 	return where
 }
 
+func returningClause(table, schema string, selectFields []SelectField) (ret string) {
+	ret += " RETURNING "
+	if len(selectFields) == 0 {
+		ret += "*"
+	} else {
+		for i, sfield := range selectFields {
+			if i != 0 {
+				ret += ", "
+			}
+			ret += prepareField(table, schema, sfield)
+		}
+	}
+	return
+}
+
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, options *QueryOptions) (insert string, valueList []any, err error) {
+func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions) (insert string, valueList []any, err error) {
 	var fields string
 	var fieldList []string
 	var values string
 
-	if len(records) == 0 {
-		return "", nil, fmt.Errorf("no records to insert")
-	}
-	n := len(records[0])
+	// if len(records) == 0 {
+	// 	return "", nil, fmt.Errorf("no records to insert")
+	// }
+	var n int
 	for key := range records[0] {
+		// check if there are specified columns
+		if len(parts.columnFields) > 0 {
+			if _, ok := parts.columnFields[key]; !ok {
+				continue
+			}
+		}
+		n += 1
 		if fields != "" {
 			fields += ", "
 		}
@@ -271,9 +292,13 @@ func (CommonBuilder) BuildInsert(table string, records []Record, options *QueryO
 		j = 0
 	}
 	schema := options.Schema
-	insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
+	if n > 0 {
+		insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
+	} else {
+		insert = "INSERT INTO " + _sq(table, schema) + " DEFAULT VALUES"
+	}
 	if options.ReturnRepresentation {
-		insert += " RETURNING *"
+		insert += returningClause(table, schema, parts.selectFields)
 	}
 	return insert, valueList, nil
 }
@@ -282,6 +307,12 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	var pairs string
 	var i int
 	for key := range record {
+		// check if there are specified columns
+		if len(parts.columnFields) > 0 {
+			if _, ok := parts.columnFields[key]; !ok {
+				continue
+			}
+		}
 		if pairs != "" {
 			pairs += ", "
 		}
@@ -297,7 +328,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		update += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		update += " RETURNING *"
+		update += returningClause(table, schema, parts.selectFields)
 	}
 	return update, valueList, nil
 }

@@ -35,7 +35,11 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 			prepareBadRequest(c, err)
 			return
 		}
-		data, count, err := db.CreateRecords(c, sourcename, records)
+		// [] as input cause no inserts
+		if noRecordsForInsert(c, records) {
+			return
+		}
+		data, count, err := db.CreateRecords(c, sourcename, records, c.Request.URL.Query())
 		if err == nil {
 			if data == nil {
 				c.JSON(http.StatusCreated, count)
@@ -52,8 +56,12 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
-		if err != nil {
+		if err != nil || len(records) > 1 {
 			prepareBadRequest(c, err)
+			return
+		}
+		// {}, [] and [{}] as input cause no updates
+		if noRecordsForUpdate(c, records) {
 			return
 		}
 		data, _, err := db.UpdateRecords(c, sourcename, records[0], c.Request.URL.Query())

@@ -49,15 +49,12 @@ type WhereConditionNode struct {
 }
 
 func (node *WhereConditionNode) isRootNode() bool {
-	if node.operator == "" && node.field.name == "" {
-		return true
-	} else {
-		return false
-	}
+	return node.operator == "" && node.field.name == ""
 }
 
 type QueryParts struct {
 	selectFields        []SelectField
+	columnFields        map[string]struct{}
 	orderFields         []OrderField
 	limit               string
 	offset              string
@@ -353,6 +350,13 @@ func (p *PostgRestParser) selectItem(table *SelectedTable) (selectFields []Selec
 	return selectFields, nil
 }
 
+// COLUMNS
+func (p *PostgRestParser) parseColumns(c string) []string {
+	p.reset()
+	p.scan(c, ",")
+	return p.tokens
+}
+
 // ORDER
 func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string
@@ -399,11 +403,7 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 
 // WHERE
 func isBooleanOp(op string) bool {
-	if op == "and" || op == "or" || op == "not.and" || op == "not.or" {
-		return true
-	} else {
-		return false
-	}
+	return op == "and" || op == "or" || op == "not.and" || op == "not.or"
 }
 
 func (p *PostgRestParser) scanWhereCondition(k, v string) {
@@ -593,8 +593,8 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 
 	// SELECT
 	var sel string
-	if selectFilter, ok := filters["select"]; ok {
-		for i, csFields := range selectFilter {
+	if selectFilters, ok := filters["select"]; ok {
+		for i, csFields := range selectFilters {
 			if i != 0 {
 				sel += ","
 			}
@@ -605,6 +605,23 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// COLUMNS
+	// columns=c1,c2,c3
+	var columns string
+	if columnsFilters, ok := filters["columns"]; ok {
+		for i, cFields := range columnsFilters {
+			if i != 0 {
+				columns += ","
+			}
+			columns += cFields
+		}
+		parts.columnFields = make(map[string]struct{})
+		for _, c := range p.parseColumns(columns) {
+			parts.columnFields[c] = struct{}{}
+		}
+		delete(filters, "columns")
 	}
 
 	// ORDER
@@ -630,7 +647,6 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 		}
 		parts.orderFields = append(parts.orderFields, fields...)
 		delete(filters, k)
-
 	}
 
 	// LIMIT

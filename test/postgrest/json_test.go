@@ -232,13 +232,16 @@ func TestPostgREST_JSON(t *testing.T) {
 			Status:      200,
 		},
 		// 	it "works when finishing with an index" $ do
-		// 		get "/json_arr?select=data->0->a&id=in.(5,6)" `shouldRespondWith`
-		// 		[json| [{"a":"A"}, {"a":[1,2,3]}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
 		// 		get "/json_arr?select=data->c->0->d&id=eq.8" `shouldRespondWith`
 		// 		[json| [{"d":[4,5,6,7,8]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "works when finishing with an index",
+			Query:       "/json_arr?select=data->c->0->d&id=eq.8",
+			Expected:    `[{"d":[4,5,6,7,8]}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	it "obtains a composite type field" $ do
 		// 	get "/fav_numbers?select=num->i"
 		// 		`shouldRespondWith`
@@ -469,33 +472,88 @@ func TestPostgREST_JSON(t *testing.T) {
 		// 		[json| { "data": { "id":" \"escaped" } } |]
 		// 		`shouldRespondWith`
 		// 		[json| [{ "data": { "id":" \"escaped" } }] |]
-
+		{
+			Description: "Patching record, in a nonempty table can set a json column to escaped value",
+			Method:      "PATCH",
+			Query:       "/json_table?data->>id=eq.3",
+			Body:        `{ "data": { "id":" \"escaped" } }`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "data": { "id":" \"escaped" } }]`,
+			Status:      200,
+		},
 		// context "json array negative index" $ do
 		// 	it "can select with negative indexes" $ do
 		// 	get "/json_arr?select=data->>-1::int&id=in.(1,2)" `shouldRespondWith`
 		// 		[json| [{"data":3}, {"data":6}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "json array negative index can select with negative indexes",
+			Query:       "/json_arr?select=data->>-1::int&id=in.(1,2)",
+			Headers:     nil,
+			Expected:    `[{"data":3}, {"data":6}]`,
+			Status:      200,
+		},
 		// 	get "/json_arr?select=data->0->>-2::int&id=in.(3,4)" `shouldRespondWith`
 		// 		[json| [{"data":8}, {"data":7}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "json array negative index can select with negative indexes",
+			Query:       "/json_arr?select=data->0->>-2::int&id=in.(3,4)",
+			Headers:     nil,
+			Expected:    `[{"data":8}, {"data":7}]`,
+			Status:      200,
+		},
 		// 	get "/json_arr?select=data->-2->>a&id=in.(5,6)" `shouldRespondWith`
 		// 		[json| [{"a":"A"}, {"a":"[1, 2, 3]"}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "json array negative index can select with negative indexes",
+			Query:       "/json_arr?select=data->-2->>a&id=in.(5,6)",
+			Headers:     nil,
+			Expected:    `[{"a":"A"}, {"a":"[1,2,3]"}]`,
+			Status:      200,
+		},
 		// 	it "can filter with negative indexes" $ do
 		// 	get "/json_arr?select=data&data->>-3=eq.1" `shouldRespondWith`
 		// 		[json| [{"data":[1, 2, 3]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can filter with negative indexes",
+			Query:       "/json_arr?select=data&data->>-3=eq.1",
+			Headers:     nil,
+			Expected:    `[{"data":[1,2,3]}]`,
+			Status:      200,
+		},
 		// 	get "/json_arr?select=data&data->-1->>-3=eq.11" `shouldRespondWith`
 		// 		[json| [{"data":[[9, 8, 7], [11, 12, 13]]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can filter with negative indexes",
+			Query:       "/json_arr?select=data&data->-1->>-3=eq.11",
+			Headers:     nil,
+			Expected:    `[{"data":[[9,8,7], [11,12,13]]}]`,
+			Status:      200,
+		},
 		// 	get "/json_arr?select=data&data->-1->>b=eq.B" `shouldRespondWith`
 		// 		[json| [{"data":[{"a": "A"}, {"b": "B"}]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can filter with negative indexes",
+			Query:       "/json_arr?select=data&data->-1->>b=eq.B",
+			Headers:     nil,
+			Expected:    `[{"data":[{"a": "A"}, {"b": "B"}]}]`,
+			Status:      200,
+		},
 		// 	get "/json_arr?select=data&data->-1->b->>-1=eq.5" `shouldRespondWith`
 		// 		[json| [{"data":[{"a": [1,2,3]}, {"b": [4,5]}]}] |]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can filter with negative indexes",
+			Query:       "/json_arr?select=data&data->-1->b->>-1=eq.5",
+			Headers:     nil,
+			Expected:    `[{"data":[{"a": [1,2,3]}, {"b": [4,5]}]}]`,
+			Status:      200,
+		},
 		// 	it "should fail on badly formed negatives" $ do
 		// 	get "/json_arr?select=data->>-78xy" `shouldRespondWith`
 		// 		[json|

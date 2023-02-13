@@ -56,9 +56,5 @@ func _stq(rel, schema, table string) string {
 }
 
 func isStar(s string) bool {
-	if s == "*" {
-		return true
-	} else {
-		return false
-	}
+	return s == "*"
 }
