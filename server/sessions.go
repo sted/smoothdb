@@ -2,12 +2,13 @@ package server
 
 import (
 	"context"
-	"green/green-ds/database"
-	"green/green-ds/logging"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/smoothdb/smoothdb/logging"
 )
 
 type Session struct {

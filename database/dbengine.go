@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"green/green-ds/logging"
+	"github.com/smoothdb/smoothdb/logging"
 
 	zerologadapter "github.com/jackc/pgx-zerolog"
 	"github.com/jackc/pgx/v5"

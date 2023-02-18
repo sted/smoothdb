@@ -1,8 +1,9 @@
 package postgrest
 
 import (
-	"green/green-ds/test"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/test"
 )
 
 func TestPostgREST_Query(t *testing.T) {

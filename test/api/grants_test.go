@@ -1,8 +1,9 @@
 package test_api
 
 import (
-	"green/green-ds/test"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/test"
 )
 
 func TestGrants(t *testing.T) {

@@ -1,6 +1,6 @@
-# Green DS
+# SmoothDB
 
-Green DS is the REST server of the suite.
+SmoothDB is the REST server of the suite.
 It is based on PostgreSQL and exploits its advanced features.
 
 It offers the following features:

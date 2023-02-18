@@ -108,7 +108,7 @@ func composeColumnSQL(sql *string, column *Column) {
 }
 
 func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, error) {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	options := gi.QueryOptions
 
@@ -151,7 +151,7 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 }
 
 func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	options := gi.QueryOptions
 

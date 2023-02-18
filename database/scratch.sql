@@ -187,3 +187,24 @@ pgrst_body AS (
 
 
 
+
+
+
+WITH pgrst_source AS (
+    WITH pgrst_payload AS (SELECT $1 AS json_data), 
+    pgrst_body AS (
+         SELECT CASE WHEN json_typeof(json_data) = 'array' THEN json_data ELSE json_build_array(json_data) END AS val FROM pgrst_payload
+    ) 
+    INSERT INTO "test"."child_entities"("id", "name", "parent_id") 
+    SELECT "id", "name", "parent_id" 
+    FROM json_populate_recordset (null::"test"."child_entities", (SELECT val FROM pgrst_body)) _  
+    RETURNING "test"."child_entities"."id", "test"."child_entities"."parent_id"
+) 
+SELECT '' AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status 
+FROM (
+    SELECT "child_entities"."id", row_to_json("child_entities_entities_1".*) AS "entities" 
+    FROM "pgrst_source" AS "child_entities" 
+    LEFT JOIN LATERAL ( 
+        SELECT "entities_1"."id" FROM "test"."entities" AS "entities_1"  WHERE  ( "entities_1"."id" = $2 OR  "entities_1"."id" = $3) AND "entities_1"."id" = "child_entities"."parent_id"   
+    ) AS "child_entities_entities_1" ON TRUE   
+) _postgrest_t

@@ -1,8 +1,9 @@
 package postgrest
 
 import (
-	"green/green-ds/test"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/test"
 )
 
 func TestPostgREST_AndOrParams(t *testing.T) {
@@ -646,7 +647,19 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	  `shouldRespondWith`
 		// 		[json|[{"id": 7, "entities":null}, {"id": 8, "entities": {"id": 2}}, {"id": 9, "entities": {"id": 3}}]|]
 		// 		{ matchStatus = 201 }
-
+		{
+			Description: "used with POST includes related data with filters",
+			Method:      "POST",
+			Query:       "/child_entities?select=id,entities(id)&entities.or=(id.eq.2,id.eq.3)&entities.order=id",
+			Body: `[
+				 		{"id":7,"name":"entity 4","parent_id":1},
+				 		{"id":8,"name":"entity 5","parent_id":2},
+				 		{"id":9,"name":"entity 6","parent_id":3}
+				 	]`,
+			Headers:  test.Headers{"Prefer": "return=representation"},
+			Expected: `[{"id": 7, "entities":null}, {"id": 8, "entities": {"id": 2}}, {"id": 9, "entities": {"id": 3}}]`,
+			Status:   201,
+		},
 		// context "used with PATCH" $
 		//   it "succeeds when using and/or params" $
 		// 	request methodPatch "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name"
@@ -654,7 +667,15 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	  [json|{ name : "updated grandchild entity"}|] `shouldRespondWith`
 		// 	  [json|[{ "id": 1, "name" : "updated grandchild entity"},{ "id": 2, "name" : "updated grandchild entity"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "used with PATCH succeeds when using and/or params",
+			Method:      "PATCH",
+			Query:       "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name",
+			Body:        `{ "name" : "updated grandchild entity"}`,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "id": 1, "name" : "updated grandchild entity"},{ "id": 2, "name" : "updated grandchild entity"}]`,
+			Status:      201,
+		},
 		// context "used with DELETE" $
 		//   it "succeeds when using and/or params" $
 		// 	request methodDelete "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name"
@@ -662,10 +683,24 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		""
 		// 	  `shouldRespondWith`
 		// 		[json|[{ "id": 1, "name" : "grandchild entity 1" },{ "id": 2, "name" : "grandchild entity 2" }]|]
-
+		{
+			Description: "used with DELETE succeeds when using and/or params",
+			Method:      "DELETE",
+			Query:       "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name",
+			Body:        ``,
+			Headers:     test.Headers{"Prefer": "return=representation"},
+			Expected:    `[{ "id": 1, "name" : "grandchild entity 1" },{ "id": 2, "name" : "grandchild entity 2" }]`,
+			Status:      201,
+		},
 		// it "can query columns that begin with and/or reserved words" $
 		//   get "/grandchild_entities?or=(and_starting_col.eq.smth, or_starting_col.eq.smth)" `shouldRespondWith` 200
-
+		{
+			Description: "can query columns that begin with and/or reserved words",
+			Query:       "/grandchild_entities?or=(and_starting_col.eq.smth, or_starting_col.eq.smth)",
+			Headers:     nil,
+			Expected:    ``,
+			Status:      200,
+		},
 		// it "fails when using IN without () and provides meaningful error message" $
 		//   get "/entities?or=(id.in.1,2,id.eq.3)" `shouldRespondWith`
 		// 	[json|{

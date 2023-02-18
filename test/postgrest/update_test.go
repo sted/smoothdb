@@ -1,8 +1,9 @@
 package postgrest
 
 import (
-	"green/green-ds/test"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/test"
 )
 
 func TestPostgREST_Update(t *testing.T) {
@@ -695,7 +696,14 @@ func TestPostgREST_Update(t *testing.T) {
 		//           { matchStatus = 204
 		//           , matchHeaders = [matchHeaderAbsent hContentType]
 		//           }
-
+		{
+			Description: "table with limited privileges succeeds updating row and gives a 204 when using return=minimal",
+			Method:      "PATCH",
+			Query:       "/app_users?id=eq.1",
+			Body:        `{ "password": "passxyz" }`,
+			Headers:     test.Headers{"Prefer": "return=minimal"},
+			Status:      204,
+		},
 		//     it "can update without return=minimal and no explicit select" $
 		//       request methodPatch "/app_users?id=eq.1"
 		//           []
@@ -705,7 +713,14 @@ func TestPostgREST_Update(t *testing.T) {
 		//           { matchStatus = 204
 		//           , matchHeaders = [matchHeaderAbsent hContentType]
 		//           }
-
+		{
+			Description: "table with limited privileges can update without return=minimal and no explicit select",
+			Method:      "PATCH",
+			Query:       "/app_users?id=eq.1",
+			Body:        `{ "password": "passabc" }`,
+			Headers:     nil,
+			Status:      204,
+		},
 		//   context "limited update" $ do
 		//     it "works with the limit query param" $
 		//       baseTable "limited_update_items" "id" tblDataBefore

@@ -63,14 +63,14 @@ func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error 
 		case "commit":
 			end = "COMMIT"
 		case "commit-allow-override":
-			gctx := GetGreenContext(ctx)
+			gctx := GetSmoothContext(ctx)
 			if gctx.QueryOptions.TxRollback {
 				end = "ROLLBACK"
 			}
 		case "rollback":
 			end = "ROLLBACK"
 		case "rollback-allow-override":
-			gctx := GetGreenContext(ctx)
+			gctx := GetSmoothContext(ctx)
 			if gctx.QueryOptions.TxCommit {
 				end = "COMMIT"
 			}

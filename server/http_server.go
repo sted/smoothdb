@@ -1,10 +1,11 @@
 package server
 
 import (
-	"green/green-ds/api"
-	"green/green-ds/database"
 	"net/http"
 	"time"
+
+	"github.com/smoothdb/smoothdb/api"
+	"github.com/smoothdb/smoothdb/database"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,7 @@ func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	root := router.Group("/")
 
 	root.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "Green")
+		c.String(http.StatusOK, "SmoothDB")
 	})
 	authMiddleware := server.middleware()
 

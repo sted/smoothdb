@@ -2,8 +2,9 @@ package api
 
 import (
 	"context"
-	"green/green-ds/database"
 	"net/http/pprof"
+
+	"github.com/smoothdb/smoothdb/database"
 
 	"github.com/gin-gonic/gin"
 )

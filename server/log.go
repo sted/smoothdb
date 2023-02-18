@@ -1,9 +1,10 @@
 package server
 
 import (
-	"green/green-ds/database"
-	"green/green-ds/logging"
 	"time"
+
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/smoothdb/smoothdb/logging"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -50,7 +51,7 @@ func ZeroLogger(logger *logging.Logger) gin.HandlerFunc {
 		// after executing the handlers
 		duration := time.Since(begin)
 		statusCode := ctx.Writer.Status()
-		gctx := database.GetGreenContext(ctx)
+		gctx := database.GetSmoothContext(ctx)
 		var role string
 		if gctx != nil {
 			role = gctx.Role

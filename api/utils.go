@@ -2,9 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"green/green-ds/database"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/smoothdb/smoothdb/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -43,7 +44,7 @@ func prepareInputRecords(c *gin.Context) ([]database.Record, error) {
 
 func noRecordsForInsert(c *gin.Context, records []database.Record) bool {
 	if len(records) == 0 {
-		gi := database.GetGreenContext(c)
+		gi := database.GetSmoothContext(c)
 		if gi.QueryOptions.ReturnRepresentation {
 			c.String(http.StatusCreated, "[]")
 		} else {
@@ -56,7 +57,7 @@ func noRecordsForInsert(c *gin.Context, records []database.Record) bool {
 
 func noRecordsForUpdate(c *gin.Context, records []database.Record) bool {
 	if len(records) == 0 || len(records[0]) == 0 {
-		gi := database.GetGreenContext(c)
+		gi := database.GetSmoothContext(c)
 		if gi.QueryOptions.ReturnRepresentation {
 			c.String(http.StatusOK, "[]")
 		} else {
@@ -85,6 +86,8 @@ func prepareServerError(c *gin.Context, err error) {
 			"42P07", // duplicate table
 			"23505": // unique constraint violation
 			status = http.StatusConflict
+		case "22P02":
+			status = http.StatusBadRequest
 		default:
 			status = http.StatusInternalServerError
 		}

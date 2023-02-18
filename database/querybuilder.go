@@ -341,7 +341,7 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		delete += " RETURNING *"
+		delete += returningClause(table, schema, parts.selectFields)
 	}
 	return delete, nil
 }

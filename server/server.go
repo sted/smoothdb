@@ -2,9 +2,10 @@ package server
 
 import (
 	"context"
-	"green/green-ds/database"
-	"green/green-ds/logging"
 	"net/http"
+
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/smoothdb/smoothdb/logging"
 )
 
 type Server struct {

@@ -1,8 +1,9 @@
 package api
 
 import (
-	"green/green-ds/database"
 	"net/http"
+
+	"github.com/smoothdb/smoothdb/database"
 
 	"github.com/gin-gonic/gin"
 )

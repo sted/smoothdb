@@ -7,11 +7,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var greenTag = "gctx"
+var smoothTag = "gctx"
 
-//type greenCtxKey struct{}
+//type smoothCtxKey struct{}
 
-type GreenContext struct {
+type SmoothContext struct {
 	GinContext    *gin.Context
 	Db            *Database
 	Conn          *DbConn
@@ -43,7 +43,7 @@ func FillContext(gctx *gin.Context, role string, oldconn *DbConn) (*DbConn, erro
 		queryOptions.Schema = DBE.defaultSchema
 	}
 
-	gctx.Set(greenTag, &GreenContext{
+	gctx.Set(smoothTag, &SmoothContext{
 		gctx,
 		db, conn, role,
 		defaultParser, defaultBuilder, queryOptions,
@@ -54,24 +54,16 @@ func FillContext(gctx *gin.Context, role string, oldconn *DbConn) (*DbConn, erro
 
 // It is used for testing
 func ReleaseContext(ctx context.Context) {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	ReleaseConnection(ctx, gi.Conn, true)
 }
 
-// func WithGreenContext(parent context.Context, gctx *gin.Context) context.Context {
-// 	gi, ok := gctx.Get(greenTag)
-// 	if !ok {
-// 		panic("")
-// 	}
-// 	return context.WithValue(parent, greenTag, gi)
-// }
-
-func GetGreenContext(ctx context.Context) *GreenContext {
-	v := ctx.Value(greenTag)
+func GetSmoothContext(ctx context.Context) *SmoothContext {
+	v := ctx.Value(smoothTag)
 	if v == nil {
 		return nil
 	}
-	return v.(*GreenContext)
+	return v.(*SmoothContext)
 }
 
 func WithDb(parent context.Context, db *Database) context.Context {
@@ -87,26 +79,26 @@ func WithDb(parent context.Context, db *Database) context.Context {
 	defaltBuilder := DirectQueryBuilder{}
 
 	//lint:ignore SA1029 should not use built-in type string as key for value; define your own type to avoid collisions
-	return context.WithValue(parent, greenTag,
-		&GreenContext{nil, db, conn, "", defaultParser, defaltBuilder, queryOptions})
+	return context.WithValue(parent, smoothTag,
+		&SmoothContext{nil, db, conn, "", defaultParser, defaltBuilder, queryOptions})
 }
 
 func GetConn(ctx context.Context) *pgxpool.Conn {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	return gi.Conn
 }
 
 func GetDb(ctx context.Context) *Database {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	return gi.Db
 }
 
 func SetRequestParser(ctx context.Context, rp RequestParser) {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	gi.RequestParser = rp
 }
 
 func SetQueryBuilder(ctx context.Context, qb QueryBuilder) {
-	gi := GetGreenContext(ctx)
+	gi := GetSmoothContext(ctx)
 	gi.QueryBuilder = qb
 }

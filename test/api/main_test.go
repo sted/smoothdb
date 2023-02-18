@@ -1,12 +1,13 @@
 package test_api
 
 import (
-	"green/green-ds/logging"
-	"green/green-ds/server"
-	"green/green-ds/test"
 	"log"
 	"os"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/logging"
+	"github.com/smoothdb/smoothdb/server"
+	"github.com/smoothdb/smoothdb/test"
 )
 
 var (

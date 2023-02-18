@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"green/green-ds/server"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/smoothdb/smoothdb/server"
 )
 
 func stopHandler(s *server.Server) {

@@ -8,7 +8,7 @@ COPY . .
 ENV GO111MODULE=on
 
 RUN go mod download
-RUN go build -o green-ds
+RUN go build -o smoothdb
 
 
 ## second stage
@@ -18,4 +18,4 @@ COPY --from=builder  /app /app
 
 EXPOSE 8081
 
-CMD ["/app/green-ds-o"]
+CMD ["/app/smoothdb-o"]

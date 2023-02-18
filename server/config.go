@@ -3,11 +3,12 @@ package server
 import (
 	"flag"
 	"fmt"
-	"green/green-ds/config"
-	"green/green-ds/database"
-	"green/green-ds/logging"
 	"os"
 	"strings"
+
+	"github.com/smoothdb/smoothdb/config"
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/smoothdb/smoothdb/logging"
 
 	"github.com/imdario/mergo"
 )
@@ -38,14 +39,14 @@ func getEnvironment(c *Config) {
 	if dburl != "" {
 		c.Database.URL = dburl
 	}
-	debug := os.Getenv("GREEN_DEBUG")
+	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
 		c.EnableAdminRoute = true
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 	}
-	enableAnon := os.Getenv("GREEN_ALLOW_ANON")
+	enableAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
 	if enableAnon != "" {
 		if strings.ToLower(enableAnon) == "true" {
 			c.AllowAnon = true
@@ -53,7 +54,7 @@ func getEnvironment(c *Config) {
 			c.AllowAnon = false
 		}
 	}
-	enableAdminRoute := os.Getenv("GREEN_ENABLE_ADMIN_ROUTE")
+	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {
 		if strings.ToLower(enableAdminRoute) == "true" {
 			c.EnableAdminRoute = true
@@ -64,7 +65,7 @@ func getEnvironment(c *Config) {
 }
 
 const usageStr = `
-Usage: greenbase [options]
+Usage: smoothdb [options]
 
 Server Options:
 	-a, --addr <host>                Bind to host address (default: localhost:8081)

@@ -1,13 +1,14 @@
 package postgrest
 
 import (
-	"green/green-ds/database"
-	"green/green-ds/logging"
-	"green/green-ds/server"
-	"green/green-ds/test"
 	"log"
 	"os"
 	"testing"
+
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/smoothdb/smoothdb/logging"
+	"github.com/smoothdb/smoothdb/server"
+	"github.com/smoothdb/smoothdb/test"
 )
 
 var testConfig test.Config
@@ -18,7 +19,7 @@ func TestMain(m *testing.M) {
 		EnableAdminRoute: true,
 		Logging: logging.Config{
 			FileLogging: false,
-			StdOut:      true,
+			StdOut:      false,
 		},
 		Database: database.Config{
 			SchemaSearchPath: []string{"public", "test"},
