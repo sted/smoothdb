@@ -193,6 +193,8 @@ outer:
 	}
 }
 
+// next returns the next token and advances the cursor.
+// It returns an empty string if it is at the end.
 func (p *PostgRestParser) next() string {
 	if p.cur == len(p.tokens) {
 		return ""
@@ -202,12 +204,15 @@ func (p *PostgRestParser) next() string {
 	return t
 }
 
+// back takes one step back
 func (p *PostgRestParser) back() {
 	if p.cur != 0 {
 		p.cur--
 	}
 }
 
+// lookAhead returns the next token _without_ advancing the cursor.
+// It returns an empty string if it is at the end.
 func (p *PostgRestParser) lookAhead() string {
 	if p.cur == len(p.tokens) {
 		return ""
@@ -215,6 +220,7 @@ func (p *PostgRestParser) lookAhead() string {
 	return p.tokens[p.cur]
 }
 
+// reset reinitializes the parser
 func (p *PostgRestParser) reset() {
 	p.tokens = nil
 	p.cur = 0
@@ -402,14 +408,28 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 }
 
 // WHERE
+
 func isBooleanOp(op string) bool {
 	return op == "and" || op == "or" || op == "not.and" || op == "not.or"
 }
 
+func isBooleanOpStrict(op string) bool {
+	return op == "and" || op == "or" || op == "not"
+}
+
+func hasBooleanOp(op string) bool {
+	return op == "and" || op == "or" || strings.HasSuffix(op, ".and") || strings.HasSuffix(op, ".or")
+}
+
 func (p *PostgRestParser) scanWhereCondition(k, v string) {
 	p.reset()
-	if isBooleanOp(k) {
-		v = k + v
+	if hasBooleanOp(k) {
+		if isBooleanOp(k) {
+			v = k + v
+		} else {
+			// a hack to recognize boolean operators more easily in case of "embedded filters"
+			v = "__boolean_later__." + k + v
+		}
 	} else {
 		v = k + "=" + v
 	}
@@ -472,41 +492,70 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 	return nil
 }
 
-func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (err error) {
-	node := &WhereConditionNode{}
-	token := p.lookAhead()
-	if token == "not" || token == "and" || token == "or" {
-		node.field.tablename = mainTable // @@ temp: must manage field.or etc
-		p.next()
-		if token == "not" {
-			node.not = true
-			if p.next() != "." {
-				return &ParseError{"'.' expected"}
-			}
-			token = p.next()
+func (p *PostgRestParser) booleanOp(table string, node *WhereConditionNode) (err error) {
+	token := p.next()
+	if token == "not" {
+		node.not = true
+		if p.next() != "." {
+			return &ParseError{"'.' expected"}
 		}
-		if token != "and" && token != "or" {
-			return &ParseError{"boolean operator expected"}
-		}
-		node.operator = strings.ToUpper(token)
-		if p.next() != "(" {
-			return &ParseError{"'(' expected"}
-		}
-		err = p.cond(mainTable, node)
+		token = p.next()
+	}
+	if token != "and" && token != "or" {
+		return &ParseError{"boolean operator expected"}
+	}
+	node.operator = strings.ToUpper(token)
+	if p.next() != "(" {
+		return &ParseError{"'(' expected"}
+	}
+	err = p.cond(table, node)
+	if err != nil {
+		return err
+	}
+	token = p.next()
+	for token == "," {
+		err = p.cond(table, node)
 		if err != nil {
 			return err
 		}
 		token = p.next()
-		for token == "," {
-			err = p.cond(mainTable, node)
-			if err != nil {
-				return err
-			}
+	}
+	if token != ")" {
+		return &ParseError{"')' expected"}
+	}
+	return nil
+}
+
+func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (err error) {
+	node := &WhereConditionNode{}
+	token := p.lookAhead()
+	if token == "__boolean_later__" {
+		node.field.tablename = mainTable
+		// here we know that the sequence is something like "__boolean_later__.(table.)*[not.](and|or)"
+		p.next() // boolean_later
+		p.next() // dot
+		var boolOpTable string
+		for { // see if we have "embedded resources" (eg table.or etc)
 			token = p.next()
+			if isBooleanOpStrict(token) {
+				break
+			}
+			boolOpTable += token
+			if token = p.next(); token != "." {
+				return &ParseError{"'.' expected"}
+			}
+			boolOpTable += token
 		}
-		if token != ")" {
-			return &ParseError{"')' expected"}
+		if boolOpTable == "" {
+			boolOpTable = mainTable
 		}
+		p.booleanOp(boolOpTable, node)
+
+	} else if isBooleanOpStrict(token) {
+
+		node.field.tablename = mainTable
+		p.booleanOp(mainTable, node)
+
 	} else {
 		var mayHaveTable bool
 		var nextSep string
