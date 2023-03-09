@@ -7,9 +7,10 @@ type User struct {
 	MemberOf []string `json:"memberof"`
 }
 
-const usersQuery = `SELECT b.rolname
+const usersQuery = `
+	SELECT b.rolname
 	FROM pg_catalog.pg_auth_members m
-		JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
+	JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
 	WHERE m.member = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = 'auth')`
 
 func (dbe *DbEngine) GetUsers(ctx context.Context) ([]User, error) {

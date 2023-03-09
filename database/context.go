@@ -38,7 +38,7 @@ func FillContext(gctx *gin.Context, role string, oldconn *DbConn) (*DbConn, erro
 
 	defaultParser := PostgRestParser{}
 	defaultBuilder := DirectQueryBuilder{}
-	queryOptions := defaultParser.getOptions(gctx.Request)
+	queryOptions := defaultParser.getRequestOptions(gctx.Request)
 	if queryOptions.Schema == "" {
 		queryOptions.Schema = DBE.defaultSchema
 	}

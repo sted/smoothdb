@@ -19,19 +19,22 @@
 √ Logger
 √ pgx v5
 √ Schema management
+* uniform log for db and api
+√ O2O: recognize unique and primary
+* Upsert
+* Functions (rpc)
 * Reload config
 * Change log level at runtime
 * More types, in order: √ array, √ jsonb, interval, numeric
-* Functions (rpc)
 * Caching
 * Activity / stats
 * Indexes
 * Triggers
-* Upsert
 * Table inheritance
+* "singular" response
 * M x N Relationships
 * application/octet-stream as output
-* "singular" response
+* CSV>DFXZSA<EWY6tR>
 * Encryption
 * TLS
 

@@ -107,7 +107,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.999999",
 			Body:        `{ "id":999999 }`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
@@ -136,7 +136,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.2",
 			Body:        `{ "id":2 }`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{"id":2}]`,
 			Status:      200,
 		},
@@ -166,7 +166,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/no_pk?b=eq.0",
 			Body:        `{ "b": "1" }`, // b -> "b"
-			Headers:     test.Headers{"Prefer": "tx=commit"},
+			Headers:     test.Headers{"Prefer": {"tx=commit"}},
 			Expected:    ``,
 			Status:      204,
 		},
@@ -195,7 +195,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/no_pk?b=eq.1",
 			Body:        `{ "b": "0" }`, // quoted
-			Headers:     test.Headers{"Prefer": "tx=commit"},
+			Headers:     test.Headers{"Prefer": {"tx=commit"}},
 			Expected:    ``,
 			Status:      204,
 		},
@@ -210,7 +210,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/no_pk?a=eq.1",
 			Body:        `{ "b": null }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "a": "1", "b": null }]`,
 			Status:      200,
 		},
@@ -229,7 +229,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?is_first=eq.true",
 			Body:        `{ "id": 100 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 100 }]`,
 			Status:      200,
 		},
@@ -247,7 +247,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?always_true=eq.false",
 			Body:        `{ "id": 100 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
@@ -266,7 +266,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.1",
 			Body:        `{ "id": 99 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{"id":99}]`,
 			Status:      200,
 		},
@@ -285,7 +285,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.1&select=id,always_true",
 			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "always_true": true }]`,
 			Status:      200,
 		},
@@ -301,7 +301,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.1&select=id,computed_overload",
 			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "computed_overload": true }]`,
 			Status:      200,
 		},
@@ -316,7 +316,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items2?id=eq.1&select=id,computed_overload",
 			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "computed_overload": true }]`,
 			Status:      200,
 		},
@@ -352,7 +352,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?id=eq.1&select=id",
 			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": "return=minimal"},
+			Headers:     test.Headers{"Prefer": {"return=minimal"}},
 			Expected:    ``,
 			Status:      204,
 		},
@@ -479,7 +479,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items",
 			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
@@ -496,7 +496,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?select=id",
 			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
@@ -513,7 +513,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/items?select=id,computed_overload",
 			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
@@ -530,7 +530,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/no_pk?a=eq.1",
 			Body:        `{ "a":"圍棋", "b":"￥" }`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "a":"圍棋", "b":"￥" }]`,
 			Status:      200,
 		},
@@ -546,7 +546,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/articles?id=eq.1&columns=body",
 			Body:        `{"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{"id": 1, "body": "Some real content", "owner": "postgrest_test_anonymous"}]`,
 			Status:      200,
 		},
@@ -558,7 +558,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/articles?id=eq.2001&columns=body",
 			Body:        `{"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Status:      200,
 		},
 		//       it "disallows ?columns which don't exist" $ do
@@ -588,7 +588,7 @@ func TestPostgREST_Update(t *testing.T) {
 		// 	Query:       "/garlic?columns=helicopter",
 		// 	//Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`, // @@ accepts multiple records?
 		// 	Body:     `[{"id": 204, "body": "yyy"}]`,
-		// 	Headers:  test.Headers{"Prefer": "return=representation"},
+		// 	Headers:  test.Headers{"Prefer": {"return=representation"}},
 		// 	Expected: ``,
 		// 	Status:   404, //@@ returns 500
 		// },
@@ -604,7 +604,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
-
+		{
+			Description: "tables with self reference foreign keys embeds children after update",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)",
+			Body:        `{"name": "tardis-patched"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
+			Status:      200,
+		},
 		//     it "embeds parent, children and grandchildren after update" $
 		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)"
 		//               [("Prefer", "return=representation")]
@@ -637,7 +645,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
-
+		{
+			Description: "embeds children after update without explicitly including the id in the ?select",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=name,web_content(name)",
+			Body:        `{"name": "tardis-patched"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
+			Status:      200,
+		},
 		//     it "embeds an M2M relationship plus parent after update" $
 		//       request methodPatch "/users?id=eq.1&select=name,tasks(name,project:projects(name))"
 		//               [("Prefer", "return=representation")]
@@ -672,6 +688,20 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
+		{
+			Description: "embeds an O2O relationship after update",
+			Method:      "PATCH",
+			Query:       "/students?id=eq.1&select=name,students_info(address)",
+			Body:        `{"name": "Johnny Doe"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				           {
+				             "name": "Johnny Doe",
+				             "students_info":{"address":"Street 1"}
+				           }
+				         ]`,
+			Status: 200,
+		},
 		//       request methodPatch "/students_info?id=eq.1&select=address,students(name)"
 		//               [("Prefer", "return=representation")]
 		//         [json|{"address": "New Street 1"}|]
@@ -685,7 +715,20 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
-
+		{
+			Description: "embeds an O2O relationship after update",
+			Method:      "PATCH",
+			Query:       "/students_info?id=eq.1&select=address,students(name)",
+			Body:        `{"address": "New Street 1"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				           {
+				             "address": "New Street 1",
+				             "students":{"name": "John Doe"}
+				           }
+				         ]`,
+			Status: 200,
+		},
 		//   context "table with limited privileges" $ do
 		//     it "succeeds updating row and gives a 204 when using return=minimal" $
 		//       request methodPatch "/app_users?id=eq.1"
@@ -701,7 +744,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/app_users?id=eq.1",
 			Body:        `{ "password": "passxyz" }`,
-			Headers:     test.Headers{"Prefer": "return=minimal"},
+			Headers:     test.Headers{"Prefer": {"return=minimal"}},
 			Status:      204,
 		},
 		//     it "can update without return=minimal and no explicit select" $

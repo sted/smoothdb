@@ -9,20 +9,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type DbInfo struct {
+	cachedTables            map[string]Table
+	cachedPrimaryKeys       map[string]Constraint
+	cachedForeignKeys       map[string][]ForeignKey
+	cachedUniqueConstraints map[string][]Constraint
+	cachedCheckConstraints  map[string][]Constraint
+	cachedRelationships     map[string][]Relationship
+}
+
+func (db *DbInfo) GetRelationships(table string) []Relationship {
+	return db.cachedRelationships[table]
+}
+
 type Database struct {
 	Name  string `json:"name"`
 	Owner string `json:"owner"`
 
-	activated           atomic.Bool
-	pool                *pgxpool.Pool
-	cachedTables        map[string]Table
-	cachedConstraints   map[string][]Constraint
-	cachedRelationships map[string][]Relationship
-	exec                *QueryExecutor
-}
-
-func (db *Database) GetRelationships(table string) []Relationship {
-	return db.cachedRelationships[table]
+	activated atomic.Bool
+	pool      *pgxpool.Pool
+	exec      *QueryExecutor
+	DbInfo
 }
 
 // Activate initializes a database and start its connection pool.
@@ -46,7 +53,7 @@ func (db *Database) Activate(ctx context.Context) error {
 	}
 	config.MinConns = DBE.config.MinPoolConnections
 	config.MaxConns = DBE.config.MaxPoolConnections
-	config.ConnConfig.Tracer = DBE.logger
+	config.ConnConfig.Tracer = DBE.dblogger
 
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		var set string
@@ -71,7 +78,10 @@ func (db *Database) Activate(ctx context.Context) error {
 	}
 	db.pool = pool
 	db.cachedTables = map[string]Table{}
-	db.cachedConstraints = map[string][]Constraint{}
+	db.cachedPrimaryKeys = map[string]Constraint{}
+	db.cachedForeignKeys = map[string][]ForeignKey{}
+	db.cachedUniqueConstraints = map[string][]Constraint{}
+	db.cachedCheckConstraints = map[string][]Constraint{}
 	db.cachedRelationships = map[string][]Relationship{}
 	db.exec = DBE.exec
 
@@ -84,11 +94,28 @@ func (db *Database) Activate(ctx context.Context) error {
 		return err
 	}
 	for _, c := range constraints {
-		db.cachedConstraints[c.Table] = append(db.cachedConstraints[c.Table], c)
-		if c.Type == 'f' {
-			rels := constraintToRelationships(&c)
-			db.cachedRelationships[rels[0].Table] = append(db.cachedRelationships[rels[0].Table], rels[0])
-			db.cachedRelationships[rels[1].Table] = append(db.cachedRelationships[rels[1].Table], rels[1])
+		switch c.Type {
+		case 'p':
+			db.cachedPrimaryKeys[c.Table] = c
+		case 'f':
+			db.cachedForeignKeys[c.Table] = append(db.cachedForeignKeys[c.Table], *constraintToForeignKey(&c))
+		case 'u':
+			db.cachedUniqueConstraints[c.Table] = append(db.cachedUniqueConstraints[c.Table], c)
+		case 'c':
+			db.cachedCheckConstraints[c.Table] = append(db.cachedCheckConstraints[c.Table], c)
+		}
+	}
+	var pk *Constraint
+	for _, fkeys := range db.cachedForeignKeys {
+		for _, fk := range fkeys {
+			c, ok := db.cachedPrimaryKeys[fk.Table]
+			if ok {
+				pk = &c
+			}
+
+			rels := foreignKeyToRelationships(&fk, pk, db.cachedUniqueConstraints[fk.Table])
+			db.cachedRelationships[fk.Table] = append(db.cachedRelationships[fk.Table], rels[0])
+			db.cachedRelationships[fk.RelatedTable] = append(db.cachedRelationships[fk.RelatedTable], rels[1])
 		}
 	}
 	return nil

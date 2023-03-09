@@ -73,7 +73,7 @@ type QueryOptions struct {
 // Initially we will support PostgREST mode and later (perhaps) Django mode.
 type RequestParser interface {
 	parseQuery(mainTable string, filters Filters) (*QueryParts, error)
-	getOptions(req *Request) *QueryOptions
+	getRequestOptions(req *Request) *QueryOptions
 }
 
 type PostgRestParser struct {
@@ -530,25 +530,27 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 	node := &WhereConditionNode{}
 	token := p.lookAhead()
 	if token == "__boolean_later__" {
-		node.field.tablename = mainTable
 		// here we know that the sequence is something like "__boolean_later__.(table.)*[not.](and|or)"
 		p.next() // boolean_later
 		p.next() // dot
 		var boolOpTable string
 		for { // see if we have "embedded resources" (eg table.or etc)
-			token = p.next()
+			token = p.lookAhead()
 			if isBooleanOpStrict(token) {
 				break
 			}
-			boolOpTable += token
+			if boolOpTable != "" {
+				boolOpTable += "."
+			}
+			boolOpTable += p.next()
 			if token = p.next(); token != "." {
 				return &ParseError{"'.' expected"}
 			}
-			boolOpTable += token
 		}
 		if boolOpTable == "" {
 			boolOpTable = mainTable
 		}
+		node.field.tablename = boolOpTable
 		p.booleanOp(boolOpTable, node)
 
 	} else if isBooleanOpStrict(token) {
@@ -728,7 +730,7 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 	return parts, nil
 }
 
-func (p PostgRestParser) getOptions(req *Request) *QueryOptions {
+func (p PostgRestParser) getRequestOptions(req *Request) *QueryOptions {
 	header := req.Header
 	options := &QueryOptions{}
 

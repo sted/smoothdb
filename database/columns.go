@@ -46,11 +46,7 @@ func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column
 		if err != nil {
 			return columns, err
 		}
-		if nullable == "NO" {
-			column.NotNull = true
-		} else {
-			column.NotNull = false
-		}
+		column.NotNull = nullable == "NO"
 		fillColumnConstraints(&column, constraints)
 		columns = append(columns, column)
 	}
@@ -74,11 +70,7 @@ func (db *Database) GetColumn(ctx context.Context, ftablename string, name strin
 	if err != nil {
 		return nil, err
 	}
-	if nullable == "NO" {
-		column.NotNull = true
-	} else {
-		column.NotNull = false
-	}
+	column.NotNull = nullable == "NO"
 	fillColumnConstraints(column, constraints)
 	return column, nil
 }

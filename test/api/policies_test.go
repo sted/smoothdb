@@ -10,7 +10,7 @@ func TestPolicies(t *testing.T) {
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: map[string]string{"Authorization": adminToken},
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
 	commands := []test.Command{
@@ -71,7 +71,7 @@ func TestPolicies(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_policies",
 			Body:        `{"name": "user1"}`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      201,
 		},
 		{
@@ -79,7 +79,7 @@ func TestPolicies(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_policies",
 			Body:        `{"name": "user2"}`,
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      201,
 		},
 		{
@@ -87,7 +87,7 @@ func TestPolicies(t *testing.T) {
 			Method:      "GET",
 			Query:       "/table_policies?select=name",
 			Expected:    `[{"name": "user1"}]`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      200,
 		},
 		{
@@ -95,7 +95,7 @@ func TestPolicies(t *testing.T) {
 			Method:      "GET",
 			Query:       "/table_policies?select=name",
 			Expected:    `[{"name": "user2"}]`,
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      200,
 		},
 		{
@@ -103,7 +103,7 @@ func TestPolicies(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_policies",
 			Body:        `{"name": "user3"}`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      401,
 		},
 	}

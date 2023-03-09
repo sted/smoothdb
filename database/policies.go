@@ -31,7 +31,7 @@ const policyQuery = `
 			WHEN pol.polroles = '{0}'::oid[] THEN string_to_array('public'::text, ''::text)::name[]
 			ELSE ARRAY( SELECT pg_authid.rolname
 				FROM pg_authid
-				WHERE pg_authid.oid = ANY (pol.polroles)
+				WHERE pg_authid.oid = ANY(pol.polroles)
 				ORDER BY pg_authid.rolname)
 		END roles,
 		pg_get_expr(pol.polqual, pol.polrelid) using,

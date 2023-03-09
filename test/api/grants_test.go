@@ -10,7 +10,7 @@ func TestGrants(t *testing.T) {
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin/databases",
-		CommonHeaders: map[string]string{"Authorization": adminToken},
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		//NoCookies:     true,
 	}
 
@@ -36,7 +36,7 @@ func TestGrants(t *testing.T) {
 
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/api/dbtest",
-		CommonHeaders: map[string]string{"Authorization": adminToken},
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		NoCookies:     true,
 	}
 
@@ -77,7 +77,7 @@ func TestGrants(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_grants",
 			Body:        `{"name": "user1"}`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      201,
 		},
 		{
@@ -85,7 +85,7 @@ func TestGrants(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_grants",
 			Body:        `{"name": "user2"}`,
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      401,
 		},
 		{
@@ -93,14 +93,14 @@ func TestGrants(t *testing.T) {
 			Method:      "GET",
 			Query:       "/table_grants?select=name",
 			Expected:    `[{"name": "user1"}]`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      200,
 		},
 		{
 			Description: "fail to select",
 			Method:      "GET",
 			Query:       "/table_grants?select=name",
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      401,
 		},
 		{
@@ -132,7 +132,7 @@ func TestGrants(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/table_grants",
 			Body:        `{"name": "user1-update"}`,
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      401,
 		},
 		{
@@ -140,21 +140,21 @@ func TestGrants(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/table_grants",
 			Body:        `{"name": "user2-update"}`,
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      204,
 		},
 		{
 			Description: "fail to delete records",
 			Method:      "DELETE",
 			Query:       "/table_grants",
-			Headers:     map[string]string{"Authorization": user1Token},
+			Headers:     test.Headers{"Authorization": {user1Token}},
 			Status:      401,
 		},
 		{
 			Description: "delete records",
 			Method:      "DELETE",
 			Query:       "/table_grants",
-			Headers:     map[string]string{"Authorization": user2Token},
+			Headers:     test.Headers{"Authorization": {user2Token}},
 			Status:      204,
 		},
 		{

@@ -38,18 +38,22 @@ func TestMain(m *testing.M) {
 	postgresToken, _ := server.GenerateToken("postgres", s.Config.JWTSecret)
 	anonymousToken, _ := server.GenerateToken("postgrest_test_anonymous", s.Config.JWTSecret)
 
-	cmdConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: test.Headers{"Authorization": postgresToken},
-	}
-
 	testConfig = test.Config{
 		BaseUrl: "http://localhost:8081/api/pgrest",
 		CommonHeaders: test.Headers{
-			"Authorization":   anonymousToken,
-			"Accept-Profile":  "test",
-			"Content-Profile": "test",
+			"Authorization":   {anonymousToken},
+			"Accept-Profile":  {"test"},
+			"Content-Profile": {"test"},
 		},
+	}
+
+	go s.Start()
+
+	// Tear-up
+
+	cmdConfig := test.Config{
+		BaseUrl:       "http://localhost:8081/admin",
+		CommonHeaders: test.Headers{"Authorization": {postgresToken}},
 	}
 
 	commands := []test.Command{
@@ -64,7 +68,8 @@ func TestMain(m *testing.M) {
 	}
 	test.Prepare(cmdConfig, commands)
 
-	go s.Start()
+	// Run
 	code := m.Run()
+
 	os.Exit(code)
 }

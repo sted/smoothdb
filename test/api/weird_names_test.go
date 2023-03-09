@@ -10,7 +10,7 @@ func TestWeirdNames(t *testing.T) {
 
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: map[string]string{"Authorization": adminToken},
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		NoCookies:     true,
 	}
 

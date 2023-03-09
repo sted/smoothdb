@@ -21,7 +21,8 @@ var DBE *DbEngine
 type DbEngine struct {
 	config           *Config
 	pool             *pgxpool.Pool
-	logger           pgx.QueryTracer
+	logger           *logging.Logger
+	dblogger         pgx.QueryTracer
 	activeDatabases  sync.Map
 	allowedDatabases map[string]struct{}
 	exec             *QueryExecutor
@@ -32,18 +33,18 @@ type DbEngine struct {
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	context := context.Background()
 
-	DBE = &DbEngine{config: dbConfig, exec: &QueryExecutor{}}
+	DBE = &DbEngine{config: dbConfig, logger: logger, exec: &QueryExecutor{}}
 
 	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
 		return nil, err
 	}
 	if logger != nil {
-		DBE.logger = &tracelog.TraceLog{
+		DBE.dblogger = &tracelog.TraceLog{
 			Logger:   zerologadapter.NewLogger(*logger.Logger),
 			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
 		}
-		poolConfig.ConnConfig.Tracer = DBE.logger
+		poolConfig.ConnConfig.Tracer = DBE.dblogger
 	}
 
 	// Create DBE connection pool

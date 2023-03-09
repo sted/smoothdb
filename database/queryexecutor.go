@@ -11,9 +11,7 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 		return nil, err
 	}
 	options := gi.QueryOptions
-	schema := options.Schema
-	rels := gi.Db.GetRelationships(_s(table, schema))
-	query, err := gi.QueryBuilder.BuildSelect(table, parts, options, rels)
+	query, err := gi.QueryBuilder.BuildSelect(table, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +30,7 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record,
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options)
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -61,7 +59,7 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options)
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -90,7 +88,7 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	delete, err := gi.QueryBuilder.BuildDelete(table, parts, options)
+	delete, err := gi.QueryBuilder.BuildDelete(table, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -489,7 +489,7 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/json_table?data->>id=eq.3",
 			Body:        `{ "data": { "id":" \"escaped" } }`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "data": { "id":" \"escaped" } }]`,
 			Status:      200,
 		},

@@ -66,6 +66,8 @@ func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error 
 			gctx := GetSmoothContext(ctx)
 			if gctx.QueryOptions.TxRollback {
 				end = "ROLLBACK"
+			} else {
+				end = "COMMIT"
 			}
 		case "rollback":
 			end = "ROLLBACK"
@@ -73,6 +75,8 @@ func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error 
 			gctx := GetSmoothContext(ctx)
 			if gctx.QueryOptions.TxCommit {
 				end = "COMMIT"
+			} else {
+				end = "ROLLBACK"
 			}
 		}
 		_, err := conn.Exec(ctx, end)

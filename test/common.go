@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-type Headers map[string]string
+type Headers http.Header
 
 type Config struct {
 	BaseUrl       string
@@ -33,7 +33,7 @@ type Test struct {
 	Method      string
 	Query       string
 	Body        string
-	Headers     map[string]string
+	Headers     Headers
 	Expected    string
 	Status      int
 }
@@ -71,14 +71,18 @@ func exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 	if err != nil {
 		return nil, 0, err
 	}
-	for k, v := range config.CommonHeaders {
-		req.Header.Add(k, v)
-	}
-	for k, v := range cmd.Headers {
-		if req.Header.Get(k) != "" {
-			req.Header.Set(k, v)
-		} else {
+	for k, values := range config.CommonHeaders {
+		for _, v := range values {
 			req.Header.Add(k, v)
+		}
+	}
+	for k, values := range cmd.Headers {
+		for i, v := range values {
+			if i == 0 && req.Header.Get(k) != "" {
+				req.Header.Set(k, v)
+			} else {
+				req.Header.Add(k, v)
+			}
 		}
 	}
 	resp, err := client.Do(req)

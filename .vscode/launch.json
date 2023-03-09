@@ -16,11 +16,11 @@
             ]
         },
         {
-            "name": "Launch file",
+            "name": "Launch smoothdb",
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "../smoothdb",
+            "program": "${workspaceFolder}",
         },
         {
             "name": "Attach to Process",

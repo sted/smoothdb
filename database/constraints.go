@@ -2,20 +2,19 @@ package database
 
 import (
 	"context"
-	"regexp"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/samber/lo"
 )
 
 type Constraint struct {
-	Name       string `json:"name"`
-	Type       byte   `json:"type"` // c: check, u: unique, p: primary, f: foreign
-	Table      string `json:"table"`
-	Column     string `json:"column"`
-	NumCols    int    `json:"numcols"`
-	Definition string `json:"definition"`
+	Name           string   `json:"name"`
+	Type           byte     `json:"type"` // c: check, u: unique, p: primary, f: foreign
+	Table          string   `json:"table"`
+	Columns        []string `json:"columns"`
+	RelatedTable   *string  `json:"reltable"`
+	RelatedColumns []string `json:"relcolumns"`
+	Definition     string   `json:"definition"`
 }
 
 type ForeignKey struct {
@@ -31,6 +30,7 @@ type RelType int
 const (
 	O2M RelType = iota
 	M2O
+	O2O
 )
 
 type Relationship struct {
@@ -41,17 +41,30 @@ type Relationship struct {
 	RelatedColumns []string
 }
 
+// Query to retrieve all the Constraints in a database
 const constraintsQuery = `
-	SELECT
-		c.connamespace::regnamespace || '.' || cls.relname tablename,
-		att.attname colname,
-		c.conname name,
-		c.contype type,
-		cardinality(c.conkey) cols,
-		pg_get_constraintdef(c.oid, true) def
-	FROM pg_constraint c
-		JOIN pg_class cls ON c.conrelid = cls.oid
-		JOIN pg_attribute att ON c.conrelid = att.attrelid and c.conkey[1] = att.attnum`
+SELECT
+    c.conname name,
+    c.contype type, 
+    ns1.nspname||'.'||cls1.relname table,
+    columns.cols,
+    ns2.nspname||'.'||cls2.relname ftable,
+    columns.fcols,
+    
+    pg_get_constraintdef(c.oid, true) def
+FROM pg_constraint c
+JOIN LATERAL (
+    SELECT
+    array_agg(cols.attname order by ord) cols,
+    coalesce(array_agg(fcols.attname order by ord) filter (where fcols.attname is not null), '{}') fcols
+    FROM unnest(c.conkey, c.confkey) WITH ORDINALITY AS _(col, fcol, ord)
+    JOIN pg_attribute cols ON cols.attrelid = c.conrelid AND cols.attnum = col
+    LEFT JOIN pg_attribute fcols ON fcols.attrelid = c.confrelid AND fcols.attnum = fcol
+) AS columns ON TRUE
+JOIN pg_namespace ns1 ON ns1.oid = c.connamespace
+JOIN pg_class cls1 ON cls1.oid = c.conrelid
+LEFT JOIN pg_class cls2 ON cls2.oid = c.confrelid
+LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace`
 
 func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]Constraint, error) {
 	constraints := []Constraint{}
@@ -59,13 +72,13 @@ func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]
 	var args []any
 	if ftablename != nil {
 		schemaname, tablename := splitTableName(*ftablename)
-		query += " WHERE cls.relname = $1 AND c.connamespace::regnamespace = $2::regnamespace"
+		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
-		query += " WHERE c.connamespace::regnamespace <> 'pg_catalog'::regnamespace"
-		query += " AND c.connamespace::regnamespace <> 'information_schema'::regnamespace"
+		query += " WHERE ns1.nspname !~ '^pg_'"
 	}
-	query += " ORDER BY tablename, type"
+	query += " ORDER BY cls1.relname"
+
 	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -74,8 +87,10 @@ func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]
 
 	constraint := Constraint{}
 	for rows.Next() {
-		err := rows.Scan(&constraint.Table, &constraint.Column, &constraint.Name,
-			&constraint.Type, &constraint.NumCols, &constraint.Definition)
+		err := rows.Scan(&constraint.Name, &constraint.Type,
+			&constraint.Table, &constraint.Columns,
+			&constraint.RelatedTable, &constraint.RelatedColumns,
+			&constraint.Definition)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +106,7 @@ func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]
 func fillTableConstraints(table *Table, constraints []Constraint) {
 	table.Constraints = nil
 	for _, c := range constraints {
-		if c.Table == table.Name && (c.NumCols > 1 || c.Type == 'p') {
+		if c.Table == table.Name && (len(c.Columns) > 1 || c.Type == 'p') {
 			table.Constraints = append(table.Constraints, c.Definition)
 		}
 	}
@@ -100,7 +115,7 @@ func fillTableConstraints(table *Table, constraints []Constraint) {
 func fillColumnConstraints(column *Column, constraints []Constraint) {
 	column.Constraints = nil
 	for _, c := range constraints {
-		if c.Table == column.Table && c.Column == column.Name && c.NumCols == 1 {
+		if c.Table == column.Table && len(c.Columns) == 1 && c.Columns[0] == column.Name {
 			column.Constraints = append(column.Constraints, c.Definition)
 		}
 	}
@@ -138,34 +153,57 @@ func (db *Database) DeleteConstraint(ctx context.Context, table string, name str
 	return nil
 }
 
-var re *regexp.Regexp = regexp.MustCompile(`^FOREIGN KEY \(([^\)]+)\) REFERENCES ([^\(]+)\(([^\)]+)\)`)
-
 func constraintToForeignKey(c *Constraint) *ForeignKey {
-	groups := re.FindStringSubmatch(c.Definition)
-	cols := strings.Split(groups[1], ", ")
-	refTable := groups[2]
-	refCols := strings.Split(groups[3], ", ")
 	return &ForeignKey{
 		Name:           c.Name,
 		Table:          c.Table,
-		Columns:        cols,
-		RelatedTable:   refTable,
-		RelatedColumns: refCols,
+		Columns:        c.Columns,
+		RelatedTable:   *c.RelatedTable,
+		RelatedColumns: c.RelatedColumns,
 	}
 }
 
-func constraintToRelationships(c *Constraint) [2]Relationship {
-	fk := constraintToForeignKey(c)
+func equalColumns(cols []string, otherCols []string) bool {
+	if len(cols) != len(otherCols) {
+		return false
+	}
+	for i := range cols {
+		if cols[i] != otherCols[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func foreignKeyToRelationships(fk *ForeignKey, pk *Constraint, uc []Constraint) [2]Relationship {
+	var type1, type2 RelType
+	var uniqueSource bool
+	if pk != nil {
+		if equalColumns(fk.Columns, pk.Columns) {
+			uniqueSource = true
+		}
+	}
+	for _, u := range uc {
+		if equalColumns(fk.Columns, u.Columns) {
+			uniqueSource = true
+			break
+		}
+	}
+	if uniqueSource {
+		type1, type2 = O2O, O2O
+	} else {
+		type1, type2 = M2O, O2M
+	}
 	return [2]Relationship{
 		{
-			Type:           M2O,
+			Type:           type1,
 			Table:          fk.Table,
 			Columns:        fk.Columns,
 			RelatedTable:   fk.RelatedTable,
 			RelatedColumns: fk.RelatedColumns,
 		},
 		{
-			Type:           O2M,
+			Type:           type2,
 			Table:          fk.RelatedTable,
 			Columns:        fk.RelatedColumns,
 			RelatedTable:   fk.Table,
@@ -180,35 +218,35 @@ func filterRelationships(rels []Relationship, relatedTable string) []Relationshi
 	})
 }
 
-func getForeignKeys(ctx context.Context, tables []string) (fkeys []ForeignKey, err error) {
-	conn := GetConn(ctx)
-	query := constraintsQuery
-	query += " WHERE c.contype = 'f' AND ("
-	for i, table := range tables {
-		if i > 0 {
-			query += " OR"
-		}
-		schemaname, tablename := splitTableName(table)
-		query += " cls.relname = '" + tablename + "' AND c.connamespace::regnamespace = '" + schemaname + "'::regnamespace"
-	}
-	query += ")"
-	rows, err := conn.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+// func getForeignKeys(ctx context.Context, tables []string) (fkeys []ForeignKey, err error) {
+// 	conn := GetConn(ctx)
+// 	query := constraintsQuery
+// 	query += " WHERE c.contype = 'f' AND ("
+// 	for i, table := range tables {
+// 		if i > 0 {
+// 			query += " OR"
+// 		}
+// 		schemaname, tablename := splitTableName(table)
+// 		query += " cls.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
+// 	}
+// 	query += ")"
+// 	rows, err := conn.Query(ctx, query)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
 
-	constraint := Constraint{}
-	for rows.Next() {
-		err := rows.Scan(&constraint.Table, &constraint.Column, &constraint.Name,
-			&constraint.Type, &constraint.NumCols, &constraint.Definition)
-		if err != nil {
-			return nil, err
-		}
-		fkeys = append(fkeys, *constraintToForeignKey(&constraint))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return fkeys, nil
-}
+// 	constraint := Constraint{}
+// 	for rows.Next() {
+// 		err := rows.Scan(&constraint.Name, &constraint.Type,
+// 			&constraint.Table, &constraint.Columns, &constraint.ColSig, &constraint.Definition)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		fkeys = append(fkeys, *constraintToForeignKey(&constraint))
+// 	}
+// 	if err := rows.Err(); err != nil {
+// 		return nil, err
+// 	}
+// 	return fkeys, nil
+// }

@@ -6,10 +6,11 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions) (string, []any, error)
-	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions) (string, []any, error)
-	BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error)
-	BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error)
+	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error)
+	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error)
+
 	preferredSerializer() ResultSerializer
 }
 
@@ -41,32 +42,45 @@ func prepareField(table, schema string, sfield SelectField) string {
 	return fieldPart
 }
 
-func selectForJoinClause(join Join, parts *QueryParts) (sel string) {
+func selectForJoinClause(join Join, parts *QueryParts, afterWithClause bool) (sel string) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
-	sel += " FROM " + rel.RelatedTable
+	sel += " FROM " + quoteParts(rel.RelatedTable)
 	sel += " WHERE "
 	for i := range rel.Columns {
 		if i != 0 {
 			sel += " AND "
 		}
-		sel += quoteParts(rel.RelatedTable) + "." + quoteParts(rel.RelatedColumns[i])
+		sel += quoteParts(rel.RelatedTable) + "." + quote(rel.RelatedColumns[i])
 		sel += " = "
-		sel += quoteParts(rel.Table) + "." + quoteParts(rel.Columns[i])
+		if !afterWithClause {
+			sel += quoteParts(rel.Table)
+		} else {
+			sel += quote("_source")
+		}
+		sel += "." + quote(rel.Columns[i])
 	}
-	schema, table := splitTableName(rel.RelatedTable)
-	whereClause := whereClause(table, schema, parts.whereConditionsTree)
-	if whereClause != "" {
-		sel += " AND " + whereClause
-	}
-	orderClause := orderClause(table, schema, parts.orderFields)
-	if orderClause != "" {
-		sel += " ORDER BY " + orderClause
+	// where and order clause for the internal select: the expressions related to
+	// the external query are skipped inside the functions.
+	// If the internal table is equal to the external one we avoid repeating
+	// the expressions.
+	if rel.Table != rel.RelatedTable {
+		schema, table := splitTableName(rel.RelatedTable)
+		whereClause := whereClause(table, schema, parts.whereConditionsTree)
+		if whereClause != "" {
+			sel += " AND " + whereClause
+		}
+		orderClause := orderClause(table, schema, parts.orderFields)
+		if orderClause != "" {
+			sel += " ORDER BY " + orderClause
+		}
 	}
 	return
 }
 
-func selectClause(table, schema string, parts *QueryParts, rels []Relationship) (selectClause string, joins string, err error) {
+func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWithClause bool) (
+	selectClause string, joins string, keys []string, err error) {
+
 	joinMap := map[string]Join{}
 
 	for i, sfield := range parts.selectFields {
@@ -76,9 +90,12 @@ func selectClause(table, schema string, parts *QueryParts, rels []Relationship) 
 		if sfield.table != nil {
 			relatedTable := sfield.table.name
 			fieldPart := prepareField(relatedTable, schema, sfield)
+			rels := info.GetRelationships(_s(table, schema))
 			frels := filterRelationships(rels, _s(relatedTable, schema))
-			if len(frels) != 1 {
-				return "", "", &BuildError{"cannot find relationship for table " + relatedTable}
+			if len(frels) == 2 && table == relatedTable {
+				frels = frels[1:]
+			} else if len(frels) != 1 {
+				return "", "", nil, &BuildError{"cannot find relationship for table " + table + " with table " + relatedTable}
 			}
 			frel := frels[0]
 			relName := table + "_" + relatedTable
@@ -93,14 +110,19 @@ func selectClause(table, schema string, parts *QueryParts, rels []Relationship) 
 					relatedTable = sfield.table.label
 				}
 				switch frel.Type {
-				case M2O:
+				case M2O, O2O:
 					selectClause += " row_to_json(\"" + relName + "\".*) AS " + quote(relatedTable)
 				case O2M:
 					selectClause += " COALESCE(\"" + relName + "\".\"_" + relName + "\", '[]') AS " + quote(relatedTable)
 				}
 			}
 		} else {
-			fieldPart := prepareField(table, schema, sfield)
+			var fieldPart string
+			if !afterWithClause {
+				fieldPart = prepareField(table, schema, sfield)
+			} else {
+				fieldPart = prepareField("_source", "", sfield)
+			}
 			selectClause += fieldPart
 		}
 	}
@@ -109,10 +131,10 @@ func selectClause(table, schema string, parts *QueryParts, rels []Relationship) 
 	}
 	if len(joinMap) > 0 {
 		for relName, join := range joinMap {
-			selectForJoin := selectForJoinClause(join, parts)
+			selectForJoin := selectForJoinClause(join, parts, afterWithClause)
 			joins += " LEFT JOIN LATERAL ("
 			switch join.rel.Type {
-			case M2O:
+			case M2O, O2O:
 				joins += selectForJoin
 			case O2M:
 				joins += " SELECT json_agg(\"_" + relName + "\") AS \"_" + relName + "\""
@@ -121,6 +143,9 @@ func selectClause(table, schema string, parts *QueryParts, rels []Relationship) 
 				joins += " ) AS \"_" + relName + "\""
 			}
 			joins += ") AS \"" + relName + "\" ON TRUE"
+			for i := range join.rel.Columns {
+				keys = append(keys, quoteParts(join.rel.Table)+"."+quote(join.rel.Columns[i]))
+			}
 		}
 	}
 	return
@@ -236,16 +261,44 @@ func whereClause(table, schema string, node *WhereConditionNode) string {
 	return where
 }
 
-func returningClause(table, schema string, selectFields []SelectField) (ret string) {
+// returningClause
+func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret, sel string) {
 	ret += " RETURNING "
-	if len(selectFields) == 0 {
+	if len(parts.selectFields) == 0 {
 		ret += "*"
 	} else {
-		for i, sfield := range selectFields {
-			if i != 0 {
-				ret += ", "
+		var f, fields string
+		var fieldMap = make(map[string]struct{})
+		var hasResourceEmbed bool
+		for _, sfield := range parts.selectFields {
+
+			if sfield.table != nil {
+				hasResourceEmbed = true
+			} else {
+				if fields != "" {
+					fields += ", "
+				}
+				f = prepareField(table, schema, sfield)
+				fields += f
+				fieldMap[f] = struct{}{}
 			}
-			ret += prepareField(table, schema, sfield)
+		}
+		ret += fields
+		if hasResourceEmbed {
+			sc, joins, keys, _ := selectClause(table, schema, parts, info, true)
+			// add foreign keys to Returning clause if it is not already present
+			for _, k := range keys {
+				if _, exists := fieldMap[k]; !exists {
+					if ret != "" {
+						ret += ", "
+					}
+					ret += k
+				}
+			}
+			sel = "SELECT " + sc + " FROM _source"
+			if joins != "" {
+				sel += " " + joins
+			}
 		}
 	}
 	return
@@ -253,7 +306,9 @@ func returningClause(table, schema string, selectFields []SelectField) (ret stri
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions) (insert string, valueList []any, err error) {
+func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+	insert string, valueList []any, err error) {
+
 	var fields string
 	var fieldList []string
 	var values string
@@ -298,12 +353,18 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		insert = "INSERT INTO " + _sq(table, schema) + " DEFAULT VALUES"
 	}
 	if options.ReturnRepresentation {
-		insert += returningClause(table, schema, parts.selectFields)
+		ret, sel := returningClause(table, schema, parts, info)
+		insert += ret
+		if sel != "" {
+			insert = "WITH _source AS (" + insert + ") " + sel
+		}
 	}
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions) (update string, valueList []any, err error) {
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+	update string, valueList []any, err error) {
+
 	var pairs string
 	var i int
 	for key := range record {
@@ -328,12 +389,16 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		update += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		update += returningClause(table, schema, parts.selectFields)
+		ret, sel := returningClause(table, schema, parts, info)
+		update += ret
+		if sel != "" {
+			update = "WITH _source AS (" + update + ") " + sel
+		}
 	}
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions) (string, error) {
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error) {
 	schema := options.Schema
 	whereClause := whereClause(table, schema, parts.whereConditionsTree)
 	delete := "DELETE FROM " + _sq(table, schema)
@@ -341,7 +406,11 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		delete += returningClause(table, schema, parts.selectFields)
+		ret, sel := returningClause(table, schema, parts, info)
+		delete += ret
+		if sel != "" {
+			delete = "WITH _source AS (" + delete + ") " + sel
+		}
 	}
 	return delete, nil
 }
@@ -350,9 +419,9 @@ type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error) {
 	schema := options.Schema
-	selectClause, joins, err := selectClause(table, schema, parts, rels)
+	selectClause, joins, _, err := selectClause(table, schema, parts, info, false)
 	if err != nil {
 		return "", err
 	}
@@ -385,9 +454,9 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, rels []Relationship) (string, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error) {
 	schema := options.Schema
-	selectClause, joins, err := selectClause(table, schema, parts, rels)
+	selectClause, joins, _, err := selectClause(table, schema, parts, info, false)
 	if err != nil {
 		return "", err
 	}

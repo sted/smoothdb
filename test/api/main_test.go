@@ -45,7 +45,7 @@ func TestMain(m *testing.M) {
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8081/admin",
-		CommonHeaders: test.Headers{"Authorization": postgresToken},
+		CommonHeaders: test.Headers{"Authorization": {postgresToken}},
 		NoCookies:     true,
 	}
 
@@ -89,14 +89,14 @@ func TestMain(m *testing.M) {
 		{
 			Method:  "DELETE",
 			Query:   "/databases/dbtest",
-			Headers: test.Headers{"Authorization": adminToken},
+			Headers: test.Headers{"Authorization": {adminToken}},
 		},
 		// create database dbtest
 		{
 			Method:  "POST",
 			Query:   "/databases",
 			Body:    `{"name": "dbtest"}`,
-			Headers: test.Headers{"Authorization": adminToken},
+			Headers: test.Headers{"Authorization": {adminToken}},
 		},
 	}
 	test.Prepare(cmdConfig, commands)

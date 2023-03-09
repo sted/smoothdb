@@ -7,6 +7,7 @@ import (
 	"github.com/smoothdb/smoothdb/api"
 	"github.com/smoothdb/smoothdb/database"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,6 +18,12 @@ func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	//router.Use(gin.Logger())
 	router.Use(ZeroLogger(server.Logger))
 
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	//config.AllowCredentials = true
+	config.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
+
+	router.Use(cors.New(config))
 	root := router.Group("/")
 
 	root.GET("/", func(c *gin.Context) {

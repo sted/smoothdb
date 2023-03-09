@@ -99,12 +99,19 @@ func getConfig(base *Config, opts *ConfigOptions) *Config {
 	cfg := defaultConfig()
 
 	// Command line
-	var cliConfig *Config
-	configPath := opts.ConfigFilePath
-	if !opts.SkipFlags {
-		cliConfig, configPath = getFlags(opts.ConfigFilePath)
+
+	var defaultConfigPath string
+	if opts == nil {
+		defaultConfigPath = "./config.json"
+	} else {
+		defaultConfigPath = opts.ConfigFilePath
 	}
 
+	var cliConfig *Config
+	var configPath string
+	if opts == nil || !opts.SkipFlags {
+		cliConfig, configPath = getFlags(defaultConfigPath)
+	}
 	// Configuration file
 	config.GetConfig(cfg, configPath)
 
@@ -112,10 +119,10 @@ func getConfig(base *Config, opts *ConfigOptions) *Config {
 		mergo.Merge(cfg, base, mergo.WithOverride)
 	}
 	// Environment
-	if !opts.SkipEnv {
+	if opts == nil || !opts.SkipEnv {
 		getEnvironment(cfg)
 	}
-	if !opts.SkipFlags {
+	if opts == nil || !opts.SkipFlags {
 		mergo.Merge(cfg, cliConfig, mergo.WithOverride)
 	}
 

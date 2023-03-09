@@ -37,7 +37,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		[json|[{ "id": 1 }]|] { matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "can be combined with traditional filters",
-			Query:       "/entities?or=(id.eq.1,id.eq.2)&name=eq.entity%201&select=id",
+			Query:       "/entities?or=(id.eq.1,id.eq.2)&name=eq.entity 1&select=id",
 			Expected:    `[{"id":1}]`,
 			Headers:     nil,
 			Status:      200,
@@ -49,6 +49,16 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		  {"id": 1, "child_entities": [ { "id": 1 }, { "id": 2 } ] }, { "id": 2, "child_entities": []},
 		// 		  {"id": 3, "child_entities": []}, {"id": 4, "child_entities": []}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can do logic on the second level",
+			Query:       "/entities?child_entities.or=(id.eq.1,name.eq.child entity 2)&select=id,child_entities(id)",
+			Expected: `[
+				 		  {"id": 1, "child_entities": [ { "id": 1 }, { "id": 2 } ] }, { "id": 2, "child_entities": []},
+				 		  {"id": 3, "child_entities": []}, {"id": 4, "child_entities": []}
+				 		]`,
+			Headers: nil,
+			Status:  200,
+		},
 		// 	it "can do logic on the third level" $
 		// 	  get "/entities?child_entities.grandchild_entities.or=(id.eq.1,id.eq.2)&select=id,child_entities(id,grandchild_entities(id))"
 		// 		`shouldRespondWith`
@@ -656,7 +666,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 				 		{"id":8,"name":"entity 5","parent_id":2},
 				 		{"id":9,"name":"entity 6","parent_id":3}
 				 	]`,
-			Headers:  test.Headers{"Prefer": "return=representation"},
+			Headers:  test.Headers{"Prefer": {"return=representation"}},
 			Expected: `[{"id": 7, "entities":null}, {"id": 8, "entities": {"id": 2}}, {"id": 9, "entities": {"id": 3}}]`,
 			Status:   201,
 		},
@@ -672,7 +682,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name",
 			Body:        `{ "name" : "updated grandchild entity"}`,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "name" : "updated grandchild entity"},{ "id": 2, "name" : "updated grandchild entity"}]`,
 			Status:      201,
 		},
@@ -688,7 +698,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Method:      "DELETE",
 			Query:       "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name",
 			Body:        ``,
-			Headers:     test.Headers{"Prefer": "return=representation"},
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "name" : "grandchild entity 1" },{ "id": 2, "name" : "grandchild entity 2" }]`,
 			Status:      201,
 		},
