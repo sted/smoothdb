@@ -18,6 +18,11 @@ type DbInfo struct {
 	cachedRelationships     map[string][]Relationship
 }
 
+func (db *DbInfo) GetPrimaryKey(table string) (Constraint, bool) {
+	c, ok := db.cachedPrimaryKeys[table]
+	return c, ok
+}
+
 func (db *DbInfo) GetRelationships(table string) []Relationship {
 	return db.cachedRelationships[table]
 }

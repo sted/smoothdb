@@ -55,6 +55,7 @@ func (node *WhereConditionNode) isRootNode() bool {
 type QueryParts struct {
 	selectFields        []SelectField
 	columnFields        map[string]struct{}
+	conflictFields      map[string]struct{}
 	orderFields         []OrderField
 	limit               string
 	offset              string
@@ -62,10 +63,12 @@ type QueryParts struct {
 }
 
 type QueryOptions struct {
+	Schema               string
 	ReturnRepresentation bool
+	MergeDuplicates      bool
+	IgnoreDuplicates     bool
 	TxCommit             bool
 	TxRollback           bool
-	Schema               string
 }
 
 // RequestParser is the interface used to parse the query string and
@@ -669,10 +672,28 @@ func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *Q
 			columns += cFields
 		}
 		parts.columnFields = make(map[string]struct{})
-		for _, c := range p.parseColumns(columns) {
+		//for _, c := range p.parseColumns(columns) {
+		for _, c := range strings.Split(columns, ",") {
 			parts.columnFields[c] = struct{}{}
 		}
 		delete(filters, "columns")
+	}
+
+	// ON CONFLICT
+	// on_conflict=c1,c2,c3
+	var onconflict string
+	if columnsFilters, ok := filters["on_conflict"]; ok {
+		for i, cFields := range columnsFilters {
+			if i != 0 {
+				onconflict += ","
+			}
+			onconflict += cFields
+		}
+		parts.conflictFields = make(map[string]struct{})
+		for _, c := range strings.Split(onconflict, ",") {
+			parts.conflictFields[c] = struct{}{}
+		}
+		delete(filters, "on_conflict")
 	}
 
 	// ORDER
@@ -739,6 +760,10 @@ func (p PostgRestParser) getRequestOptions(req *Request) *QueryOptions {
 		switch prefer {
 		case "return=representation":
 			options.ReturnRepresentation = true
+		case "resolution=merge-duplicates":
+			options.MergeDuplicates = true
+		case "resolution=ignore-duplicates":
+			options.IgnoreDuplicates = true
 		case "tx=commit":
 			options.TxCommit = true
 		case "tx=rollback":

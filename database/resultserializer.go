@@ -115,6 +115,10 @@ func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
 	d.WriteByte('"')
 }
 
+func (d *DirectJSONSerializer) appendInt2(buf []byte) {
+	d.WriteString(strconv.FormatInt(int64(int16(binary.BigEndian.Uint16(buf))), 10))
+}
+
 func (d *DirectJSONSerializer) appendInt4(buf []byte) {
 	d.WriteString(strconv.FormatInt(int64(int32(binary.BigEndian.Uint32(buf))), 10))
 }
@@ -196,6 +200,8 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
 		return
 	}
 	switch t {
+	case pgtype.Int2OID:
+		d.appendInt2(buf)
 	case pgtype.Int4OID, pgtype.OIDOID:
 		d.appendInt4(buf)
 	case pgtype.Int8OID:

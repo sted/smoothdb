@@ -25,7 +25,23 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 		  }
-
+		{
+			Description: "INSERTs and UPDATEs rows on pk conflict",
+			Method:      "POST",
+			Query:       "/tiobe_pls",
+			Body: `[
+						{ "name": "Javascript", "rank": 6 },
+						{ "name": "Java", "rank": 2 },
+						{ "name": "C", "rank": 1 }
+					]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "name": "Javascript", "rank": 6 },
+				 			{ "name": "Java", "rank": 2 },
+				 			{ "name": "C", "rank": 1 }
+						]`,
+			Status: 201,
+		},
 		// 	  it "INSERTs and UPDATEs row on composite pk conflict" $
 		// 		request methodPost "/employees" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		  [json| [
@@ -38,7 +54,22 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 		  }
-
+		// @@ does not work for the salary field with MONEY type
+		// {
+		// 	Description: "INSERTs and UPDATEs rows on composite pk conflict",
+		// 	Method:      "POST",
+		// 	Query:       "/employees",
+		// 	Body: `[
+		// 					{ "first_name": "Frances M.", "last_name": "Roe", "salary": "30000" },
+		// 		 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": 42000 }
+		// 		 		  ]`,
+		// 	Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+		// 	Expected: `[
+		// 		 			{ "first_name": "Frances M.", "last_name": "Roe", "salary": "$30,000.00", "company": "One-Up Realty", "occupation": "Author" },
+		// 		 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": "$42,000.00", "company": null, "occupation": null }
+		// 		 		  ]`,
+		// 	Status: 201,
+		// },
 		// 	  when (actualPgVersion >= pgVersion110) $
 		// 		it "INSERTs and UPDATEs rows on composite pk conflict for partitioned tables" $
 		// 		  request methodPost "/car_models" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
@@ -52,12 +83,34 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 			{ matchStatus = 201
 		// 			, matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 			}
-
+		{
+			Description: "INSERTs and UPDATEs rows on composite pk conflict for partitioned tables",
+			Method:      "POST",
+			Query:       "/car_models",
+			Body: `[
+				 			  { "name": "Murcielago", "year": 2001, "car_brand_name": null},
+				 			  { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }
+				 			]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			  { "name": "Murcielago", "year": 2001, "car_brand_name": null},
+				 			  { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }
+				 			]`,
+			Status: 201,
+		},
 		// 	  it "succeeds when the payload has no elements" $
 		// 		request methodPost "/articles" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		  [json|[]|] `shouldRespondWith`
 		// 		  [json|[]|] { matchStatus = 201 , matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "succeeds when the payload has no elements",
+			Method:      "POST",
+			Query:       "/articles",
+			Body:        `[]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected:    `[]`,
+			Status:      201,
+		},
 		// 	  it "INSERTs and UPDATEs rows on single unique key conflict" $
 		// 		request methodPost "/single_unique?on_conflict=unique_key" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		  [json| [
@@ -70,7 +123,21 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 		  }
-
+		{
+			Description: "INSERTs and UPDATEs rows on single unique key conflict",
+			Method:      "POST",
+			Query:       "/single_unique?on_conflict=unique_key",
+			Body: `[
+				 			{ "unique_key": 1, "value": "B" },
+				 			{ "unique_key": 2, "value": "C" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "unique_key": 1, "value": "B" },
+				 			{ "unique_key": 2, "value": "C" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	  it "INSERTs and UPDATEs rows on compound unique keys conflict" $
 		// 		request methodPost "/compound_unique?on_conflict=key1,key2" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		  [json| [
@@ -83,7 +150,21 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 		  }
-
+		{
+			Description: "INSERTs and UPDATEs rows on compound unique key conflict",
+			Method:      "POST",
+			Query:       "/compound_unique?on_conflict=key1,key2",
+			Body: `[
+				 			{ "key1": 1, "key2": 1, "value": "B" },
+				 			{ "key1": 1, "key2": 2, "value": "C" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "key1": 1, "key2": 1, "value": "B" },
+				 			{ "key1": 1, "key2": 2, "value": "C" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	context "when Prefer: resolution=ignore-duplicates is specified" $ do
 		// 	  it "INSERTs and ignores rows on pk conflict" $
 		// 		request methodPost "/tiobe_pls" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
@@ -96,7 +177,20 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates", matchContentTypeJson]
 		// 		  }
-
+		{
+			Description: "INSERTs and ignores rows on pk conflict",
+			Method:      "POST",
+			Query:       "/tiobe_pls",
+			Body: `[
+				 			{ "name": "PHP", "rank": 9 },
+				 			{ "name": "Python", "rank": 10 }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected: `[
+				 			{ "name": "PHP", "rank": 9 }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	  it "INSERTs and ignores rows on composite pk conflict" $
 		// 		request methodPost "/employees" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
 		// 		  [json|[
@@ -121,7 +215,20 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 			{ matchStatus = 201
 		// 			, matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates", matchContentTypeJson]
 		// 			}
-
+		{
+			Description: "INSERTs and ignores rows on composite pk conflict for partitioned tables",
+			Method:      "POST",
+			Query:       "/car_models",
+			Body: `[
+				 			  { "name": "Murcielago", "year": 2001, "car_brand_name": "Ferrari" },
+				 			  { "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }
+				 			]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected: `[
+				 			  { "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }
+				 			]`,
+			Status: 201,
+		},
 		// 	  it "INSERTs and ignores rows on single unique key conflict" $
 		// 		request methodPost "/single_unique?on_conflict=unique_key"
 		// 			[("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
@@ -138,7 +245,22 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 			{ matchStatus = 201
 		// 			, matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates"]
 		// 			}
-
+		{
+			Description: "INSERTs and ignores rows on single unique key conflict",
+			Method:      "POST",
+			Query:       "/single_unique?on_conflict=unique_key",
+			Body: `[
+				 			{ "unique_key": 1, "value": "B" },
+				 			{ "unique_key": 2, "value": "C" },
+							{ "unique_key": 3, "value": "D" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected: `[
+				 			{ "unique_key": 2, "value": "C" },
+							{ "unique_key": 3, "value": "D" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	  it "INSERTs and UPDATEs rows on compound unique keys conflict" $
 		// 		request methodPost "/compound_unique?on_conflict=key1,key2"
 		// 			[("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
@@ -155,7 +277,22 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 			{ matchStatus = 201
 		// 			, matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates"]
 		// 			}
-
+		{
+			Description: "INSERTs and ignores rows on compound unique key conflict",
+			Method:      "POST",
+			Query:       "/compound_unique?on_conflict=key1,key2",
+			Body: `[
+				 			  { "key1": 1, "key2": 1, "value": "B" },
+				 			  { "key1": 1, "key2": 2, "value": "C" },
+				 			  { "key1": 1, "key2": 3, "value": "D" }
+				 			]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected: `[
+				 			  { "key1": 1, "key2": 2, "value": "C" },
+				 			  { "key1": 1, "key2": 3, "value": "D" }
+				 			]`,
+			Status: 201,
+		},
 		// 	it "succeeds if the table has only PK cols and no other cols" $ do
 		// 	  request methodPost "/only_pk" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
 		// 		[json|[ { "id": 1 }, { "id": 2 }, { "id": 3} ]|]
@@ -164,7 +301,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		{ matchStatus = 201 ,
 		// 		  matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates",
 		// 		  matchContentTypeJson] }
-
+		{
+			Description: "succeeds if the table has only PK cols and no other cols",
+			Method:      "POST",
+			Query:       "/only_pk",
+			Body:        `[ { "id": 1 }, { "id": 2 }, { "id": 3} ]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected:    `[ { "id": 3} ]`,
+			Status:      201,
+		},
 		// 	  request methodPost "/only_pk" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		[json|[ { "id": 1 }, { "id": 2 }, { "id": 4} ]|]
 		// 		`shouldRespondWith`
@@ -172,21 +317,54 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		{ matchStatus = 201 ,
 		// 		  matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates",
 		// 		  matchContentTypeJson] }
-
+		{
+			Description: "succeeds if the table has only PK cols and no other cols",
+			Method:      "POST",
+			Query:       "/only_pk",
+			Body:        `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected:    `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
+			Status:      201,
+		},
 		// 	it "succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK" $
 		// 	  request methodPost "/no_pk" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
 		// 		[json|[ { "a": "1", "b": "0" } ]|]
 		// 		`shouldRespondWith`
 		// 		[json|[ { "a": "1", "b": "0" } ]|] { matchStatus = 201 , matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK",
+			Method:      "POST",
+			Query:       "/no_pk",
+			Body:        `[ { "a": "1", "b": "0" } ]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected:    `[ { "a": "1", "b": "0" } ]`,
+			Status:      201,
+		},
 		// 	it "succeeds if not a single resource is created" $ do
 		// 	  request methodPost "/tiobe_pls" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
 		// 		[json|[ { "name": "Java", "rank": 1 } ]|] `shouldRespondWith`
 		// 		[json|[]|] { matchStatus = 201 , matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "succeeds if not a single resource is created",
+			Method:      "POST",
+			Query:       "/tiobe_pls",
+			Body:        `[ { "name": "Java", "rank": 1 } ]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected:    `[]`,
+			Status:      201,
+		},
 		// 	  request methodPost "/tiobe_pls" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
 		// 		[json|[ { "name": "Java", "rank": 1 }, { "name": "C", "rank": 2 } ]|] `shouldRespondWith`
 		// 		[json|[]|] { matchStatus = 201 , matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "succeeds if not a single resource is created",
+			Method:      "POST",
+			Query:       "/tiobe_pls",
+			Body:        `[ { "name": "Java", "rank": 1 }, { "name": "C", "rank": 2 } ]`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected:    `[]`,
+			Status:      201,
+		},
 		//   context "with PUT" $ do
 		// 	context "Restrictions" $ do
 		// 	  it "fails if Range is specified" $
@@ -399,7 +577,21 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates"]
 		// 		  }
-
+		{
+			Description: "with a camel case pk column works with POST and merge-duplicates",
+			Method:      "POST",
+			Query:       "/UnitTest",
+			Body: `[
+				 			{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" },
+				 			{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" },
+				 			{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	it "works with POST and ignore-duplicates headers" $ do
 		// 	  request methodPost "/UnitTest"
 		// 		  [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
@@ -414,7 +606,20 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates"]
 		// 		  }
-
+		{
+			Description: "with a camel case pk column works with POST and ignore-duplicates",
+			Method:      "POST",
+			Query:       "/UnitTest",
+			Body: `[
+				 			{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" },
+				 			{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Expected: `[
+				 			{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	it "works with PUT" $ do
 		// 	  put "/UnitTest?idUnitTest=eq.1"
 		// 		  [json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]

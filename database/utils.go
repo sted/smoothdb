@@ -50,11 +50,20 @@ func _st(rel, schema, table string) string {
 	return normalize(rel, schema, table, false)
 }
 
-// _st adds schema, table and quotes
+// _stq adds schema, table and quotes
 func _stq(rel, schema, table string) string {
 	return normalize(rel, schema, table, true)
 }
 
 func isStar(s string) bool {
 	return s == "*"
+}
+
+// from golang.org/x/exp/maps
+func mapKeys[M ~map[K]V, K comparable, V any](m M) []K {
+	r := make([]K, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+	return r
 }

@@ -832,6 +832,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 							 , "Location" <:> "/test_null_pk_competitors_sponsors?id=eq.1&sponsor_id=is.null"
 		// 							 , "Content-Range" <:> "*/*" ]
 		// 			}
+		// @@ added
+		{
+			Description: "with camel case columns works",
+			Method:      "POST",
+			Query:       "/UnitTest",
+			Body:        `{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			Status:      201,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

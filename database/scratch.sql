@@ -390,3 +390,21 @@ WITH pgrst_source AS (
 )  
 SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status 
 FROM ( SELECT * FROM pgrst_source ) _postgrest_t
+
+WITH pgrst_source AS (
+    WITH pgrst_payload AS (
+        SELECT $1 AS json_data), pgrst_body AS ( 
+            SELECT CASE WHEN json_typeof(json_data) = 'array' 
+            THEN json_data ELSE json_build_array(json_data) 
+            END AS val 
+            FROM pgrst_payload
+        ) 
+        INSERT INTO "test"."tiobe_pls"("name", "rank") 
+        SELECT "name", "rank" 
+        FROM json_populate_recordset (null::"test"."tiobe_pls", (SELECT val FROM pgrst_body)
+        ) _  
+        ON CONFLICT("name") 
+        DO UPDATE SET "name" = EXCLUDED."name", "rank" = EXCLUDED."rank" 
+        RETURNING "test"."tiobe_pls".*
+) 
+SELECT '' AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM (SELECT "tiobe_pls".* FROM "pgrst_source" AS "tiobe_pls"    ) _postgrest_t

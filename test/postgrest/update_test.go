@@ -862,6 +862,16 @@ func TestPostgREST_Update(t *testing.T) {
 		//       , { "id": 2, "name": "item-2" }
 		//       , { "id": 3, "name": "item-3" }
 		//       ]|]
+		// @@ added
+		{
+			Description: "with camel case columns works",
+			Method:      "PATCH",
+			Query:       "/UnitTest?idUnitTest=eq.1",
+			Body:        `{ "nameUnitTest": "name of unittest 2" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 2" }]`,
+			Status:      201,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

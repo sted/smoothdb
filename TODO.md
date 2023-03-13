@@ -21,7 +21,8 @@
 √ Schema management
 * uniform log for db and api
 √ O2O: recognize unique and primary
-* Upsert
+√ Upsert
+* PUT for upsert
 * Functions (rpc)
 * Reload config
 * Change log level at runtime
@@ -34,9 +35,10 @@
 * "singular" response
 * M x N Relationships
 * application/octet-stream as output
-* CSV>DFXZSA<EWY6tR>
+* CSV
 * Encryption
 * TLS
+* Events
 
 Upper layer:
 * Migrations (Tern?)

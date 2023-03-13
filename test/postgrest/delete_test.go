@@ -18,8 +18,8 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		  ""
 		// 		  { matchStatus  = 204
 		// 		  , matchHeaders = [ matchHeaderAbsent hContentType
-		// 						   , "Content-Range" <:> "*/*" ]
-		// 		  }
+		//  , "Content-Range" <:> "*/*" ]
+		//	  }
 		{
 			Description: "succeeds with 204 and deletion count",
 			Method:      "DELETE",
@@ -114,7 +114,15 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		{ matchStatus  = 200
 		// 		, matchHeaders = ["Content-Range" <:> "*/*"]
 		// 		}
-
+		{
+			Description: "can embed (parent) entities",
+			Method:      "DELETE",
+			Query:       "/tasks?id=eq.8&select=id,name,project:projects(id)",
+			Body:        ``,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":8,"name":"Code OSX","project":{"id":4}}]`,
+			Status:      200,
+		},
 		// 	it "embeds an O2O relationship after delete" $ do
 		// 	  request methodDelete "/students?id=eq.1&select=name,students_info(address)"
 		// 			  [("Prefer", "return=representation")] ""
@@ -128,6 +136,15 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		{ matchStatus  = 200,
 		// 		  matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "embeds an O2O relationship after delete",
+			Method:      "DELETE",
+			Query:       "/students?id=eq.1&select=name,students_info(address)",
+			Body:        ``,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"name": "John Doe", "students_info":{"address":"Street 1"}}]`,
+			Status:      200,
+		},
 		// 	  request methodDelete "/students_info?id=eq.1&select=address,students(name)"
 		// 			  [("Prefer", "return=representation")] ""
 		// 		`shouldRespondWith`
@@ -140,7 +157,15 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		{ matchStatus  = 200,
 		// 		  matchHeaders = [matchContentTypeJson]
 		// 		}
-
+		{
+			Description: "embeds an O2O relationship after delete",
+			Method:      "DELETE",
+			Query:       "/students_info?id=eq.1&select=address,students(name)",
+			Body:        ``,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"address": "Street 1","students":{"name": "John Doe"}}]`,
+			Status:      200,
+		},
 		//   context "known route, no records matched" $
 		// 	it "includes [] body if return=rep" $
 		// 	  request methodDelete "/items?id=eq.101"

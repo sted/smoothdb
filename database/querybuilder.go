@@ -271,7 +271,6 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 		var fieldMap = make(map[string]struct{})
 		var hasResourceEmbed bool
 		for _, sfield := range parts.selectFields {
-
 			if sfield.table != nil {
 				hasResourceEmbed = true
 			} else {
@@ -304,6 +303,45 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 	return
 }
 
+func onConflictClause(table, schema string, fields []string,
+	conflictFields []string, options *QueryOptions, info *DbInfo) string {
+
+	var cFields []string
+	hasConflictFields := len(conflictFields) > 0
+	if hasConflictFields {
+		// @@ should we check if these fields are UNIQUE fields?
+		cFields = conflictFields
+	} else {
+		pk, ok := info.GetPrimaryKey(_s(table, schema))
+		if !ok {
+			// no pk, we ignore the resolution header
+			return ""
+		}
+		cFields = pk.Columns
+	}
+	s := " ON CONFLICT ("
+	for i, col := range cFields {
+		if i != 0 {
+			s += ", "
+		}
+		s += quote(col)
+	}
+	s += ") "
+	if options.IgnoreDuplicates {
+		s += "DO NOTHING"
+	} else if options.MergeDuplicates {
+		s += "DO UPDATE SET "
+		for i, f := range fields {
+			if i != 0 {
+				s += ", "
+			}
+			f = quote(f)
+			s += f + " = EXCLUDED." + f
+		}
+	}
+	return s
+}
+
 type CommonBuilder struct{}
 
 func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
@@ -328,7 +366,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		if fields != "" {
 			fields += ", "
 		}
-		fields += key
+		fields += quote(key)
 		fieldList = append(fieldList, key)
 	}
 	var j int
@@ -351,6 +389,14 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
 	} else {
 		insert = "INSERT INTO " + _sq(table, schema) + " DEFAULT VALUES"
+	}
+	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
+		conflictFields := mapKeys(parts.conflictFields)
+		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
+		if err != nil {
+			return "", nil, err
+		}
+		insert += onConflict
 	}
 	if options.ReturnRepresentation {
 		ret, sel := returningClause(table, schema, parts, info)
@@ -377,7 +423,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		if pairs != "" {
 			pairs += ", "
 		}
-		pairs += key
+		pairs += quote(key)
 		i++
 		pairs += " = $" + strconv.Itoa(i)
 		valueList = append(valueList, record[key])
