@@ -59,11 +59,14 @@ func isStar(s string) bool {
 	return s == "*"
 }
 
-// from golang.org/x/exp/maps
-func mapKeys[M ~map[K]V, K comparable, V any](m M) []K {
-	r := make([]K, 0, len(m))
-	for k := range m {
-		r = append(r, k)
+func arrayEquals[T comparable](a1 []T, a2 []T) bool {
+	if len(a1) != len(a2) {
+		return false
 	}
-	return r
+	for i := range a1 {
+		if a1[i] != a2[i] {
+			return false
+		}
+	}
+	return true
 }

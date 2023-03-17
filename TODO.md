@@ -10,7 +10,7 @@
 √ Alter tables, view and columns
 √ Some more operator: IN, etc
 √ Full Text Search (FTS)
-* Resource embedding: √ one level, nested
+√ Resource embedding
 √ Sessions, JWT, Auth
 √ Roles
 √ Policies
@@ -19,22 +19,30 @@
 √ Logger
 √ pgx v5
 √ Schema management
-* uniform log for db and api
 √ O2O: recognize unique and primary
 √ Upsert
+√ M2M Relationships
+* aliases for embeds
+* embeds with views
+* nested embeds
+* "singular" response
+* !inner joins
+* hints for rels
 * PUT for upsert
+* uniform log for db and api
 * Functions (rpc)
 * Reload config
 * Change log level at runtime
 * More types, in order: √ array, √ jsonb, interval, numeric
+* Check returned headers, count, range, location, etc
+* return=headers-only
 * Caching
 * Activity / stats
 * Indexes
 * Triggers
 * Table inheritance
-* "singular" response
-* M x N Relationships
 * application/octet-stream as output
+* application/x-www-form-urlencoded as input
 * CSV
 * Encryption
 * TLS

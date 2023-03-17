@@ -408,3 +408,83 @@ WITH pgrst_source AS (
         RETURNING "test"."tiobe_pls".*
 ) 
 SELECT '' AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM (SELECT "tiobe_pls".* FROM "pgrst_source" AS "tiobe_pls"    ) _postgrest_t
+
+WITH pgrst_source AS ( 
+    SELECT "test"."being".*, COALESCE( "being_part_1"."being_part_1", '[]') AS "part" 
+    FROM "test"."being" 
+    LEFT JOIN LATERAL ( 
+        SELECT json_agg("being_part_1") AS "being_part_1"FROM (
+            SELECT "test"."part".* 
+            FROM "test"."part", "test"."being_part"  
+            WHERE "test"."being_part"."part" = "test"."part"."part" AND "test"."being_part"."being" = "test"."being"."being"   
+        ) AS "being_part_1" 
+    ) AS "being_part_1" ON TRUE   
+    LIMIT $1 OFFSET $2 
+)  
+SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM ( SELECT * FROM pgrst_source ) _postgrest_t
+
+WITH pgrst_source AS ( 
+    SELECT "test"."projects"."id", COALESCE( "projects_tasks_1"."projects_tasks_1", '[]') AS "tasks" 
+    FROM "test"."projects" 
+    LEFT JOIN LATERAL ( 
+        SELECT json_agg("projects_tasks_1") AS "projects_tasks_1"FROM (
+            SELECT "tasks_1"."id" 
+            FROM "test"."tasks" AS "tasks_1"  
+            WHERE "tasks_1"."project_id" = "test"."projects"."id"   
+        ) AS "projects_tasks_1" 
+    ) AS "projects_tasks_1" ON TRUE WHERE  "test"."projects"."id" = ANY ($1)    
+)  SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]')::character varying AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM ( SELECT * FROM pgrst_source ) _postgrest_t
+
+
+
+SELECT "test"."being".*,  COALESCE("being_part"."_being_part", '[]') AS "part" 
+FROM "test"."being"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_being_part") AS "_being_part" FROM ( 
+        SELECT "test"."part".* 
+        FROM "test"."part", "test"."being_part"
+         WHERE "test"."being_part"."being" = "test"."being"."being" AND "test"."being_part"."part" = "test"."part"."part" 
+    ) AS "_being_part"
+) AS "being_part" ON TRUE LIMIT 1
+
+SELECT "test"."files"."filename",  COALESCE("files_users_tasks"."_files_users_tasks", '[]') AS "users_tasks" 
+FROM "test"."files"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_files_users_tasks") AS "_files_users_tasks" 
+    FROM ( 
+        SELECT "test"."users_tasks"."user_id", "test"."users_tasks"."task_id" 
+        FROM "test"."users_tasks", "test"."touched_files" 
+        WHERE "test"."touched_files"."project_id" = "test"."files"."project_id" AND "test"."touched_files"."filename" = "test"."files"."filename" AND "test"."touched_files"."user_id" = "test"."users_tasks"."user_id" AND "test"."touched_files"."task_id" = "test"."users_tasks"."task_id" 
+    ) AS "_files_users_tasks"
+) AS "files_users_tasks" ON TRUE 
+WHERE "test"."files"."filename" = 'autoexec' AND "test"."files"."project_id" = '1'
+
+SELECT "test"."space"."id", COALESCE( "space_zones_1"."space_zones_1", '[]') AS "zones", COALESCE( "space_stores_1"."space_stores_1", '[]') AS "stores" 
+FROM "test"."space" 
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("space_zones_1") AS "space_zones_1"
+    FROM (
+        SELECT "zone_1"."id", "zone_1"."name" 
+        FROM "test"."zone" AS "zone_1"  
+        WHERE  "zone_1"."zone_type_id" = $1 AND "zone_1"."space_id" = "test"."space"."id"   
+    ) AS "space_zones_1" 
+) AS "space_zones_1" ON TRUE 
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("space_stores_1") AS "space_stores_1"
+    FROM (
+        SELECT "zone_1"."id", "zone_1"."name" 
+        FROM "test"."zone" AS "zone_1"  
+        WHERE  "zone_1"."zone_type_id" = $2 AND "zone_1"."space_id" = "test"."space"."id"   
+    ) AS "space_stores_1" 
+) AS "space_stores_1" ON TRUE
+  
+SELECT "test"."space"."id",  COALESCE("space_zone"."_space_zone", '[]') AS "zones" 
+FROM "test"."space"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_space_zone") AS "_space_zone" 
+    FROM ( 
+        SELECT "test"."zone"."id", "test"."zone"."name", "test"."zone"."id", "test"."zone"."name" 
+        FROM "test"."zone" 
+        WHERE "test"."zone"."space_id" = "test"."space"."id" 
+    ) AS "_space_zone"
+) AS "space_zone" ON TRUE

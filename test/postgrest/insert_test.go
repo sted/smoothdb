@@ -72,7 +72,7 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			, matchHeaders = [matchHeaderAbsent hContentType]
 		// 			}
 		{
-			Description: "filters columns in result using &select",
+			Description: "ignores &select when return not set or using return=minimal",
 			Method:      "POST",
 			Query:       "/menagerie?select=integer,varchar",
 			Body: `[{
@@ -97,7 +97,7 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			, matchHeaders = [matchHeaderAbsent hContentType]
 		// 			}
 		{
-			Description: "filters columns in result using &select",
+			Description: "ignores &select when return not set or using return=minimal",
 			Method:      "POST",
 			Query:       "/menagerie?select=integer,varchar",
 			Body: `[{
@@ -138,7 +138,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 						   , matchHeaderAbsent hLocation
 		// 						   , "Content-Range" <:> "*/1" ]
 		// 		  }
-
+		{
+			Description: "requesting full representation includes related data after insert",
+			Method:      "POST",
+			Query:       "/projects?select=id,name,clients(id,name)",
+			Body:        `{"id":6,"name":"New Project","client_id":2}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]`,
+			Status:      201,
+		},
 		// 	  it "can rename and cast the selected columns" $
 		// 		request methodPost "/projects?select=pId:id::text,pName:name,cId:client_id::text"
 		// 				[("Prefer", "return=representation")]
@@ -264,7 +272,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			  , matchHeaders = [ matchHeaderAbsent hContentType
 		// 							   , matchHeaderAbsent hLocation ]
 		// 			  }
-
+		{
+			Description: "succeeds with 201 but no location header",
+			Method:      "POST",
+			Query:       "/no_pk",
+			Body:        `{ "a":"foo", "b":"bar" }`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      201,
+		},
 		// 		it "returns full details of inserted record if asked" $ do
 		// 		  request methodPost "/no_pk"
 		// 			  [("Prefer", "return=representation")]
@@ -274,7 +290,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			  { matchStatus  = 201
 		// 			  , matchHeaders = [matchHeaderAbsent hLocation]
 		// 			  }
-
+		{
+			Description: "returns full details of inserted record if asked",
+			Method:      "POST",
+			Query:       "/no_pk",
+			Body:        `{ "a":"bar", "b":"baz" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "a":"bar", "b":"baz" }]`,
+			Status:      201,
+		},
 		// 		it "returns empty array when no items inserted, and return=rep" $ do
 		// 		  request methodPost "/no_pk"
 		// 			  [("Prefer", "return=representation")]
@@ -736,7 +760,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		{ matchStatus  = 201
 		// 		, matchHeaders = [ matchContentTypeJson , matchHeaderAbsent hLocation ]
 		// 		}
-
+		{
+			Description: "tables with self reference foreign keys embeds parent after insert",
+			Method:      "POST",
+			Query:       "/web_content?select=id,name,parent_content:p_web_id(name)",
+			Body:        `{"id":6, "name":"wot", "p_web_id":4}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":6,"name":"wot","parent_content":{"name":"wut"}}]`,
+			Status:      201,
+		},
 		//   context "table with limited privileges" $ do
 		// 	it "succeeds inserting if correct select is applied" $
 		// 	  request methodPost "/limited_article_stars?select=article_id,user_id" [("Prefer", "return=representation")]

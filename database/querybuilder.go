@@ -3,6 +3,8 @@ package database
 import (
 	"strconv"
 	"strings"
+
+	"github.com/samber/lo"
 )
 
 type QueryBuilder interface {
@@ -16,7 +18,7 @@ type QueryBuilder interface {
 
 type Join struct {
 	fields string
-	rel    Relationship
+	rel    *Relationship
 }
 
 type BuildError struct {
@@ -46,19 +48,42 @@ func selectForJoinClause(join Join, parts *QueryParts, afterWithClause bool) (se
 	rel := join.rel
 	sel = " SELECT " + join.fields
 	sel += " FROM " + quoteParts(rel.RelatedTable)
+	if rel.JunctionTable != "" {
+		sel += ", " + quoteParts(rel.JunctionTable)
+	}
 	sel += " WHERE "
-	for i := range rel.Columns {
-		if i != 0 {
+	if rel.JunctionTable == "" {
+		for i := range rel.Columns {
+			if i != 0 {
+				sel += " AND "
+			}
+			sel += quoteParts(rel.RelatedTable) + "." + quote(rel.RelatedColumns[i])
+			sel += " = "
+			if !afterWithClause {
+				sel += quoteParts(rel.Table)
+			} else {
+				sel += quote("_source")
+			}
+			sel += "." + quote(rel.Columns[i])
+		}
+	} else {
+		// M2M Join
+
+		for i := range rel.JColumns {
+			if i != 0 {
+				sel += " AND "
+			}
+			sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
+			sel += " = "
+			sel += quoteParts(rel.Table) + "." + quote(rel.Columns[i])
+		}
+
+		for i := range rel.JRelatedColumns {
 			sel += " AND "
+			sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JRelatedColumns[i])
+			sel += " = "
+			sel += quoteParts(rel.RelatedTable) + "." + quote(rel.RelatedColumns[i])
 		}
-		sel += quoteParts(rel.RelatedTable) + "." + quote(rel.RelatedColumns[i])
-		sel += " = "
-		if !afterWithClause {
-			sel += quoteParts(rel.Table)
-		} else {
-			sel += quote("_source")
-		}
-		sel += "." + quote(rel.Columns[i])
 	}
 	// where and order clause for the internal select: the expressions related to
 	// the external query are skipped inside the functions.
@@ -77,6 +102,29 @@ func selectForJoinClause(join Join, parts *QueryParts, afterWithClause bool) (se
 	}
 	return
 }
+func findRelationship(table, relation, schema string, info *DbInfo) (rel *Relationship, err error) {
+	rels := info.GetRelationships(_s(table, schema))
+	frels := filterRelationships(rels, _s(relation, schema))
+	nrels := len(frels)
+	switch {
+	case nrels == 0:
+		// search self rel by column (try to see if relation is an fk column)
+		rel = info.FindRelationshipByCol(_s(table, schema), relation)
+
+		if rel == nil {
+			return nil, &BuildError{"cannot find relationship for table " + table + " with table " + relation}
+		}
+	case nrels == 1:
+		// ok, found a single relationship
+		rel = &frels[0]
+	case nrels == 2 && table == relation:
+		// a self relationship, we prioritize the O2M one
+		rel = &frels[1]
+	default:
+		return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+	}
+	return rel, nil
+}
 
 func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWithClause bool) (
 	selectClause string, joins string, keys []string, err error) {
@@ -87,17 +135,14 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 		if i != 0 {
 			selectClause += ", "
 		}
-		if sfield.table != nil {
-			relatedTable := sfield.table.name
-			fieldPart := prepareField(relatedTable, schema, sfield)
-			rels := info.GetRelationships(_s(table, schema))
-			frels := filterRelationships(rels, _s(relatedTable, schema))
-			if len(frels) == 2 && table == relatedTable {
-				frels = frels[1:]
-			} else if len(frels) != 1 {
-				return "", "", nil, &BuildError{"cannot find relationship for table " + table + " with table " + relatedTable}
+		if sfield.relation != nil {
+			relation := sfield.relation.name
+			frel, err := findRelationship(table, relation, schema, info)
+			if err != nil {
+				return "", "", nil, err
 			}
-			frel := frels[0]
+			_, relatedTable := splitTableName(frel.RelatedTable)
+			fieldPart := prepareField(relatedTable, schema, sfield)
 			relName := table + "_" + relatedTable
 			if join, exists := joinMap[relName]; exists {
 				join.fields += ", " + fieldPart
@@ -106,13 +151,13 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 				selectClause = strings.TrimSuffix(selectClause, ", ")
 			} else {
 				joinMap[relName] = Join{fieldPart, frel}
-				if sfield.table.label != "" {
-					relatedTable = sfield.table.label
+				if sfield.relation.label != "" {
+					relatedTable = sfield.relation.label
 				}
 				switch frel.Type {
 				case M2O, O2O:
 					selectClause += " row_to_json(\"" + relName + "\".*) AS " + quote(relatedTable)
-				case O2M:
+				case O2M, M2M:
 					selectClause += " COALESCE(\"" + relName + "\".\"_" + relName + "\", '[]') AS " + quote(relatedTable)
 				}
 			}
@@ -136,7 +181,7 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 			switch join.rel.Type {
 			case M2O, O2O:
 				joins += selectForJoin
-			case O2M:
+			case O2M, M2M:
 				joins += " SELECT json_agg(\"_" + relName + "\") AS \"_" + relName + "\""
 				joins += " FROM ("
 				joins += selectForJoin
@@ -271,7 +316,7 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 		var fieldMap = make(map[string]struct{})
 		var hasResourceEmbed bool
 		for _, sfield := range parts.selectFields {
-			if sfield.table != nil {
+			if sfield.relation != nil {
 				hasResourceEmbed = true
 			} else {
 				if fields != "" {
@@ -285,7 +330,7 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 		ret += fields
 		if hasResourceEmbed {
 			sc, joins, keys, _ := selectClause(table, schema, parts, info, true)
-			// add foreign keys to Returning clause if it is not already present
+			// add foreign keys to Returning clause if they are not already present
 			for _, k := range keys {
 				if _, exists := fieldMap[k]; !exists {
 					if ret != "" {
@@ -391,7 +436,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		insert = "INSERT INTO " + _sq(table, schema) + " DEFAULT VALUES"
 	}
 	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
-		conflictFields := mapKeys(parts.conflictFields)
+		conflictFields := lo.Keys(parts.conflictFields)
 		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
 		if err != nil {
 			return "", nil, err

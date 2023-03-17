@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/samber/lo"
 )
 
 type Constraint struct {
@@ -19,22 +18,6 @@ type Constraint struct {
 
 type ForeignKey struct {
 	Name           string
-	Table          string
-	Columns        []string
-	RelatedTable   string
-	RelatedColumns []string
-}
-
-type RelType int
-
-const (
-	O2M RelType = iota
-	M2O
-	O2O
-)
-
-type Relationship struct {
-	Type           RelType
 	Table          string
 	Columns        []string
 	RelatedTable   string
@@ -161,61 +144,6 @@ func constraintToForeignKey(c *Constraint) *ForeignKey {
 		RelatedTable:   *c.RelatedTable,
 		RelatedColumns: c.RelatedColumns,
 	}
-}
-
-func equalColumns(cols []string, otherCols []string) bool {
-	if len(cols) != len(otherCols) {
-		return false
-	}
-	for i := range cols {
-		if cols[i] != otherCols[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func foreignKeyToRelationships(fk *ForeignKey, pk *Constraint, uc []Constraint) [2]Relationship {
-	var type1, type2 RelType
-	var uniqueSource bool
-	if pk != nil {
-		if equalColumns(fk.Columns, pk.Columns) {
-			uniqueSource = true
-		}
-	}
-	for _, u := range uc {
-		if equalColumns(fk.Columns, u.Columns) {
-			uniqueSource = true
-			break
-		}
-	}
-	if uniqueSource {
-		type1, type2 = O2O, O2O
-	} else {
-		type1, type2 = M2O, O2M
-	}
-	return [2]Relationship{
-		{
-			Type:           type1,
-			Table:          fk.Table,
-			Columns:        fk.Columns,
-			RelatedTable:   fk.RelatedTable,
-			RelatedColumns: fk.RelatedColumns,
-		},
-		{
-			Type:           type2,
-			Table:          fk.RelatedTable,
-			Columns:        fk.RelatedColumns,
-			RelatedTable:   fk.Table,
-			RelatedColumns: fk.Columns,
-		},
-	}
-}
-
-func filterRelationships(rels []Relationship, relatedTable string) []Relationship {
-	return lo.Filter(rels, func(rel Relationship, _ int) bool {
-		return rel.RelatedTable == relatedTable
-	})
 }
 
 // func getForeignKeys(ctx context.Context, tables []string) (fkeys []ForeignKey, err error) {

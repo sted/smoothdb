@@ -9,8 +9,11 @@ import (
 type Table struct {
 	Name        string   `json:"name"`
 	Owner       string   `json:"owner"`
-	Constraints []string `json:"constraints"`
 	RowSecurity bool     `json:"rowsecurity"`
+	HasIndexes  bool     `json:"hasindexes"`
+	HasTriggers bool     `json:"hastriggers"`
+	IsPartition bool     `json:"ispartition"`
+	Constraints []string `json:"constraints"`
 	Columns     []Column `json:"columns,omitempty"`
 	Inherits    string   `json:"inherit,omitempty"`
 	IfNotExists bool     `json:"ifnotexists,omitempty"`
@@ -39,8 +42,16 @@ func splitTableName(name string) (schemaname, tablename string) {
 }
 
 const tablesQuery = `
-	SELECT  schemaname || '.' || tablename, tableowner, rowsecurity 
-	FROM pg_tables`
+	SELECT n.nspname  || '.' || c.relname tablename,
+		pg_get_userbyid(c.relowner) tableowner,
+		c.relrowsecurity rowsecurity,
+		c.relhasindex hasindexes,
+		c.relhastriggers hastriggers,
+		c.relispartition ispartition
+	FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+  	WHERE c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]) AND 
+		n.nspname !~ '^pg_'`
 
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
@@ -49,8 +60,7 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 		return nil, err
 	}
 	tables := []Table{}
-	rows, err := conn.Query(ctx, tablesQuery+
-		" WHERE schemaname <> 'pg_catalog' AND schemaname <> 'information_schema' ORDER BY 1")
+	rows, err := conn.Query(ctx, tablesQuery+" ORDER BY 1")
 	if err != nil {
 		return tables, err
 	}
@@ -58,7 +68,8 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 
 	table := Table{}
 	for rows.Next() {
-		err := rows.Scan(&table.Name, &table.Owner, &table.RowSecurity)
+		err := rows.Scan(&table.Name, &table.Owner, &table.RowSecurity,
+			&table.HasIndexes, &table.HasTriggers, &table.IsPartition)
 		if err != nil {
 			return tables, err
 		}
@@ -81,8 +92,8 @@ func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 	schemaname, tablename := splitTableName(name)
 	table := Table{}
 	err = conn.QueryRow(ctx,
-		tablesQuery+" WHERE tablename = $1 AND schemaname = $2", tablename, schemaname).
-		Scan(&table.Name, &table.Owner, &table.RowSecurity)
+		tablesQuery+" AND c.relname = $1 AND n.nspname = $2", tablename, schemaname).
+		Scan(&table.Name, &table.Owner, &table.RowSecurity, &table.HasIndexes, &table.HasTriggers, &table.IsPartition)
 	if err != nil {
 		return nil, err
 	}

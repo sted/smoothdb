@@ -96,7 +96,6 @@ func prepareServerError(c *gin.Context, err error) {
 			"message": dberr.Message,
 			"hint":    dberr.Hint,
 		})
-
 	} else {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 	}

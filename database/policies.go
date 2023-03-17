@@ -17,7 +17,7 @@ type Policy struct {
 const policyQuery = `
 	SELECT 
 		pol.polname name,
-		c.relnamespace::regnamespace  || '.' || c.relname tablename,
+		n.nspname || '.' || c.relname tablename,
 		NOT pol.polpermissive deny,
 		CASE pol.polcmd
 			WHEN 'r'::"char" THEN 'SELECT'::text
@@ -37,7 +37,8 @@ const policyQuery = `
 		pg_get_expr(pol.polqual, pol.polrelid) using,
 		pg_get_expr(pol.polwithcheck, pol.polrelid) check
 	FROM pg_policy pol
-		JOIN pg_class c ON c.oid = pol.polrelid`
+	JOIN pg_class c ON c.oid = pol.polrelid
+	JOIN pg_namespace n ON n.oid = c.relnamespace`
 
 func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	conn := GetConn(ctx)

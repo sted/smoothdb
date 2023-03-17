@@ -20,13 +20,13 @@ type Field struct {
 }
 
 type SelectField struct {
-	field Field
-	label string
-	cast  string
-	table *SelectedTable
+	field    Field
+	label    string
+	cast     string
+	relation *SelectRelation
 }
 
-type SelectedTable struct {
+type SelectRelation struct {
 	name   string
 	label  string
 	parent string
@@ -295,7 +295,7 @@ func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	return p.selectList(nil)
 }
 
-func (p *PostgRestParser) selectList(table *SelectedTable) (selectFields []SelectField, err error) {
+func (p *PostgRestParser) selectList(table *SelectRelation) (selectFields []SelectField, err error) {
 	selectFields, err = p.selectItem(table)
 	if err != nil {
 		return nil, err
@@ -310,7 +310,7 @@ func (p *PostgRestParser) selectList(table *SelectedTable) (selectFields []Selec
 	return selectFields, nil
 }
 
-func (p *PostgRestParser) selectItem(table *SelectedTable) (selectFields []SelectField, err error) {
+func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []SelectField, err error) {
 	var label, cast string
 	token := p.next()
 	if p.lookAhead() == ":" {
@@ -349,7 +349,7 @@ func (p *PostgRestParser) selectItem(table *SelectedTable) (selectFields []Selec
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
 		}
-		table = &SelectedTable{name: field.name, label: label}
+		table = &SelectRelation{name: field.name, label: label}
 		fields, err := p.selectList(table)
 		if err != nil {
 			return nil, err

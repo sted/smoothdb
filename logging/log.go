@@ -45,7 +45,6 @@ func newRollingFile(config *Config) io.Writer {
 		log.Error().Err(err).Str("path", path.Dir(config.FilePath)).Msg("can't create log directory")
 		return nil
 	}
-
 	return &lumberjack.Logger{
 		Filename:   path.Join(config.FilePath),
 		MaxBackups: config.MaxBackups,
