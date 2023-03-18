@@ -1347,17 +1347,17 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			"stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
 		// @@ not implemented: same embeds with two filters
-		// {
-		// 	Description: "aliased embeds works with child relation",
-		// 	Query:       "/space?select=id,zones:zone(id,name),stores:zone(id,name)&zones.zone_type_id=eq.2&stores.zone_type_id=eq.3",
-		// 	Headers:     nil,
-		// 	Expected: `[
-		// 		 		  { "id":1,
-		// 		 			"zones": [ {"id":1,"name":"zone 1"}, {"id":2,"name":"zone 2"}],
-		// 		 			"stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
-		// 		 		]`,
-		// 	Status: 400,
-		// },
+		{
+			Description: "aliased embeds works with child relation",
+			Query:       "/space?select=id,zones:zone(id,name),stores:zone(id,name)&zones.zone_type_id=eq.2&stores.zone_type_id=eq.3",
+			Headers:     nil,
+			Expected: `[
+				 		  { "id":1,
+				 			"zones": [ {"id":1,"name":"zone 1"}, {"id":2,"name":"zone 2"}],
+				 			"stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
+				 		]`,
+			Status: 200,
+		},
 		// 	it "works with many to many relation" $
 		// 	  get "/users?select=id,designTasks:tasks(id,name),codeTasks:tasks(id,name)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*" `shouldRespondWith`
 		// 		[json|[
@@ -1371,7 +1371,23 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			 "designTasks":[ { "id":1, "name":"Design w7" }, { "id":5, "name":"Design IOS" } ],
 		// 			 "codeTasks":[ ] }
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "works with many to many relation",
+			Query:       "/users?select=id,designTasks:tasks(id,name),codeTasks:tasks(id,name)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*",
+			Headers:     nil,
+			Expected: `[
+						   { "id":1,
+							 "designTasks":[ { "id":1, "name":"Design w7" }, { "id":3, "name":"Design w10" } ],
+							 "codeTasks":[ { "id":2, "name":"Code w7" }, { "id":4, "name":"Code w10" } ] },
+						   { "id":2,
+							 "designTasks":[ { "id":5, "name":"Design IOS" }, { "id":7, "name":"Design OSX" } ],
+							 "codeTasks":[ { "id":6, "name":"Code IOS" } ] },
+						   { "id":3,
+							 "designTasks":[ { "id":1, "name":"Design w7" }, { "id":5, "name":"Design IOS" } ],
+							 "codeTasks":[ ] }
+						]`,
+			Status: 200,
+		},
 		// 	it "works with an aliased child plus non aliased child" $
 		// 	  get "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)" `shouldRespondWith`
 		// 		[json|[
@@ -1391,7 +1407,30 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			"id":5, "name":"Orphan",
 		// 			"designTasks":[ ] }
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-
+		// @@ not implemented (nested embeds)
+		// {
+		// 	Description: "works with an aliased child plus non aliased child",
+		// 	Query:       "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)",
+		// 	Headers:     nil,
+		// 	Expected: `[
+		// 				  {
+		// 					"id":1, "name":"Windows 7",
+		// 					"designTasks":[ { "name":"Design w7", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+		// 				  {
+		// 					"id":2, "name":"Windows 10",
+		// 					"designTasks":[ { "name":"Design w10", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+		// 				  {
+		// 					"id":3, "name":"IOS",
+		// 					"designTasks":[ { "name":"Design IOS", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+		// 				  {
+		// 					"id":4, "name":"OSX",
+		// 					"designTasks":[ { "name":"Design OSX", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+		// 				  {
+		// 					"id":5, "name":"Orphan",
+		// 					"designTasks":[ ] }
+		// 				]`,
+		// 	Status: 200,
+		// },
 		// 	it "works with two aliased children embeds plus and/or" $
 		// 	  get "/entities?select=id,children:child_entities(id,gChildren:grandchild_entities(id))&children.and=(id.in.(1,2,3))&children.gChildren.or=(id.eq.1,id.eq.2)" `shouldRespondWith`
 		// 		[json|[

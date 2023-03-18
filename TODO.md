@@ -22,7 +22,7 @@
 √ O2O: recognize unique and primary
 √ Upsert
 √ M2M Relationships
-* aliases for embeds
+√ aliases for embeds
 * embeds with views
 * nested embeds
 * "singular" response
@@ -32,6 +32,7 @@
 * uniform log for db and api
 * Functions (rpc)
 * Reload config
+* Related orders
 * Change log level at runtime
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Check returned headers, count, range, location, etc
