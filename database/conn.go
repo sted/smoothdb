@@ -2,52 +2,58 @@ package database
 
 import (
 	"context"
-	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type DbConn = pgxpool.Conn
+type DbPoolConn = pgxpool.Conn
+type DbConn = pgx.Conn
 
-func HasTX(c *DbConn) bool {
+func HasTX(c *DbPoolConn) bool {
 	return c.Conn().PgConn().TxStatus() != 'I'
 }
 
-func AcquireConnection(ctx context.Context, db *Database, role string, oldconn *DbConn) (*DbConn, error) {
-	conn := oldconn
-	if conn == nil {
-		if db != nil {
-			conn = db.AcquireConnection(ctx)
-
-		} else {
-			conn = DBE.AcquireConnection(ctx)
-		}
+// AcquireConnection takes a connection from a database pool.
+// If the db parameter is nil, it uses the global engine pool.
+func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
+	if db != nil {
+		conn, err = db.AcquireConnection(ctx)
+	} else {
+		conn, err = DBE.AcquireConnection(ctx)
 	}
-	if conn == nil {
-		return nil, errors.New("no available connections")
+	if err != nil {
+		return nil, err
 	}
+	return conn, nil
+}
 
+// PrepareConnection starts a transaction if the configuration requires it,
+// i.e. if TransactionEnd is not equal to 'none'.
+// If the role parameter is not empty, it binds the role to the connection.
+func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string) error {
 	// transaction
 	needTX := DBE.config.TransactionEnd != "none"
 	if needTX {
 		_, err := conn.Exec(ctx, "BEGIN")
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	// check for oldconn == nil : set role only on the first acquire
-	if oldconn == nil && role != "" {
+	// set role only on the first acquire
+	if role != "" {
 		_, err := conn.Exec(ctx, "SET ROLE "+role)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-
-	return conn, nil
+	return nil
 }
 
-func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error {
+// ReleaseConnection releases a connection to the proper pool.
+// It resets its role if requested and closes the transaction, based on the configuration.
+func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) error {
 	hasTX := DBE.config.TransactionEnd != "none"
 
 	if resetRole && !hasTX {
@@ -63,8 +69,8 @@ func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error 
 		case "commit":
 			end = "COMMIT"
 		case "commit-allow-override":
-			gctx := GetSmoothContext(ctx)
-			if gctx.QueryOptions.TxRollback {
+			sctx := GetSmoothContext(ctx)
+			if sctx.QueryOptions.TxRollback {
 				end = "ROLLBACK"
 			} else {
 				end = "COMMIT"
@@ -72,8 +78,8 @@ func ReleaseConnection(ctx context.Context, conn *DbConn, resetRole bool) error 
 		case "rollback":
 			end = "ROLLBACK"
 		case "rollback-allow-override":
-			gctx := GetSmoothContext(ctx)
-			if gctx.QueryOptions.TxCommit {
+			sctx := GetSmoothContext(ctx)
+			if sctx.QueryOptions.TxCommit {
 				end = "COMMIT"
 			} else {
 				end = "ROLLBACK"

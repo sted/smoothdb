@@ -18,7 +18,7 @@ type Session struct {
 	InUse      atomic.Bool
 	CreatedAt  time.Time
 	LastUsedAt time.Time
-	DbConn     *database.DbConn
+	DbConn     *database.DbPoolConn
 }
 
 type SessionManager struct {
@@ -50,14 +50,14 @@ func (s *Server) initSessionManager() {
 					// because we hold a W lock on the session manager and making
 					// the session usable requires an R lock
 
-					passedTime := now.Sub(s.LastUsedAt)
+					spentTime := now.Sub(s.LastUsedAt)
 
-					if passedTime > 5*time.Second {
+					if spentTime > 5*time.Second {
 
 						// Delete the session
 						delete(sm.Sessions, k)
 
-					} else if passedTime > 1*time.Second && s.DbConn != nil {
+					} else if spentTime > 1*time.Second && s.DbConn != nil {
 
 						// Release and detach the database connection from the session
 						// (Acquire and attach are done in the auth middleware)
@@ -84,10 +84,10 @@ func (s *Server) initSessionManager() {
 	}()
 }
 
-func (s *SessionManager) newSession(auth *Auth) *Session {
+func (s *SessionManager) newSession(role string) *Session {
 	now := time.Now()
 	session := &Session{
-		Role:      auth.Role,
+		Role:      role,
 		CreatedAt: now,
 	}
 	s.mtx.Lock()

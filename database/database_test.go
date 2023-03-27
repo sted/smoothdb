@@ -22,16 +22,17 @@ func TestMain(m *testing.M) {
 
 func BenchmarkBase(b *testing.B) {
 
-	f_ctx := WithDb(context.Background(), nil)
+	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
+	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, err := dbe.CreateDatabase(f_ctx, "bench")
-	defer dbe.DeleteDatabase(f_ctx, "bench")
+	db, err := dbe.CreateDatabase(dbe_ctx, "bench")
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer dbe.DeleteDatabase(dbe_ctx, "bench")
 
-	ctx := WithDb(f_ctx, db)
-	defer ReleaseContext(ctx)
+	ctx, conn, _ := WithDb(dbe_ctx, db)
+	defer ReleaseConnection(ctx, conn, true)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
@@ -81,16 +82,17 @@ func BenchmarkBase(b *testing.B) {
 
 func TestBase(t *testing.T) {
 
-	f_ctx := WithDb(context.Background(), nil)
+	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
+	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, err := dbe.CreateDatabase(f_ctx, "test_base")
-	defer dbe.DeleteDatabase(f_ctx, "test_base")
+	db, err := dbe.CreateDatabase(dbe_ctx, "test_base")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer dbe.DeleteDatabase(dbe_ctx, "test_base")
 
-	ctx := WithDb(context.Background(), db)
-	defer ReleaseContext(ctx)
+	ctx, conn, _ := WithDb(dbe_ctx, db)
+	defer ReleaseConnection(ctx, conn, true)
 
 	_, err = db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
@@ -132,13 +134,17 @@ func TestBase(t *testing.T) {
 
 func TestDDL(t *testing.T) {
 
-	f_ctx := WithDb(context.Background(), nil)
+	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
+	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, _ := dbe.CreateDatabase(f_ctx, "test_ddl")
-	defer dbe.DeleteDatabase(f_ctx, "test_ddl")
+	db, err := dbe.CreateDatabase(dbe_ctx, "test_ddl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbe.DeleteDatabase(dbe_ctx, "test_ddl")
 
-	ctx := WithDb(context.Background(), db)
-	defer ReleaseContext(ctx)
+	ctx, conn, _ := WithDb(dbe_ctx, db)
+	defer ReleaseConnection(ctx, conn, true)
 
 	table := Table{
 		Name: "b2",

@@ -55,7 +55,7 @@ const tablesQuery = `
 
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, conn.Conn(), nil)
+	constraints, err := db.GetConstraints(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 
 func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, conn.Conn(), &name)
+	constraints, err := db.GetConstraints(ctx, name)
 	if err != nil {
 		return nil, err
 	}

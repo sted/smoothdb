@@ -103,9 +103,8 @@ func (dbe *DbEngine) Close() {
 	})
 }
 
-func (dbe *DbEngine) AcquireConnection(ctx context.Context) *pgxpool.Conn {
-	conn, _ := dbe.pool.Acquire(ctx)
-	return conn
+func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
+	return dbe.pool.Acquire(ctx)
 }
 
 // func (dbe *DBEngine) GetActiveDatabases(ctx context.Context) []Database {

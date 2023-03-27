@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/golang-jwt/jwt/v4/request"
 )
@@ -43,33 +42,27 @@ func GenerateToken(role, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func (server *Server) authenticate(c *gin.Context, tokenString string) *Session {
+func (server *Server) authenticate(tokenString string) (session *Session, err error) {
 	var auth *Auth
-	var session *Session
-	var err error
 
 	if tokenString != "" {
 		// normal authentication
 
 		auth, err = parseAuthHeader(tokenString, server.Config.JWTSecret)
 		if err != nil {
-			c.AbortWithError(http.StatusUnauthorized, err)
-			return nil
+			return nil, err
 		}
-		session = server.sessionManager.newSession(auth)
+		session = server.sessionManager.newSession(auth.Role)
 		session.Token = tokenString
 	} else {
 		// no jwt, check if we allow anonymous connections
 
 		if server.Config.AllowAnon {
 			auth = &Auth{Role: server.Config.Database.AnonRole}
-			session = server.sessionManager.newSession(auth)
+			session = server.sessionManager.newSession(auth.Role)
 		} else {
-			c.AbortWithError(http.StatusUnauthorized, errors.New("anonymous users not permitted"))
-			return nil
+			return nil, errors.New("anonymous users not permitted")
 		}
 	}
-	c.SetCookie("session_id", session.Id, 60, "", "", false, true)
-
-	return session
+	return
 }

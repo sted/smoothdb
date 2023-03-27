@@ -19,8 +19,8 @@ type Database struct {
 	DbInfo
 }
 
-// Activate initializes a database and start its connection pool.
-// It signal a db as activated even if there is an error, which
+// Activate initializes a database and starts its connection pool.
+// It signals a db as activated even if there is an error, which
 // is managed in DBE
 func (db *Database) Activate(ctx context.Context) error {
 	defer db.activated.Store(true)
@@ -70,12 +70,13 @@ func (db *Database) Activate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c := WithDb(context.Background(), db)
+	defer conn.Close(ctx)
+	c := WithDbConn(context.Background(), db, conn)
 	tables, err := db.GetTables(c)
 	if err != nil {
 		return err
 	}
-	constraints, err := getConstraints(ctx, conn, nil)
+	constraints, err := db.GetConstraints(c, "")
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,6 @@ func (db *Database) refreshTable(ctx context.Context, name string) {
 	// db.cachedTables[name] = table
 }
 
-func (db *Database) AcquireConnection(ctx context.Context) *pgxpool.Conn {
-	conn, _ := db.pool.Acquire(ctx)
-	return conn
+func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
+	return db.pool.Acquire(ctx)
 }

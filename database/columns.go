@@ -27,7 +27,7 @@ const columnsQuery = `
 
 func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, conn.Conn(), &ftablename)
+	constraints, err := db.GetConstraints(ctx, ftablename)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column
 
 func (db *Database) GetColumn(ctx context.Context, ftablename string, name string) (*Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, conn.Conn(), &ftablename)
+	constraints, err := db.GetConstraints(ctx, ftablename)
 	if err != nil {
 		return nil, err
 	}

@@ -2,8 +2,6 @@ package database
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5"
 )
 
 type Constraint struct {
@@ -49,12 +47,31 @@ JOIN pg_class cls1 ON cls1.oid = c.conrelid
 LEFT JOIN pg_class cls2 ON cls2.oid = c.confrelid
 LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace`
 
-func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]Constraint, error) {
+func fillTableConstraints(table *Table, constraints []Constraint) {
+	table.Constraints = nil
+	for _, c := range constraints {
+		if c.Table == table.Name && (len(c.Columns) > 1 || c.Type == 'p') {
+			table.Constraints = append(table.Constraints, c.Definition)
+		}
+	}
+}
+
+func fillColumnConstraints(column *Column, constraints []Constraint) {
+	column.Constraints = nil
+	for _, c := range constraints {
+		if c.Table == column.Table && len(c.Columns) == 1 && c.Columns[0] == column.Name {
+			column.Constraints = append(column.Constraints, c.Definition)
+		}
+	}
+}
+
+func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
+	conn := GetConn(ctx)
 	constraints := []Constraint{}
 	query := constraintsQuery
 	var args []any
-	if ftablename != nil {
-		schemaname, tablename := splitTableName(*ftablename)
+	if tablename != "" {
+		schemaname, tablename := splitTableName(tablename)
 		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
@@ -83,33 +100,6 @@ func getConstraints(ctx context.Context, conn *pgx.Conn, ftablename *string) ([]
 		return nil, err
 	}
 
-	return constraints, nil
-}
-
-func fillTableConstraints(table *Table, constraints []Constraint) {
-	table.Constraints = nil
-	for _, c := range constraints {
-		if c.Table == table.Name && (len(c.Columns) > 1 || c.Type == 'p') {
-			table.Constraints = append(table.Constraints, c.Definition)
-		}
-	}
-}
-
-func fillColumnConstraints(column *Column, constraints []Constraint) {
-	column.Constraints = nil
-	for _, c := range constraints {
-		if c.Table == column.Table && len(c.Columns) == 1 && c.Columns[0] == column.Name {
-			column.Constraints = append(column.Constraints, c.Definition)
-		}
-	}
-}
-
-func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
-	conn := GetConn(ctx)
-	constraints, err := getConstraints(ctx, conn.Conn(), &tablename)
-	if err != nil {
-		return nil, err
-	}
 	return constraints, nil
 }
 

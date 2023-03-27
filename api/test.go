@@ -16,7 +16,7 @@ func InitTestRouter(root *gin.RouterGroup, dbe *database.DbEngine) *gin.RouterGr
 	test.GET("/prepare/:test", func(c *gin.Context) {
 		//test := c.Param("test")
 		context := context.Background()
-		conn := dbe.AcquireConnection(context)
+		conn, _ := dbe.AcquireConnection(context)
 		defer conn.Release()
 
 		database.PrepareStressTest(conn)
