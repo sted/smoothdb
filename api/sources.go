@@ -10,11 +10,11 @@ import (
 
 func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.RouterGroup {
 
-	databases := root.Group("/api", handlers...)
+	api := root.Group("/api", handlers...)
 
 	// RECORDS
 
-	databases.GET("/:dbname/:sourcename", func(c *gin.Context) {
+	api.GET("/:dbname/:sourcename", func(c *gin.Context) {
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
 		json, err := db.GetRecords(c, sourcename, c.Request.URL.Query())
@@ -31,7 +31,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		}
 	})
 
-	databases.POST("/:dbname/:sourcename", func(c *gin.Context) {
+	api.POST("/:dbname/:sourcename", func(c *gin.Context) {
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
@@ -56,7 +56,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		}
 	})
 
-	databases.PATCH("/:dbname/:sourcename", func(c *gin.Context) {
+	api.PATCH("/:dbname/:sourcename", func(c *gin.Context) {
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
 		records, err := prepareInputRecords(c)
@@ -81,7 +81,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		}
 	})
 
-	databases.DELETE("/:dbname/:sourcename", func(c *gin.Context) {
+	api.DELETE("/:dbname/:sourcename", func(c *gin.Context) {
 		db := database.GetDb(c)
 		sourcename := c.Param("sourcename")
 		data, _, err := db.DeleteRecords(c, sourcename, c.Request.URL.Query())
@@ -97,5 +97,32 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 		}
 	})
 
-	return databases
+	// FUNCTIONS
+
+	api.POST("/:dbname/rpc/:fname", func(c *gin.Context) {
+		db := database.GetDb(c)
+		fname := c.Param("fname")
+		records, err := prepareInputRecords(c)
+		if err != nil {
+			prepareBadRequest(c, err)
+			return
+		}
+		// [] as input cause no inserts
+		if noRecordsForInsert(c, records) {
+			return
+		}
+		data, count, err := db.ExecFunction(c, fname, records[0], c.Request.URL.Query())
+		if err == nil {
+			if data == nil {
+				c.JSON(http.StatusOK, count)
+			} else {
+				c.Writer.Header().Set("Content-Type", "application/json")
+				c.String(http.StatusOK, string(data))
+			}
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
+	return api
 }

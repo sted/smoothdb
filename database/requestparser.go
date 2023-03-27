@@ -359,13 +359,6 @@ func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []Sele
 	return selectFields, nil
 }
 
-// COLUMNS
-func (p *PostgRestParser) parseColumns(c string) []string {
-	p.reset()
-	p.scan(c, ",")
-	return p.tokens
-}
-
 // ORDER
 func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string

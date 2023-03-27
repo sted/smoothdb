@@ -488,3 +488,46 @@ LEFT JOIN LATERAL (
         WHERE "test"."zone"."space_id" = "test"."space"."id" 
     ) AS "_space_zone"
 ) AS "space_zone" ON TRUE
+
+WITH pgrst_source AS (
+    WITH pgrst_payload AS (
+        SELECT $1 AS json_data
+    ), 
+    pgrst_body AS (
+        SELECT 
+            CASE WHEN json_typeof(json_data) = 'array' 
+            THEN json_data 
+            ELSE json_build_array(json_data) 
+        END AS val 
+        FROM pgrst_payload
+    ), 
+    pgrst_args AS ( 
+        SELECT * 
+        FROM json_to_recordset((SELECT val FROM pgrst_body)) AS _(
+            "double" double precision, 
+            "varchar" character varying, 
+            "boolean" boolean, 
+            "date" date, 
+            "money" money, 
+            "enum" test.enum_menagerie_type, 
+            "arr" text[], 
+            "integer" integer, 
+            "json" json, 
+            "jsonb" jsonb
+        ) 
+    )
+    SELECT 
+    "test"."varied_arguments"(
+        "double" := (SELECT "double" FROM pgrst_args LIMIT 1), 
+        "varchar" := (SELECT "varchar" FROM pgrst_args LIMIT 1), 
+        "boolean" := (SELECT "boolean" FROM pgrst_args LIMIT 1), 
+        "date" := (SELECT "date" FROM pgrst_args LIMIT 1), 
+        "money" := (SELECT "money" FROM pgrst_args LIMIT 1), 
+        "enum" := (SELECT "enum" FROM pgrst_args LIMIT 1), 
+        "arr" := (SELECT "arr" FROM pgrst_args LIMIT 1), 
+        "integer" := (SELECT "integer" FROM pgrst_args LIMIT 1), 
+        "json" := (SELECT "json" FROM pgrst_args LIMIT 1), 
+        "jsonb" := (SELECT "jsonb" FROM pgrst_args LIMIT 1)
+    ) AS pgrst_scalar
+) 
+SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce((json_agg(_postgrest_t.pgrst_scalar)->0)::text, 'null') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM (SELECT "varied_arguments".* FROM "pgrst_source" AS "varied_arguments"    ) _postgrest_t

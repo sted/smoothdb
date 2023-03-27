@@ -505,5 +505,41 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		}
 	})
 
+	// FUNCTIONS
+
+	databases.GET("/:dbname/functions", func(c *gin.Context) {
+		db := database.GetDb(c)
+
+		policies, err := db.GetFunctions(c)
+		if err == nil {
+			c.JSON(http.StatusOK, policies)
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
+	databases.POST("/:dbname/functions", func(c *gin.Context) {
+		db := database.GetDb(c)
+		var functionInput database.Function
+		c.BindJSON(&functionInput)
+
+		policy, err := db.CreateFunction(c, &functionInput)
+		if err == nil {
+			c.JSON(http.StatusCreated, policy)
+		} else {
+			prepareServerError(c, err)
+		}
+	})
+
+	databases.DELETE("/:dbname/functions/:name", func(c *gin.Context) {
+		db := database.GetDb(c)
+		name := c.Param("name")
+
+		err := db.DeleteFunction(c, name)
+		if err != nil {
+			prepareServerError(c, err)
+		}
+	})
+
 	return admin
 }

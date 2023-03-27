@@ -8,10 +8,11 @@ import (
 )
 
 type QueryBuilder interface {
+	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error)
 	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
 	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error)
-	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, error)
+	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
 
 	preferredSerializer() ResultSerializer
 }
@@ -509,6 +510,39 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		}
 	}
 	return delete, nil
+}
+
+func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+	exec string, valueList []any, err error) {
+
+	var pairs string
+	var i int
+	for key := range record {
+		// check if there are specified columns
+		if len(parts.columnFields) > 0 {
+			if _, ok := parts.columnFields[key]; !ok {
+				continue
+			}
+		}
+		if pairs != "" {
+			pairs += ", "
+		}
+		pairs += quote(key)
+		i++
+		pairs += " := $" + strconv.Itoa(i)
+		valueList = append(valueList, record[key])
+	}
+	schema := options.Schema
+	selectClause, _, _, err := selectClause("t", "", parts, info, false)
+	if err != nil {
+		return "", nil, err
+	}
+	whereClause := whereClause("t", "", parts.whereConditionsTree, name)
+	exec = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
+	if whereClause != "" {
+		exec += " WHERE " + whereClause
+	}
+	return exec, valueList, nil
 }
 
 type DirectQueryBuilder struct {

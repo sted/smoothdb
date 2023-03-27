@@ -108,3 +108,28 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		return nil, tag.RowsAffected(), nil
 	}
 }
+
+func (QueryExecutor) Execute(ctx context.Context, function string, record Record, filters Filters) ([]byte, int64, error) {
+	gi := GetSmoothContext(ctx)
+	parts, err := gi.RequestParser.parseQuery(function, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	options := gi.QueryOptions
+	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, &gi.Db.DbInfo)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := gi.Conn.Query(ctx, exec, values...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var data []byte
+	if function != "getallprojects" && function != "ret_setof_integers" {
+		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows)
+	} else {
+		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+	}
+	return data, 0, err
+}

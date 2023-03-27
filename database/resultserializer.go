@@ -17,6 +17,7 @@ const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
 	Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error)
+	SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error)
 }
 
 type DirectJSONSerializer struct {
@@ -259,9 +260,49 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 	return []byte(d.String()), nil
 }
 
+func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+	fds := rows.FieldDescriptions()
+	multiField := len(fds) > 1
+	rows.Next()
+	bufRaw := rows.RawValues()
+
+	if multiField {
+		d.WriteByte('{')
+	}
+	for i := range fds {
+		buf := bufRaw[i]
+		fd := fds[i]
+		if i > 0 {
+			d.WriteByte(',')
+		}
+		if multiField {
+			d.WriteByte('"')
+			d.WriteString(fds[i].Name)
+			d.WriteString("\":")
+		}
+		d.appendType(buf, fd.DataTypeOID)
+	}
+	if multiField {
+		d.WriteByte('}')
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return []byte(d.String()), nil
+}
+
 type DatabaseJSONSerializer struct{}
 
 func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+	rows.Next()
+	values := rows.RawValues()
+	if err := rows.Err(); err != nil {
+		return []byte{}, err
+	}
+	return values[0], nil
+}
+
+func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
