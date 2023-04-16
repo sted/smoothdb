@@ -1,9 +1,13 @@
 package logging
 
 import (
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
+	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -23,7 +27,13 @@ func InitLogger(config *Config) *Logger {
 	}
 	if config.StdOut {
 		if config.ConsoleColor {
-			writers = append(writers, zerolog.ConsoleWriter{Out: os.Stdout})
+			writers = append(writers, zerolog.ConsoleWriter{
+				Out:                   os.Stdout,
+				TimeFormat:            time.DateTime,
+				PartsOrder:            []string{"level", "time", "domain", "elapsed", "role", "method", "status", "message"},
+				FormatPartValueByName: partValueFormatter,
+				FieldsExclude:         []string{"domain", "elapsed", "role", "method", "status"},
+			})
 		} else {
 			writers = append(writers, os.Stdout)
 		}
@@ -40,6 +50,80 @@ func InitLogger(config *Config) *Logger {
 	return &Logger{&zlogger}
 }
 
+func partValueFormatter(v any, k string) string {
+	var ret string
+
+	switch k {
+	case "domain":
+		ret = fmt.Sprintf("%-4s", v)
+	case "elapsed":
+		f, _ := strconv.ParseFloat(fmt.Sprint(v), 32)
+		ret = fmt.Sprintf("%8.3fms", f)
+	case "role":
+		ret = fmt.Sprintf("%-12s", v)
+	case "method":
+		s := v.(string)
+		if len(s) != 0 {
+			ret = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
+
+		}
+	case "status":
+		s := fmt.Sprint(v)
+		if len(s) != 0 {
+			i, _ := strconv.ParseUint(s, 10, 32)
+			ret = fmt.Sprintf("%s%3s%s", statusCodeColor(i), s, reset)
+		}
+	default:
+		ret = fmt.Sprintf("%s", v)
+	}
+	return ret
+}
+
+const (
+	green   = "\033[97;42m"
+	white   = "\033[97;47m"
+	yellow  = "\033[97;43m"
+	red     = "\033[97;41m"
+	blue    = "\033[97;44m"
+	magenta = "\033[97;45m"
+	cyan    = "\033[97;46m"
+	reset   = "\033[0m"
+)
+
+func statusCodeColor(code uint64) string {
+	switch {
+	case code >= http.StatusOK && code < http.StatusMultipleChoices:
+		return green
+	case code >= http.StatusMultipleChoices && code < http.StatusBadRequest:
+		return white
+	case code >= http.StatusBadRequest && code < http.StatusInternalServerError:
+		return yellow
+	default:
+		return red
+	}
+}
+
+func methodColor(method string) string {
+	switch method {
+	case http.MethodGet:
+		return blue
+	case http.MethodPost:
+		return cyan
+	case http.MethodPut:
+		return yellow
+	case http.MethodDelete:
+		return red
+	case http.MethodPatch:
+		return green
+	case http.MethodHead:
+		return magenta
+	case http.MethodOptions:
+		return white
+	default:
+		return reset
+	}
+}
+
 func newRollingFile(config *Config) io.Writer {
 	if err := os.MkdirAll(path.Dir(config.FilePath), 0744); err != nil {
 		log.Error().Err(err).Str("path", path.Dir(config.FilePath)).Msg("can't create log directory")
@@ -50,5 +134,6 @@ func newRollingFile(config *Config) io.Writer {
 		MaxBackups: config.MaxBackups,
 		MaxSize:    config.MaxSize,
 		MaxAge:     config.MaxAge,
+		Compress:   config.Compress,
 	}
 }

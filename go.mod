@@ -7,13 +7,14 @@ require (
 	github.com/gin-gonic/gin v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/imdario/mergo v0.3.15
-	github.com/jackc/pgx-zerolog v0.0.0-20230315001418-f978528409eb
 	github.com/jackc/pgx/v5 v5.3.1
-	github.com/rs/zerolog v1.29.0
+	github.com/rs/zerolog v1.29.1
 	github.com/samber/lo v1.38.1
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
+
+replace github.com/rs/zerolog v1.29.1 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
 
 require (
 	github.com/bytedance/sonic v1.8.6 // indirect

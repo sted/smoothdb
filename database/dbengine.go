@@ -6,23 +6,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smoothdb/smoothdb/logging"
-
-	zerologadapter "github.com/jackc/pgx-zerolog"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/tracelog"
+	"github.com/smoothdb/smoothdb/logging"
 )
 
 var DBE *DbEngine
 
-// DbEngine represents a database instance (a "cluster")
+// DbEngine represents the database engine (a "cluster")
 type DbEngine struct {
 	config           *Config
 	pool             *pgxpool.Pool
-	logger           *logging.Logger
-	dblogger         pgx.QueryTracer
+	dbtracer         pgx.QueryTracer
 	activeDatabases  sync.Map
 	allowedDatabases map[string]struct{}
 	exec             *QueryExecutor
@@ -33,18 +30,18 @@ type DbEngine struct {
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	context := context.Background()
 
-	DBE = &DbEngine{config: dbConfig, logger: logger, exec: &QueryExecutor{}}
+	DBE = &DbEngine{config: dbConfig, exec: &QueryExecutor{}}
 
 	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
 		return nil, err
 	}
 	if logger != nil {
-		DBE.dblogger = &tracelog.TraceLog{
-			Logger:   zerologadapter.NewLogger(*logger.Logger),
+		DBE.dbtracer = &tracelog.TraceLog{
+			Logger:   NewDbLogger(logger.Logger),
 			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
 		}
-		poolConfig.ConnConfig.Tracer = DBE.dblogger
+		poolConfig.ConnConfig.Tracer = DBE.dbtracer
 	}
 
 	// Create DBE connection pool
@@ -94,6 +91,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	return DBE, nil
 }
 
+// Close closes the database engine and all of its active databases
 func (dbe *DbEngine) Close() {
 	dbe.pool.Close()
 	dbe.activeDatabases.Range(func(k, v any) bool {
@@ -103,6 +101,7 @@ func (dbe *DbEngine) Close() {
 	})
 }
 
+// AcquireConnection acquires a connection in the database engine
 func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
 	return dbe.pool.Acquire(ctx)
 }
@@ -116,6 +115,7 @@ func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, erro
 // 	return databases
 // }
 
+// IsDatabaseAllowed chacks if a database is usable
 func (dbe *DbEngine) IsDatabaseAllowed(name string) bool {
 	if dbe.allowedDatabases == nil {
 		return true

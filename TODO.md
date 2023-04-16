@@ -29,7 +29,7 @@
 * !inner joins
 * hints for rels
 * PUT for upsert
-* uniform log for db and api
+√ uniform log for db and api
 * Functions (rpc)
 * Reload config
 * Related orders

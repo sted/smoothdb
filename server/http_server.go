@@ -16,7 +16,7 @@ func (server *Server) initHTTPServer(dbe *database.DbEngine) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	//router.Use(gin.Logger())
-	router.Use(ZeroLogger(server.Logger))
+	router.Use(HTTPLogger(server.Logger))
 
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
