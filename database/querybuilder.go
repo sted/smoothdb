@@ -128,8 +128,10 @@ func findRelationship(table, relation, schema string, info *DbInfo) (rel *Relati
 	return rel, nil
 }
 
-func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWithClause bool) (
-	selectClause string, joins string, keys []string, err error) {
+func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWithClause bool) (string, string, []string, error) {
+
+	var selectClause, joins string
+	var keys []string
 
 	joinMap := map[string]Join{}
 
@@ -161,8 +163,16 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 				joinMap[relName] = Join{fieldPart, frel, sfield.relation.label}
 				switch frel.Type {
 				case M2O, O2O:
-					selectClause += " row_to_json(\"" + relName + "\".*) AS " + quote(labelRelName)
+					if sfield.relation.spread {
+						selectClause += quote(relName) + ".*"
+					} else {
+						selectClause += " row_to_json(\"" + relName + "\".*) AS " + quote(labelRelName)
+					}
 				case O2M, M2M:
+					if sfield.relation.spread {
+						err = &BuildError{"A spread operation on " + relation + " is not possible"}
+						return "", "", nil, err
+					}
 					selectClause += " COALESCE(\"" + relName + "\".\"_" + relName + "\", '[]') AS " + quote(labelRelName)
 				}
 			}
@@ -198,7 +208,7 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 			}
 		}
 	}
-	return
+	return selectClause, joins, keys, nil
 }
 
 func orderClause(table, schema string, orderFields []OrderField) string {

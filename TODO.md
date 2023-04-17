@@ -23,6 +23,7 @@
 √ Upsert
 √ M2M Relationships
 √ aliases for embeds
+√ spreads for embeds (...table)
 * embeds with views
 * nested embeds
 * "singular" response
@@ -31,23 +32,23 @@
 * PUT for upsert
 √ uniform log for db and api
 * Functions (rpc)
+* Triggers
+* Events
 * Reload config
-* Related orders
 * Change log level at runtime
+* Related orders
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Check returned headers, count, range, location, etc
 * return=headers-only
 * Caching
 * Activity / stats
 * Indexes
-* Triggers
 * Table inheritance
 * application/octet-stream as output
 * application/x-www-form-urlencoded as input
 * CSV
 * Encryption
 * TLS
-* Events
 
 Upper layer:
 * Migrations (Tern?)

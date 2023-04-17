@@ -108,7 +108,7 @@ func getConfig(base *Config, opts *ConfigOptions) *Config {
 	}
 
 	var cliConfig *Config
-	var configPath string
+	configPath := defaultConfigPath
 	if opts == nil || !opts.SkipFlags {
 		cliConfig, configPath = getFlags(defaultConfigPath)
 	}

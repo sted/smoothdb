@@ -30,6 +30,7 @@ type SelectRelation struct {
 	name   string
 	label  string
 	parent string
+	spread bool
 }
 
 type OrderField struct {
@@ -291,7 +292,7 @@ func (p *PostgRestParser) field(mayHaveTable bool) (f Field, err error) {
 
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
-	p.scan(s, ".,():", "->>", "->", "::")
+	p.scan(s, ".,():", "->>", "->", "::", "...")
 	return p.selectList(nil)
 }
 
@@ -310,9 +311,14 @@ func (p *PostgRestParser) selectList(table *SelectRelation) (selectFields []Sele
 	return selectFields, nil
 }
 
-func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []SelectField, err error) {
+func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []SelectField, err error) {
 	var label, cast string
+	var spread bool
 	token := p.next()
+	if token == "..." {
+		spread = true
+		token = p.next()
+	}
 	if p.lookAhead() == ":" {
 		label = token
 		p.next()
@@ -323,9 +329,9 @@ func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []Sele
 	if err != nil {
 		return nil, err
 	}
-	if table != nil && table.name != "" {
+	if rel != nil && rel.name != "" {
 		// for uniformity but for selects is also in QueryTable
-		field.tablename = table.name
+		field.tablename = rel.name
 	}
 	if label == "" {
 		label = field.last
@@ -339,7 +345,7 @@ func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []Sele
 	if token != "(" {
 		// field
 		if field.name != "," {
-			selectFields = append(selectFields, SelectField{field, label, cast, table})
+			selectFields = append(selectFields, SelectField{field, label, cast, rel})
 		} else {
 			p.back()
 		}
@@ -349,8 +355,8 @@ func (p *PostgRestParser) selectItem(table *SelectRelation) (selectFields []Sele
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
 		}
-		table = &SelectRelation{name: field.name, label: label}
-		fields, err := p.selectList(table)
+		rel = &SelectRelation{name: field.name, label: label, spread: spread}
+		fields, err := p.selectList(rel)
 		if err != nil {
 			return nil, err
 		}

@@ -531,3 +531,22 @@ WITH pgrst_source AS (
     ) AS pgrst_scalar
 ) 
 SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce((json_agg(_postgrest_t.pgrst_scalar)->0)::text, 'null') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM (SELECT "varied_arguments".* FROM "pgrst_source" AS "varied_arguments"    ) _postgrest_t
+
+
+WITH pgrst_source AS ( 
+    SELECT "test"."projects"."id", "projects_clients_1".* 
+    FROM "test"."projects" LEFT JOIN LATERAL ( 
+        SELECT "clients_1"."name" AS "client_name" 
+        FROM "test"."clients" AS "clients_1"  
+        WHERE "clients_1"."id" = "test"."projects"."client_id"   
+    ) AS "projects_clients_1" ON TRUE    
+)
+
+WITH pgrst_source AS ( 
+    SELECT "test"."projects"."id", row_to_json("projects_clients_1".*) AS "clients" 
+    FROM "test"."projects" LEFT JOIN LATERAL ( 
+        SELECT "clients_1"."name" AS "client_name" 
+        FROM "test"."clients" AS "clients_1"  
+        WHERE "clients_1"."id" = "test"."projects"."client_id"   
+    ) AS "projects_clients_1" ON TRUE    
+)
