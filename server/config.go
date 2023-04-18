@@ -15,7 +15,7 @@ import (
 
 // Config holds the current configuration
 type Config struct {
-	Address          string          `comment:"Server address and port (default localhost:8081)"`
+	Address          string          `comment:"Server address and port (default localhost:8082)"`
 	AllowAnon        bool            `comment:"Allow unauthenticated connections"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
 	EnableAdminRoute bool            `comment:"Enable administration of databases and tables"`
@@ -68,7 +68,7 @@ const usageStr = `
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>                Bind to host address (default: localhost:8081)
+	-a, --addr <host>                Bind to host address (default: localhost:8082)
 	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
 	-c, --config <file>              Configuration file (default: ./config.json)
 	-h, --help                       Show this message

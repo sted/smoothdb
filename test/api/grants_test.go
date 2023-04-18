@@ -9,7 +9,7 @@ import (
 func TestGrants(t *testing.T) {
 
 	cmdConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/admin/databases",
+		BaseUrl:       "http://localhost:8082/admin/databases",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		//NoCookies:     true,
 	}
@@ -35,7 +35,7 @@ func TestGrants(t *testing.T) {
 	test.Execute(t, cmdConfig, commands)
 
 	testConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/api/dbtest",
+		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		NoCookies:     true,
 	}
@@ -44,7 +44,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "grant connect, create to user1",
 			Method:      "POST",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Body: `{
 				"types": ["connect", "create"],
 				"grantee": "user1"
@@ -54,7 +54,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "verify grants",
 			Method:      "GET",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Expected: `[{"targetname":"dbtest","targettype":"database","types":["TEMPORARY","CONNECT"],"grantee":"","grantor":"admin","acl":"=Tc/admin"},
 				{"targetname":"dbtest","targettype":"database","types":["CREATE","TEMPORARY","CONNECT"],"grantee":"admin","grantor":"admin","acl":"admin=CTc/admin"},
 				{"targetname":"dbtest","targettype":"database","types":["CREATE","CONNECT"],"grantee":"user1","grantor":"admin","acl":"user1=Cc/admin"}]`,
@@ -63,7 +63,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "grant select, insert to user1",
 			Method:      "POST",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Body: `{
 				"types": ["select", "insert"],
 				"targettype": "table",
@@ -106,7 +106,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "verify grants",
 			Method:      "GET",
-			Query:       "http://localhost:8081/admin/grants/dbtest/table/table_grants",
+			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
 			Expected: `[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},
@@ -118,7 +118,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "grant delete, update to user2",
 			Method:      "POST",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Body: `{
 				"types": ["delete", "update"],
 				"targettype": "table",
@@ -160,7 +160,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "verify grants",
 			Method:      "GET",
-			Query:       "http://localhost:8081/admin/grants/dbtest/table/table_grants",
+			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
 			Expected: `[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},
@@ -174,7 +174,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "revoke select to user1",
 			Method:      "DELETE",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Body: `{
 				"types": ["select"],
 				"targettype": "table",
@@ -186,7 +186,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "revoke update to user2",
 			Method:      "DELETE",
-			Query:       "http://localhost:8081/admin/grants/dbtest",
+			Query:       "http://localhost:8082/admin/grants/dbtest",
 			Body: `{
 				"types": ["update"],
 				"targettype": "table",
@@ -198,7 +198,7 @@ func TestGrants(t *testing.T) {
 		{
 			Description: "verify grants",
 			Method:      "GET",
-			Query:       "http://localhost:8081/admin/grants/dbtest/table/table_grants",
+			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
 			Expected: `[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},

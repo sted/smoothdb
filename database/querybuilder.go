@@ -166,14 +166,14 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, afterWi
 					if sfield.relation.spread {
 						selectClause += quote(relName) + ".*"
 					} else {
-						selectClause += " row_to_json(\"" + relName + "\".*) AS " + quote(labelRelName)
+						selectClause += " row_to_json(" + quote(relName) + ".*) AS " + quote(labelRelName)
 					}
 				case O2M, M2M:
 					if sfield.relation.spread {
 						err = &BuildError{"A spread operation on " + relation + " is not possible"}
 						return "", "", nil, err
 					}
-					selectClause += " COALESCE(\"" + relName + "\".\"_" + relName + "\", '[]') AS " + quote(labelRelName)
+					selectClause += " COALESCE(" + quote(relName) + ".\"_" + relName + "\", '[]') AS " + quote(labelRelName)
 				}
 			}
 		} else {

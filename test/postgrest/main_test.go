@@ -15,6 +15,7 @@ var testConfig test.Config
 
 func TestMain(m *testing.M) {
 	c := &server.Config{
+		Address:          "localhost:8082",
 		AllowAnon:        true,
 		EnableAdminRoute: true,
 		Logging: logging.Config{
@@ -39,7 +40,7 @@ func TestMain(m *testing.M) {
 	anonymousToken, _ := server.GenerateToken("postgrest_test_anonymous", s.Config.JWTSecret)
 
 	testConfig = test.Config{
-		BaseUrl: "http://localhost:8081/api/pgrest",
+		BaseUrl: "http://localhost:8082/api/pgrest",
 		CommonHeaders: test.Headers{
 			"Authorization":   {anonymousToken},
 			"Accept-Profile":  {"test"},
@@ -52,7 +53,7 @@ func TestMain(m *testing.M) {
 	// Tear-up
 
 	cmdConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/admin",
+		BaseUrl:       "http://localhost:8082/admin",
 		CommonHeaders: test.Headers{"Authorization": {postgresToken}},
 	}
 

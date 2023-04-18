@@ -550,3 +550,24 @@ WITH pgrst_source AS (
         WHERE "clients_1"."id" = "test"."projects"."client_id"   
     ) AS "projects_clients_1" ON TRUE    
 )
+
+WITH pgrst_source AS ( 
+    SELECT "test"."clients"."id", COALESCE( "clients_projects_1"."clients_projects_1", '[]') AS "projects" 
+    FROM "test"."clients" LEFT JOIN LATERAL ( 
+        SELECT json_agg("clients_projects_1") AS "clients_projects_1"
+        FROM (
+            SELECT "projects_1"."id", COALESCE( "projects_tasks_2"."projects_tasks_2", '[]') AS "tasks" 
+            FROM "test"."projects" AS "projects_1" 
+            LEFT JOIN LATERAL ( 
+                SELECT json_agg("projects_tasks_2") AS "projects_tasks_2"
+                FROM (
+                    SELECT "tasks_2"."id", "tasks_2"."name" 
+                    FROM "test"."tasks" AS "tasks_2"  
+                    WHERE "tasks_2"."project_id" = "projects_1"."id"   
+                ) AS "projects_tasks_2" 
+            ) AS "projects_tasks_2" ON TRUE 
+            WHERE "projects_1"."client_id" = "test"."clients"."id"   
+        ) AS "clients_projects_1" 
+    ) AS "clients_projects_1" ON TRUE    
+)  
+SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM ( SELECT * FROM pgrst_source ) _postgrest_t

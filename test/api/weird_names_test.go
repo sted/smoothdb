@@ -9,7 +9,7 @@ import (
 func TestWeirdNames(t *testing.T) {
 
 	testConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/admin",
+		BaseUrl:       "http://localhost:8082/admin",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		NoCookies:     true,
 	}

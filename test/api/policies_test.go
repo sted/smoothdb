@@ -9,7 +9,7 @@ import (
 func TestPolicies(t *testing.T) {
 
 	cmdConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/admin",
+		BaseUrl:       "http://localhost:8082/admin",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
@@ -60,7 +60,7 @@ func TestPolicies(t *testing.T) {
 	test.Prepare(cmdConfig, commands)
 
 	testConfig := test.Config{
-		BaseUrl:       "http://localhost:8081/api/dbtest",
+		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: nil,
 		NoCookies:     true,
 	}

@@ -4,5 +4,6 @@ ISSUES.md
 config.json
 __debug_bin
 smoothdb*.log
+scratch.sql
 
 dist/
