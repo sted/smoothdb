@@ -18,6 +18,7 @@ var (
 
 func TestMain(m *testing.M) {
 	c := &server.Config{
+		Address:          "localhost:8082",
 		AllowAnon:        false,
 		EnableAdminRoute: true,
 		Logging: logging.Config{
