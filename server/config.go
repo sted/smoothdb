@@ -102,7 +102,7 @@ func getConfig(base *Config, opts *ConfigOptions) *Config {
 
 	var defaultConfigPath string
 	if opts == nil {
-		defaultConfigPath = "./config.json"
+		defaultConfigPath = "./config.jsonc"
 	} else {
 		defaultConfigPath = opts.ConfigFilePath
 	}

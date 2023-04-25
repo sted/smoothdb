@@ -11,11 +11,11 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 		return nil, err
 	}
 	options := gi.QueryOptions
-	query, err := gi.QueryBuilder.BuildSelect(table, parts, options, &gi.Db.DbInfo)
+	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := gi.Conn.Query(ctx, query)
+	rows, err := gi.Conn.Query(ctx, query, values...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +88,12 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	delete, err := gi.QueryBuilder.BuildDelete(table, parts, options, &gi.Db.DbInfo)
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, &gi.Db.DbInfo)
 	if err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		rows, err := gi.Conn.Query(ctx, delete)
+		rows, err := gi.Conn.Query(ctx, delete, values...)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -101,7 +101,7 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		data, err := gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
 		return data, 0, err
 	} else {
-		tag, err := gi.Conn.Exec(ctx, delete)
+		tag, err := gi.Conn.Exec(ctx, delete, values...)
 		if err != nil {
 			return nil, 0, err
 		}
