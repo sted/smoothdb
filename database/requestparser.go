@@ -19,6 +19,14 @@ type Field struct {
 	last      string
 }
 
+// SelectField can contain a selected field or a relationship with another table.
+// For example, select=id,name,other(name) will produce:
+//  1. a SelectField with field.name = "id"
+//  2. a SelectField with field.name = "name"
+//  3. a SelectField with an empty field and a SelectRelation with relation.name = "other",
+//     itself with a SelectField with field.name = "name"
+//
+// label is used as an alias both for a field and a relation.
 type SelectField struct {
 	field    Field
 	label    string
@@ -28,9 +36,9 @@ type SelectField struct {
 
 type SelectRelation struct {
 	name   string
-	label  string
 	parent string
 	spread bool
+	fields []SelectField
 }
 
 type OrderField struct {
@@ -296,13 +304,13 @@ func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	return p.selectList(nil)
 }
 
-func (p *PostgRestParser) selectList(table *SelectRelation) (selectFields []SelectField, err error) {
-	selectFields, err = p.selectItem(table)
+func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []SelectField, err error) {
+	selectFields, err = p.selectItem(rel)
 	if err != nil {
 		return nil, err
 	}
 	for p.next() == "," {
-		fields, err := p.selectItem(table)
+		fields, err := p.selectItem(rel)
 		if err != nil {
 			return nil, err
 		}
@@ -329,10 +337,6 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if err != nil {
 		return nil, err
 	}
-	if rel != nil && rel.name != "" {
-		// for uniformity but for selects is also in QueryTable
-		field.tablename = rel.name
-	}
 	if label == "" {
 		label = field.last
 	}
@@ -344,23 +348,35 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	}
 	if token != "(" {
 		// field
+
+		if spread {
+			return nil, &ParseError{"cannot use the spread operator on fields"}
+		}
+		if rel != nil {
+			field.tablename = rel.name
+		}
 		if field.name != "," {
-			selectFields = append(selectFields, SelectField{field, label, cast, rel})
+			selectFields = append(selectFields, SelectField{field, label, cast, nil})
 		} else {
 			p.back()
 		}
 	} else {
 		// table
+
 		p.next()
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
 		}
-		rel = &SelectRelation{name: field.name, label: label, spread: spread}
-		fields, err := p.selectList(rel)
+		var parent string
+		if rel != nil {
+			parent = rel.name
+		}
+		newrel := &SelectRelation{field.name, parent, spread, []SelectField{}}
+		newrel.fields, err = p.selectList(newrel)
 		if err != nil {
 			return nil, err
 		}
-		selectFields = append(selectFields, fields...)
+		selectFields = append(selectFields, SelectField{label: label, relation: newrel})
 	}
 	return selectFields, nil
 }

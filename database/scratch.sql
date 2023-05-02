@@ -284,9 +284,9 @@ WITH _source AS (
 SELECT  FROM _source
 
 WITH _source AS (
-    UPDATE \"test\".\"web_content\" 
+    UPDATE "test.web_content" 
     SET name = $1 
-    WHERE \"test\".\"web_content\".\"id\" = '0'
+    WHERE "test\".\"web_content\".\"id\" = '0'
     RETURNING \"test\".\"web_content\".\"id\", \"test\".\"web_content\".\"name\", \"test\".\"web_content\".\"p_web_id\"
 ) 
 SELECT \"_source\".\"id\", \"_source\".\"name\",  row_to_json(\"web_content_web_content\".*) AS \"web_content\" 
@@ -551,23 +551,209 @@ WITH pgrst_source AS (
     ) AS "projects_clients_1" ON TRUE    
 )
 
-WITH pgrst_source AS ( 
-    SELECT "test"."clients"."id", COALESCE( "clients_projects_1"."clients_projects_1", '[]') AS "projects" 
-    FROM "test"."clients" LEFT JOIN LATERAL ( 
-        SELECT json_agg("clients_projects_1") AS "clients_projects_1"
-        FROM (
-            SELECT "projects_1"."id", COALESCE( "projects_tasks_2"."projects_tasks_2", '[]') AS "tasks" 
-            FROM "test"."projects" AS "projects_1" 
-            LEFT JOIN LATERAL ( 
-                SELECT json_agg("projects_tasks_2") AS "projects_tasks_2"
-                FROM (
-                    SELECT "tasks_2"."id", "tasks_2"."name" 
-                    FROM "test"."tasks" AS "tasks_2"  
-                    WHERE "tasks_2"."project_id" = "projects_1"."id"   
-                ) AS "projects_tasks_2" 
-            ) AS "projects_tasks_2" ON TRUE 
-            WHERE "projects_1"."client_id" = "test"."clients"."id"   
-        ) AS "clients_projects_1" 
-    ) AS "clients_projects_1" ON TRUE    
-)  
-SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status FROM ( SELECT * FROM pgrst_source ) _postgrest_t
+SELECT "test"."clients"."id", COALESCE( "clients_projects_1"."clients_projects_1", '[]') AS "projects" 
+FROM "test"."clients" 
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("clients_projects_1") AS "clients_projects_1"
+    FROM (
+        SELECT "projects_1"."id", COALESCE( "projects_tasks_2"."projects_tasks_2", '[]') AS "tasks" 
+        FROM "test"."projects" AS "projects_1" 
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("projects_tasks_2") AS "projects_tasks_2"
+            FROM (
+                SELECT "tasks_2"."id", "tasks_2"."name" 
+                FROM "test"."tasks" AS "tasks_2"  
+                WHERE "tasks_2"."project_id" = "projects_1"."id"   
+            ) AS "projects_tasks_2" 
+        ) AS "projects_tasks_2" ON TRUE 
+        WHERE "projects_1"."client_id" = "test"."clients"."id"   
+    ) AS "clients_projects_1" 
+) AS "clients_projects_1" ON TRUE    
+  
+
+
+SELECT "test"."clients"."id",  COALESCE("clients_projects"."_clients_projects", '[]') AS "projects" 
+FROM "test"."clients"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_clients_projects") AS "_clients_projects" 
+    FROM ( 
+        SELECT "test"."projects"."id",  COALESCE("projects_tasks"."_projects_tasks", '[]') AS "tasks" 
+        FROM "test"."projects"  
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("_projects_tasks") AS "_projects_tasks" 
+            FROM ( SELECT "test"."tasks"."id" 
+            FROM "test"."tasks" 
+            WHERE "test"."tasks"."project_id" = "test"."projects"."id" 
+        ) AS "_projects_tasks"
+    ) AS "projects_tasks" ON TRUE 
+    WHERE "test"."projects"."client_id" = "test"."clients"."id" 
+) AS "_clients_projects") AS "clients_projects" ON TRUE 
+WHERE "test"."clients"."id" = $1
+
+
+
+SELECT 
+    \"test\".\"users\".\"id\",  
+    COALESCE(\"users_designTasks\".\"_users_designTasks\", '[]') AS \"designTasks\",  
+    COALESCE(\"users_codeTasks\".\"_users_codeTasks\", '[]') AS \"codeTasks\" 
+FROM \"test\".\"users\"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg(\"_users_codeTasks\") AS \"_users_codeTasks\" 
+    FROM ( 
+        SELECT \"test\".\"tasks\".\"id\", \"test\".\"tasks\".\"name\" 
+        FROM \"test\".\"tasks\", \"test\".\"users_tasks\" 
+        WHERE \"test\".\"users_tasks\".\"user_id\" = \"test\".\"users\".\"id\" AND \"test\".\"users_tasks\".\"task_id\" = \"test\".\"tasks\".\"id\" AND \"test\".\"tasks\".\"name\" LIKE '%Design%' 
+    ) AS \"_users_codeTasks\"
+) AS \"users_codeTasks\" ON TRUE 
+LEFT JOIN LATERAL ( 
+    SELECT json_agg(\"_users_codeTasks\") AS \"_users_codeTasks\" 
+    FROM ( 
+        SELECT \"test\".\"tasks\".\"id\", \"test\".\"tasks\".\"name\"
+        FROM \"test\".\"tasks\", \"test\".\"users_tasks\" 
+        WHERE \"test\".\"users_tasks\".\"user_id\" = \"test\".\"users\".\"id\" AND \"test\".\"users_tasks\".\"task_id\" = \"test\".\"tasks\".\"id\" AND \"test\".\"tasks\".\"name\" LIKE '%Code%' 
+    ) AS \"_users_codeTasks\"
+) AS \"users_codeTasks\" ON TRUE
+
+-- do not works
+WITH _source AS (INSERT INTO \"test\".\"web_content\" (\"p_web_id\", \"id\", \"name\") VALUES ($1, $2, $3) RETURNING \"test\".\"web_content\".\"id\", \"test\".\"web_content\".\"name\", \"test\".\"web_content\".\"p_web_id\") SELECT \"_source\".\"id\", \"_source\".\"name\",  row_to_json(\"web_content_parent_content\".*) AS \"parent_content\" FROM _source  LEFT JOIN LATERAL ( SELECT \"_source\".\"name\" FROM \"test\".\"web_content\" WHERE \"test\".\"web_content\".\"id\" = \"_source\".\"p_web_id\") AS \"web_content_parent_content\" ON TRUE
+-- works
+WITH _source AS (INSERT INTO \"test\".\"web_content\" (\"p_web_id\", \"id\", \"name\") VALUES ($1, $2, $3) RETURNING \"test\".\"web_content\".\"id\", \"test\".\"web_content\".\"name\", \"test\".\"web_content\".\"p_web_id\") SELECT \"_source\".\"id\", \"_source\".\"name\",  row_to_json(\"web_content_parent_content\".*) AS \"parent_content\" FROM _source  LEFT JOIN LATERAL ( SELECT \"test\".\"web_content\".\"name\" FROM \"test\".\"web_content\" WHERE \"test\".\"web_content\".\"id\" = \"_source\".\"p_web_id\") AS \"web_content_parent_content\" ON TRUE
+
+WITH _source AS (INSERT INTO \"test\".\"web_content\" (\"id\", \"name\", \"p_web_id\") VALUES ($1, $2, $3) RETURNING \"test\".\"web_content\".\"id\", \"test\".\"web_content\".\"name\", \"test\".\"web_content\".\"p_web_id\") SELECT \"_source\".\"id\", \"_source\".\"name\",  row_to_json(\"web_content_parent_content\".*) AS \"parent_content\" FROM _source  LEFT JOIN LATERAL ( SELECT \"test\".\"p_web_id\".\"name\" FROM \"test\".\"web_content\" WHERE \"test\".\"web_content\".\"id\" = \"_source\".\"p_web_id\") AS \"web_content_parent_content\" ON TRUE
+
+
+
+SELECT 
+    "test"."web_content"."id", 
+    "test"."web_content"."name",  
+    COALESCE("web_content_web_content"."_web_content_web_content", '[]') AS "web_content",  
+    row_to_json("web_content_parent_content".*) AS "parent_content" 
+FROM "test"."web_content"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_web_content_web_content") AS "_web_content_web_content" 
+    FROM ( 
+        SELECT 
+            "test"."web_content"."name",  
+            COALESCE("web_content_web_content"."_web_content_web_content", '[]') AS "web_content" 
+        FROM "test"."web_content"  
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("_web_content_web_content") AS "_web_content_web_content" 
+            FROM ( 
+                SELECT "test"."web_content"."name" 
+                FROM "test"."web_content" 
+                WHERE "test"."web_content"."p_web_id" = "test"."web_content"."id" 
+            ) AS "_web_content_web_content"
+        ) AS "web_content_web_content" ON TRUE 
+        WHERE "test"."web_content"."p_web_id" = "test"."web_content"."id" 
+    ) AS "_web_content_web_content"
+) AS "web_content_web_content" ON TRUE 
+LEFT JOIN LATERAL ( 
+    SELECT "test"."web_content"."name" 
+    FROM "test"."web_content" 
+    WHERE "test"."web_content"."id" = "test"."web_content"."p_web_id"
+) AS "web_content_parent_content" ON TRUE 
+WHERE "test"."web_content"."id" = $1
+
+SELECT 
+    "test"."web_content"."id", 
+    "test"."web_content"."name", 
+    COALESCE( "web_content_web_content_1"."web_content_web_content_1", '[]') AS "web_content", 
+    row_to_json("web_content_parent_content_1".*) AS "parent_content" 
+FROM "test"."web_content" 
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("web_content_web_content_1") AS "web_content_web_content_1"
+    FROM (
+        SELECT 
+            "web_content_1"."name", 
+            COALESCE( "web_content_web_content_2"."web_content_web_content_2", '[]') AS "web_content" 
+        FROM "test"."web_content" AS "web_content_1" 
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("web_content_web_content_2") AS "web_content_web_content_2"
+            FROM (
+                SELECT "web_content_2"."name" 
+                FROM "test"."web_content" AS "web_content_2"  
+                WHERE "web_content_2"."p_web_id" = "web_content_1"."id"  
+            ) AS "web_content_web_content_2" 
+        ) AS "web_content_web_content_2" ON TRUE 
+        WHERE "web_content_1"."p_web_id" = "test"."web_content"."id"   
+    ) AS "web_content_web_content_1" 
+) AS "web_content_web_content_1" ON TRUE 
+LEFT JOIN LATERAL ( 
+    SELECT "web_content_1"."name" 
+    FROM "test"."web_content" AS "web_content_1"  
+    WHERE "web_content_1"."id" = "test"."web_content"."p_web_id"   
+) AS "web_content_parent_content_1" ON TRUE 
+WHERE  "test"."web_content"."id" = $1   
+
+
+SELECT "test"."web_content"."id", "test"."web_content"."name",  
+    COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" 
+FROM "test"."web_content"  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" 
+    FROM ( 
+        SELECT "web_content_1"."name",  
+            COALESCE("web_content_web_content_2"."_web_content_web_content_2", '[]') AS "web_content" 
+        FROM "test"."web_content" AS web_content_1  
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("_web_content_web_content_2") AS "_web_content_web_content_2" 
+            FROM ( 
+                SELECT "web_content_2"."name" 
+                FROM "test"."web_content" AS web_content_2 
+                WHERE "test"."web_content"."p_web_id" = "test"."web_content"."id" 
+            ) AS "_web_content_web_content_2"
+        ) AS "web_content_web_content_2" ON TRUE 
+        WHERE "test"."web_content"."p_web_id" = "test"."web_content"."id" 
+    ) AS "_web_content_web_content_1"
+) AS "web_content_web_content_1" ON TRUE 
+WHERE "test"."web_content"."id" = $1
+
+WITH _source AS (
+    UPDATE "test"."web_content" SET "name" = $1 
+    WHERE "test"."web_content"."id" = $2 
+    RETURNING "test"."web_content"."id", "test"."web_content"."name", "test"."web_content"."p_web_id"
+) 
+SELECT 
+    "_source"."id", "_source"."name",  
+    COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content",  
+    row_to_json("web_content_parent_content_1".*) AS "parent_content" 
+FROM _source  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" 
+    FROM ( 
+        SELECT "web_content_1"."name",  COALESCE("web_content_web_content_2"."_web_content_web_content_2", '[]') AS "web_content" 
+        FROM "test"."web_content" AS "web_content_1"
+        LEFT JOIN LATERAL ( 
+            SELECT json_agg("_web_content_web_content_2") AS "_web_content_web_content_2" 
+            FROM ( 
+                SELECT "web_content_2"."name" 
+                FROM "test"."web_content" AS "web_content_2" 
+                WHERE "web_content_2"."p_web_id" = "test"."web_content"."id" 
+            ) AS "_web_content_web_content_2"
+        ) AS "web_content_web_content_2" ON TRUE 
+        WHERE "web_content_1"."p_web_id" = "_source"."id" 
+    ) AS "_web_content_web_content_1"
+) AS "web_content_web_content_1" ON TRUE 
+LEFT JOIN LATERAL ( SELECT "web_content_1"."name" FROM "test"."web_content" AS "web_content_1" WHERE "web_content_1"."id" = "_source"."p_web_id") AS "web_content_parent_content_1" ON TRUE"
+
+
+WITH _source AS (
+    UPDATE "test"."users" 
+    SET "name" = $1 
+    WHERE "test"."users"."id" = $2 
+    RETURNING "test"."users"."name", "test"."users"."id"
+) 
+SELECT "_source"."name",  COALESCE("users_tasks_1"."_users_tasks_1", '[]') AS "tasks" 
+FROM _source  
+LEFT JOIN LATERAL ( 
+    SELECT json_agg("_users_tasks_1") AS "_users_tasks_1" FROM ( 
+        SELECT "tasks_1"."name",  row_to_json("tasks_project_2".*) AS "project" 
+        FROM "test"."tasks" AS "tasks_1", "test"."users_tasks"  
+        LEFT JOIN LATERAL ( 
+            SELECT "projects_2"."name" 
+            FROM "test"."projects" AS "projects_2" 
+            WHERE "projects_2"."id" = "tasks_1"."project_id"
+        ) AS "tasks_project_2" ON TRUE 
+        WHERE "test"."users_tasks"."user_id" = "test"."users"."id" AND "test"."users_tasks"."task_id" = "tasks_1"."id" 
+    ) AS "_users_tasks_1"
+) AS "users_tasks_1" ON TRUE"

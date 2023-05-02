@@ -25,7 +25,7 @@ type ConfigOptions struct {
 }
 
 func NewServer() (*Server, error) {
-	return NewServerWithConfig(nil, &ConfigOptions{ConfigFilePath: "./config.json"})
+	return NewServerWithConfig(nil, &ConfigOptions{ConfigFilePath: "./config.jsonc"})
 }
 
 func NewServerWithConfig(c *Config, opts *ConfigOptions) (*Server, error) {

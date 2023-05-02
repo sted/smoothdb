@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
-			ConfigFilePath: "../../config.json",
+			ConfigFilePath: "../../config.jsonc",
 			SkipFlags:      true,
 		})
 	if err != nil {

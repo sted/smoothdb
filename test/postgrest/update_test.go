@@ -633,7 +633,26 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
-
+		{
+			Description: "embeds parent, children and grandchildren after update",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)",
+			Body:        `{"name": "tardis-patched-2"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				          {
+				            "id": 0,
+				            "name": "tardis-patched-2",
+				            "parent_content": { "name": "wat" },
+				            "web_content": [
+				                { "name": "fezz", "web_content": [ { "name": "wut" } ] },
+				                { "name": "foo",  "web_content": [] },
+				                { "name": "bar",  "web_content": [] }
+				            ]
+				          }
+				        ] `,
+			Status: 200,
+		},
 		//     it "embeds children after update without explicitly including the id in the ?select" $
 		//       request methodPatch "/web_content?id=eq.0&select=name,web_content(name)"
 		//               [("Prefer", "return=representation")]
@@ -673,7 +692,25 @@ func TestPostgREST_Update(t *testing.T) {
 		//         { matchStatus  = 200,
 		//           matchHeaders = [matchContentTypeJson]
 		//         }
-
+		{
+			Description: "embeds an M2M relationship plus parent after update",
+			Method:      "PATCH",
+			Query:       "/users?id=eq.1&select=name,tasks(name,project:projects(name))",
+			Body:        `{"name": "Kevin Malone"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				          {
+				            "name": "Kevin Malone",
+				            "tasks": [
+				                { "name": "Design w7", "project": { "name": "Windows 7" } },
+				                { "name": "Code w7", "project": { "name": "Windows 7" } },
+				                { "name": "Design w10", "project": { "name": "Windows 10" } },
+				                { "name": "Code w10", "project": { "name": "Windows 10" } }
+				            ]
+				          }
+				        ]`,
+			Status: 200,
+		},
 		//     it "embeds an O2O relationship after update" $ do
 		//       request methodPatch "/students?id=eq.1&select=name,students_info(address)"
 		//               [("Prefer", "return=representation")]

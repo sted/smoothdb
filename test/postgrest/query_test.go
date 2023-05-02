@@ -890,15 +890,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/clients?id=eq.1&select=id,projects(id,tasks(id))" `shouldRespondWith`
 		// 	  [json|[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
-		// @@ not implemented
-		// {
-		// 	Description: "requesting children 2 levels",
-		// 	Query:       "/clients?id=eq.1&select=id,projects(id,tasks(id))",
-		// 	Expected:    `[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
+		{
+			Description: "requesting children 2 levels",
+			Query:       "/clients?id=eq.1&select=id,projects(id,tasks(id))",
+			Expected:    `[{"id":1,"projects":[{"id":1,"tasks":[{"id":1},{"id":2}]},{"id":2,"tasks":[{"id":3},{"id":4}]}]}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   it "requesting many<->many relation" $
 		// 	get "/tasks?select=id,users(id)" `shouldRespondWith`
 		// 	  [json|[{"id":1,"users":[{"id":1},{"id":3}]},{"id":2,"users":[{"id":1}]},{"id":3,"users":[{"id":1}]},{"id":4,"users":[{"id":1}]},{"id":5,"users":[{"id":2},{"id":3}]},{"id":6,"users":[{"id":2}]},{"id":7,"users":[{"id":2}]},{"id":8,"users":[]}]|]
@@ -1212,7 +1210,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		`shouldRespondWith`
 		// 		  [json|[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]|]
 
-		// @@ not implemented
+		// @@ not implemented: articleStars is a view
 		// {
 		// 	Description: "can request two parents",
 		// 	Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
@@ -1346,7 +1344,6 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			"zones": [ {"id":1,"name":"zone 1"}, {"id":2,"name":"zone 2"}],
 		// 			"stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-		// @@ not implemented: same embeds with two filters
 		{
 			Description: "aliased embeds works with child relation",
 			Query:       "/space?select=id,zones:zone(id,name),stores:zone(id,name)&zones.zone_type_id=eq.2&stores.zone_type_id=eq.3",
@@ -1407,7 +1404,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			"id":5, "name":"Orphan",
 		// 			"designTasks":[ ] }
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-		// @@ not implemented (nested embeds)
+		// @@ not implemented (nested embeds and nested filters)
 		// {
 		// 	Description: "works with an aliased child plus non aliased child",
 		// 	Query:       "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)",

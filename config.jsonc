@@ -29,7 +29,7 @@
 	// Logging configuration
 	"Logging": {
 		// Log level: trace, debug, info, warn, error, fatal, panic (default info)
-		"Level": "info",
+		"Level": "trace",
 		// Enable logging to file (default true)
 		"FileLogging": false,
 		// File path for file-based logging (default smoothdb.log)

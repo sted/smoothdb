@@ -1,7 +1,7 @@
 smoothdb
 test.rest
 ISSUES.md
-config.json
+config.jsonc
 __debug_bin
 smoothdb*.log
 scratch.sql

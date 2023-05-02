@@ -21,6 +21,10 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
+            "args": [
+                "-a",
+                "localhost:8082"
+            ]
         },
         {
             "name": "Attach to Process",

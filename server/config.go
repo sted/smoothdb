@@ -68,9 +68,9 @@ const usageStr = `
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>                Bind to host address (default: localhost:8082)
+	-a, --addr <host>                Bind to host address (default: localhost:8081)
 	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
-	-c, --config <file>              Configuration file (default: ./config.json)
+	-c, --config <file>              Configuration file (default: ./config.jsonc)
 	-h, --help                       Show this message
 `
 
