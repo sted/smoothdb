@@ -108,7 +108,7 @@ func TestQueryBuilder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		parts, err := PostgRestParser{}.parseQuery("table", url.Query())
+		parts, err := PostgRestParser{}.parse("table", url.Query())
 		if err != nil {
 			t.Error(err)
 		}

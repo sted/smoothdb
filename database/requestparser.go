@@ -12,11 +12,13 @@ import (
 type Filters = url.Values
 type Request = http.Request
 
+// Field represents a column and its attributes in the different parts of a query: select, where, order, etc clauses
 type Field struct {
-	name      string
-	tablename string
-	jsonPath  string
-	last      string
+	name      string   // field name
+	tablename string   // table name
+	relPath   []string // sequence of relations, tables or labels, including the field's own table
+	jsonPath  string   // json expression like "->a->b->>c"
+	last      string   // the last item of the field: field name or json item
 }
 
 // SelectField can contain a selected field or a relationship with another table.
@@ -24,21 +26,23 @@ type Field struct {
 //  1. a SelectField with field.name = "id"
 //  2. a SelectField with field.name = "name"
 //  3. a SelectField with an empty field and a SelectRelation with relation.name = "other",
-//     itself with a SelectField with field.name = "name"
+//     itself with a SelectField in relation.fields with field.name = "name".
 //
 // label is used as an alias both for a field and a relation.
 type SelectField struct {
-	field    Field
-	label    string
-	cast     string
-	relation *SelectRelation
+	field    Field           // field info
+	label    string          // label for the field or the nested relation
+	cast     string          // type cast
+	relation *SelectRelation // relation (can be null)
 }
 
+// SelectRelation stores information about a relationship, expressed in the select clause like:
+// /table?select=id,name,other1(name),...other2(id)
 type SelectRelation struct {
-	name   string
-	parent string
-	spread bool
-	fields []SelectField
+	name   string        // the (related) table name
+	parent string        // the parent table
+	spread bool          // has a spread operator?
+	fields []SelectField // requested fields
 }
 
 type OrderField struct {
@@ -54,6 +58,7 @@ type WhereConditionNode struct {
 	opArgs   []string
 	not      bool
 	values   []string
+	inserted bool
 	children []*WhereConditionNode
 }
 
@@ -61,6 +66,7 @@ func (node *WhereConditionNode) isRootNode() bool {
 	return node.operator == "" && node.field.name == ""
 }
 
+// QueryParts is the root of the AST produced by the request parser
 type QueryParts struct {
 	selectFields        []SelectField
 	columnFields        map[string]struct{}
@@ -80,11 +86,11 @@ type QueryOptions struct {
 	TxRollback           bool
 }
 
-// RequestParser is the interface used to parse the query string and
+// RequestParser is the interface used to parse the query string in the request and
 // extract the significant headers.
-// Initially we will support PostgREST mode and later (perhaps) Django mode.
+// Initially we will support PostgREST mode and later perhaps others (Django?).
 type RequestParser interface {
-	parseQuery(mainTable string, filters Filters) (*QueryParts, error)
+	parse(mainTable string, filters Filters) (*QueryParts, error)
 	getRequestOptions(req *Request) *QueryOptions
 }
 
@@ -135,7 +141,7 @@ var postgRestParserOperators = map[string]string{
 // skipping double quoted strings.
 // Returns a slice of substrings and separators.
 // sep is the set of single char separators.
-// longSep is the set of multi char separators (put longest first)
+// longSep is the set of multi char separators (put longest first!)
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
 	state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
 	var normal []byte
@@ -269,11 +275,18 @@ func (p *PostgRestParser) field(mayHaveTable bool) (f Field, err error) {
 	if token == "" {
 		return f, &ParseError{"field expected"}
 	}
-	if mayHaveTable && p.lookAhead() == "." {
-		// table name
-		f.tablename = token
-		p.next()
-		token = p.next()
+	if mayHaveTable {
+		// tables
+		var lastTable string
+		for p.lookAhead() == "." {
+			lastTable = token
+			f.relPath = append(f.relPath, lastTable)
+			p.next()
+			token = p.next()
+		}
+		if lastTable != "" {
+			f.tablename = lastTable
+		}
 	}
 	f.name = token
 	token = p.lookAhead()
@@ -371,7 +384,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		if rel != nil {
 			parent = rel.name
 		}
-		newrel := &SelectRelation{field.name, parent, spread, []SelectField{}}
+		newrel := &SelectRelation{field.name, parent, spread, nil}
 		newrel.fields, err = p.selectList(newrel)
 		if err != nil {
 			return nil, err
@@ -427,14 +440,17 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 
 // WHERE
 
+// isBooleanOp returns true if op is one of "and", "or", "not.and", "not.or"
 func isBooleanOp(op string) bool {
 	return op == "and" || op == "or" || op == "not.and" || op == "not.or"
 }
 
+// isBooleanOpStrict returns true if op is one of "and", "or", "not"
 func isBooleanOpStrict(op string) bool {
 	return op == "and" || op == "or" || op == "not"
 }
 
+// hasBooleanOp returns true if op ends with "and", "or"
 func hasBooleanOp(op string) bool {
 	return op == "and" || op == "or" || strings.HasSuffix(op, ".and") || strings.HasSuffix(op, ".or")
 }
@@ -551,28 +567,26 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		// here we know that the sequence is something like "__boolean_later__.(table.)*[not.](and|or)"
 		p.next() // boolean_later
 		p.next() // dot
-		var boolOpTable string
+		var boolOpTable []string
 		for { // see if we have "embedded resources" (eg table.or etc)
 			token = p.lookAhead()
 			if isBooleanOpStrict(token) {
 				break
 			}
-			if boolOpTable != "" {
-				boolOpTable += "."
-			}
-			boolOpTable += p.next()
+			boolOpTable = append(boolOpTable, p.next())
 			if token = p.next(); token != "." {
 				return &ParseError{"'.' expected"}
 			}
 		}
-		if boolOpTable == "" {
-			boolOpTable = mainTable
+		if len(boolOpTable) == 0 {
+			boolOpTable = append(boolOpTable, mainTable)
 		}
-		node.field.tablename = boolOpTable
-		p.booleanOp(boolOpTable, node)
+		table := boolOpTable[len(boolOpTable)-1]
+		node.field.tablename = table
+		node.field.relPath = boolOpTable
+		p.booleanOp(table, node)
 
 	} else if isBooleanOpStrict(token) {
-
 		node.field.tablename = mainTable
 		p.booleanOp(mainTable, node)
 
@@ -591,7 +605,12 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			return err
 		}
 		if node.field.tablename == "" {
-			node.field.tablename = mainTable
+			if parent.field.tablename != "" {
+				node.field.tablename = parent.field.tablename
+				node.field.relPath = parent.field.relPath
+			} else {
+				node.field.tablename = mainTable
+			}
 		}
 		if p.next() != nextSep {
 			return &ParseError{"'=' expected"}
@@ -657,7 +676,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 }
 
 // QUERY
-func (p PostgRestParser) parseQuery(mainTable string, filters Filters) (parts *QueryParts, err error) {
+func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryParts, err error) {
 	parts = &QueryParts{}
 
 	// SELECT

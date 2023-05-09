@@ -29,7 +29,7 @@
 	// Logging configuration
 	"Logging": {
 		// Log level: trace, debug, info, warn, error, fatal, panic (default info)
-		"Level": "trace",
+		"Level": "info",
 		// Enable logging to file (default true)
 		"FileLogging": false,
 		// File path for file-based logging (default smoothdb.log)
@@ -43,7 +43,7 @@
 		// True to compress old log files (default false)
 		"Compress": false,
 		// Enable logging to stdout (default false)
-		"StdOut": true,
+		"StdOut": false,
 		// Eanble pretty colorized output for stdout (default false)
 		"ConsoleColor": true,
 	},

@@ -6,7 +6,7 @@ type QueryExecutor struct{}
 
 func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
-	parts, err := gi.RequestParser.parseQuery(table, filters)
+	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 
 func (QueryExecutor) Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	parts, err := gi.RequestParser.parseQuery(table, filters)
+	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -54,7 +54,7 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record,
 
 func (QueryExecutor) Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	parts, err := gi.RequestParser.parseQuery(table, filters)
+	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -83,7 +83,7 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 
 func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	parts, err := gi.RequestParser.parseQuery(table, filters)
+	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -111,7 +111,7 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 
 func (QueryExecutor) Execute(ctx context.Context, function string, record Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	parts, err := gi.RequestParser.parseQuery(function, filters)
+	parts, err := gi.RequestParser.parse(function, filters)
 	if err != nil {
 		return nil, 0, err
 	}

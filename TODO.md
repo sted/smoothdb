@@ -24,19 +24,21 @@
 √ M2M Relationships
 √ aliases for embeds
 √ spreads for embeds (...table)
-* embeds with views
-* nested embeds
-* "singular" response
+√ uniform log for db and api
+√ nested embeds
+√ nested filters
+* Related orders
 * !inner joins
 * hints for rels
-* PUT for upsert
-√ uniform log for db and api
+* embeds with views
+* "singular" response
 * Functions (rpc)
+* computed columns
+* PUT for upsert
 * Triggers
 * Events
 * Reload config
 * Change log level at runtime
-* Related orders
 * More types, in order: √ array, √ jsonb, interval, numeric
 * Check returned headers, count, range, location, etc
 * return=headers-only
@@ -49,6 +51,8 @@
 * CSV
 * Encryption
 * TLS
+* telemetry
+* vault integration
 
 Upper layer:
 * Migrations (Tern?)

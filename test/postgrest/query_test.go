@@ -975,6 +975,106 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json|[]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 
+		// 	context "one to one relationships" $ do
+		//   it "works when having a pk as fk" $ do
+		//     get "/students_info?select=address,students(name)" `shouldRespondWith`
+		//       [json|[{"address":"Street 1","students":{"name":"John Doe"}}, {"address":"Street 2","students":{"name":"Jane Doe"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when having a pk as fk",
+			Query:       "/students_info?select=address,students(name)",
+			Headers:     nil,
+			Expected:    `[{"address":"Street 1","students":{"name":"John Doe"}}, {"address":"Street 2","students":{"name":"Jane Doe"}}]`,
+			Status:      200,
+		},
+		//     get "/students?select=name,students_info(address)" `shouldRespondWith`
+		//       [json|[{"name":"John Doe","students_info":{"address":"Street 1"}},{"name":"Jane Doe","students_info":{"address":"Street 2"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when having a pk as fk",
+			Query:       "/students?select=name,students_info(address)",
+			Headers:     nil,
+			Expected:    `[{"name":"John Doe","students_info":{"address":"Street 1"}},{"name":"Jane Doe","students_info":{"address":"Street 2"}}]`,
+			Status:      200,
+		},
+		//   it "works when having a fk with a unique constraint" $ do
+		//     get "/country?select=name,capital(name)" `shouldRespondWith`
+		//       [json|[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when having a fk with a unique constraint",
+			Query:       "/country?select=name,capital(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]`,
+			Status:      200,
+		},
+		//     get "/capital?select=name,country(name)" `shouldRespondWith`
+		//       [json|[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when having a fk with a unique constraint",
+			Query:       "/capital?select=name,country(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]`,
+			Status:      200,
+		},
+		//   it "works when using column as target" $ do
+		//     get "/capital?select=name,country_id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Kabul","country_id":{"name":"Afghanistan"}}, {"name":"Algiers","country_id":{"name":"Algeria"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when using column as target",
+			Query:       "/capital?select=name,country_id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Kabul","country_id":{"name":"Afghanistan"}}, {"name":"Algiers","country_id":{"name":"Algeria"}}]`,
+			Status:      200,
+		},
+		//     get "/capital?select=name,capital_country_id_fkey(name)" `shouldRespondWith`
+		//       [json|[{"name":"Kabul","capital_country_id_fkey":{"name":"Afghanistan"}}, {"name":"Algiers","capital_country_id_fkey":{"name":"Algeria"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		// @@ column as fk constraint
+		// {
+		// 	Description: "works when using column as target",
+		// 	Query:       "/capital?select=name,capital_country_id_fkey(name)",
+		// 	Headers:     nil,
+		// 	Expected:    `[{"name":"Kabul","capital_country_id_fkey":{"name":"Afghanistan"}}, {"name":"Algiers","capital_country_id_fkey":{"name":"Algeria"}}]`,
+		// 	Status:      200,
+		// },
+		//     get "/country?select=name,capital_country_id_fkey(name)" `shouldRespondWith`
+		//       [json|[{"name":"Afghanistan","capital_country_id_fkey":{"name":"Kabul"}}, {"name":"Algeria","capital_country_id_fkey":{"name":"Algiers"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		// @@ column as fk constraint
+		// {
+		// 	Description: "works when using column as target",
+		// 	Query:       "/country?select=name,capital_country_id_fkey(name)",
+		// 	Headers:     nil,
+		// 	Expected:    `[{"name":"Afghanistan","capital_country_id_fkey":{"name":"Kabul"}}, {"name":"Algeria","capital_country_id_fkey":{"name":"Algiers"}}]`,
+		// 	Status:      200,
+		// },
+		//     get "/country?select=name,id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Afghanistan","id":{"name":"Kabul"}}, {"name":"Algeria","id":{"name":"Algiers"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when using column as target",
+			Query:       "/country?select=name,id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Afghanistan","id":{"name":"Kabul"}}, {"name":"Algeria","id":{"name":"Algiers"}}]`,
+			Status:      200,
+		},
+		//   it "works when using column as hint" $ do
+		//     get "/country?select=name,capital!id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		//     get "/country?select=name,capital!country_id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		//     get "/capital?select=name,country!id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+		//     get "/capital?select=name,country!country_id(name)" `shouldRespondWith`
+		//       [json|[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]|]
+		//       { matchHeaders = [matchContentTypeJson] }
+
 		//   describe "computed columns" $ do
 		// 	it "computed column on table" $
 		// 	  get "/items?id=eq.1&select=id,always_true" `shouldRespondWith`
@@ -1385,6 +1485,195 @@ func TestPostgREST_Query(t *testing.T) {
 						]`,
 			Status: 200,
 		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,tasks(name),other:tasks(name)&id=in.(3,4,5)&tasks.name=like.*Design*",
+			Expected: `[{
+				"id": 3,
+				"tasks": [{"name": "Design IOS"}],
+				"other": [{"name": "Design IOS"},{"name": "Code IOS"}]
+			  },
+			  {
+				"id": 4,
+				"tasks": [{"name": "Design OSX"}],
+				"other": [{"name": "Design OSX"},{"name": "Code OSX"}]
+			  },
+			  {
+				"id": 5,
+				"tasks": [],
+				"other": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,other:tasks(name),tasks:tasks(name)&id=in.(3,4,5)&tasks.name=like.*Design*",
+			Expected: `[{
+				"id": 3,
+				"other": [{"name": "Design IOS"}],
+				"tasks": [{"name": "Design IOS"},{"name": "Code IOS"}]
+			  },
+			  {
+				"id": 4,
+				"other": [{"name": "Design OSX"}],
+				"tasks": [{"name": "Design OSX"},{"name": "Code OSX"}]
+			  },
+			  {
+				"id": 5,
+				"other": [],
+				"tasks": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,designTasks:tasks(name),tasks(name)&id=in.(3,4,5)&designTasks.name=like.*Design*",
+			Expected: `[{
+				"id": 3,
+				"designTasks": [{"name": "Design IOS"}],
+				"tasks": [{"name": "Design IOS"},{"name": "Code IOS"}
+				]
+			  },{
+				"id": 4,
+				"designTasks": [{"name": "Design OSX"}],
+				"tasks": [{"name": "Design OSX"},{"name": "Code OSX"}]
+			  },{
+				"id": 5,
+				"designTasks": [],
+				"tasks": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,tasks(name),codeTasks:tasks(name)&id=in.(3,4,5)&codeTasks.name=like.*Code*",
+			Expected: `[{
+				"id": 3,
+				"codeTasks": [{"name": "Code IOS"}],
+				"tasks": [{"name": "Design IOS"},{"name": "Code IOS"}
+				]
+			  },{
+				"id": 4,
+				"codeTasks": [{"name": "Code OSX"}],
+				"tasks": [{"name": "Design OSX"},{"name": "Code OSX"}]
+			  },{
+				"id": 5,
+				"codeTasks": [],
+				"tasks": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,designTasks:tasks(name),codeTasks:tasks(name)&id=in.(3,4,5)&codeTasks.name=like.*Code*",
+			Expected: `[{
+				"id": 3,
+				"codeTasks": [{"name": "Code IOS"}],
+				"designTasks": [{"name": "Design IOS"},{"name": "Code IOS"}
+				]
+			  },{
+				"id": 4,
+				"codeTasks": [{"name": "Code OSX"}],
+				"designTasks": [{"name": "Design OSX"},{"name": "Code OSX"}]
+			  },{
+				"id": 5,
+				"codeTasks": [],
+				"designTasks": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds",
+			Query:       "/projects?select=id,designTasks:tasks(name),codeTasks:tasks(name)&id=in.(3,4,5)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*",
+			Expected: `[{
+				"id": 3,
+				"codeTasks": [{"name": "Code IOS"}],
+				"designTasks": [{"name": "Design IOS"}]
+			  },{
+				"id": 4,
+				"codeTasks": [{"name": "Code OSX"}],
+				"designTasks": [{"name": "Design OSX"}]
+			  },{
+				"id": 5,
+				"codeTasks": [],
+				"designTasks": []
+			  }]`,
+			Status: 200,
+		},
+		// @@ added
+		{
+			Description: "works with aliased embeds with two levels",
+			Query:       "/projects?select=id,designTasks:tasks(name,users(id,name)),codeTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&codeTasks.name=like.*Code*",
+			Expected: `[
+				{
+					"id": 1,
+					"designTasks": [{"name": "Design w7","users": [{"id": 1,"name": "Angela Martin"},{"id": 3,"name": "Dwight Schrute"}]}],
+					"codeTasks": [{"name": "Code w7","users": [	{"id": 1,"name": "Angela Martin"}]}]
+				},
+				{
+					"id": 2,
+					"designTasks": [{"name": "Design w10","users": [{"id": 1,"name": "Angela Martin"}]}],
+					"codeTasks": [{"name": "Code w10","users": [{"id": 1,"name": "Angela Martin"}]}]
+				},
+				{
+					"id": 3,
+					"designTasks": [{"name": "Design IOS","users": [{"id": 2,"name": "Michael Scott"},	{"id": 3,"name": "Dwight Schrute"}]}],
+					"codeTasks": [{"name": "Code IOS","users": [{"id": 2,"name": "Michael Scott"}]}]
+				},
+				{
+					"id": 4,
+					"designTasks": [{"name": "Design OSX","users": [{"id": 2,"name": "Michael Scott"}]}],
+					"codeTasks": [{"name": "Code OSX","users": []}]
+				},
+				{
+					"id": 5,
+					"designTasks": [],
+					"codeTasks": []
+				}
+			]`,
+			Status: 200,
+		},
+
+		// @@ added
+		{
+			Description: "works with aliased embeds with two levels",
+			Query:       "/projects?select=id,designTasks:tasks(name,users(id,name)),codeTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=eq.3&codeTasks.name=like.*Code*&codeTasks.users.id=eq.2",
+			Expected: `[
+			{
+				"id": 1,
+				"designTasks": [{"name": "Design w7","users": [{"id": 3,"name": "Dwight Schrute"}]}],
+				"codeTasks": [{"name": "Code w7","users": []}]
+			},
+			{
+				"id": 2,
+				"designTasks": [{"name": "Design w10","users": []}],
+				"codeTasks": [{"name": "Code w10","users": []}]
+			},
+			{
+				"id": 3,
+				"designTasks": [{"name": "Design IOS","users": [{"id": 3,"name": "Dwight Schrute"}]}],
+				"codeTasks": [{"name": "Code IOS","users": [{"id": 2,"name": "Michael Scott"}]}]
+			},
+			{
+				"id": 4,
+				"designTasks": [{"name": "Design OSX","users": []}],
+				"codeTasks": [{"name": "Code OSX","users": []}]
+			},
+			{
+				"id": 5,
+				"designTasks": [],
+				"codeTasks": []
+			}
+		]`,
+			Status: 200,
+		},
+
 		// 	it "works with an aliased child plus non aliased child" $
 		// 	  get "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)" `shouldRespondWith`
 		// 		[json|[
@@ -1404,30 +1693,28 @@ func TestPostgREST_Query(t *testing.T) {
 		// 			"id":5, "name":"Orphan",
 		// 			"designTasks":[ ] }
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-		// @@ not implemented (nested embeds and nested filters)
-		// {
-		// 	Description: "works with an aliased child plus non aliased child",
-		// 	Query:       "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)",
-		// 	Headers:     nil,
-		// 	Expected: `[
-		// 				  {
-		// 					"id":1, "name":"Windows 7",
-		// 					"designTasks":[ { "name":"Design w7", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
-		// 				  {
-		// 					"id":2, "name":"Windows 10",
-		// 					"designTasks":[ { "name":"Design w10", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
-		// 				  {
-		// 					"id":3, "name":"IOS",
-		// 					"designTasks":[ { "name":"Design IOS", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
-		// 				  {
-		// 					"id":4, "name":"OSX",
-		// 					"designTasks":[ { "name":"Design OSX", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
-		// 				  {
-		// 					"id":5, "name":"Orphan",
-		// 					"designTasks":[ ] }
-		// 				]`,
-		// 	Status: 200,
-		// },
+		{
+			Description: "works with an aliased child plus non aliased child",
+			Query:       "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)",
+			Headers:     nil,
+			Expected: `[	  {
+							"id":1, "name":"Windows 7",
+							"designTasks":[ { "name":"Design w7", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+						  {
+							"id":2, "name":"Windows 10",
+							"designTasks":[ { "name":"Design w10", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+						  {
+							"id":3, "name":"IOS",
+							"designTasks":[ { "name":"Design IOS", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+						  {
+							"id":4, "name":"OSX",
+							"designTasks":[ { "name":"Design OSX", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+						  {
+							"id":5, "name":"Orphan",
+							"designTasks":[ ] }
+						]`,
+			Status: 200,
+		},
 		// 	it "works with two aliased children embeds plus and/or" $
 		// 	  get "/entities?select=id,children:child_entities(id,gChildren:grandchild_entities(id))&children.and=(id.in.(1,2,3))&children.gChildren.or=(id.eq.1,id.eq.2)" `shouldRespondWith`
 		// 		[json|[
@@ -1441,7 +1728,23 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		  { "id":3,"children":[]},
 		// 		  { "id":4,"children":[]}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "works with two aliased children embeds plus and/or",
+			Query:       "/entities?select=id,children:child_entities(id,gChildren:grandchild_entities(id))&children.and=(id.in.(1,2,3))&children.gChildren.or=(id.eq.1,id.eq.2)",
+			Headers:     nil,
+			Expected: `[
+						  { "id":1,
+							"children":[
+							  {"id":1,"gChildren":[{"id":1}, {"id":2}]},
+							  {"id":2,"gChildren":[]}]},
+						  { "id":2,
+							"children":[
+							  {"id":3,"gChildren":[]}]},
+						  { "id":3,"children":[]},
+						  { "id":4,"children":[]}
+						]`,
+			Status: 200,
+		},
 		// describe "ordering response" $ do
 		//   it "by a column asc" $
 		// 	get "/items?id=lte.2&order=id.asc"
@@ -1760,15 +2063,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/Escap3e;?select=ghostBusters(*)" `shouldRespondWith`
 		// 	  [json| [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
-		// @@ do not work
-		// {
-		// 	Description: "will embed a collection",
-		// 	Query:       "/Escap3e;?select=ghostBusters(*)",
-		// 	Expected:    `[{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
+		{
+			Description: "will embed a collection",
+			Query:       "/Escap3e;?select=ghostBusters(*)",
+			Expected:    `[{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   it "will select and filter a column that has spaces" $
 		// 	get "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*" `shouldRespondWith`
 		// 	  [json|[

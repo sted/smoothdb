@@ -76,7 +76,26 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 			{"id": 3, "child_entities": []},
 		// 			{"id": 4, "child_entities": []}
 		// 		  ]|]
-
+		{
+			Description: "can do logic on the third level",
+			Query:       "/entities?child_entities.grandchild_entities.or=(id.eq.1,id.eq.2)&select=id,child_entities(id,grandchild_entities(id))",
+			Expected: `[
+							{"id": 1, "child_entities": [
+							  { "id": 1, "grandchild_entities": [ { "id": 1 }, { "id": 2 } ]},
+							  { "id": 2, "grandchild_entities": []},
+							  { "id": 4, "grandchild_entities": []},
+							  { "id": 5, "grandchild_entities": []}
+							]},
+							{"id": 2, "child_entities": [
+							  { "id": 3, "grandchild_entities": []},
+							  { "id": 6, "grandchild_entities": []}
+							]},
+							{"id": 3, "child_entities": []},
+							{"id": 4, "child_entities": []}
+						  ]`,
+			Headers: nil,
+			Status:  200,
+		},
 		//   context "and/or params combined" $ do
 		// 	it "can be nested inside the same expression" $
 		// 	  get "/entities?or=(and(name.eq.entity 2,id.eq.2),and(name.eq.entity 1,id.eq.1))&select=id" `shouldRespondWith`

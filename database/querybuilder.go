@@ -16,12 +16,14 @@ type QueryBuilder interface {
 	preferredSerializer() ResultSerializer
 }
 
+// Join containts information to create a join relationship.
+// It is composed while building the select clause.
 type Join struct {
-	name     string
-	fields   string
-	inner    string
-	rel      *Relationship
-	relLabel string
+	name     string        // join name, crafted to be unique
+	fields   string        // fields to be selected in the related table (eg. a, b::text, c AS C)
+	inner    string        // nested joins
+	rel      *Relationship // base relationship
+	relLabel string        // label for the relationship, taken from the select clause
 }
 
 type BuildError struct {
@@ -29,6 +31,22 @@ type BuildError struct {
 }
 
 func (e *BuildError) Error() string { return e.msg }
+
+// BuildStack represents the context when navigating the AST produced by the parser
+type BuildStack struct {
+	info            *DbInfo  // database information (tables, contraints, etc)
+	level           int      // depth
+	relPath         []string // sequence of nested tables
+	labelPath       []string // sequence of nested labels for the correspondent tables (can contain empty strings)
+	afterWithClause bool     //
+}
+
+// nextBuildStack creates a stack with a new level
+func nextBuildStack(stack BuildStack, rel string, label string) BuildStack {
+	relPath := append(stack.relPath, rel)
+	labelPath := append(stack.labelPath, label)
+	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, false}
+}
 
 func prepareField(table, schema string, sfield SelectField) string {
 	var fieldPart string
@@ -51,17 +69,17 @@ func labelWithNumber(table string, num int) string {
 	return table + "_" + strconv.Itoa(num)
 }
 
-func selectForJoinClause(join Join, parts *QueryParts, level int, afterWithClause bool) (sel string) {
+func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel string) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
 	sel += " FROM " + quoteParts(rel.RelatedTable)
 	_, t1 := splitTableName(rel.RelatedTable)
-	label1 := quote(labelWithNumber(t1, level))
+	label1 := quote(labelWithNumber(t1, stack.level+1))
 	sel += " AS " + label1
 	var label2 string
-	if level > 1 {
+	if stack.level > 0 {
 		_, t2 := splitTableName(rel.Table)
-		label2 = quote(labelWithNumber(t2, level-1))
+		label2 = quote(labelWithNumber(t2, stack.level))
 	} else {
 		label2 = quoteParts(rel.Table)
 	}
@@ -79,7 +97,7 @@ func selectForJoinClause(join Join, parts *QueryParts, level int, afterWithClaus
 			}
 			sel += label1 + "." + quote(rel.RelatedColumns[i])
 			sel += " = "
-			if afterWithClause {
+			if stack.afterWithClause {
 				sel += quote("_source")
 			} else {
 				sel += label2
@@ -95,7 +113,7 @@ func selectForJoinClause(join Join, parts *QueryParts, level int, afterWithClaus
 			}
 			sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
 			sel += " = "
-			if afterWithClause {
+			if stack.afterWithClause {
 				sel += quote("_source")
 			} else {
 				sel += label2
@@ -116,7 +134,7 @@ func selectForJoinClause(join Join, parts *QueryParts, level int, afterWithClaus
 	// the expressions.
 	if rel.Table != rel.RelatedTable {
 		schema, table := splitTableName(rel.RelatedTable)
-		whereClause, _ := whereClause(table, schema, label1, parts.whereConditionsTree, join.relLabel, -1)
+		whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel))
 		if whereClause != "" {
 			sel += " AND " + whereClause
 		}
@@ -152,7 +170,7 @@ func findRelationship(table, relation, schema string, info *DbInfo) (rel *Relati
 	return rel, nil
 }
 
-func selectClause(table, schema string, parts *QueryParts, info *DbInfo, level int, afterWithClause bool) (
+func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 	selClause string, joins string, keys []string, err error) {
 
 	var parentTable string
@@ -172,17 +190,16 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, level i
 			} else {
 				parentTable = table
 			}
-			frel, err := findRelationship(parentTable, sfield.relation.name, schema, info)
+			frel, err := findRelationship(parentTable, sfield.relation.name, schema, stack.info)
 			if err != nil {
 				return "", "", nil, err
 			}
-			_, relatedTable = splitTableName(frel.RelatedTable)
 			if sfield.label == "" {
-				labelRelName = relatedTable
+				labelRelName = sfield.relation.name
 			} else {
 				labelRelName = sfield.label
 			}
-			joinName = labelWithNumber(parentTable+"_"+labelRelName, level+1)
+			joinName = labelWithNumber(parentTable+"_"+labelRelName, stack.level+1)
 
 			switch frel.Type {
 			case M2O, O2O:
@@ -198,19 +215,20 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, level i
 				}
 				selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
 			}
-			internalParts := &QueryParts{selectFields: sfield.relation.fields}
-			sc, j, _, err := selectClause(relatedTable, schema, internalParts, info, level+1, false)
+			_, relatedTable = splitTableName(frel.RelatedTable)
+			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree}
+			sc, j, _, err := selectClause(relatedTable, schema, internalParts, nextBuildStack(stack, relatedTable, sfield.label))
 			if err != nil {
 				return "", "", nil, err
 			}
 			joinSeq = append(joinSeq, Join{joinName, sc, j, frel, sfield.label})
 		} else {
 			var fieldPart string
-			if !afterWithClause {
-				if level == 0 {
+			if !stack.afterWithClause {
+				if stack.level == 0 {
 					fieldPart = prepareField(table, schema, sfield)
 				} else {
-					fieldPart = prepareField(labelWithNumber(table, level), "", sfield)
+					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield)
 				}
 			} else {
 				fieldPart = prepareField("_source", "", sfield)
@@ -224,7 +242,7 @@ func selectClause(table, schema string, parts *QueryParts, info *DbInfo, level i
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			relName := join.name
-			selectForJoin := selectForJoinClause(join, parts, level+1, afterWithClause)
+			selectForJoin := selectForJoinClause(join, parts, stack)
 			joins += " LEFT JOIN LATERAL ("
 			switch join.rel.Type {
 			case M2O, O2O:
@@ -290,13 +308,12 @@ func appendValue(where, value string, valueList []any, nmarker int) (string, []a
 	return where, valueList, nmarker
 }
 
-// whereClause builds a WHERE condition string starting from the table name, the schema, and a root node
-// of a condition tree. The other string is used as an additional value together with table to skip internal
-// conditions: all the conditions nodes on a field with a table name different from table or other are not processed.
-// The nmarker integer is used to indicate the last marker inserted: the first one will be $(nmarker + 1).
+// whereClause builds a WHERE condition string starting a root node of a condition tree.
+// Only nodes with fields related to passed table or label are processed (node.inserted is set to true).
+// The nmarker integer is used to keep track of the last marker inserted: the first one will be $(nmarker + 1).
 // To skip the usage of markers and to embed the condition values in the string pass -1.
 // It returns the condition string and the condition values.
-func whereClause(table, schema, label string, node *WhereConditionNode, other string, nmarker int) (where string, valueList []any) {
+func whereClause(table, schema, label string, node *WhereConditionNode, nmarker int, stack BuildStack) (where string, valueList []any) {
 	if node == nil {
 		return
 	}
@@ -316,16 +333,26 @@ func whereClause(table, schema, label string, node *WhereConditionNode, other st
 			where += "("
 		}
 		var children_where string
+	outer:
 		for _, n := range node.children {
-			if n.field.tablename != table &&
-				n.field.tablename != other {
-				// skip where filters for other tables
+			// check if the field is part of this where clause:
+
+			// 1. first by comparing the stack depth
+			if len(n.field.relPath) != len(stack.relPath) {
 				continue
+			}
+			// 2. then by comparing each item in the field relPath
+			//    with each item in the stack, table or label
+			for i := range n.field.relPath {
+				if n.field.relPath[i] != stack.relPath[i] &&
+					n.field.relPath[i] != stack.labelPath[i] {
+					continue outer
+				}
 			}
 			if children_where != "" {
 				children_where += bool_op
 			}
-			w, list := whereClause(table, schema, label, n, other, nmarker)
+			w, list := whereClause(table, schema, label, n, nmarker, stack)
 			children_where += w
 			valueList = append(valueList, list...)
 			nmarker += len(list)
@@ -335,13 +362,18 @@ func whereClause(table, schema, label string, node *WhereConditionNode, other st
 			where += ")"
 		}
 	} else {
+		// skip nodes already inserted
+		if node.inserted {
+			return
+		}
+		node.inserted = true
 		if node.not {
 			where += "NOT "
 		}
-		if label == "" {
+		if stack.level == 0 {
 			where += _stq(node.field.name, schema, table)
 		} else {
-			where += label + "." + quote(node.field.name)
+			where += quote(labelWithNumber(table, stack.level)) + "." + quote(node.field.name)
 		}
 		where += node.field.jsonPath
 		where += " " + node.operator + " "
@@ -402,7 +434,7 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 		}
 		ret += fields
 		if hasResourceEmbed {
-			sc, joins, keys, _ := selectClause(table, schema, parts, info, 0, true)
+			sc, joins, keys, _ := selectClause(table, schema, parts, BuildStack{info: info, afterWithClause: true})
 			// add foreign keys to Returning clause if they are not already present
 			for _, k := range keys {
 				if _, exists := fieldMap[k]; !exists {
@@ -529,6 +561,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
 	update string, valueList []any, err error) {
 
+	stack := BuildStack{info: info}
 	var pairs string
 	var i int
 	for key := range record {
@@ -547,7 +580,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		valueList = append(valueList, record[key])
 	}
 	schema := options.Schema
-	whereClause, whereValueList := whereClause(table, schema, "", parts.whereConditionsTree, "", i)
+	whereClause, whereValueList := whereClause(table, schema, "", parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
 	update = "UPDATE " + _sq(table, schema) + " SET " + pairs
 	if whereClause != "" {
@@ -566,8 +599,9 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (
 	delete string, valueList []any, err error) {
 
+	stack := BuildStack{info: info}
 	schema := options.Schema
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, "", 0)
+	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	delete = "DELETE FROM " + _sq(table, schema)
 	if whereClause != "" {
 		delete += " WHERE " + whereClause
@@ -585,6 +619,7 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
 	exec string, valueList []any, err error) {
 
+	stack := BuildStack{info: info}
 	var pairs string
 	var i int
 	for key := range record {
@@ -603,11 +638,11 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 		valueList = append(valueList, record[key])
 	}
 	schema := options.Schema
-	selectClause, _, _, err := selectClause("t", "", parts, info, 0, false)
+	selectClause, _, _, err := selectClause("t", "", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
-	whereClause, whereValueList := whereClause("t", "", "", parts.whereConditionsTree, name, i)
+	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
 	exec = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
 	if whereClause != "" {
@@ -621,12 +656,13 @@ type DirectQueryBuilder struct {
 }
 
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error) {
+	stack := BuildStack{info: info}
 	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, parts, info, 0, false)
+	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, "", 0)
+	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	orderClause := orderClause(table, schema, "", parts.orderFields)
 	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
 	if joins != "" {
@@ -656,12 +692,13 @@ type QueryWithJSON struct {
 }
 
 func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error) {
+	stack := BuildStack{info: info}
 	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, parts, info, 0, false)
+	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, "", 0)
+	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	orderClause := orderClause(table, schema, "", parts.orderFields)
 	query := "SELECT "
 	if selectClause == "*" {

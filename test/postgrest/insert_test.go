@@ -657,7 +657,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		`shouldRespondWith`
 		// 		  [json|[ { "k":"圍棋", "extra":"￥" } ]|]
 		// 		  { matchStatus = 201 }
-
+		{
+			Description: "with unicode values it succeeds and returns full representation",
+			Method:      "POST",
+			Query:       "/simple_pk2?select=extra,k",
+			Body:        `{ "k":"圍棋", "extra":"￥" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "k":"圍棋", "extra":"￥" } ]`,
+			Status:      201,
+		},
 		// 	  it "succeeds and returns usable location header" $ do
 		// 		p <- request methodPost "/simple_pk2?select=extra,k"
 		// 			[("Prefer", "tx=commit"), ("Prefer", "return=headers-only")]
