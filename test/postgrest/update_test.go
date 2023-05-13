@@ -907,7 +907,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:        `{ "nameUnitTest": "name of unittest 2" }`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 2" }]`,
-			Status:      201,
+			Status:      200,
 		},
 	}
 

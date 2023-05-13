@@ -1,6 +1,7 @@
 package database
 
 import (
+	"mime"
 	"net/http"
 	"net/url"
 	"sort"
@@ -84,6 +85,7 @@ type QueryOptions struct {
 	IgnoreDuplicates     bool
 	TxCommit             bool
 	TxRollback           bool
+	Singular             bool
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -788,6 +790,12 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 func (p PostgRestParser) getRequestOptions(req *Request) *QueryOptions {
 	header := req.Header
 	options := &QueryOptions{}
+
+	accept := header.Get("Accept")
+	mediatype, _, _ := mime.ParseMediaType(accept)
+	if mediatype == "application/vnd.pgrst.object+json" {
+		options.Singular = true
+	}
 
 	preferValues := header.Values("Prefer")
 	for _, prefer := range preferValues {

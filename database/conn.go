@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -65,26 +66,33 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) er
 
 	if hasTX {
 		var end string
-		switch DBE.config.TransactionEnd {
-		case "commit":
-			end = "COMMIT"
-		case "commit-allow-override":
-			sctx := GetSmoothContext(ctx)
-			if sctx.QueryOptions.TxRollback {
-				end = "ROLLBACK"
-			} else {
+
+		if ctx.(*gin.Context).Writer.Status() < 400 {
+
+			switch DBE.config.TransactionEnd {
+			case "commit":
 				end = "COMMIT"
+			case "commit-allow-override":
+				sctx := GetSmoothContext(ctx)
+				if sctx.QueryOptions.TxRollback {
+					end = "ROLLBACK"
+				} else {
+					end = "COMMIT"
+				}
+			case "rollback":
+				end = "ROLLBACK"
+			case "rollback-allow-override":
+				sctx := GetSmoothContext(ctx)
+				if sctx.QueryOptions.TxCommit {
+					end = "COMMIT"
+				} else {
+					end = "ROLLBACK"
+				}
 			}
-		case "rollback":
+		} else {
 			end = "ROLLBACK"
-		case "rollback-allow-override":
-			sctx := GetSmoothContext(ctx)
-			if sctx.QueryOptions.TxCommit {
-				end = "COMMIT"
-			} else {
-				end = "ROLLBACK"
-			}
 		}
+
 		_, err := conn.Exec(ctx, end)
 		if err != nil {
 			return err

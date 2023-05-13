@@ -8,6 +8,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func prepareError(c *gin.Context, err error) {
+	switch err.(type) {
+	case *database.ParseError, *database.BuildError:
+		prepareBadRequest(c, err)
+	case *database.SerializeError:
+		c.Status(http.StatusNotAcceptable)
+	default:
+		prepareServerError(c, err)
+	}
+}
+
 func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.RouterGroup {
 
 	api := root.Group("/api", handlers...)
@@ -22,12 +33,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 			c.Writer.Header().Set("Content-Type", "application/json")
 			c.String(http.StatusOK, string(json))
 		} else {
-			switch err.(type) {
-			case *database.ParseError, *database.BuildError:
-				prepareBadRequest(c, err)
-			default:
-				prepareServerError(c, err)
-			}
+			prepareError(c, err)
 		}
 	})
 
@@ -52,7 +58,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusCreated, string(data))
 			}
 		} else {
-			prepareServerError(c, err)
+			prepareError(c, err)
 		}
 	})
 
@@ -77,7 +83,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusOK, string(data))
 			}
 		} else {
-			prepareServerError(c, err)
+			prepareError(c, err)
 		}
 	})
 
@@ -93,7 +99,7 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 				c.String(http.StatusOK, string(data))
 			}
 		} else {
-			prepareServerError(c, err)
+			prepareError(c, err)
 		}
 	})
 

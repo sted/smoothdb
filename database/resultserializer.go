@@ -17,7 +17,7 @@ const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
 	Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error)
-	SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error)
+	SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool) ([]byte, error)
 }
 
 type DirectJSONSerializer struct {
@@ -25,6 +25,12 @@ type DirectJSONSerializer struct {
 	dateBuf [128]byte
 	date    []byte
 }
+
+type SerializeError struct {
+	msg string // description of error
+}
+
+func (e *SerializeError) Error() string { return e.msg }
 
 var hex = "0123456789abcdef"
 
@@ -260,13 +266,17 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 	return []byte(d.String()), nil
 }
 
-func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool) ([]byte, error) {
 	fds := rows.FieldDescriptions()
-	multiField := len(fds) > 1
-	rows.Next()
+	//multiField = len(fds) > 1
+	// verify that we have at least one row
+	hasRow := rows.Next()
+	if !hasRow {
+		return nil, &SerializeError{}
+	}
 	bufRaw := rows.RawValues()
 
-	if multiField {
+	if !scalar {
 		d.WriteByte('{')
 	}
 	for i := range fds {
@@ -275,18 +285,23 @@ func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 		if i > 0 {
 			d.WriteByte(',')
 		}
-		if multiField {
+		if !scalar {
 			d.WriteByte('"')
 			d.WriteString(fds[i].Name)
 			d.WriteString("\":")
 		}
 		d.appendType(buf, fd.DataTypeOID)
 	}
-	if multiField {
+	if !scalar {
 		d.WriteByte('}')
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	// verify that we have just one row
+	hasRow = rows.Next()
+	if hasRow {
+		return nil, &SerializeError{}
 	}
 	return []byte(d.String()), nil
 }
@@ -302,7 +317,7 @@ func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 	return values[0], nil
 }
 
-func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalr bool) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {

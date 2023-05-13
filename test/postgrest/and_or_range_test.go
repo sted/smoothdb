@@ -703,7 +703,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Body:        `{ "name" : "updated grandchild entity"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "name" : "updated grandchild entity"},{ "id": 2, "name" : "updated grandchild entity"}]`,
-			Status:      201,
+			Status:      200,
 		},
 		// context "used with DELETE" $
 		//   it "succeeds when using and/or params" $
@@ -719,7 +719,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Body:        ``,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "id": 1, "name" : "grandchild entity 1" },{ "id": 2, "name" : "grandchild entity 2" }]`,
-			Status:      201,
+			Status:      200,
 		},
 		// it "can query columns that begin with and/or reserved words" $
 		//   get "/grandchild_entities?or=(and_starting_col.eq.smth, or_starting_col.eq.smth)" `shouldRespondWith` 200

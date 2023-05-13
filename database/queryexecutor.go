@@ -4,6 +4,24 @@ import "context"
 
 type QueryExecutor struct{}
 
+func querySerialize(ctx context.Context, query string, values []any) ([]byte, error) {
+	gi := GetSmoothContext(ctx)
+	options := gi.QueryOptions
+	rows, err := gi.Conn.Query(ctx, query, values...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	serializer := gi.QueryBuilder.preferredSerializer()
+	var data []byte
+	if options.Singular {
+		data, err = serializer.SerializeSingle(ctx, rows, false)
+	} else {
+		data, err = serializer.Serialize(ctx, rows)
+	}
+	return data, err
+}
+
 func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
@@ -15,12 +33,7 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := gi.Conn.Query(ctx, query, values...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+	return querySerialize(ctx, query, values)
 }
 
 func (QueryExecutor) Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
@@ -35,14 +48,9 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record,
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		rows, err := gi.Conn.Query(ctx, insert, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer rows.Close()
-		data, err := gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+		var data []byte
+		data, err = querySerialize(ctx, insert, values)
 		return data, 0, err
-
 	} else {
 		tag, err := gi.Conn.Exec(ctx, insert, values...)
 		if err != nil {
@@ -64,14 +72,9 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		rows, err := gi.Conn.Query(ctx, update, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer rows.Close()
-		data, err := gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+		var data []byte
+		data, err = querySerialize(ctx, update, values)
 		return data, 0, err
-
 	} else {
 		tag, err := gi.Conn.Exec(ctx, update, values...)
 		if err != nil {
@@ -93,12 +96,8 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		rows, err := gi.Conn.Query(ctx, delete, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer rows.Close()
-		data, err := gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+		var data []byte
+		data, err = querySerialize(ctx, delete, values)
 		return data, 0, err
 	} else {
 		tag, err := gi.Conn.Exec(ctx, delete, values...)
@@ -126,8 +125,8 @@ func (QueryExecutor) Execute(ctx context.Context, function string, record Record
 	}
 	defer rows.Close()
 	var data []byte
-	if function != "getallprojects" && function != "ret_setof_integers" {
-		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows)
+	if function != "getallprojects" && function != "ret_setof_integers" { //@@
+		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, true)
 	} else {
 		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
 	}

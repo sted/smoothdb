@@ -126,7 +126,8 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i,
 					test.Description, json1, json2, test.Query)
 			}
-		} else if test.Status != 0 && test.Status != status {
+		}
+		if test.Status != 0 && test.Status != status {
 			t.Errorf("\n%d. %v\nExpected status \n\t\"%v\", \ngot \n\t\"%v\"", i,
 				test.Description, test.Status, status)
 		}

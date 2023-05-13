@@ -663,7 +663,9 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	nmarker := len(valueList)
 	orderClause := orderClause(table, schema, "", parts.orderFields)
+
 	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
 	if joins != "" {
 		query += " " + joins
@@ -675,10 +677,15 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 		query += " ORDER BY " + orderClause
 	}
 	if parts.limit != "" {
-		query += " LIMIT " + parts.limit
+		nmarker += 1
+		query += " LIMIT $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.limit)
 	}
 	if parts.offset != "" {
-		query += " OFFSET " + parts.offset
+		nmarker += 1
+
+		query += " OFFSET $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.offset)
 	}
 	return query, valueList, nil
 }
@@ -699,6 +706,7 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	nmarker := len(valueList)
 	orderClause := orderClause(table, schema, "", parts.orderFields)
 	query := "SELECT "
 	if selectClause == "*" {
@@ -716,10 +724,15 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 		query += " ORDER BY " + orderClause
 	}
 	if parts.limit != "" {
-		query += " LIMIT " + parts.limit
+		nmarker += 1
+		query += " LIMIT $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.limit)
 	}
 	if parts.offset != "" {
-		query += " OFFSET " + parts.offset
+		nmarker += 1
+
+		query += " OFFSET $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.offset)
 	}
 	return query, valueList, nil
 }
