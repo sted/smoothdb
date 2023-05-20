@@ -14,7 +14,7 @@ import (
 type Session struct {
 	Id         string
 	Token      string
-	Role       string
+	Claims     *Claims
 	InUse      atomic.Bool
 	CreatedAt  time.Time
 	LastUsedAt time.Time
@@ -84,10 +84,10 @@ func (s *Server) initSessionManager() {
 	}()
 }
 
-func (s *SessionManager) newSession(role string) *Session {
+func (s *SessionManager) newSession(claims *Claims) *Session {
 	now := time.Now()
 	session := &Session{
-		Role:      role,
+		Claims:    claims,
 		CreatedAt: now,
 	}
 	s.mtx.Lock()

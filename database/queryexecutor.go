@@ -1,12 +1,15 @@
 package database
 
-import "context"
+import (
+	"context"
+)
 
 type QueryExecutor struct{}
 
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
 	options := gi.QueryOptions
+	info := gi.Db.info
 	rows, err := gi.Conn.Query(ctx, query, values...)
 	if err != nil {
 		return nil, err
@@ -15,9 +18,9 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, er
 	serializer := gi.QueryBuilder.preferredSerializer()
 	var data []byte
 	if options.Singular {
-		data, err = serializer.SerializeSingle(ctx, rows, false)
+		data, err = serializer.SerializeSingle(ctx, rows, false, info)
 	} else {
-		data, err = serializer.Serialize(ctx, rows)
+		data, err = serializer.Serialize(ctx, rows, info)
 	}
 	return data, err
 }
@@ -29,7 +32,7 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 		return nil, err
 	}
 	options := gi.QueryOptions
-	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, &gi.Db.DbInfo)
+	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +46,7 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record,
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, &gi.Db.DbInfo)
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -67,7 +70,7 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, &gi.Db.DbInfo)
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -91,7 +94,7 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, &gi.Db.DbInfo)
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -115,7 +118,7 @@ func (QueryExecutor) Execute(ctx context.Context, function string, record Record
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, &gi.Db.DbInfo)
+	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -126,9 +129,9 @@ func (QueryExecutor) Execute(ctx context.Context, function string, record Record
 	defer rows.Close()
 	var data []byte
 	if function != "getallprojects" && function != "ret_setof_integers" { //@@
-		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, true)
+		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, true, gi.Db.info)
 	} else {
-		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows)
+		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows, gi.Db.info)
 	}
 	return data, 0, err
 }

@@ -162,3 +162,52 @@ func (db *Database) DeleteColumn(ctx context.Context, table string, name string,
 	db.refreshTable(ctx, table)
 	return nil
 }
+
+type ColumnType struct {
+	Table       string `json:"table"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	DataType    string `json:"datatype"`
+	IsArray     bool   `json:"isarray"`
+	IsComposite bool   `json:"iscomposite"`
+}
+
+const columnTypesQuery = `
+	SELECT
+		c.table_schema || '.' || c.table_name tablename,
+		c.column_name name,
+		c.udt_name type,		
+		c.data_type datatype,
+		(t.typcategory = 'A') AS isarray,
+		(t.typcategory = 'C') AS iscomposite
+	FROM
+		information_schema.columns c
+		JOIN pg_type t ON c.udt_name = t.typname and c.udt_schema::regnamespace = t.typnamespace
+	WHERE
+		c.table_schema NOT IN ('pg_catalog', 'information_schema')
+	ORDER BY
+		table_schema, table_name, ordinal_position;
+`
+
+func (db *Database) GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
+	conn := GetConn(ctx)
+	types := []ColumnType{}
+	rows, err := conn.Query(ctx, columnTypesQuery)
+	if err != nil {
+		return types, err
+	}
+	defer rows.Close()
+
+	typ := ColumnType{}
+	for rows.Next() {
+		err := rows.Scan(&typ.Table, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
+		if err != nil {
+			return types, err
+		}
+		types = append(types, typ)
+	}
+	if rows.Err() != nil {
+		return types, err
+	}
+	return types, nil
+}

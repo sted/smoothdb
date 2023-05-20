@@ -25,7 +25,7 @@ func BenchmarkBase(b *testing.B) {
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
 	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, err := dbe.CreateDatabase(dbe_ctx, "bench")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestBase(t *testing.T) {
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
 	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, err := dbe.CreateDatabase(dbe_ctx, "test_base")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,13 +98,14 @@ func TestBase(t *testing.T) {
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
 		{Name: "date", Type: "timestamp"},
-		{Name: "bool", Type: "boolean"}}})
+		{Name: "bool", Type: "bool"},
+		{Name: "float4", Type: "float4"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
 		db.CreateRecords(ctx, "b1", []Record{
-			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true},
+			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true, "float4": 3.1},
 			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}}, nil)
 	}
 
@@ -137,7 +138,7 @@ func TestDDL(t *testing.T) {
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
 	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
-	db, err := dbe.CreateDatabase(dbe_ctx, "test_ddl")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl")
 	if err != nil {
 		t.Fatal(err)
 	}

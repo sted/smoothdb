@@ -59,8 +59,8 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 
 	if len(dbConfig.AllowedDatabases) != 0 {
 		DBE.allowedDatabases = map[string]struct{}{}
-		for _, db := range dbConfig.AllowedDatabases {
-			DBE.allowedDatabases[db] = struct{}{}
+		for _, dbname := range dbConfig.AllowedDatabases {
+			DBE.allowedDatabases[dbname] = struct{}{}
 		}
 	}
 	if len(dbConfig.SchemaSearchPath) != 0 {
@@ -128,16 +128,16 @@ const databaseQuery = `
 	SELECT d.datname, pg_catalog.pg_get_userbyid(d.datdba)
 	FROM pg_catalog.pg_database d`
 
-func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]Database, error) {
+func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 	conn := GetConn(ctx)
-	databases := []Database{}
+	databases := []DatabaseInfo{}
 	rows, err := conn.Query(ctx, databaseQuery+" WHERE d.datistemplate = false ORDER BY 1;")
 	if err != nil {
 		return databases, err
 	}
 	defer rows.Close()
 
-	database := Database{}
+	database := DatabaseInfo{}
 	for rows.Next() {
 		err := rows.Scan(&database.Name, &database.Owner)
 		if err != nil {
@@ -152,38 +152,22 @@ func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]Database, error) {
 	return databases, nil
 }
 
-func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*Database, error) {
+func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	if !dbe.IsDatabaseAllowed(name) {
 		return nil, fmt.Errorf("database %q not found or not allowed", name)
 	}
-	db_, loaded := dbe.activeDatabases.LoadOrStore(name, &Database{})
-	db := db_.(*Database)
-	if loaded {
-		if !db.activated.Load() {
-			for {
-				time.Sleep(10 * time.Millisecond)
-				if db.activated.Load() {
-					break
-				}
-			}
-		}
-	} else {
-		err := dbe.pool.QueryRow(ctx, databaseQuery+
-			" WHERE d.datname = $1", name).Scan(&db.Name, &db.Owner)
-		if err != nil {
-			dbe.activeDatabases.Delete(name)
-			return nil, fmt.Errorf("database %q not found or not allowed (%w)", name, err)
-		}
-		err = db.Activate(ctx)
-		if err != nil {
-			dbe.activeDatabases.Delete(name)
-			return nil, fmt.Errorf("cannot activate database %q (%w)", name, err)
-		}
+
+	db := &DatabaseInfo{}
+	err := dbe.pool.QueryRow(ctx, databaseQuery+
+		" WHERE d.datname = $1", name).Scan(&db.Name, &db.Owner)
+	if err != nil {
+		return nil, fmt.Errorf("database %q not found (%w)", name, err)
 	}
+
 	return db, nil
 }
 
-func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*Database, error) {
+func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "CREATE DATABASE "+name)
 	if err != nil && err.(*pgconn.PgError).Code != "42P04" {
@@ -205,4 +189,42 @@ func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP DATABASE "+name+" (FORCE)")
 	return err
+}
+
+func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (*Database, error) {
+
+	db_, loaded := dbe.activeDatabases.LoadOrStore(name, &Database{})
+	db := db_.(*Database)
+	if loaded {
+		if !db.activated.Load() {
+			for {
+				time.Sleep(10 * time.Millisecond)
+				if db.activated.Load() {
+					break
+				}
+			}
+		}
+	} else {
+		dbi, err := dbe.GetDatabase(ctx, name)
+		if err != nil {
+			dbe.activeDatabases.Delete(name)
+			return nil, err
+		}
+		db.Name = dbi.Name
+		db.Owner = dbi.Owner
+		err = db.Activate(ctx)
+		if err != nil {
+			dbe.activeDatabases.Delete(name)
+			return nil, fmt.Errorf("cannot activate database %q (%w)", name, err)
+		}
+	}
+	return db, nil
+}
+
+func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
+	_, err := dbe.CreateDatabase(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return dbe.GetActiveDatabase(ctx, name)
 }

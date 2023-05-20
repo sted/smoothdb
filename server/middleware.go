@@ -1,7 +1,7 @@
 package server
 
 import (
-	"errors"
+	"encoding/json"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
@@ -31,7 +31,7 @@ func before(ctx *gin.Context, server *Server) *Session {
 		// we have a previous session id
 
 		session = server.sessionManager.getSession(sessionId)
-		if session == nil {
+		if session == nil || session.Token != tokenString { // @@ should consider this
 			// session not found, try to reauthenticate
 
 			session, err = server.authenticate(tokenString)
@@ -42,39 +42,43 @@ func before(ctx *gin.Context, server *Server) *Session {
 
 			ctx.SetCookie("session_id", session.Id, 60, "", "", false, true)
 
-		} else if session.Token != tokenString {
-			ctx.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
-			return nil
 		}
+		// else if session.Token != tokenString {
+		// 	ctx.AbortWithError(http.StatusUnauthorized, errors.New("jwt mismatch"))
+		// 	return nil
+		// }
 	}
 
 	var db *database.Database
 	dbname := ctx.Param("dbname")
 	if dbname != "" {
-		db, err = database.DBE.GetDatabase(ctx, dbname)
+		db, err = database.DBE.GetActiveDatabase(ctx, dbname)
 		if err != nil {
 			ctx.AbortWithError(http.StatusNotFound, err)
 			return nil
 		}
 	}
-	var role string
+	var role, claims string
 	if session.DbConn == nil {
 		session.DbConn, err = database.AcquireConnection(ctx, db)
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err)
 			return nil
 		}
-		role = session.Role
+		role = session.Claims.Role
+		b, _ := json.Marshal(session.Claims)
+		claims = string(b)
 	} else {
-		// we set the empty string to avoid rebinding the role to the connection
+		// we set them as empty strings to avoid submitting the info to the database again
 		role = ""
+		claims = ""
 	}
-	err = database.PrepareConnection(ctx, session.DbConn, role)
+	err = database.PrepareConnection(ctx, session.DbConn, role, claims)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return nil
 	}
-	database.FillContext(ctx, db, session.DbConn.Conn(), session.Role)
+	database.FillContext(ctx, db, session.DbConn.Conn(), role)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return nil

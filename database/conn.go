@@ -32,7 +32,7 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 // PrepareConnection starts a transaction if the configuration requires it,
 // i.e. if TransactionEnd is not equal to 'none'.
 // If the role parameter is not empty, it binds the role to the connection.
-func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string) error {
+func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string) error {
 	// transaction
 	needTX := DBE.config.TransactionEnd != "none"
 	if needTX {
@@ -42,9 +42,15 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string) error
 		}
 	}
 
-	// set role only on the first acquire
+	// set role and other configurations only on the first acquire
 	if role != "" {
 		_, err := conn.Exec(ctx, "SET ROLE "+role)
+		if err != nil {
+			return err
+		}
+
+		set := "SELECT set_config($1, $2, false)"
+		_, err = conn.Exec(ctx, set, "request.jwt.claims", claims)
 		if err != nil {
 			return err
 		}
@@ -67,7 +73,7 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) er
 	if hasTX {
 		var end string
 
-		if ctx.(*gin.Context).Writer.Status() < 400 {
+		if ctx != context.Background() && ctx.(*gin.Context).Writer.Status() < 400 {
 
 			switch DBE.config.TransactionEnd {
 			case "commit":

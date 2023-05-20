@@ -420,6 +420,15 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 			p.next()
 			value2 = p.next()
 		}
+		if value1 != "" &&
+			value1 != "asc" && value1 != "desc" && value1 != "nullsfirst" && value1 != "nullslast" {
+			return nil, &ParseError{"asc, desc, nullsfirst or nullslast expected"}
+		}
+		if value2 != "" &&
+			value2 != "asc" && value2 != "desc" && value2 != "nullsfirst" && value2 != "nullslast" {
+			return nil, &ParseError{"asc, desc, nullsfirst or nullslast expected"}
+		}
+
 		descending := false
 		invertNulls := false
 		if value1 == "desc" || value2 == "desc" {
@@ -477,6 +486,14 @@ func (p *PostgRestParser) parseWhereCondition(mainTable, key, value string, root
 	return p.cond(mainTable, root)
 }
 
+func (p *PostgRestParser) completeIfFloat() string {
+	// @@ should test if the current token is a number
+	if p.lookAhead() == "." {
+		return p.next() + p.next()
+	}
+	return ""
+}
+
 func (p *PostgRestParser) value(node *WhereConditionNode) error {
 	token := p.next()
 	if token == "" {
@@ -496,6 +513,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 				return &ParseError{"')' or ']' expected"}
 			}
 			value += token
+			value += p.completeIfFloat()
 		}
 	} else if token == "{" { // Arrays or JSON Object
 		level = 1
@@ -511,6 +529,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 				token = "\"" + token + "\""
 			}
 			value += token
+			value += p.completeIfFloat()
 		}
 	} else {
 		lvalue := strings.ToLower(value)
@@ -521,6 +540,8 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			value = lvalue
 		} else if node.operator == "IS" {
 			return &ParseError{"IS operator requires null, true, false or unknown"}
+		} else {
+			value += p.completeIfFloat()
 		}
 	}
 	value = strings.ReplaceAll(value, "*", "%")

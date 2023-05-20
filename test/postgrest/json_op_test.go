@@ -248,35 +248,48 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Expected:    `[{"d":[4,5,6,7,8]}]`,
 			Status:      200,
 		},
-		//     it "obtains a composite type field" $ do
-		//       get "/fav_numbers?select=num->i"
-		//         `shouldRespondWith`
-		//           [json| [{"i":0.5},{"i":0.6}] |]
-		//       get "/fav_numbers?select=num->>i"
-		//         `shouldRespondWith`
-		//           [json| [{"i":"0.5"},{"i":"0.6"}] |]
-
-		//     it "obtains an array item" $ do
-		//       get "/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2"
-		//         `shouldRespondWith`
-		//           [json| [{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}] |]
-		// {
-		// 	Description: "finishing json path with single arrow -> obtains an array item",
-		// 	Query:       "/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}]`,
-		// 	Status:      200,
-		// },
-		//       get "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2"
-		//         `shouldRespondWith`
-		//           [json| [{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}] |]
-		// {
-		// 	Description: "finishing json path with single arrow -> obtains an array item",
-		// 	Query:       "/json_arr?select=data->c->0->d&id=eq.8",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"d":[4,5,6,7,8]}]`,
-		// 	Status:      200,
-		// },
+		// 	it "obtains a composite type field" $ do
+		// 	get "/fav_numbers?select=num->i"
+		// 		`shouldRespondWith`
+		// 		[json| [{"i":0.5},{"i":0.6}] |]
+		{
+			Description: "obtains a composite type field",
+			Query:       "/fav_numbers?select=num->i",
+			Expected:    `[{"i":0.5},{"i":0.6}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	get "/fav_numbers?select=num->>i"
+		// 		`shouldRespondWith`
+		// 		[json| [{"i":"0.5"},{"i":"0.6"}] |]
+		{
+			Description: "obtains a composite type field",
+			Query:       "/fav_numbers?select=num->>i",
+			Expected:    `[{"i":"0.5"},{"i":"0.6"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	it "obtains an array item" $ do
+		// 	get "/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2"
+		// 		`shouldRespondWith`
+		// 		[json| [{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}] |]
+		{
+			Description: "obtains an array item",
+			Query:       "/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2",
+			Expected:    `[{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	get "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2"
+		// 		`shouldRespondWith`
+		// 		[json| [{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}] |]
+		{
+			Description: "obtains an array item",
+			Query:       "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2",
+			Expected:    `[{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   context "filtering response" $ do
 		//     it "can filter by properties inside json column" $ do
 		//       get "/json_table?data->foo->>bar=eq.baz" `shouldRespondWith`
@@ -413,24 +426,59 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Expected:    `[{"id":3,"data":[{"d": "test"}]}]`,
 			Status:      200,
 		},
-		//     it "can filter composite type field" $
-		//       get "/fav_numbers?num->>i=gt.0.5"
-		//         `shouldRespondWith`
-		//           [json| [{"num":{"r":0.6,"i":0.6},"person":"B"}] |]
+		// 	it "can filter composite type field" $
+		// 	get "/fav_numbers?num->>i=gt.0.5"
+		// 		`shouldRespondWith`
+		// 		[json| [{"num":{"r":0.6,"i":0.6},"person":"B"}] |]
+		{
+			Description: "can filter composite type field",
+			Query:       "/fav_numbers?num->>i=gt.0.5",
+			Expected:    `[{"num":{"r":0.6,"i":0.6},"person":"B"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 
-		//     it "can filter array item" $ do
-		//       get "/arrays?select=id&numbers->0=eq.1"
-		//         `shouldRespondWith`
-		//           [json| [{"id":0}] |]
-		//       get "/arrays?select=id&numbers->>0=eq.11"
-		//         `shouldRespondWith`
-		//           [json| [{"id":1}] |]
-		//       get "/arrays?select=id&numbers_mult->1->1=eq.5"
-		//         `shouldRespondWith`
-		//           [json| [{"id":0}] |]
-		//       get "/arrays?select=id&numbers_mult->2->>2=eq.19"
-		//         `shouldRespondWith`
-		//           [json| [{"id":1}] |]
+		// 	it "can filter array item" $ do
+		// 	get "/arrays?select=id&numbers->0=eq.1"
+		// 		`shouldRespondWith`
+		// 		[json| [{"id":0}] |]
+		{
+			Description: "can filter array item",
+			Query:       "/arrays?select=id&numbers->0=eq.1",
+			Expected:    `[{"id":0}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	get "/arrays?select=id&numbers->>0=eq.11"
+		// 		`shouldRespondWith`
+		// 		[json| [{"id":1}] |]
+		{
+			Description: "can filter array item",
+			Query:       "/arrays?select=id&numbers->>0=eq.11",
+			Expected:    `[{"id":1}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	get "/arrays?select=id&numbers_mult->1->1=eq.5"
+		// 		`shouldRespondWith`
+		// 		[json| [{"id":0}] |]
+		{
+			Description: "can filter array item",
+			Query:       "/arrays?select=id&numbers_mult->1->1=eq.5",
+			Expected:    `[{"id":0}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// 	get "/arrays?select=id&numbers_mult->2->>2=eq.19"
+		// 		`shouldRespondWith`
+		// 		[json| [{"id":1}] |]
+		{
+			Description: "can filter array item",
+			Query:       "/arrays?select=id&numbers_mult->2->>2=eq.19",
+			Expected:    `[{"id":1}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 
 		//   context "ordering response" $ do
 		//     it "orders by a json column property asc" $
@@ -459,24 +507,64 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 		//       get "/fav_numbers?order=num->i.asc"
 		//         `shouldRespondWith`
 		//           [json| [{"num":{"r":0.5,"i":0.5},"person":"A"}, {"num":{"r":0.6,"i":0.6},"person":"B"}] |]
+		{
+			Description: "orders by composite type field",
+			Query:       "/fav_numbers?order=num->i.asc",
+			Headers:     nil,
+			Expected:    `[{"num":{"r":0.5,"i":0.5},"person":"A"}, {"num":{"r":0.6,"i":0.6},"person":"B"}]`,
+			Status:      200,
+		},
 		//       get "/fav_numbers?order=num->>i.desc"
 		//         `shouldRespondWith`
 		//           [json| [{"num":{"r":0.6,"i":0.6},"person":"B"}, {"num":{"r":0.5,"i":0.5},"person":"A"}] |]
-
+		{
+			Description: "orders by composite type field",
+			Query:       "/fav_numbers?order=num->>i.desc",
+			Headers:     nil,
+			Expected:    `[{"num":{"r":0.6,"i":0.6},"person":"B"}, {"num":{"r":0.5,"i":0.5},"person":"A"}]`,
+			Status:      200,
+		},
 		//     it "orders by array item" $ do
 		//       get "/arrays?select=id&order=numbers->0.desc"
 		//         `shouldRespondWith`
 		//           [json| [{"id":1},{"id":0}] |]
+		{
+			Description: "orders by array item",
+			Query:       "/arrays?select=id&order=numbers->0.desc",
+			Headers:     nil,
+			Expected:    `[{"id":1},{"id":0}]`,
+			Status:      200,
+		},
 		//       get "/arrays?select=id&order=numbers->1.asc"
 		//         `shouldRespondWith`
 		//           [json| [{"id":0},{"id":1}] |]
+		{
+			Description: "orders by array item",
+			Query:       "/arrays?select=id&order=numbers->1.asc",
+			Headers:     nil,
+			Expected:    `[{"id":0},{"id":1}]`,
+			Status:      200,
+		},
 		//       get "/arrays?select=id&order=numbers_mult->0->0.desc"
 		//         `shouldRespondWith`
 		//           [json| [{"id":1},{"id":0}] |]
+		{
+			Description: "orders by array item",
+			Query:       "/arrays?select=id&order=numbers_mult->0->0.desc",
+			Headers:     nil,
+			Expected:    `[{"id":1},{"id":0}]`,
+			Status:      200,
+		},
 		//       get "/arrays?select=id&order=numbers_mult->2->2.asc"
 		//         `shouldRespondWith`
 		//           [json| [{"id":0},{"id":1}] |]
-
+		{
+			Description: "orders by array item",
+			Query:       "/arrays?select=id&order=numbers_mult->2->2.asc",
+			Headers:     nil,
+			Expected:    `[{"id":0},{"id":1}]`,
+			Status:      200,
+		},
 		//   context "Patching record, in a nonempty table" $
 		//     it "can set a json column to escaped value" $ do
 		//       request methodPatch "/json_table?data->>id=eq.3"

@@ -20,12 +20,13 @@ func TestMain(m *testing.M) {
 		EnableAdminRoute: true,
 		Logging: logging.Config{
 			FileLogging: false,
-			StdOut:      false,
+			StdOut:      true,
 		},
 		Database: database.Config{
-			SchemaSearchPath: []string{"public", "test"},
+			SchemaSearchPath: []string{"test"},
 			TransactionEnd:   "rollback-allow-override",
 		},
+		JWTSecret: "reallyreallyreallyreallyverysafe",
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{

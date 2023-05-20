@@ -128,7 +128,7 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// json
 			"?select=a->b->c,b->>c->d->e,pippo:c->d->e::int&jsondata->a->b=eq.{e:{f:2,g:[1,2]}}",
-			`SELECT ("table"."a"->'b'->'c') AS "c", ("table"."b"->>'c'->'d'->'e') AS "e", ("table"."c"->'d'->'e')::int AS "pippo" FROM "table" WHERE "table"."jsondata"->'a'->'b' = $1`,
+			`SELECT ("table"."a"->'b'->'c') AS "c", ("table"."b"->>'c'->'d'->'e') AS "e", ("table"."c"->'d'->'e')::int AS "pippo" FROM "table" WHERE ("table"."jsondata"->'a'->'b') = $1`,
 			[]any{"{\"e\":{\"f\":2,\"g\":[1,2]}}"},
 		},
 	}

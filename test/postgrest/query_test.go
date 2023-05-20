@@ -615,12 +615,22 @@ func TestPostgREST_Query(t *testing.T) {
 		},
 		//   it "cannot access a computed column that is outside of the config schema" $
 		// 	get "/items?always_false=is.false" `shouldRespondWith` 400
-
+		{
+			Description: "cannot access a computed column that is outside of the config schema",
+			Query:       "/items?always_false=is.false",
+			Status:      400,
+		},
 		//   it "matches filtering nested items" $
 		// 	get "/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design*" `shouldRespondWith`
 		// 	  [json|[{"id":1,"projects":[{"id":1,"tasks":[{"id":1,"name":"Design w7"}]},{"id":2,"tasks":[{"id":3,"name":"Design w10"}]}]},{"id":2,"projects":[{"id":3,"tasks":[{"id":5,"name":"Design IOS"}]},{"id":4,"tasks":[{"id":7,"name":"Design OSX"}]}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "matches filtering nested items",
+			Query:       "/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design*",
+			Headers:     nil,
+			Expected:    `[{"id":1,"projects":[{"id":1,"tasks":[{"id":1,"name":"Design w7"}]},{"id":2,"tasks":[{"id":3,"name":"Design w10"}]}]},{"id":2,"projects":[{"id":3,"tasks":[{"id":5,"name":"Design IOS"}]},{"id":4,"tasks":[{"id":7,"name":"Design OSX"}]}]}]`,
+			Status:      200,
+		},
 		//   it "errs when the embedded resource doesn't exist and an embedded filter is applied to it" $ do
 		// 	get "/clients?select=*&non_existent_projects.name=like.*NonExistent*" `shouldRespondWith`
 		// 	  [json|
@@ -631,6 +641,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 400
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
+		// @@ returns 200 failing to recognize that non_existent_projects was not selected
+		// we need to check not inserted where nodes
+		// {
+		// 	Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
+		// 	Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
+		// 	Headers:     nil,
+		// 	Status:      400,
+		// },
 		// 	get "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*" `shouldRespondWith`
 		// 	  [json|
 		// 		{"hint":"Verify that 'amiga_projectsss' is included in the 'select' query parameter.",
@@ -1080,7 +1098,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  get "/items?id=eq.1&select=id,always_true" `shouldRespondWith`
 		// 		[json|[{"id":1,"always_true":true}]|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "computed column on table",
+			Query:       "/items?id=eq.1&select=id,always_true",
+			Headers:     nil,
+			Expected:    `[{"id":1,"always_true":true}]`,
+			Status:      200,
+		},
 		// 	it "computed column on rpc" $
 		// 	  get "/rpc/search?id=1&select=id,always_true" `shouldRespondWith`
 		// 		[json|[{"id":1,"always_true":true}]|]
@@ -1090,10 +1114,23 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  get "/items?id=eq.1&select=id,computed_overload" `shouldRespondWith`
 		// 		[json|[{"id":1,"computed_overload":true}]|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "overloaded computed columns on both tables",
+			Query:       "/items?id=eq.1&select=id,computed_overload",
+			Headers:     nil,
+			Expected:    `[{"id":1,"computed_overload":true}]`,
+			Status:      200,
+		},
 		// 	  get "/items2?id=eq.1&select=id,computed_overload" `shouldRespondWith`
 		// 		[json|[{"id":1,"computed_overload":true}]|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "overloaded computed columns on both tables",
+			Query:       "/items2?id=eq.1&select=id,computed_overload",
+			Headers:     nil,
+			Expected:    `[{"id":1,"computed_overload":true}]`,
+			Status:      200,
+		},
 		// 	it "overloaded computed column on rpc" $
 		// 	  get "/rpc/search?id=1&select=id,computed_overload" `shouldRespondWith`
 		// 		[json|[{"id":1,"computed_overload":true}]|]
@@ -1384,7 +1421,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	it "works when having a capitalized table name and camelCase fk column" $
 		// 	  get "/foos?select=*,bars(*)" `shouldRespondWith` 200
 
-		// @@ not implemented
+		// @@ not implemented (view)
 		// {
 		// 	Description: "works when having a capitalized table name and camelCase fk column",
 		// 	Query:       "/foos?select=*,bars(*)",
@@ -1923,44 +1960,90 @@ func TestPostgREST_Query(t *testing.T) {
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled",
+			Query:       "/items?order=id.ac",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.descc" `shouldRespondWith`
 		// 		[json|{"details":"unexpected 'c' expecting delimiter (.), \",\" or end of input","message":"\"failed to parse order (id.descc)\" (line 1, column 8)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled",
+			Query:       "/items?order=id.descc",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.nulsfist" `shouldRespondWith`
 		// 		[json|{"details":"unexpected \"n\" expecting \"asc\", \"desc\", \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.nulsfist)\" (line 1, column 4)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled",
+			Query:       "/items?order=id.nulsfist",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.nullslasttt" `shouldRespondWith`
 		// 		[json|{"details":"unexpected 't' expecting \",\" or end of input","message":"\"failed to parse order (id.nullslasttt)\" (line 1, column 13)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled",
+			Query:       "/items?order=id.nullslasttt",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.smth34" `shouldRespondWith`
 		// 		[json|{"details":"unexpected \"s\" expecting \"asc\", \"desc\", \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.smth34)\" (line 1, column 4)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
-
+		{
+			Description: "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled",
+			Query:       "/items?order=id.smth34",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	it "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc" $ do
 		// 	  get "/items?order=id.asc.nlsfst" `shouldRespondWith`
 		// 		[json|{"details":"unexpected \"l\" expecting \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.asc.nlsfst)\" (line 1, column 8)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc",
+			Query:       "/items?order=id.asc.nlsfst",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.asc.nullslasttt" `shouldRespondWith`
 		// 		[json|{"details":"unexpected 't' expecting \",\" or end of input","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
+		{
+			Description: "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc",
+			Query:       "/items?order=id.asc.nullslasttt",
+			Headers:     nil,
+			Status:      400,
+		},
 		// 	  get "/items?order=id.asc.smth34" `shouldRespondWith`
 		// 		[json|{"details":"unexpected \"s\" expecting \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.asc.smth34)\" (line 1, column 8)","code":"PGRST100","hint":null}|]
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
-
+		{
+			Description: "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc",
+			Query:       "/items?order=id.asc.smth34",
+			Headers:     nil,
+			Status:      400,
+		},
 		// describe "Accept headers" $ do
 		//   it "should respond an unknown accept type with 415" $
 		// 	request methodGet "/simple_pk"
@@ -2082,8 +2165,12 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "will select and filter a column that has spaces",
 			Query:       "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*",
 			Headers:     nil,
-			Expected:    `[{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9113-550 (P5-550)"},{"Just A Server Model":" IBM,9131-52A (P5-52A)"},{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
-			Status:      200,
+			Expected: `
+				[{"Just A Server Model":" IBM,9113-550 (P5-550)"},
+				{"Just A Server Model":" IBM,9113-550 (P5-550)"},
+				{"Just A Server Model":" IBM,9131-52A (P5-52A)"},
+				{"Just A Server Model":" IBM,9133-55A (P5-55A)"}]`,
+			Status: 200,
 		},
 		//   it "will select and filter a quoted column that has PostgREST reserved characters" $
 		// 	get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" `shouldRespondWith`

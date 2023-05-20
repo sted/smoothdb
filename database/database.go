@@ -6,17 +6,21 @@ import (
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Database struct {
+type DatabaseInfo struct {
 	Name  string `json:"name"`
 	Owner string `json:"owner"`
+}
 
+type Database struct {
+	DatabaseInfo
 	activated atomic.Bool
 	pool      *pgxpool.Pool
 	exec      *QueryExecutor
-	DbInfo
+	info      *SchemaInfo
 }
 
 // Activate initializes a database and starts its connection pool.
@@ -55,7 +59,33 @@ func (db *Database) Activate(ctx context.Context) error {
 			}
 			set += "', false)"
 			_, err = conn.Exec(ctx, "SELECT "+set)
+			if err != nil {
+				return err
+			}
 		}
+		for _, t := range db.info.cachedComposites {
+			var fields []pgtype.CompositeCodecField
+			for _, oid := range t.SubTypeIds {
+				dt, ok := conn.TypeMap().TypeForOID(oid)
+				if !ok {
+					//return fmt.Errorf("unknown composite type field OID: %v", oid)
+					continue
+				}
+				fields = append(fields, pgtype.CompositeCodecField{Name: dt.Name, Type: dt})
+			}
+			conn.TypeMap().RegisterType(&pgtype.Type{Name: t.Name, OID: t.Id, Codec: &pgtype.CompositeCodec{fields}})
+		}
+		return nil
+	}
+
+	conn, err := pgx.Connect(ctx, connString)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	c := WithDbConn(context.Background(), db, conn)
+	db.info, err = NewSchemaInfo(c, db)
+	if err != nil {
 		return err
 	}
 
@@ -65,22 +95,6 @@ func (db *Database) Activate(ctx context.Context) error {
 	}
 	db.pool = pool
 	db.exec = DBE.exec
-
-	conn, err := pgx.Connect(ctx, connString)
-	if err != nil {
-		return err
-	}
-	defer conn.Close(ctx)
-	c := WithDbConn(context.Background(), db, conn)
-	tables, err := db.GetTables(c)
-	if err != nil {
-		return err
-	}
-	constraints, err := db.GetConstraints(c, "")
-	if err != nil {
-		return err
-	}
-	db.initDbInfo(tables, constraints)
 
 	return nil
 }

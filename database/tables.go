@@ -177,7 +177,7 @@ func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table
 
 	// NAME
 	if table.NewName != nil {
-		alter = prefix + " RENAME TO \"" + *table.NewName + "\"qq"
+		alter = prefix + " RENAME TO \"" + *table.NewName + "\""
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return nil, err
@@ -231,6 +231,6 @@ func (db *Database) DeleteTable(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	delete(db.cachedTables, name)
+	//delete(db.info.cachedTables, name)
 	return nil
 }

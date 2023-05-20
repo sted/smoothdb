@@ -31,15 +31,16 @@
 * !inner joins
 * hints for rels
 * embeds with views
-* "singular" response
+√ "singular" response
 * Functions (rpc)
-* computed columns
+√ Composite / Array Columns
 * PUT for upsert
 * Triggers
 * Events
 * Reload config
 * Change log level at runtime
-* More types, in order: √ array, √ jsonb, interval, numeric
+* More types: Range, Multirange
+* More types: Numeric
 * Check returned headers, count, range, location, etc
 * return=headers-only
 * Caching
@@ -51,8 +52,8 @@
 * CSV
 * Encryption
 * TLS
-* telemetry
-* vault integration
+* open telemetry
+* vault integration ?
 
 Upper layer:
 * Migrations (Tern?)

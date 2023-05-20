@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +18,8 @@ const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
-	Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error)
-	SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool) ([]byte, error)
+	Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error)
+	SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
 }
 
 type DirectJSONSerializer struct {
@@ -134,6 +136,16 @@ func (d *DirectJSONSerializer) appendInt8(buf []byte) {
 	d.WriteString(strconv.FormatInt(int64(binary.BigEndian.Uint64(buf)), 10))
 }
 
+func (d *DirectJSONSerializer) appendFloat4(buf []byte) {
+	n := binary.BigEndian.Uint32(buf)
+	d.WriteString(strconv.FormatFloat(float64(math.Float32frombits(n)), 'g', -1, 32))
+}
+
+func (d *DirectJSONSerializer) appendFloat8(buf []byte) {
+	n := binary.BigEndian.Uint64(buf)
+	d.WriteString(strconv.FormatFloat(float64(math.Float64frombits(n)), 'g', -1, 64))
+}
+
 func (d *DirectJSONSerializer) appendBool(buf []byte) {
 	if buf[0] == 1 {
 		d.WriteString("true")
@@ -158,9 +170,9 @@ func (d *DirectJSONSerializer) appendJSON(buf []byte) {
 	d.Write(buf)
 }
 
-func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32) {
+func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32, info *SchemaInfo) {
 	rp := 0
-	numDims := int(binary.BigEndian.Uint32(buf[rp:]))
+	numDims := binary.BigEndian.Uint32(buf[rp:])
 	if numDims != 1 {
 
 	}
@@ -169,7 +181,7 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32) {
 	// if containsNull {
 	// }
 	rp += 4
-	elemOID := uint32(binary.BigEndian.Uint32(buf[rp:]))
+	elemOID := binary.BigEndian.Uint32(buf[rp:])
 	if elemOID != t {
 
 	}
@@ -190,9 +202,39 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32) {
 			elemBuf = buf[rp : rp+elemLen]
 			rp += elemLen
 		}
-		d.appendType(elemBuf, elemOID)
+		d.appendType(elemBuf, elemOID, info)
 	}
 	d.WriteByte(']')
+}
+
+func (d *DirectJSONSerializer) appendComposite(buf []byte, t *Type, info *SchemaInfo) {
+	rp := 0
+	// nfields := binary.BigEndian.Uint32(buf[rp:])
+	// if nfields := len(t.SubTypeIds) {
+
+	// }
+	rp += 4
+	d.WriteByte('{')
+	for i, tid := range t.SubTypeIds {
+		if i > 0 {
+			d.WriteByte(',')
+		}
+		oid := binary.BigEndian.Uint32(buf[rp:])
+		if oid != tid {
+
+		}
+		rp += 4
+		len := int(binary.BigEndian.Uint32(buf[rp:]))
+		rp += 4
+
+		d.WriteByte('"')
+		d.WriteString(t.SubTypeNames[i])
+		d.WriteString("\":")
+		d.appendType(buf[rp:], tid, info)
+		rp += len
+	}
+
+	d.WriteByte('}')
 }
 
 func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
@@ -201,10 +243,10 @@ func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
 	d.WriteByte('"')
 }
 
-func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
+func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo) error {
 	if buf == nil {
 		d.WriteString("null")
-		return
+		return nil
 	}
 	switch t {
 	case pgtype.Int2OID:
@@ -213,6 +255,10 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
 		d.appendInt4(buf)
 	case pgtype.Int8OID:
 		d.appendInt8(buf)
+	case pgtype.Float4OID:
+		d.appendFloat4(buf)
+	case pgtype.Float8OID:
+		d.appendFloat8(buf)
 	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID:
 		d.appendString(buf, true)
 	case pgtype.JSONOID, pgtype.JSONBOID:
@@ -221,17 +267,27 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32) {
 		d.appendBool(buf)
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		d.appendTime(buf)
-	case pgtype.Int4ArrayOID:
-		d.appendArray(buf, t)
 	case 3614: // text search
 		d.appendTextSearch(buf)
 	default:
-		// type not supported yet
-		d.WriteString("\"TypeNotSupported\"")
+		ct := info.GetTypeById(t)
+		if ct != nil {
+			switch {
+			case ct.IsComposite:
+				d.appendComposite(buf, ct, info)
+			case ct.IsArray:
+				d.appendArray(buf, t, info)
+			default:
+				return fmt.Errorf("cannot serialize, type not supported (%d)", t)
+			}
+		} else {
+			return fmt.Errorf("cannot serialize, type not supported (%d)", t)
+		}
 	}
+	return nil
 }
 
-func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 	first := true
 
@@ -254,7 +310,7 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 			d.WriteByte('"')
 			d.WriteString(fds[i].Name)
 			d.WriteString("\":")
-			d.appendType(buf, fd.DataTypeOID)
+			d.appendType(buf, fd.DataTypeOID, info)
 		}
 		d.WriteByte('}')
 	}
@@ -266,7 +322,7 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 	return []byte(d.String()), nil
 }
 
-func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool) ([]byte, error) {
+func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 	//multiField = len(fds) > 1
 	// verify that we have at least one row
@@ -290,7 +346,7 @@ func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 			d.WriteString(fds[i].Name)
 			d.WriteString("\":")
 		}
-		d.appendType(buf, fd.DataTypeOID)
+		d.appendType(buf, fd.DataTypeOID, info)
 	}
 	if !scalar {
 		d.WriteByte('}')
@@ -308,7 +364,7 @@ func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 
 type DatabaseJSONSerializer struct{}
 
-func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
@@ -317,7 +373,7 @@ func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]b
 	return values[0], nil
 }
 
-func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalr bool) ([]byte, error) {
+func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
@@ -328,6 +384,6 @@ func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 
 type ReflectSerializer struct{}
 
-func (ReflectSerializer) Serialize(ctx context.Context, rows pgx.Rows) ([]byte, error) {
+func (ReflectSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
 	return []byte{}, nil
 }

@@ -7,11 +7,11 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
-	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
-	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
-	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
-	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error)
+	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 
 	preferredSerializer() ResultSerializer
 }
@@ -34,11 +34,11 @@ func (e *BuildError) Error() string { return e.msg }
 
 // BuildStack represents the context when navigating the AST produced by the parser
 type BuildStack struct {
-	info            *DbInfo  // database information (tables, contraints, etc)
-	level           int      // depth
-	relPath         []string // sequence of nested tables
-	labelPath       []string // sequence of nested labels for the correspondent tables (can contain empty strings)
-	afterWithClause bool     //
+	info            *SchemaInfo // database information (tables, contraints, etc)
+	level           int         // depth
+	relPath         []string    // sequence of nested tables
+	labelPath       []string    // sequence of nested labels for the correspondent tables (can contain empty strings)
+	afterWithClause bool        //
 }
 
 // nextBuildStack creates a stack with a new level
@@ -48,10 +48,23 @@ func nextBuildStack(stack BuildStack, rel string, label string) BuildStack {
 	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, false}
 }
 
-func prepareField(table, schema string, sfield SelectField) string {
+func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
+	if info == nil {
+		return quotedField // to enable building queries without schema info
+	}
+	tablename := _s(table, schema)
+	typ := info.GetColumnType(tablename, field)
+	if typ != nil && (typ.IsArray || typ.IsComposite) {
+		quotedField = "to_jsonb(" + quotedField + ")"
+	}
+	return quotedField
+}
+
+func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) string {
 	var fieldPart string
 	fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 	if sfield.field.jsonPath != "" {
+		fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 		fieldPart += "(" + fieldname + sfield.field.jsonPath + ")"
 	} else {
 		fieldPart += fieldname
@@ -138,7 +151,7 @@ func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel st
 		if whereClause != "" {
 			sel += " AND " + whereClause
 		}
-		orderClause := orderClause(table, schema, label1, parts.orderFields)
+		orderClause := orderClause(table, schema, label1, parts.orderFields, stack.info)
 		if orderClause != "" {
 			sel += " ORDER BY " + orderClause
 		}
@@ -146,7 +159,7 @@ func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel st
 	return sel
 }
 
-func findRelationship(table, relation, schema string, info *DbInfo) (rel *Relationship, err error) {
+func findRelationship(table, relation, schema string, info *SchemaInfo) (rel *Relationship, err error) {
 	rels := info.GetRelationships(_s(table, schema))
 	frels := filterRelationships(rels, _s(relation, schema))
 	nrels := len(frels)
@@ -226,12 +239,12 @@ func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 			var fieldPart string
 			if !stack.afterWithClause {
 				if stack.level == 0 {
-					fieldPart = prepareField(table, schema, sfield)
+					fieldPart = prepareField(table, schema, sfield, stack.info)
 				} else {
-					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield)
+					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield, stack.info)
 				}
 			} else {
-				fieldPart = prepareField("_source", "", sfield)
+				fieldPart = prepareField("_source", "", sfield, stack.info)
 			}
 			selClause += fieldPart
 		}
@@ -262,7 +275,7 @@ func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 	return selClause, joins, keys, nil
 }
 
-func orderClause(table, schema, label string, orderFields []OrderField) string {
+func orderClause(table, schema, label string, orderFields []OrderField, info *SchemaInfo) string {
 	var order string
 	for _, o := range orderFields {
 		if o.field.tablename != table {
@@ -272,12 +285,17 @@ func orderClause(table, schema, label string, orderFields []OrderField) string {
 		if order != "" {
 			order += ", "
 		}
+		var fieldname string
 		if label == "" {
-			order += _stq(o.field.name, schema, table)
+			fieldname = _stq(o.field.name, schema, table)
 		} else {
-			order += label + "." + quote(o.field.name)
+			fieldname = label + "." + quote(o.field.name)
 		}
-		order += o.field.jsonPath
+		if o.field.jsonPath != "" {
+			fieldname = "(" + toJson(table, schema, o.field.name, fieldname, info) +
+				o.field.jsonPath + ")"
+		}
+		order += fieldname
 		if o.descending {
 			order += " DESC"
 		}
@@ -370,12 +388,17 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 		if node.not {
 			where += "NOT "
 		}
+		var fieldname string
 		if stack.level == 0 {
-			where += _stq(node.field.name, schema, table)
+			fieldname = _stq(node.field.name, schema, table)
 		} else {
-			where += quote(labelWithNumber(table, stack.level)) + "." + quote(node.field.name)
+			fieldname = quote(labelWithNumber(table, stack.level)) + "." + quote(node.field.name)
 		}
-		where += node.field.jsonPath
+		if node.field.jsonPath != "" {
+			fieldname = "(" + toJson(table, schema, node.field.name, fieldname, stack.info) +
+				node.field.jsonPath + ")"
+		}
+		where += fieldname
 		where += " " + node.operator + " "
 		if node.operator == "IN" {
 			where += "("
@@ -412,7 +435,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 }
 
 // returningClause
-func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret, sel string) {
+func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string) {
 	ret += " RETURNING "
 	if len(parts.selectFields) == 0 {
 		ret += "*"
@@ -427,7 +450,7 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 				if fields != "" {
 					fields += ", "
 				}
-				f = prepareField(table, schema, sfield)
+				f = prepareField(table, schema, sfield, info)
 				fields += f
 				fieldMap[f] = struct{}{}
 			}
@@ -454,7 +477,7 @@ func returningClause(table, schema string, parts *QueryParts, info *DbInfo) (ret
 }
 
 func onConflictClause(table, schema string, fields []string,
-	conflictFields []string, options *QueryOptions, info *DbInfo) string {
+	conflictFields []string, options *QueryOptions, info *SchemaInfo) string {
 
 	var cFields []string
 	hasConflictFields := len(conflictFields) > 0
@@ -462,8 +485,8 @@ func onConflictClause(table, schema string, fields []string,
 		// @@ should we check if these fields are UNIQUE fields?
 		cFields = conflictFields
 	} else {
-		pk, ok := info.GetPrimaryKey(_s(table, schema))
-		if !ok {
+		pk := info.GetPrimaryKey(_s(table, schema))
+		if pk == nil {
 			// no pk, we ignore the resolution header
 			return ""
 		}
@@ -494,7 +517,7 @@ func onConflictClause(table, schema string, fields []string,
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
 	var fields string
@@ -558,7 +581,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	update string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -596,7 +619,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	delete string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -616,7 +639,7 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 	return delete, valueList, nil
 }
 
-func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *DbInfo) (
+func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	exec string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -655,7 +678,7 @@ type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
@@ -664,7 +687,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	nmarker := len(valueList)
-	orderClause := orderClause(table, schema, "", parts.orderFields)
+	orderClause := orderClause(table, schema, "", parts.orderFields, info)
 
 	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
 	if joins != "" {
@@ -698,7 +721,7 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *DbInfo) (string, []any, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
@@ -707,7 +730,7 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	nmarker := len(valueList)
-	orderClause := orderClause(table, schema, "", parts.orderFields)
+	orderClause := orderClause(table, schema, "", parts.orderFields, info)
 	query := "SELECT "
 	if selectClause == "*" {
 		query += "json_agg(" + table + ")" + " FROM " + table

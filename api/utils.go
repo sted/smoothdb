@@ -86,7 +86,8 @@ func prepareServerError(c *gin.Context, err error) {
 			"42P07", // duplicate table
 			"23505": // unique constraint violation
 			status = http.StatusConflict
-		case "22P02":
+		case "22P02", // invalid_text_representation
+			"42703": // undefined_column
 			status = http.StatusBadRequest
 		default:
 			status = http.StatusInternalServerError

@@ -31,7 +31,6 @@ SELECT
     columns.cols,
     ns2.nspname||'.'||cls2.relname ftable,
     columns.fcols,
-    
     pg_get_constraintdef(c.oid, true) def
 FROM pg_constraint c
 JOIN LATERAL (

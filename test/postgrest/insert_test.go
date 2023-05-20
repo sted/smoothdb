@@ -358,7 +358,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			, matchHeaders = [ matchHeaderAbsent hContentType
 		// 							 , matchHeaderAbsent hLocation ]
 		// 			}
-
+		{
+			Description: "with bulk insert returns 201 but no location header",
+			Method:      "POST",
+			Query:       "/compound_pk",
+			Body:        `[ {"k1":21, "k2":"hello world"}, {"k1":22, "k2":"bye for now"}]`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      201,
+		},
 		// 	context "with invalid json payload" $
 		// 	  it "fails with 400 and error" $
 		// 		post "/simple_pk" "}{ x = 2"
@@ -749,7 +757,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		`shouldRespondWith`
 		// 		  [json|[{"owner":"jdoe","secret":"nyancat"}]|]
 		// 		  { matchStatus  = 201 }
-
+		{
+			Description: "set user_id when inserting rows",
+			Method:      "POST",
+			Query:       "/authors_only",
+			Body:        `{ "secret": "nyancat" }`,
+			Headers: test.Headers{"Prefer": {"return=representation"},
+				"Authorization": {"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.B-lReuGNDwAlU1GOC476MlO0vAt9JNoHIlxg2vwMaO0"}},
+			Expected: `[{"owner":"jdoe","secret":"nyancat"}]`,
+			Status:   201,
+		},
 		// 	  request methodPost "/authors_only"
 		// 		  -- jwt token for jroe
 		// 		  [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqcm9lIn0.2e7mx0U4uDcInlbJVOBGlrRufwqWLINDIEDC1vS0nw8", ("Prefer", "return=representation") ]
@@ -757,7 +774,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		`shouldRespondWith`
 		// 		  [json|[{"owner":"jroe","secret":"lolcat"}]|]
 		// 		  { matchStatus  = 201 }
-
+		{
+			Description: "set user_id when inserting rows",
+			Method:      "POST",
+			Query:       "/authors_only",
+			Body:        `{ "secret": "lolcat", "owner": "hacker" }`,
+			Headers: test.Headers{"Prefer": {"return=representation"},
+				"Authorization": {"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqcm9lIn0.2e7mx0U4uDcInlbJVOBGlrRufwqWLINDIEDC1vS0nw8"}},
+			Expected: `[{"owner":"jroe","secret":"lolcat"}]`,
+			Status:   201,
+		},
 		//   context "tables with self reference foreign keys" $ do
 		// 	it "embeds parent after insert" $
 		// 	  request methodPost "/web_content?select=id,name,parent_content:p_web_id(name)"
@@ -784,7 +810,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		{ matchStatus  = 201
 		// 		, matchHeaders = []
 		// 		}
-
+		{
+			Description: "table with limited privileges succeeds inserting if correct select is applied",
+			Method:      "POST",
+			Query:       "/limited_article_stars?select=article_id,user_id",
+			Body:        `{"article_id": 2, "user_id": 1}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"article_id":2,"user_id":1}]`,
+			Status:      201,
+		},
 		// 	it "fails inserting if more columns are selected" $
 		// 	  request methodPost "/limited_article_stars?select=article_id,user_id,created_at" [("Prefer", "return=representation")]
 		// 		[json| {"article_id": 2, "user_id": 2} |] `shouldRespondWith` (
@@ -796,7 +830,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		{ matchStatus  = 401
 		// 		, matchHeaders = []
 		// 		}
-
+		{
+			Description: "table with limited privileges fails inserting if more columns are selected",
+			Method:      "POST",
+			Query:       "/limited_article_stars?select=article_id,user_id,created_at",
+			Body:        `{"article_id": 2, "user_id": 2}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    ``,
+			Status:      401,
+		},
 		// 	it "fails inserting if select is not specified" $
 		// 	  request methodPost "/limited_article_stars" [("Prefer", "return=representation")]
 		// 		[json| {"article_id": 3, "user_id": 1} |] `shouldRespondWith` (
