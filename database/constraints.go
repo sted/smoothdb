@@ -35,8 +35,8 @@ SELECT
 FROM pg_constraint c
 JOIN LATERAL (
     SELECT
-    array_agg(cols.attname order by ord) cols,
-    coalesce(array_agg(fcols.attname order by ord) filter (where fcols.attname is not null), '{}') fcols
+    	array_agg(cols.attname order by ord) cols,
+    	coalesce(array_agg(fcols.attname order by ord) filter (where fcols.attname is not null), '{}') fcols
     FROM unnest(c.conkey, c.confkey) WITH ORDINALITY AS _(col, fcol, ord)
     JOIN pg_attribute cols ON cols.attrelid = c.conrelid AND cols.attnum = col
     LEFT JOIN pg_attribute fcols ON fcols.attrelid = c.confrelid AND fcols.attnum = fcol
@@ -74,7 +74,7 @@ func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Con
 		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
-		query += " WHERE ns1.nspname !~ '^pg_'"
+		query += " WHERE ns1.nspname NOT IN ('pg_catalog', 'information_schema')"
 	}
 	query += " ORDER BY cls1.relname"
 

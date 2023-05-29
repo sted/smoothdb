@@ -35,7 +35,7 @@ const privilegesRelationQuery = `
 	FROM pg_catalog.pg_class c 
 	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace 
 	WHERE c.relkind IN ('r','v','m','S','f','p') AND 
-		n.nspname !~ '^pg_'`
+		n.nspname NOT IN ('pg_catalog', 'information_schema')`
 
 //AND  pg_table_is_visible(c.oid)
 

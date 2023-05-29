@@ -51,7 +51,7 @@ const tablesQuery = `
 	FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
   	WHERE c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]) AND 
-		n.nspname !~ '^pg_'`
+		n.nspname NOT IN ('pg_catalog', 'information_schema')`
 
 func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)

@@ -45,7 +45,7 @@ func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Polic
 	policies := []Policy{}
 	query := policyQuery
 	schemaname, tablename := splitTableName(ftablename)
-	query += " WHERE c.relname = '" + tablename + "' AND c.relnamespace::regnamespace = '" + schemaname + "'::regnamespace"
+	query += " WHERE c.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
 
 	query += " ORDER BY tablename"
 	rows, err := conn.Query(ctx, query)
