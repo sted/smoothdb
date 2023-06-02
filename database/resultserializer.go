@@ -166,6 +166,61 @@ func (d *DirectJSONSerializer) appendTime(buf []byte) {
 	d.WriteByte('"')
 }
 
+func (d *DirectJSONSerializer) appendInterval(buf []byte) {
+	d.WriteByte('"')
+	microseconds := int64(binary.BigEndian.Uint64(buf))
+	days := int32(binary.BigEndian.Uint32(buf[8:]))
+	months := int32(binary.BigEndian.Uint32(buf[12:]))
+
+	years := months / 12
+	months %= 12
+	seconds := microseconds / 1000000
+	minutes := seconds / 60
+	seconds %= 60
+	hours := minutes / 60
+	minutes %= 60
+
+	var started bool
+	if years > 0 {
+		d.WriteString(strconv.FormatInt(int64(years), 10))
+		d.WriteString(" year")
+		if years > 1 {
+			d.WriteByte('s')
+		}
+		started = true
+	}
+	if months > 0 {
+		if started {
+			d.WriteByte(' ')
+		}
+		d.WriteString(strconv.FormatInt(int64(months), 10))
+		d.WriteString(" mon")
+		if months > 1 {
+			d.WriteByte('s')
+		}
+		started = true
+	}
+	if days > 0 {
+		if started {
+			d.WriteByte(' ')
+		}
+		d.WriteString(strconv.FormatInt(int64(days), 10))
+		d.WriteString(" day")
+		if days > 1 {
+			d.WriteByte('s')
+		}
+		started = true
+	}
+	if hours > 0 || minutes > 0 || seconds > 0 {
+		if started {
+			d.WriteByte(' ')
+		}
+		timeStr := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+		d.WriteString(timeStr)
+	}
+	d.WriteByte('"')
+}
+
 func (d *DirectJSONSerializer) appendJSON(buf []byte) {
 	d.Write(buf)
 }
@@ -321,6 +376,8 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 		d.appendBool(buf)
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		d.appendTime(buf)
+	case pgtype.IntervalOID:
+		d.appendInterval(buf)
 	case 3614: // text search
 		d.appendTextSearch(buf)
 	default:

@@ -11,7 +11,6 @@ func TestRecords(t *testing.T) {
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin/databases",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
-		//NoCookies:     true,
 	}
 
 	commands := []test.Test{
@@ -31,7 +30,8 @@ func TestRecords(t *testing.T) {
 					{"name": "int4", "type": "int4"},
 					{"name": "int8", "type": "int8"},
 					{"name": "float4", "type": "float4"},
-					{"name": "float8", "type": "float8"}
+					{"name": "float8", "type": "float8"},
+					{"name": "interval", "type": "interval"}
 				]}`,
 		},
 	}
@@ -49,7 +49,8 @@ func TestRecords(t *testing.T) {
 			Method:      "POST",
 			Query:       "/table_records",
 			Body: `[
-				{"name": "one", "int4": 1, "int8": 2, "float4": 1.2E3, "float8": 2.3}
+				{"name": "one", "int4": 1, "int8": 2, "float4": 1.2E3, "float8": 2.3, "interval": "P1Y2M6DT7M"},
+				{"name": "two", "int4": -1, "int8": -50000000, "float4": -1.2, "float8": -2.34554, "interval": "3 mons 05:06:07"}
 			]`,
 			Status: 201,
 		},
@@ -58,7 +59,8 @@ func TestRecords(t *testing.T) {
 			Method:      "GET",
 			Query:       "/table_records",
 			Expected: `[
-				{"name": "one", "int4": 1, "int8": 2, "float4": 1.2E3, "float8": 2.3}
+				{"name": "one", "int4": 1, "int8": 2, "float4": 1.2E3, "float8": 2.3, "interval": "1 year 2 mons 6 days 00:07:00"},
+				{"name": "two", "int4": -1, "int8": -50000000, "float4": -1.2, "float8": -2.34554, "interval": "3 mons 05:06:07"}
 			]`,
 			Status: 200,
 		},
