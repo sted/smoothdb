@@ -250,7 +250,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		db := database.GetDb(c)
 		name := c.Param("schema")
 
-		err := db.DeleteSchema(c, name)
+		err := db.DeleteSchema(c, name, true)
 		if err == nil {
 			c.Status(http.StatusNoContent)
 		} else {

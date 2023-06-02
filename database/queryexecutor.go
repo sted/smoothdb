@@ -20,7 +20,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, er
 	if options.Singular {
 		data, err = serializer.SerializeSingle(ctx, rows, false, info)
 	} else {
-		data, err = serializer.Serialize(ctx, rows, info)
+		data, err = serializer.Serialize(ctx, rows, false, info)
 	}
 	return data, err
 }
@@ -118,7 +118,8 @@ func (QueryExecutor) Execute(ctx context.Context, function string, record Record
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, gi.Db.info)
+	info := gi.Db.info
+	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -127,11 +128,19 @@ func (QueryExecutor) Execute(ctx context.Context, function string, record Record
 		return nil, 0, err
 	}
 	defer rows.Close()
+	var scalar bool
+	f := info.GetFunction(_s(function, options.Schema))
+	if f != nil {
+		rettype := info.GetTypeById(f.ReturnTypeId)
+		if rettype != nil {
+			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
+		}
+	}
 	var data []byte
-	if function != "getallprojects" && function != "ret_setof_integers" { //@@
-		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, true, gi.Db.info)
+	if f != nil && !f.ReturnIsSet {
+		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, scalar, info)
 	} else {
-		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows, gi.Db.info)
+		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows, scalar, info)
 	}
 	return data, 0, err
 }

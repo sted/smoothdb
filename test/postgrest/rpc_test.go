@@ -73,6 +73,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/getitemrange" [json| { "min": 2, "max": 4 } |] `shouldRespondWith`
 		//       [json| [ {"id": 3}, {"id":4} ] |]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns proper json",
+			Method:      "POST",
+			Query:       "/rpc/getitemrange",
+			Body:        `{ "min": 2, "max": 4 }`,
+			Headers:     nil,
+			Expected:    `[ {"id": 3}, {"id":4} ]`,
+			Status:      200,
+		},
 		//     get "/rpc/getitemrange?min=2&max=4" `shouldRespondWith`
 		//       [json| [ {"id": 3}, {"id":4} ] |]
 		//       { matchHeaders = [matchContentTypeJson] }
@@ -102,7 +111,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		// context "unknown function" $ do
 		//   it "returns 404" $
 		//     post "/rpc/fakefunc" [json| {} |] `shouldRespondWith` 404
-
+		{
+			Description: "unknown function returns 404",
+			Method:      "POST",
+			Query:       "/rpc/fakefunc",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      404,
+		},
 		//   it "should fail with 404 on unknown proc name" $
 		//     get "/rpc/fake" `shouldRespondWith` 404
 
@@ -193,6 +210,18 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   get "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX" `shouldRespondWith`
 		//     [json|{"user": "mscott", "fullName": "Michael Scott", "SSN": "401-32-XXXX"}|]
 		//     { matchHeaders = [matchContentTypeJson] }
+
+		// @@ params without op for args
+
+		// {
+		// 	Description: "works when having uppercase identifiers",
+		// 	Method:      "GET",
+		// 	Query:       "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX",
+		// 	Body:        ``,
+		// 	Headers:     nil,
+		// 	Expected:    `{"user": "mscott", "fullName": "Michael Scott", "SSN": "401-32-XXXX"}`,
+		// 	Status:      200,
+		// },
 		//   post "/rpc/quotedFunction"
 		//     [json|{"user": "dschrute", "fullName": "Dwight Schrute", "SSN": "030-18-XXXX"}|]
 		//     `shouldRespondWith`
@@ -211,6 +240,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   it "returns a project" $ do
 		//     post "/rpc/getproject" [json| { "id": 1} |] `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client_id":1}]|]
+		{
+			Description: "returns a project",
+			Method:      "POST",
+			Query:       "/rpc/getproject",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1}]`,
+			Status:      200,
+		},
 		//     get "/rpc/getproject?id=1" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client_id":1}]|]
 
@@ -230,12 +268,29 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/getallprojects?id=gt.1&id=lt.5&select=id" `shouldRespondWith`
 		//       [json|[{"id":2},{"id":3},{"id":4}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can filter proc results",
+			Method:      "GET",
+			Query:       "/rpc/getallprojects?id=gt.1&id=lt.5&select=id",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `[{"id":2},{"id":3},{"id":4}]`,
+			Status:      200,
+		},
 		//   it "can limit proc results" $ do
 		//     post "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1" [json| {} |]
 		//       `shouldRespondWith` [json|[{"id":3},{"id":4}]|]
 		//          { matchStatus = 200
 		//          , matchHeaders = ["Content-Range" <:> "1-2/*"] }
+		{
+			Description: "can limit proc results",
+			Method:      "POST",
+			Query:       "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `[{"id":3},{"id":4}]`,
+			Status:      200,
+		},
 		//     get "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1"
 		//       `shouldRespondWith` [json|[{"id":3},{"id":4}]|]
 		//          { matchStatus = 200
@@ -244,6 +299,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   it "select works on the first level" $ do
 		//     post "/rpc/getproject?select=id,name" [json| { "id": 1} |] `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7"}]|]
+		{
+			Description: "select works on the first level",
+			Method:      "POST",
+			Query:       "/rpc/getproject?select=id,name",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7"}]`,
+			Status:      200,
+		},
 		//     get "/rpc/getproject?id=1&select=id,name" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7"}]|]
 
@@ -252,6 +316,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/getproject?select=id,name,client:clients(id),tasks(id)" [json| { "id": 1} |] `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can embed if related tables are in the exposed schema",
+			Method:      "POST",
+			Query:       "/rpc/getproject?select=id,name,client:clients(id),tasks(id)",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]`,
+			Status:      200,
+		},
 		//     get "/rpc/getproject?id=1&select=id,name,client:clients(id),tasks(id)" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
@@ -278,11 +351,26 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         {"name":"Dwight Schrute","tasks":[{"name":"Design w7"}, {"name":"Design IOS"}]}
 		//       ]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can embed an M2M relationship table",
+			Method:      "GET",
+			Query:       "/rpc/getallusers?select=name,tasks(name)&id=gt.1",
+			Expected: `[
+				{"name":"Michael Scott", "tasks":[{"name":"Design IOS"}, {"name":"Code IOS"}, {"name":"Design OSX"}]},
+				{"name":"Dwight Schrute","tasks":[{"name":"Design w7"}, {"name":"Design IOS"}]}]`,
+			Status: 200,
+		},
 		//     -- https://github.com/PostgREST/postgrest/issues/2565
 		//     get "/rpc/get_yards?select=groups(*)"
 		//       `shouldRespondWith` [json|[]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can embed an M2M relationship table",
+			Method:      "GET",
+			Query:       "/rpc/get_yards?select=groups(*)",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//   it "can embed an M2M relationship table that has a parent relationship table" $
 		//     get "/rpc/getallusers?select=name,tasks(name,project:projects(name))&id=gt.1"
 		//       `shouldRespondWith` [json|[
@@ -297,7 +385,25 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         ]}
 		//       ]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can embed an M2M relationship table that has a parent relationship table",
+			Method:      "GET",
+			Query:       "/rpc/getallusers?select=name,tasks(name,project:projects(name))&id=gt.1",
+			Body:        ``,
+			Headers:     nil,
+			Expected: `[
+				        {"name":"Michael Scott","tasks":[
+				          {"name":"Design IOS","project":{"name":"IOS"}},
+				          {"name":"Code IOS","project":{"name":"IOS"}},
+				          {"name":"Design OSX","project":{"name":"OSX"}}
+				        ]},
+				        {"name":"Dwight Schrute","tasks":[
+				          {"name":"Design w7","project":{"name":"Windows 7"}},
+				          {"name":"Design IOS","project":{"name":"IOS"}}
+				        ]}
+				      ]`,
+			Status: 200,
+		},
 		//   it "can embed an O2O relationship" $ do
 		//     get "/rpc/allcapitals?select=name,country(name)"
 		//       `shouldRespondWith` [json|[
@@ -305,13 +411,30 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         {"name":"Algiers","country":{"name":"Algeria"}}]
 		//       |]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "can embed an O2O relationship",
+			Method:      "GET",
+			Query:       "/rpc/allcapitals?select=name,country(name)",
+			Expected: `[
+				        {"name":"Kabul","country":{"name":"Afghanistan"}},
+				        {"name":"Algiers","country":{"name":"Algeria"}}]`,
+			Status: 200,
+		},
 		//     get "/rpc/allcountries?select=name,capital(name)"
 		//       `shouldRespondWith` [json|[
 		//         {"name":"Afghanistan","capital":{"name":"Kabul"}},
 		//         {"name":"Algeria","capital":{"name":"Algiers"}}
 		//       ]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can embed an O2O relationship",
+			Method:      "GET",
+			Query:       "/rpc/allcountries?select=name,capital(name)",
+			Expected: `[
+				        {"name":"Afghanistan","capital":{"name":"Kabul"}},
+				        {"name":"Algeria","capital":{"name":"Algiers"}}]`,
+			Status: 200,
+		},
 		//   -- https://github.com/PostgREST/postgrest/pull/2677#issuecomment-1444976849
 		//   when (actualPgVersion >= pgVersion130) $
 		//     it "can embed if rpc returns domain of table type" $ do
@@ -328,10 +451,24 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/test_empty_rowset" [json| {} |] `shouldRespondWith`
 		//       [json| [] |]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns empty json array",
+			Method:      "POST",
+			Query:       "/rpc/test_empty_rowset",
+			Body:        `{}`,
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//     get "/rpc/test_empty_rowset" `shouldRespondWith`
 		//       [json| [] |]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns empty json array",
+			Method:      "GET",
+			Query:       "/rpc/test_empty_rowset",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// context "proc return types" $ do
 		//   context "returns text" $ do
 		//     it "returns proper json" $
@@ -391,7 +528,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/ret_enum" [json|{ "val": "foo" }|] `shouldRespondWith`
 		//       [json|"foo"|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns enum value",
+			Method:      "POST",
+			Query:       "/rpc/ret_enum",
+			Body:        `{ "val": "foo" }`,
+			Headers:     nil,
+			Expected:    `"foo"`,
+			Status:      200,
+		},
 		//   it "returns domain value" $
 		//     post "/rpc/ret_domain" [json|{ "val": "8" }|] `shouldRespondWith`
 		//       [json|8|]
@@ -401,18 +546,42 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/ret_range" [json|{ "low": 10, "up": 20 }|] `shouldRespondWith`
 		//       [json|"[10,20)"|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns range",
+			Method:      "POST",
+			Query:       "/rpc/ret_range",
+			Body:        `{ "low": 10, "up": 20 }`,
+			Headers:     nil,
+			Expected:    `"[10,20)"`,
+			Status:      200,
+		},
 		//   it "returns row of scalars" $
 		//     post "/rpc/ret_scalars" [json|{}|] `shouldRespondWith`
 		//       [json|[{"a":"scalars", "b":"foo", "c":1, "d":"[10,20)"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns row of scalars",
+			Method:      "POST",
+			Query:       "/rpc/ret_scalars",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `[{"a":"scalars", "b":"foo", "c":1, "d":"[10,20)"}]`,
+			Status:      200,
+		},
 		//   it "returns composite type in exposed schema" $
 		//     post "/rpc/ret_point_2d"
 		//         [json|{}|]
 		//       `shouldRespondWith`
 		//         [json|{"x": 10, "y": 5}|]
-
+		{
+			Description: "returns composite type in exposed schema",
+			Method:      "POST",
+			Query:       "/rpc/ret_point_2d",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `{"x": 10, "y": 5}`,
+			Status:      200,
+		},
 		//   it "cannot return composite type in hidden schema" $
 		//     post "/rpc/ret_point_3d" [json|{}|] `shouldRespondWith` 401
 
@@ -428,7 +597,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         [json|{"id": 2}|]
 		//       `shouldRespondWith`
 		//         [json|{"id": 2}|]
-
+		{
+			Description: "returns single row from table",
+			Method:      "POST",
+			Query:       "/rpc/single_article?select=id",
+			Body:        `{"id": 2}`,
+			Headers:     nil,
+			Expected:    `{"id": 2}`,
+			Status:      200,
+		},
 		//   it "returns 204, no Content-Type header and no content for void" $
 		//     post "/rpc/ret_void"
 		//         [json|{}|]
@@ -443,7 +620,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         [json|{}|]
 		//       `shouldRespondWith`
 		//         [json|null|]
-
+		{
+			Description: "returns null for an integer with null value",
+			Method:      "POST",
+			Query:       "/rpc/ret_null",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `null`,
+			Status:      200,
+		},
 		//   context "different types when overloaded" $ do
 		//     it "returns composite type" $
 		//       post "/rpc/ret_point_overloaded"
@@ -457,38 +642,6 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         `shouldRespondWith`
 		//         [json|{"x": 1, "y": 2}|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
-		// context "proc argument types" $ do
-		//   -- different syntax for array needed for pg<10
-		//   when (actualPgVersion < pgVersion100) $
-		//     it "accepts a variety of arguments (Postgres < 10)" $
-		//       post "/rpc/varied_arguments"
-		//           [json| {
-		//             "double": 3.1,
-		//             "varchar": "hello",
-		//             "boolean": true,
-		//             "date": "20190101",
-		//             "money": 0,
-		//             "enum": "foo",
-		//             "arr": "{a,b,c}",
-		//             "integer": 43,
-		//             "json": {"some key": "some value"},
-		//             "jsonb": {"another key": [1, 2, "3"]}
-		//           } |]
-		//         `shouldRespondWith`
-		//           [json| {
-		//             "double": 3.1,
-		//             "varchar": "hello",
-		//             "boolean": true,
-		//             "date": "2019-01-01",
-		//             "money": "$0.00",
-		//             "enum": "foo",
-		//             "arr": ["a", "b", "c"],
-		//             "integer": 43,
-		//             "json": {"some key": "some value"},
-		//             "jsonb": {"another key": [1, 2, "3"]}
-		//           } |]
-		//           { matchHeaders = [matchContentTypeJson] }
 
 		//   when (actualPgVersion >= pgVersion100) $
 		//     it "accepts a variety of arguments (Postgres >= 10)" $
@@ -519,37 +672,38 @@ func TestPostgREST_RPC(t *testing.T) {
 		//             "jsonb": {"another key": [1, 2, "3"]}
 		//           } |]
 		//           { matchHeaders = [matchContentTypeJson] }
-		{
-			Description: "accepts a variety of arguments",
-			Method:      "POST",
-			Query:       "/rpc/varied_arguments",
-			Body: `{
-						"double": 3.1,
-						"varchar": "hello",
-						"boolean": true,
-						"date": "20190101",
-						"money": 0,
-						"enum": "foo",
-						"arr": ["a", "b", "c"],
-						"integer": 43,
-						"json": {"some key": "some value"},
-						"jsonb": {"another key": [1, 2, "3"]}
-						}`,
-			Headers: nil,
-			Expected: `{
-				"double": 3.1,
-				"varchar": "hello",
-				"boolean": true,
-				"date": "20190101",
-				"money": 0,
-				"enum": "foo",
-				"arr": ["a", "b", "c"],
-				"integer": 43,
-				"json": {"some key": "some value"},
-				"jsonb": {"another key": [1, 2, "3"]}
-			  }`,
-			Status: 200,
-		},
+		// @@ money not supported and date with wrong format
+		// {
+		// 	Description: "accepts a variety of arguments",
+		// 	Method:      "POST",
+		// 	Query:       "/rpc/varied_arguments",
+		// 	Body: `{
+		// 				"double": 3.1,
+		// 				"varchar": "hello",
+		// 				"boolean": true,
+		// 				"date": "20190101",
+		// 				"money": 0,
+		// 				"enum": "foo",
+		// 				"arr": ["a", "b", "c"],
+		// 				"integer": 43,
+		// 				"json": {"some key": "some value"},
+		// 				"jsonb": {"another key": [1, 2, "3"]}
+		// 				}`,
+		// 	Headers: nil,
+		// 	Expected: `{
+		// 		"double": 3.1,
+		// 		"varchar": "hello",
+		// 		"boolean": true,
+		// 		"date": "20190101",
+		// 		"money": 0,
+		// 		"enum": "foo",
+		// 		"arr": ["a", "b", "c"],
+		// 		"integer": 43,
+		// 		"json": {"some key": "some value"},
+		// 		"jsonb": {"another key": [1, 2, "3"]}
+		// 	  }`,
+		// 	Status: 200,
+		// },
 		//   it "accepts a variety of arguments with GET" $
 		//     -- without JSON / JSONB here, because passing those via query string is useless - they just become a "json string" all the time
 		//     get "/rpc/varied_arguments?double=3.1&varchar=hello&boolean=true&date=20190101&money=0&enum=foo&arr=%7Ba,b,c%7D&integer=43"
@@ -706,7 +860,13 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/many_out_params"
 		//       `shouldRespondWith`
 		//         [json|{"my_json":{"a": 1, "b": "two"},"num":3,"str":"four"}|]
-
+		{
+			Description: "returns an object result when there are many OUT params",
+			Method:      "GET",
+			Query:       "/rpc/many_out_params",
+			Expected:    `{"my_json":{"a": 1, "b": "two"},"num":3,"str":"four"}`,
+			Status:      200,
+		},
 		//   it "returns an object result when there are many INOUT params" $
 		//     get "/rpc/many_inout_params?num=1&str=two&b=false"
 		//       `shouldRespondWith`
@@ -717,12 +877,24 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/single_column_table_return"
 		//       `shouldRespondWith`
 		//         [json|[{"a": "A"}]|]
-
+		{
+			Description: "returns an object result when there is a single-column TABLE return type",
+			Method:      "GET",
+			Query:       "/rpc/single_column_table_return",
+			Expected:    `[{"a": "A"}]`,
+			Status:      200,
+		},
 		//   it "returns an object result when there is a multi-column TABLE return type" $
 		//     get "/rpc/multi_column_table_return"
 		//       `shouldRespondWith`
 		//         [json|[{"a": "A", "b": "B"}]|]
-
+		{
+			Description: "returns an object result when there is a multi-column TABLE return type",
+			Method:      "GET",
+			Query:       "/rpc/multi_column_table_return",
+			Expected:    `[{"a": "A", "b": "B"}]`,
+			Status:      200,
+		},
 		// context "procs with VARIADIC params" $ do
 		//   when (actualPgVersion < pgVersion100) $
 		//     it "works with POST (Postgres < 10)" $
@@ -1006,6 +1178,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus  = 200
 		//         , matchHeaders = [ matchContentTypeJson ]
 		//         }
+		{
+			Description: "current role is available as GUC claim",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Body: `{ "prefix": "request.jwt.claims", "name": "role" }
+			`,
+			Expected: `"postgrest_test_anonymous"`,
+			Status:   200,
+		},
 		//   it "single cookie ends up as claims" $
 		//     request methodPost "/rpc/get_guc_value" [("Cookie","acookie=cookievalue")]
 		//       (

@@ -48,6 +48,8 @@ func nextBuildStack(stack BuildStack, rel string, label string) BuildStack {
 	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, false}
 }
 
+// toJson wraps a field into a to_jsonb operator if its type is array or composite,
+// otherwise it returns it unchanged
 func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
 	if info == nil {
 		return quotedField // to enable building queries without schema info
@@ -82,7 +84,7 @@ func labelWithNumber(table string, num int) string {
 	return table + "_" + strconv.Itoa(num)
 }
 
-func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel string) {
+func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel string) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
 	sel += " FROM " + quoteParts(rel.RelatedTable)
@@ -93,6 +95,8 @@ func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel st
 	if stack.level > 0 {
 		_, t2 := splitTableName(rel.Table)
 		label2 = quote(labelWithNumber(t2, stack.level))
+	} else if label != "" {
+		label2 = label
 	} else {
 		label2 = quoteParts(rel.Table)
 	}
@@ -160,14 +164,15 @@ func selectForJoinClause(join Join, parts *QueryParts, stack BuildStack) (sel st
 }
 
 func findRelationship(table, relation, schema string, info *SchemaInfo) (rel *Relationship, err error) {
-	rels := info.GetRelationships(_s(table, schema))
-	frels := filterRelationships(rels, _s(relation, schema))
+	tableWithSchema := _s(table, schema)
+	relationWithSchema := _s(relation, schema)
+	rels := info.GetRelationships(tableWithSchema)
+	frels := filterRelationships(rels, relationWithSchema)
 	nrels := len(frels)
 	switch {
 	case nrels == 0:
 		// search self rel by column (try to see if relation is an fk column)
-		rel = info.FindRelationshipByCol(_s(table, schema), relation)
-
+		rel = info.FindRelationshipByCol(tableWithSchema, relation)
 		if rel == nil {
 			return nil, &BuildError{"cannot find relationship for table " + table + " with table " + relation}
 		}
@@ -183,7 +188,10 @@ func findRelationship(table, relation, schema string, info *SchemaInfo) (rel *Re
 	return rel, nil
 }
 
-func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
+// selectClause prepares the select clause of a query and builds the discovered joins.
+// The label parameter is used to construct a query for the execution of functions.
+// It
+func selectClause(table, schema, label string, parts *QueryParts, stack BuildStack) (
 	selClause string, joins string, keys []string, err error) {
 
 	var parentTable string
@@ -230,7 +238,7 @@ func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 			}
 			_, relatedTable = splitTableName(frel.RelatedTable)
 			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree}
-			sc, j, _, err := selectClause(relatedTable, schema, internalParts, nextBuildStack(stack, relatedTable, sfield.label))
+			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, relatedTable, sfield.label))
 			if err != nil {
 				return "", "", nil, err
 			}
@@ -239,7 +247,11 @@ func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 			var fieldPart string
 			if !stack.afterWithClause {
 				if stack.level == 0 {
-					fieldPart = prepareField(table, schema, sfield, stack.info)
+					if label == "" {
+						fieldPart = prepareField(table, schema, sfield, stack.info)
+					} else {
+						fieldPart = prepareField(label, "", sfield, stack.info)
+					}
 				} else {
 					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield, stack.info)
 				}
@@ -255,7 +267,7 @@ func selectClause(table, schema string, parts *QueryParts, stack BuildStack) (
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			relName := join.name
-			selectForJoin := selectForJoinClause(join, parts, stack)
+			selectForJoin := selectForJoinClause(join, label, parts, stack)
 			joins += " LEFT JOIN LATERAL ("
 			switch join.rel.Type {
 			case M2O, O2O:
@@ -457,7 +469,7 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		}
 		ret += fields
 		if hasResourceEmbed {
-			sc, joins, keys, _ := selectClause(table, schema, parts, BuildStack{info: info, afterWithClause: true})
+			sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
 			// add foreign keys to Returning clause if they are not already present
 			for _, k := range keys {
 				if _, exists := fieldMap[k]; !exists {
@@ -660,16 +672,48 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 		pairs += " := $" + strconv.Itoa(i)
 		valueList = append(valueList, record[key])
 	}
+
 	schema := options.Schema
-	selectClause, _, _, err := selectClause("t", "", parts, stack)
+	// Extract the return type and discover if it is a table.
+	// In that case, we will use its name and schema to compose the select clause
+	var t, s string
+	f := info.GetFunction(_s(name, schema))
+	if f != nil {
+		rettype := info.GetTypeById(f.ReturnTypeId)
+		if rettype.IsTable {
+			t = rettype.Name
+			s = rettype.Schema
+		}
+	}
+	selectClause, joins, _, err := selectClause(t, s, "t", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
+	nmarker := len(valueList)
+	orderClause := orderClause("t", "", "", parts.orderFields, info)
+
 	exec = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
+	if joins != "" {
+		exec += " " + joins
+	}
 	if whereClause != "" {
 		exec += " WHERE " + whereClause
+	}
+	if orderClause != "" {
+		exec += " ORDER BY " + orderClause
+	}
+	if parts.limit != "" {
+		nmarker += 1
+		exec += " LIMIT $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.limit)
+	}
+	if parts.offset != "" {
+		nmarker += 1
+
+		exec += " OFFSET $" + strconv.Itoa(nmarker)
+		valueList = append(valueList, parts.offset)
 	}
 	return exec, valueList, nil
 }
@@ -681,7 +725,7 @@ type DirectQueryBuilder struct {
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
+	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
@@ -724,7 +768,7 @@ type QueryWithJSON struct {
 func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, parts, stack)
+	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}

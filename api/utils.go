@@ -79,7 +79,8 @@ func prepareServerError(c *gin.Context, err error) {
 		switch dberr.Code {
 		case "42501":
 			status = http.StatusUnauthorized
-		case "42P01":
+		case "42P01", // undefined_table
+			"42883": // undefined_function
 			status = http.StatusNotFound
 		case "42P04", // duplicate database
 			"42P06", // duplicate schema

@@ -32,7 +32,7 @@ type TableUpdate struct {
 func splitTableName(name string) (schemaname, tablename string) {
 	parts := strings.Split(name, ".")
 	if len(parts) == 1 {
-		schemaname = "public"
+		schemaname = "public" //@@ should depend on the config
 		tablename = parts[0]
 	} else {
 		schemaname = parts[0]

@@ -757,3 +757,5 @@ LEFT JOIN LATERAL (
         WHERE "test"."users_tasks"."user_id" = "test"."users"."id" AND "test"."users_tasks"."task_id" = "tasks_1"."id" 
     ) AS "_users_tasks_1"
 ) AS "users_tasks_1" ON TRUE"
+
+SELECT "t"."id", "t"."name",  row_to_json("projects_client_1".*) AS "client",  COALESCE("projects_tasks_1"."_projects_tasks_1", '[]') AS "tasks" FROM "test"."getproject"("id" := $1) t   LEFT JOIN LATERAL ( SELECT "clients_1"."id" FROM "test"."clients" AS "clients_1" WHERE "clients_1"."id" = t."client_id") AS "projects_client_1" ON TRUE LEFT JOIN LATERAL ( SELECT json_agg("_projects_tasks_1") AS "_projects_tasks_1" FROM ( SELECT "tasks_1"."id" FROM "test"."tasks" AS "tasks_1" WHERE "tasks_1"."project_id" = t."id" ) AS "_projects_tasks_1") AS "projects_tasks_1" ON TRUE

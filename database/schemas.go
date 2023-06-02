@@ -51,8 +51,12 @@ func (db *Database) CreateSchema(ctx context.Context, name string) (*Schema, err
 	return schema, nil
 }
 
-func (db *Database) DeleteSchema(ctx context.Context, name string) error {
+func (db *Database) DeleteSchema(ctx context.Context, name string, cascade bool) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP SCHEMA \""+name+"\"")
+	delete := "DROP SCHEMA \"" + name + "\""
+	if cascade {
+		delete += " CASCADE"
+	}
+	_, err := conn.Exec(ctx, delete)
 	return err
 }

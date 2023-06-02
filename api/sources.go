@@ -105,6 +105,18 @@ func InitSourcesRouter(root *gin.RouterGroup, handlers ...gin.HandlerFunc) *gin.
 
 	// FUNCTIONS
 
+	api.GET("/:dbname/rpc/:fname", func(c *gin.Context) {
+		db := database.GetDb(c)
+		fname := c.Param("fname")
+		json, _, err := db.ExecFunction(c, fname, nil, c.Request.URL.Query())
+		if err == nil {
+			c.Writer.Header().Set("Content-Type", "application/json")
+			c.String(http.StatusOK, string(json))
+		} else {
+			prepareError(c, err)
+		}
+	})
+
 	api.POST("/:dbname/rpc/:fname", func(c *gin.Context) {
 		db := database.GetDb(c)
 		fname := c.Param("fname")

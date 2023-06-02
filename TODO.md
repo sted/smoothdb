@@ -32,30 +32,31 @@
 * hints for rels
 * embeds with views
 √ "singular" response
-* Functions (rpc)
 √ Composite / Array Columns
+√ Range
+* Functions (rpc)
+* Computed tables
+* More types: Multirange, Domain, Numeric
+* Check returned headers, count, range, location, etc
+* CSV
 * PUT for upsert
 * Triggers
 * Events
 * Reload config
 * Change log level at runtime
-* More types: Range, Multirange
-* More types: Numeric
-* Check returned headers, count, range, location, etc
 * return=headers-only
 * Caching
 * Activity / stats
 * Indexes
-* Table inheritance
 * application/octet-stream as output
 * application/x-www-form-urlencoded as input
-* CSV
 * Encryption
 * TLS
 * open telemetry
-* vault integration ?
+* Table inheritance
 
 Upper layer:
 * Migrations (Tern?)
 * Versioning
 * Localizations
+* vault integration ?

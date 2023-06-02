@@ -36,6 +36,7 @@ type SchemaInfo struct {
 	cachedUniqueConstraints map[string][]Constraint
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
+	cachedFunctions         map[string]Function
 }
 
 func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
@@ -48,6 +49,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	dbi.cachedUniqueConstraints = map[string][]Constraint{}
 	dbi.cachedCheckConstraints = map[string][]Constraint{}
 	dbi.cachedRelationships = map[string][]Relationship{}
+	dbi.cachedFunctions = map[string]Function{}
 
 	// Types
 	types, err := db.GetTypes(ctx)
@@ -116,6 +118,17 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		if len(fkeys) == 2 && pk != nil && lo.Every(pk.Columns, fkeys[0].Columns) && lo.Every(pk.Columns, fkeys[1].Columns) {
 			dbi.addM2MRelationships(fkeys)
 		}
+	}
+	// Functions
+	functions, err := db.GetFunctions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range functions {
+		if f.HasUnnamed {
+			continue
+		}
+		dbi.cachedFunctions[f.Name] = f
 	}
 	return dbi, nil
 }
@@ -242,4 +255,12 @@ func filterRelationships(rels []Relationship, relatedTable string) []Relationshi
 	return lo.Filter(rels, func(rel Relationship, _ int) bool {
 		return rel.RelatedTable == relatedTable
 	})
+}
+
+func (si *SchemaInfo) GetFunction(name string) *Function {
+	f, ok := si.cachedFunctions[name]
+	if !ok {
+		return nil
+	}
+	return &f
 }

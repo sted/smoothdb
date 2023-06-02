@@ -57,6 +57,8 @@ func TestPostgREST_Spread(t *testing.T) {
 				     ]`,
 			Status: 200,
 		},
+		// @@ computed table
+
 		//   get "/videogames?select=name,...computed_designers(designer_name:name)" `shouldRespondWith`
 		//     [json|[
 		//       {"name":"Civilization I","designer_name":"Sid Meier"},
@@ -67,7 +69,18 @@ func TestPostgREST_Spread(t *testing.T) {
 		//     { matchStatus  = 200
 		//     , matchHeaders = [matchContentTypeJson]
 		//     }
-
+		// {
+		// 	Description: "works on a many-to-one relationship",
+		// 	Method:      "GET",
+		// 	Query:       "/videogames?select=name,...computed_designers(designer_name:name)",
+		// 	Expected: `[
+		// 		      {"name":"Civilization I","designer_name":"Sid Meier"},
+		// 		      {"name":"Civilization II","designer_name":"Sid Meier"},
+		// 		      {"name":"Final Fantasy I","designer_name":"Hironobu Sakaguchi"},
+		// 		      {"name":"Final Fantasy II","designer_name":"Hironobu Sakaguchi"}
+		// 		    ]`,
+		// 	Status: 200,
+		// },
 		// @@ computed table
 
 		// {
@@ -152,6 +165,9 @@ func TestPostgREST_Spread(t *testing.T) {
 			Expected:    ``,
 			Status:      400,
 		},
+
+		// @@ computed table
+
 		//   get "/designers?select=*,...computed_videogames(*)" `shouldRespondWith`
 		//     [json|{
 		//       "code":"PGRST119",

@@ -18,7 +18,7 @@ const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
-	Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error)
+	Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
 	SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
 }
 
@@ -197,14 +197,62 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32, info *SchemaInf
 		}
 		elemLen := int((binary.BigEndian.Uint32(buf[rp:])))
 		rp += 4
-		var elemBuf []byte
-		if elemLen >= 0 {
-			elemBuf = buf[rp : rp+elemLen]
-			rp += elemLen
-		}
-		d.appendType(elemBuf, elemOID, info)
+		d.appendType(buf[rp:], elemOID, info)
+		rp += elemLen
 	}
 	d.WriteByte(']')
+}
+
+// 0 = ()      = 00000
+// 1 = empty   = 00001
+// 2 = [)      = 00010
+// 4 = (]      = 00100
+// 6 = []      = 00110
+// 8 = )       = 01000
+// 12 = ]      = 01100
+// 16 = (      = 10000
+// 18 = [      = 10010
+// 24 =        = 11000
+
+const emptyMask = 1
+const lowerInclusiveMask = 2
+const upperInclusiveMask = 4
+const lowerUnboundedMask = 8
+const upperUnboundedMask = 16
+
+func (d *DirectJSONSerializer) appendRange(buf []byte, t uint32, info *SchemaInfo) {
+	d.WriteByte('"')
+	rp := 0
+	rangeType := buf[rp]
+	switch {
+	case rangeType&emptyMask > 0,
+		rangeType&lowerUnboundedMask > 0:
+		//
+	case rangeType&lowerInclusiveMask > 0:
+		d.WriteByte('[')
+	default:
+		d.WriteByte('(')
+	}
+	rp += 1
+	valuLen1 := binary.BigEndian.Uint32(buf[rp:])
+	rp += 4
+	d.appendType(buf[rp:], t, info)
+	rp += int(valuLen1)
+	d.WriteByte(',')
+	valuLen2 := binary.BigEndian.Uint32(buf[rp:])
+	rp += 4
+	d.appendType(buf[rp:], t, info)
+	rp += int(valuLen2)
+	switch {
+	case rangeType&emptyMask > 0,
+		rangeType&upperUnboundedMask > 0:
+		//
+	case rangeType&upperInclusiveMask > 0:
+		d.WriteByte(']')
+	default:
+		d.WriteByte(')')
+	}
+	d.WriteByte('"')
 }
 
 func (d *DirectJSONSerializer) appendComposite(buf []byte, t *Type, info *SchemaInfo) {
@@ -235,6 +283,12 @@ func (d *DirectJSONSerializer) appendComposite(buf []byte, t *Type, info *Schema
 	}
 
 	d.WriteByte('}')
+}
+
+func (d *DirectJSONSerializer) appendEnum(buf []byte) {
+	d.WriteByte('"')
+	d.Write(buf)
+	d.WriteByte('"')
 }
 
 func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
@@ -273,10 +327,14 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 		ct := info.GetTypeById(t)
 		if ct != nil {
 			switch {
+			case ct.IsArray:
+				d.appendArray(buf, ct.ArraySubType, info)
+			case ct.IsRange:
+				d.appendRange(buf, *ct.RangeSubType, info)
 			case ct.IsComposite:
 				d.appendComposite(buf, ct, info)
-			case ct.IsArray:
-				d.appendArray(buf, t, info)
+			case ct.IsEnum:
+				d.appendEnum(buf)
 			default:
 				return fmt.Errorf("cannot serialize, type not supported (%d)", t)
 			}
@@ -287,7 +345,7 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 	return nil
 }
 
-func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
+func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 	first := true
 
@@ -300,19 +358,25 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info
 		} else {
 			first = false
 		}
-		d.WriteByte('{')
+		if !scalar {
+			d.WriteByte('{')
+		}
 		for i := range fds {
 			buf := bufRaw[i]
 			fd := fds[i]
 			if i > 0 {
 				d.WriteByte(',')
 			}
-			d.WriteByte('"')
-			d.WriteString(fds[i].Name)
-			d.WriteString("\":")
+			if !scalar {
+				d.WriteByte('"')
+				d.WriteString(fds[i].Name)
+				d.WriteString("\":")
+			}
 			d.appendType(buf, fd.DataTypeOID, info)
 		}
-		d.WriteByte('}')
+		if !scalar {
+			d.WriteByte('}')
+		}
 	}
 	d.WriteByte(']')
 
@@ -324,7 +388,7 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info
 
 func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
-	//multiField = len(fds) > 1
+
 	// verify that we have at least one row
 	hasRow := rows.Next()
 	if !hasRow {
@@ -364,7 +428,7 @@ func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 
 type DatabaseJSONSerializer struct{}
 
-func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
+func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
@@ -384,6 +448,6 @@ func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 
 type ReflectSerializer struct{}
 
-func (ReflectSerializer) Serialize(ctx context.Context, rows pgx.Rows, info *SchemaInfo) ([]byte, error) {
+func (ReflectSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	return []byte{}, nil
 }
