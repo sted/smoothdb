@@ -34,6 +34,8 @@ type SerializeError struct {
 
 func (e *SerializeError) Error() string { return e.msg }
 
+// appendString is adapted from the standard library
+
 var hex = "0123456789abcdef"
 
 // safeSet holds the value true if the ASCII character with the given array
@@ -180,7 +182,7 @@ func (d *DirectJSONSerializer) appendInterval(buf []byte) {
 	hours := minutes / 60
 	minutes %= 60
 
-	var started bool
+	started := false
 	if years > 0 {
 		d.WriteString(strconv.FormatInt(int64(years), 10))
 		d.WriteString(" year")
@@ -282,7 +284,7 @@ func (d *DirectJSONSerializer) appendRange(buf []byte, t uint32, info *SchemaInf
 	switch {
 	case rangeType&emptyMask > 0,
 		rangeType&lowerUnboundedMask > 0:
-		//
+		// nothing to do
 	case rangeType&lowerInclusiveMask > 0:
 		d.WriteByte('[')
 	default:
@@ -301,7 +303,7 @@ func (d *DirectJSONSerializer) appendRange(buf []byte, t uint32, info *SchemaInf
 	switch {
 	case rangeType&emptyMask > 0,
 		rangeType&upperUnboundedMask > 0:
-		//
+		// nothing to do
 	case rangeType&upperInclusiveMask > 0:
 		d.WriteByte(']')
 	default:

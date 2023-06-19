@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -98,6 +100,8 @@ func prepareServerError(c *gin.Context, err error) {
 			"message": dberr.Message,
 			"hint":    dberr.Hint,
 		})
+	} else if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, nil)
 	} else {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 	}

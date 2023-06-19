@@ -18,14 +18,8 @@ type Server struct {
 	shutdownCompleted chan struct{}
 }
 
-type ConfigOptions struct {
-	ConfigFilePath string
-	SkipFlags      bool
-	SkipEnv        bool
-}
-
 func NewServer() (*Server, error) {
-	return NewServerWithConfig(nil, &ConfigOptions{ConfigFilePath: "./config.jsonc"})
+	return NewServerWithConfig(nil, nil)
 }
 
 func NewServerWithConfig(c *Config, opts *ConfigOptions) (*Server, error) {
@@ -53,7 +47,7 @@ func NewServerWithConfig(c *Config, opts *ConfigOptions) (*Server, error) {
 	s.initSessionManager()
 
 	// Initialize HTTP Server
-	s.initHTTPServer(dbe)
+	s.initHTTPServer()
 
 	return s, nil
 }

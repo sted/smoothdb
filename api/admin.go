@@ -8,9 +8,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...gin.HandlerFunc) *gin.RouterGroup {
+func TableListHandler(c *gin.Context) {
+	db := database.GetDb(c)
+	tables, err := db.GetTables(c)
+	if err == nil {
+		c.JSON(http.StatusOK, tables)
+	} else {
+		prepareServerError(c, err)
+	}
+}
 
-	admin := root.Group("/admin", handlers...)
+func TableCreateHandler(c *gin.Context) {
+	db := database.GetDb(c)
+	var tableInput database.Table
+	c.BindJSON(&tableInput)
+	table, err := db.CreateTable(c, &tableInput)
+	if err == nil {
+		c.JSON(http.StatusCreated, table)
+	} else {
+		prepareServerError(c, err)
+	}
+}
+
+func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL string, middleware ...gin.HandlerFunc) *gin.RouterGroup {
+
+	admin := root.Group(baseAdminURL, middleware...)
 
 	// ROLES
 
@@ -260,16 +282,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 
 	// TABLES
 
-	databases.GET("/:dbname/tables", func(c *gin.Context) {
-		db := database.GetDb(c)
-
-		tables, err := db.GetTables(c)
-		if err == nil {
-			c.JSON(http.StatusOK, tables)
-		} else {
-			prepareServerError(c, err)
-		}
-	})
+	databases.GET("/:dbname/tables", TableListHandler)
 
 	databases.GET("/:dbname/tables/:table", func(c *gin.Context) {
 		db := database.GetDb(c)
@@ -283,18 +296,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, handlers ...
 		}
 	})
 
-	databases.POST("/:dbname/tables/", func(c *gin.Context) {
-		db := database.GetDb(c)
-		var tableInput database.Table
-		c.BindJSON(&tableInput)
-
-		table, err := db.CreateTable(c, &tableInput)
-		if err == nil {
-			c.JSON(http.StatusCreated, table)
-		} else {
-			prepareServerError(c, err)
-		}
-	})
+	databases.POST("/:dbname/tables/", TableCreateHandler)
 
 	databases.PATCH("/:dbname/tables/:table", func(c *gin.Context) {
 		db := database.GetDb(c)

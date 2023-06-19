@@ -2,20 +2,20 @@ package config
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"os"
 	"reflect"
 
 	"github.com/tailscale/hujson"
 )
 
-func WriteConfig(config any) ([]byte, error) {
-	json := WriteObject(config)
+func writeConfig(config any) ([]byte, error) {
+	json := writeObject(config)
 	b := hujson.Value{Value: json}.Pack()
 	return hujson.Format(b)
 }
 
-func WriteObject(o any) *hujson.Object {
+func writeObject(o any) *hujson.Object {
 	var obj hujson.Object
 	v := reflect.Indirect(reflect.ValueOf(o))
 	fields := reflect.VisibleFields(v.Type())
@@ -26,9 +26,9 @@ func WriteObject(o any) *hujson.Object {
 		field := v.Field(i)
 		switch structfield.Type.Kind() {
 		case reflect.Struct:
-			value = WriteObject(field.Interface())
+			value = writeObject(field.Interface())
 		case reflect.Slice:
-			value = WriteArray(field.Interface())
+			value = writeArray(field.Interface())
 		case reflect.String:
 			value = hujson.String(field.String())
 		case reflect.Int, reflect.Int32, reflect.Int64:
@@ -51,7 +51,7 @@ func WriteObject(o any) *hujson.Object {
 	return &obj
 }
 
-func WriteArray(a any) *hujson.Array {
+func writeArray(a any) *hujson.Array {
 	var array hujson.Array
 	v := reflect.ValueOf(a)
 	var value hujson.ValueTrimmed
@@ -66,31 +66,36 @@ func WriteArray(a any) *hujson.Array {
 	return &array
 }
 
-// GetConfig loads the configuration
-func GetConfig(config any, configFile string) {
-
-	// Read config file
+// GetConfig reads the configuration file
+func GetConfig(config any, configFile string) error {
 	b, err := os.ReadFile(configFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("Error reading the configuration file (%s)", err)
-			return
+			return fmt.Errorf("error reading the configuration file (%w)", err)
 		}
 	} else {
 		b, err = hujson.Standardize(b)
 		if err != nil {
-			log.Printf("Invalid configuration file (%s)", err)
+			return fmt.Errorf("invalid configuration file (%w)", err)
 		} else {
 			err = json.Unmarshal(b, config)
 			if err != nil {
-				log.Printf("Invalid configuration file (%s)", err)
+				return fmt.Errorf("invalid configuration file (%w)", err)
 			}
 		}
 	}
-	// Update config file
-	b, _ = WriteConfig(config)
+	return nil
+}
+
+// SaveConfig saves the configuration file
+func SaveConfig(config any, configFile string) error {
+	b, err := writeConfig(config)
+	if err != nil {
+		return fmt.Errorf("error writing the configuration file (%w)", err)
+	}
 	err = os.WriteFile(configFile, b, 0777)
 	if err != nil {
-		log.Printf("Error writing the configuration file (%s)", err)
+		return fmt.Errorf("error writing the configuration file (%w)", err)
 	}
+	return nil
 }

@@ -6,4 +6,4 @@ __debug_bin
 smoothdb*.log
 scratch.sql
 
-dist/
+

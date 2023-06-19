@@ -170,24 +170,24 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "CREATE DATABASE "+name)
-	if err != nil && err.(*pgconn.PgError).Code != "42P04" {
+	if err != nil {
 		return nil, err
 	}
 	return dbe.GetDatabase(ctx, name)
 }
 
 func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
-	// db, err := dbe.GetDatabase(ctx, name)
-	// if err != nil {
-	// 	return err
-	// }
-	//db.pool.Close()
+	db, err := dbe.GetActiveDatabase(ctx, name)
+	if err != nil {
+		return err
+	}
+	db.pool.Close()
 	// SELECT pg_terminate_backend(pg_stat_activity.pid)
 	// FROM pg_stat_activity
 	// WHERE pg_stat_activity.datname = 'target_db'
 	// AND pid <> pg_backend_pid();
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP DATABASE "+name+" (FORCE)")
+	_, err = conn.Exec(ctx, "DROP DATABASE "+name+" (FORCE)")
 	return err
 }
 

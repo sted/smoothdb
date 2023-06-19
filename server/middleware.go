@@ -98,7 +98,7 @@ func after(ctx *gin.Context, server *Server, session *Session) {
 	server.sessionManager.leaveSession(session)
 }
 
-func (server *Server) middleware() gin.HandlerFunc {
+func (server *Server) Middleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 
 		session := before(ctx, server)

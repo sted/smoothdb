@@ -35,10 +35,12 @@
 √ Composite / Array Columns
 √ Range
 * Functions (rpc)
-* Computed tables
+* function params with GET
+* Computed relationships
 * More types: Multirange, Domain, Numeric
 * Check returned headers, count, range, location, etc
 * CSV
+* Support isdistinct,all,any
 * PUT for upsert
 * Triggers
 * Events
@@ -50,6 +52,8 @@
 * Indexes
 * application/octet-stream as output
 * application/x-www-form-urlencoded as input
+* HEAD, OPTIONS
+* CORS
 * Encryption
 * TLS
 * open telemetry

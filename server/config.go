@@ -13,12 +13,20 @@ import (
 	"github.com/imdario/mergo"
 )
 
+type ConfigOptions struct {
+	ConfigFilePath string
+	SkipFlags      bool
+	SkipEnv        bool
+}
+
 // Config holds the current configuration
 type Config struct {
 	Address          string          `comment:"Server address and port (default localhost:8082)"`
 	AllowAnon        bool            `comment:"Allow unauthenticated connections"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
 	EnableAdminRoute bool            `comment:"Enable administration of databases and tables"`
+	BaseAPIURL       string          `comment:"Base URL for the API (default: /api)"`
+	BaseAdminURL     string          `comment:"Base URL for the Admin API (default: /admin)"`
 	Database         database.Config `comment:"Database configuration"`
 	Logging          logging.Config  `comment:"Logging configuration"`
 }
@@ -29,6 +37,8 @@ func defaultConfig() *Config {
 		AllowAnon:        false,
 		JWTSecret:        "",
 		EnableAdminRoute: false,
+		BaseAPIURL:       "/api",
+		BaseAdminURL:     "/admin",
 		Database:         *database.DefaultConfig(),
 		Logging:          *logging.DefaultConfig(),
 	}

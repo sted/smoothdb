@@ -80,6 +80,7 @@ type QueryParts struct {
 
 type QueryOptions struct {
 	Schema               string
+	ContentType          string // json, csv
 	ReturnRepresentation bool
 	MergeDuplicates      bool
 	IgnoreDuplicates     bool
@@ -814,8 +815,14 @@ func (p PostgRestParser) getRequestOptions(req *Request) *QueryOptions {
 
 	accept := header.Get("Accept")
 	mediatype, _, _ := mime.ParseMediaType(accept)
-	if mediatype == "application/vnd.pgrst.object+json" {
+	switch mediatype {
+	case "application/vnd.pgrst.object+json":
+		options.ContentType = "json"
 		options.Singular = true
+	case "application/json":
+		options.ContentType = "json"
+	case "text/csv":
+		options.ContentType = "csv"
 	}
 
 	preferValues := header.Values("Prefer")
