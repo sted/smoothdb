@@ -68,6 +68,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, t := range tables {
+		//t.Columns, err = db.GetColumns(ctx, t.Name)
 		dbi.cachedTables[t.Name] = t
 	}
 	// Column types
@@ -135,6 +136,14 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 
 func (si *SchemaInfo) GetTypeById(id uint32) *Type {
 	t, ok := si.cachedTypes[id]
+	if !ok {
+		return nil
+	}
+	return &t
+}
+
+func (si *SchemaInfo) GetTable(table string) *Table {
+	t, ok := si.cachedTables[table]
 	if !ok {
 		return nil
 	}

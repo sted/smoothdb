@@ -296,7 +296,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL
 		}
 	})
 
-	databases.POST("/:dbname/tables/", TableCreateHandler)
+	databases.POST("/:dbname/tables", TableCreateHandler)
 
 	databases.PATCH("/:dbname/tables/:table", func(c *gin.Context) {
 		db := database.GetDb(c)

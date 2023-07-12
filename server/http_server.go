@@ -24,7 +24,7 @@ func (server *Server) initHTTPServer() {
 
 	router.Use(cors.New(config))
 	root := router.Group("/")
-	authMiddleware := server.Middleware()
+	authMiddleware := server.DatabaseMiddleware()
 	if server.Config.EnableAdminRoute {
 		api.InitAdminRouter(root, server.DBE, server.Config.BaseAdminURL, authMiddleware)
 	}

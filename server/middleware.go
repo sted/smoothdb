@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func before(ctx *gin.Context, server *Server) *Session {
+func AcquireSession(ctx *gin.Context, server *Server) *Session {
 	var session *Session
 	var err error
 
@@ -87,7 +87,7 @@ func before(ctx *gin.Context, server *Server) *Session {
 	return session
 }
 
-func after(ctx *gin.Context, server *Server, session *Session) {
+func ReleaseSession(ctx *gin.Context, server *Server, session *Session) {
 	if session == nil {
 		return
 	}
@@ -98,18 +98,18 @@ func after(ctx *gin.Context, server *Server, session *Session) {
 	server.sessionManager.leaveSession(session)
 }
 
-func (server *Server) Middleware() gin.HandlerFunc {
+func (server *Server) DatabaseAccess(ctx *gin.Context, f func(ctx *gin.Context)) {
+	session := AcquireSession(ctx, server)
+	defer ReleaseSession(ctx, server, session)
+	f(ctx)
+	// Error handling
+	if len(ctx.Errors) > 0 {
+		ctx.JSON(-1, gin.H{"error": ctx.Errors[0].Error()})
+	}
+}
+
+func (server *Server) DatabaseMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-
-		session := before(ctx, server)
-
-		ctx.Next()
-
-		after(ctx, server, session)
-
-		// Error handling
-		if len(ctx.Errors) > 0 {
-			ctx.JSON(-1, gin.H{"error": ctx.Errors[0].Error()})
-		}
+		server.DatabaseAccess(ctx, func(ctx *gin.Context) { ctx.Next() })
 	}
 }

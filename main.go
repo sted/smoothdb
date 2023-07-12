@@ -1,4 +1,4 @@
-package smoothdb
+package main
 
 import (
 	"context"

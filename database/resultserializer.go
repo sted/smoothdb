@@ -404,7 +404,7 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 	return nil
 }
 
-func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 	first := true
 
@@ -445,7 +445,7 @@ func (d DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scal
 	return []byte(d.String()), nil
 }
 
-func (d DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 
 	// verify that we have at least one row

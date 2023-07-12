@@ -6,8 +6,8 @@ require (
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
-	github.com/imdario/mergo v0.3.16
-	github.com/jackc/pgx/v5 v5.4.1
+	github.com/imdario/mergo v0.3.15
+	github.com/jackc/pgx/v5 v5.4.2
 	github.com/rs/zerolog v1.29.1
 	github.com/samber/lo v1.38.1
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
@@ -17,7 +17,7 @@ require (
 replace github.com/rs/zerolog v1.29.1 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
 
 require (
-	github.com/bytedance/sonic v1.9.1 // indirect
+	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
@@ -38,13 +38,13 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
-	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.10.0 // indirect
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
-	golang.org/x/net v0.11.0 // indirect
+	golang.org/x/arch v0.4.0 // indirect
+	golang.org/x/crypto v0.11.0 // indirect
+	golang.org/x/exp v0.0.0-20230711153332-06a737ee72cb // indirect
+	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
-	golang.org/x/text v0.10.0 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	golang.org/x/sys v0.10.0 // indirect
+	golang.org/x/text v0.11.0 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

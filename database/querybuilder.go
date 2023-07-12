@@ -758,7 +758,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 }
 
 func (DirectQueryBuilder) preferredSerializer() ResultSerializer {
-	return DirectJSONSerializer{}
+	return &DirectJSONSerializer{}
 }
 
 type QueryWithJSON struct {

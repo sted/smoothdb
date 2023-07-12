@@ -65,6 +65,8 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	}
 	if len(dbConfig.SchemaSearchPath) != 0 {
 		DBE.defaultSchema = dbConfig.SchemaSearchPath[0]
+	} else {
+		DBE.defaultSchema = "public"
 	}
 	// Auth role
 	if dbConfig.AuthRole != "" {
@@ -169,7 +171,7 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 
 func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "CREATE DATABASE "+name)
+	_, err := conn.Exec(ctx, "CREATE DATABASE \""+name+"\"")
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +184,14 @@ func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
 		return err
 	}
 	db.pool.Close()
+	dbe.activeDatabases.Delete(name)
+
 	// SELECT pg_terminate_backend(pg_stat_activity.pid)
 	// FROM pg_stat_activity
 	// WHERE pg_stat_activity.datname = 'target_db'
 	// AND pid <> pg_backend_pid();
 	conn := GetConn(ctx)
-	_, err = conn.Exec(ctx, "DROP DATABASE "+name+" (FORCE)")
+	_, err = conn.Exec(ctx, "DROP DATABASE \""+name+"\" (FORCE)")
 	return err
 }
 

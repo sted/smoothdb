@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"reflect"
 	"strings"
 )
 
@@ -18,7 +17,7 @@ type Table struct {
 	Inherits    string   `json:"inherit,omitempty"`
 	IfNotExists bool     `json:"ifnotexists,omitempty"`
 
-	Struct reflect.Type `json:"-"`
+	//Struct reflect.Type `json:"-"`
 }
 
 type TableUpdate struct {

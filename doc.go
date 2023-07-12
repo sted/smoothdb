@@ -1,1 +1,1 @@
-package smoothdb
+package main
