@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 		AllowAnon:        false,
 		EnableAdminRoute: true,
 		Logging: logging.Config{
-			Level:       "trace",
+			Level:       "info",
 			FileLogging: false,
 			StdOut:      true,
 		},

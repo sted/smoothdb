@@ -13,7 +13,7 @@ func TestRecords(t *testing.T) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	commands := []test.Test{
+	commands := []test.Command{
 		// drop table table_records
 		{
 			Method: "DELETE",
@@ -35,7 +35,7 @@ func TestRecords(t *testing.T) {
 				]}`,
 		},
 	}
-	test.Execute(t, cmdConfig, commands)
+	test.Prepare(cmdConfig, commands)
 
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/api/dbtest",

@@ -25,11 +25,11 @@ func BenchmarkBase(b *testing.B) {
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
 	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
 
+	dbe.DeleteDatabase(dbe_ctx, "bench")
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer dbe.DeleteDatabase(dbe_ctx, "bench")
 
 	ctx, conn, _ := WithDb(dbe_ctx, db)
 	defer ReleaseConnection(ctx, conn, true)

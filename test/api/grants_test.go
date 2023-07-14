@@ -14,7 +14,7 @@ func TestGrants(t *testing.T) {
 		//NoCookies:     true,
 	}
 
-	commands := []test.Test{
+	commands := []test.Command{
 		// drop table table_grants
 		{
 			Method: "DELETE",
@@ -32,7 +32,7 @@ func TestGrants(t *testing.T) {
 				]}`,
 		},
 	}
-	test.Execute(t, cmdConfig, commands)
+	test.Prepare(cmdConfig, commands)
 
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/api/dbtest",
