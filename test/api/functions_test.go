@@ -13,7 +13,7 @@ func TestFunctions(t *testing.T) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	commands := []test.Test{
+	commands := []test.Command{
 		// drop schema
 		{
 			Method: "DELETE",
@@ -28,7 +28,7 @@ func TestFunctions(t *testing.T) {
 			}`,
 		},
 	}
-	test.Execute(t, cmdConfig, commands)
+	test.Prepare(cmdConfig, commands)
 
 	testConfig := test.Config{
 		BaseUrl: "http://localhost:8082/api/dbtest",

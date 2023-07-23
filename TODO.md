@@ -47,7 +47,6 @@
 * Reload config
 * Change log level at runtime
 * return=headers-only
-* Caching
 * Activity / stats
 * Indexes
 * application/octet-stream as output

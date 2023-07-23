@@ -13,7 +13,7 @@ type Server struct {
 	Logger            *logging.Logger
 	DBE               *database.DbEngine
 	HTTP              *http.Server
-	sessionManager    SessionManager
+	sessionManager    *SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
 }
