@@ -17,18 +17,17 @@ func (server *Server) initHTTPServer() {
 	//router.Use(gin.Logger())
 	router.Use(HTTPLogger(server.Logger))
 
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
 	//config.AllowCredentials = true
-	config.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
+	corsConfig.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
 
-	router.Use(cors.New(config))
+	router.Use(cors.New(corsConfig))
 	root := router.Group("/")
-	authMiddleware := server.DatabaseMiddleware()
 	if server.Config.EnableAdminRoute {
-		api.InitAdminRouter(root, server.DBE, server.Config.BaseAdminURL, authMiddleware)
+		api.InitAdminRouter(root, server.DBE, server.Config.BaseAdminURL, server.DatabaseMiddleware)
 	}
-	api.InitSourcesRouter(root, server.Config.BaseAPIURL, authMiddleware)
+	api.InitSourcesRouter(root, server.Config.BaseAPIURL, server.DatabaseMiddleware(false))
 	api.InitTestRouter(root, server.DBE)
 
 	server.HTTP = &http.Server{

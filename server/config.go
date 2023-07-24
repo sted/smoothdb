@@ -25,6 +25,7 @@ type Config struct {
 	AllowAnon        bool            `comment:"Allow unauthenticated connections"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
 	EnableAdminRoute bool            `comment:"Enable administration of databases and tables"`
+	SessionMode      string          `comment:"Session mode: none, role (default: role)"`
 	BaseAPIURL       string          `comment:"Base URL for the API (default: /api)"`
 	BaseAdminURL     string          `comment:"Base URL for the Admin API (default: /admin)"`
 	Database         database.Config `comment:"Database configuration"`
@@ -37,6 +38,7 @@ func defaultConfig() *Config {
 		AllowAnon:        false,
 		JWTSecret:        "",
 		EnableAdminRoute: false,
+		SessionMode:      "role",
 		BaseAPIURL:       "/api",
 		BaseAdminURL:     "/admin",
 		Database:         *database.DefaultConfig(),
@@ -58,19 +60,11 @@ func getEnvironment(c *Config) {
 	}
 	enableAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
 	if enableAnon != "" {
-		if strings.ToLower(enableAnon) == "true" {
-			c.AllowAnon = true
-		} else {
-			c.AllowAnon = false
-		}
+		c.AllowAnon = strings.ToLower(enableAnon) == "true"
 	}
 	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {
-		if strings.ToLower(enableAdminRoute) == "true" {
-			c.EnableAdminRoute = true
-		} else {
-			c.EnableAdminRoute = false
-		}
+		c.EnableAdminRoute = strings.ToLower(enableAdminRoute) == "true"
 	}
 }
 

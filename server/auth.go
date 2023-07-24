@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -43,27 +42,10 @@ func GenerateToken(role, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func (server *Server) authenticate(tokenString string) (session *Session, err error) {
-	var claims *Claims
-
-	if tokenString != "" {
-		// normal authentication
-
-		claims, err = parseAuthHeader(tokenString, server.Config.JWTSecret)
-		if err != nil {
-			return nil, err
-		}
-		session = server.sessionManager.newSession(claims)
-		session.Token = tokenString
-	} else {
-		// no jwt, check if we allow anonymous connections
-
-		if server.Config.AllowAnon {
-			claims = &Claims{Role: server.Config.Database.AnonRole}
-			session = server.sessionManager.newSession(claims)
-		} else {
-			return nil, errors.New("anonymous users not permitted")
-		}
+func (server *Server) authenticate(tokenString string) (*Claims, error) {
+	claims, err := parseAuthHeader(tokenString, server.Config.JWTSecret)
+	if err != nil {
+		return nil, err
 	}
-	return
+	return claims, nil
 }

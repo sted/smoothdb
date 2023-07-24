@@ -30,9 +30,9 @@ func TableCreateHandler(c *gin.Context) {
 	}
 }
 
-func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL string, middleware ...gin.HandlerFunc) *gin.RouterGroup {
+func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL string, middleware func(bool) gin.HandlerFunc) *gin.RouterGroup {
 
-	admin := root.Group(baseAdminURL, middleware...)
+	admin := root.Group(baseAdminURL, middleware(false))
 
 	// ROLES
 
@@ -203,14 +203,15 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL
 
 	// DATABASES
 
-	databases := admin.Group("/databases")
+	// A group using DBE instead of a specific db
+	dbgroup := root.Group(baseAdminURL+"/databases", middleware(true))
 
-	databases.GET("/", func(c *gin.Context) {
+	dbgroup.GET("/", func(c *gin.Context) {
 		databases, _ := dbe.GetDatabases(c)
 		c.JSON(http.StatusOK, databases)
 	})
 
-	databases.GET("/:dbname", func(c *gin.Context) {
+	dbgroup.GET("/:dbname", func(c *gin.Context) {
 		name := c.Param("dbname")
 
 		db, err := dbe.GetDatabase(c, name)
@@ -221,7 +222,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL
 		}
 	})
 
-	databases.POST("/", func(c *gin.Context) {
+	dbgroup.POST("/", func(c *gin.Context) {
 		var databaseInput database.Database
 		c.BindJSON(&databaseInput)
 
@@ -233,7 +234,7 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL
 		}
 	})
 
-	databases.DELETE("/:dbname", func(c *gin.Context) {
+	dbgroup.DELETE("/:dbname", func(c *gin.Context) {
 		name := c.Param("dbname")
 
 		err := dbe.DeleteDatabase(c, name)
@@ -241,6 +242,8 @@ func InitAdminRouter(root *gin.RouterGroup, dbe *database.DbEngine, baseAdminURL
 			prepareServerError(c, err)
 		}
 	})
+
+	databases := admin.Group("/databases")
 
 	// SCHEMAS
 
