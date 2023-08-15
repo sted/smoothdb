@@ -3,32 +3,29 @@ package server
 import (
 	"net/http"
 	"time"
-
-	"github.com/smoothdb/smoothdb/api"
-
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 )
 
 func (server *Server) initHTTPServer() {
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	router.Use(gin.Recovery())
+	//gin.SetMode(gin.ReleaseMode)
+	//router := gin.New()
+	router := NewRouter(server)
+	//router.Use(gin.Recovery())
 	//router.Use(gin.Logger())
-	router.Use(HTTPLogger(server.Logger))
+	//router.Use(HTTPLogger(server.Logger))
 
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowAllOrigins = true
-	//config.AllowCredentials = true
-	corsConfig.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
+	// corsConfig := cors.DefaultConfig()
+	// corsConfig.AllowAllOrigins = true
+	// //config.AllowCredentials = true
+	// corsConfig.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
 
-	router.Use(cors.New(corsConfig))
-	root := router.Group("/")
+	// router.Use(cors.New(corsConfig))
+	// root := router.Group("/")
+
 	if server.Config.EnableAdminRoute {
-		api.InitAdminRouter(root, server.DBE, server.Config.BaseAdminURL, server.DatabaseMiddleware)
+		InitAdminRouter(router, server.DBE, server.Config.BaseAdminURL)
 	}
-	api.InitSourcesRouter(root, server.Config.BaseAPIURL, server.DatabaseMiddleware(false))
-	api.InitTestRouter(root, server.DBE)
+	InitSourcesRouter(router, server.Config.BaseAPIURL)
+	InitTestRouter(router, server.DBE)
 
 	server.HTTP = &http.Server{
 		Addr:         server.Config.Address,
@@ -38,6 +35,6 @@ func (server *Server) initHTTPServer() {
 	}
 }
 
-func (server *Server) GetRouter() *gin.Engine {
-	return server.HTTP.Handler.(*gin.Engine)
+func (server *Server) GetRouter() *http.Handler {
+	return &server.HTTP.Handler
 }

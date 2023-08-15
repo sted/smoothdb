@@ -2,13 +2,12 @@ package database
 
 import (
 	"context"
-
-	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
-var smoothTag = "gctx"
+type smoothCtxKey struct{}
 
-//type smoothCtxKey struct{}
+var smoothTag smoothCtxKey
 
 type SmoothContext struct {
 	Db            *Database
@@ -19,19 +18,16 @@ type SmoothContext struct {
 	QueryOptions  *QueryOptions
 }
 
-func FillContext(gctx *gin.Context, db *Database, conn *DbConn, role string) {
+func FillContext(r *http.Request, db *Database, conn *DbConn, role string) context.Context {
 
 	defaultParser := PostgRestParser{}
 	defaultBuilder := DirectQueryBuilder{}
-	queryOptions := defaultParser.getRequestOptions(gctx.Request)
+	queryOptions := defaultParser.getRequestOptions(r)
 	if queryOptions.Schema == "" {
 		queryOptions.Schema = DBE.defaultSchema
 	}
-
-	gctx.Set(smoothTag, &SmoothContext{
-		db, conn, role,
-		defaultParser, defaultBuilder, queryOptions,
-	})
+	return context.WithValue(r.Context(), smoothTag,
+		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
 }
 
 func GetSmoothContext(ctx context.Context) *SmoothContext {
@@ -60,11 +56,10 @@ func WithDbConn(parent context.Context, db *Database, conn *DbConn) context.Cont
 
 	defaultParser := PostgRestParser{}
 	queryOptions := &QueryOptions{}
-	defaltBuilder := DirectQueryBuilder{}
+	defaultBuilder := DirectQueryBuilder{}
 
-	//lint:ignore SA1029 should not use built-in type string as key for value; define your own type to avoid collisions
 	return context.WithValue(parent, smoothTag,
-		&SmoothContext{db, conn, "", defaultParser, defaltBuilder, queryOptions})
+		&SmoothContext{db, conn, "", defaultParser, defaultBuilder, queryOptions})
 }
 
 func GetConn(ctx context.Context) *DbConn {
