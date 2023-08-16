@@ -28,8 +28,8 @@ func InitTestRouter(router *Router, dbe *database.DbEngine) {
 	// Register pprof handlers
 	router.Handle("GET", "/debug/pprof/", Adapt(pprof.Index))
 	router.Handle("GET", "/debug/pprof/:cmd", Adapt(pprof.Index))
-	router.Handle("GET", "/debug/pprof/cmdline", Adapt(pprof.Cmdline))
-	router.Handle("GET", "/debug/pprof/profile", Adapt(pprof.Profile))
-	router.Handle("GET", "/debug/pprof/symbol", Adapt(pprof.Symbol))
-	router.Handle("GET", "/debug/pprof/trace", Adapt(pprof.Trace))
+	// router.Handle("GET", "/debug/pprof/cmdline", Adapt(pprof.Cmdline))
+	// router.Handle("GET", "/debug/pprof/profile", Adapt(pprof.Profile))
+	// router.Handle("GET", "/debug/pprof/symbol", Adapt(pprof.Symbol))
+	// router.Handle("GET", "/debug/pprof/trace", Adapt(pprof.Trace))
 }

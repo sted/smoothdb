@@ -63,7 +63,7 @@ func InitSourcesRouter(router *Router, baseAPIURL string) {
 		data, _, err := db.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
-				w.Status(http.StatusNoContent)
+				w.WriteHeader(http.StatusNoContent)
 			} else {
 				w.JSONString(http.StatusOK, data)
 			}
@@ -78,7 +78,7 @@ func InitSourcesRouter(router *Router, baseAPIURL string) {
 		data, _, err := db.DeleteRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			if data == nil {
-				w.Status(http.StatusNoContent)
+				w.WriteHeader(http.StatusNoContent)
 			} else {
 				w.JSONString(http.StatusOK, data)
 			}
@@ -89,38 +89,38 @@ func InitSourcesRouter(router *Router, baseAPIURL string) {
 
 	// FUNCTIONS
 
-	api.HandleWithDb("GET", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
-		db := database.GetDb(c)
-		fname := r.Param("fname")
-		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
-		if err == nil {
-			w.JSONString(http.StatusOK, json)
-		} else {
-			w.WriteError(err)
-		}
-	})
+	// 	api.HandleWithDb("GET", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
+	// 		db := database.GetDb(c)
+	// 		fname := r.Param("fname")
+	// 		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
+	// 		if err == nil {
+	// 			w.JSONString(http.StatusOK, json)
+	// 		} else {
+	// 			w.WriteError(err)
+	// 		}
+	// 	})
 
-	api.HandleWithDb("POST", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
-		db := database.GetDb(c)
-		fname := r.Param("fname")
-		records, err := r.ReadInputRecords()
-		if err != nil {
-			w.WriteBadRequest(err)
-			return
-		}
-		// [] as input cause no inserts
-		if noRecordsForInsert(c, w, records) {
-			return
-		}
-		data, count, err := db.ExecFunction(c, fname, records[0], r.URL.Query())
-		if err == nil {
-			if data == nil {
-				w.JSON(http.StatusOK, count)
-			} else {
-				w.JSONString(http.StatusOK, data)
-			}
-		} else {
-			w.WriteServerError(err)
-		}
-	})
+	//	api.HandleWithDb("POST", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
+	//		db := database.GetDb(c)
+	//		fname := r.Param("fname")
+	//		records, err := r.ReadInputRecords()
+	//		if err != nil {
+	//			w.WriteBadRequest(err)
+	//			return
+	//		}
+	//		// [] as input cause no inserts
+	//		if noRecordsForInsert(c, w, records) {
+	//			return
+	//		}
+	//		data, count, err := db.ExecFunction(c, fname, records[0], r.URL.Query())
+	//		if err == nil {
+	//			if data == nil {
+	//				w.JSON(http.StatusOK, count)
+	//			} else {
+	//				w.JSONString(http.StatusOK, data)
+	//			}
+	//		} else {
+	//			w.WriteServerError(err)
+	//		}
+	//	})
 }

@@ -140,7 +140,7 @@ func sessionWatcher(s *Server) {
 							session = session.Prev
 						}
 
-					} else if spentTime > 1000*time.Millisecond && session.DbConn != nil {
+					} else if spentTime > 1*time.Second && session.DbConn != nil {
 
 						// Release and detach the database connection from the session
 						// (Acquire and attach are done in the auth middleware)

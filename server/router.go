@@ -9,6 +9,7 @@ import (
 
 type Params = httprouter.Params
 type Handler func(context.Context, ResponseWriter, *Request)
+type Middleware func(Handler) Handler
 
 type Router struct {
 	*httprouter.Router

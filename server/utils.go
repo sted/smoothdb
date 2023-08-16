@@ -31,9 +31,11 @@ func bodyAllowedForStatus(status int) bool {
 type ResponseWriter interface {
 	http.ResponseWriter
 
+	Status() int
+	Err() error
+
 	JSON(code int, obj any) error
 	JSONString(code int, json []byte) error
-	Status(int)
 	WriteError(error)
 	WriteBadRequest(error)
 	WriteServerError(error)
@@ -41,11 +43,22 @@ type ResponseWriter interface {
 
 type responseWriter struct {
 	http.ResponseWriter
+	status int
+	err    error
+}
+
+func (w *responseWriter) Status() int {
+	return w.status
+}
+
+func (w *responseWriter) Err() error {
+	return w.err
 }
 
 // Status sets the HTTP response code.
-func (w *responseWriter) Status(code int) {
-	w.WriteHeader(code)
+func (w *responseWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
 }
 
 func (w *responseWriter) writeJSONContentType() {
@@ -66,7 +79,7 @@ func (w *responseWriter) writeJSON(obj any) error {
 
 func (w *responseWriter) JSON(code int, obj any) error {
 	w.writeJSONContentType()
-	w.Status(code)
+	w.WriteHeader(code)
 	if !bodyAllowedForStatus(code) {
 		return nil
 	}
@@ -75,7 +88,7 @@ func (w *responseWriter) JSON(code int, obj any) error {
 
 func (w *responseWriter) JSONString(code int, json []byte) error {
 	w.writeJSONContentType()
-	w.Status(code)
+	w.WriteHeader(code)
 	if !bodyAllowedForStatus(code) {
 		return nil
 	}
@@ -89,7 +102,7 @@ func noRecordsForInsert(ctx context.Context, w ResponseWriter, records []databas
 		if gi.QueryOptions.ReturnRepresentation {
 			w.JSONString(http.StatusCreated, []byte("[]"))
 		} else {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		}
 		return true
 	}
@@ -102,7 +115,7 @@ func noRecordsForUpdate(ctx context.Context, w ResponseWriter, records []databas
 		if gi.QueryOptions.ReturnRepresentation {
 			w.JSONString(http.StatusOK, []byte("[]"))
 		} else {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		}
 		return true
 	}
@@ -114,17 +127,19 @@ func (w *responseWriter) WriteError(err error) {
 	case *database.ParseError, *database.BuildError:
 		w.WriteBadRequest(err)
 	case *database.SerializeError:
-		w.Status(http.StatusNotAcceptable)
+		w.WriteHeader(http.StatusNotAcceptable)
 	default:
 		w.WriteServerError(err)
 	}
 }
 
 func (w *responseWriter) WriteBadRequest(err error) {
-	w.JSON(http.StatusBadRequest, Data{"description": err.Error()})
+	w.err = err
+	w.JSON(http.StatusBadRequest, Data{"error": err.Error()})
 }
 
 func (w *responseWriter) WriteServerError(err error) {
+	w.err = err
 	if _, ok := err.(*pgconn.PgError); ok {
 		dberr := err.(*pgconn.PgError)
 		var status int
@@ -153,7 +168,7 @@ func (w *responseWriter) WriteServerError(err error) {
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		w.JSON(http.StatusNotFound, nil)
 	} else {
-		w.JSON(http.StatusInternalServerError, Data{"message": err.Error()})
+		w.JSON(http.StatusInternalServerError, Data{"error": err.Error()})
 	}
 }
 

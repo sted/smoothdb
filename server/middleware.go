@@ -18,7 +18,7 @@ func AcquireSession(w ResponseWriter, r *Request, server *Server, useDBE bool) (
 	if tokenString != "" {
 		claims, err = server.authenticate(tokenString)
 		if err != nil {
-			w.Status(http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
 			return nil, nil, err
 		}
 	} else {
@@ -39,7 +39,7 @@ func AcquireSession(w ResponseWriter, r *Request, server *Server, useDBE bool) (
 		if dbname != "" && !useDBE {
 			db, err = database.DBE.GetActiveDatabase(r.Context(), dbname)
 			if err != nil {
-				w.Status(http.StatusNotFound)
+				w.WriteHeader(http.StatusNotFound)
 				return nil, nil, err
 			}
 			session.Db = db
@@ -50,7 +50,7 @@ func AcquireSession(w ResponseWriter, r *Request, server *Server, useDBE bool) (
 	if session.DbConn == nil {
 		dbconn, err = database.AcquireConnection(r.Context(), db)
 		if err != nil {
-			w.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 			return nil, nil, err
 		}
 		session.DbConn = dbconn
@@ -63,12 +63,12 @@ func AcquireSession(w ResponseWriter, r *Request, server *Server, useDBE bool) (
 	}
 	err = database.PrepareConnection(r.Context(), dbconn, claims.Role, claimsString, newAcquire)
 	if err != nil {
-		w.Status(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		return nil, nil, err
 	}
 	ctx := database.FillContext(r.Request, db, dbconn.Conn(), claims.Role)
 	if err != nil {
-		w.Status(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		return nil, nil, err
 	}
 	return ctx, session, nil

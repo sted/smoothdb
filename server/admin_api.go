@@ -69,7 +69,7 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		err := dbe.DeleteRole(c, name)
 		if err == nil {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		} else {
 			w.WriteServerError(err)
 		}
@@ -109,7 +109,7 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 		name := r.Param("username")
 		err := dbe.DeleteUser(c, name)
 		if err == nil {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		} else {
 			w.WriteServerError(err)
 		}
@@ -276,7 +276,7 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		err := db.DeleteSchema(c, name, true)
 		if err == nil {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		} else {
 			w.WriteServerError(err)
 		}
@@ -320,7 +320,7 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		err := db.DeleteTable(c, name)
 		if err == nil {
-			w.Status(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		} else {
 			w.WriteServerError(err)
 		}
