@@ -18,15 +18,14 @@ type SmoothContext struct {
 	QueryOptions  *QueryOptions
 }
 
-func FillContext(r *http.Request, db *Database, conn *DbConn, role string) context.Context {
-
+func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbConn, role string) context.Context {
 	defaultParser := PostgRestParser{}
 	defaultBuilder := DirectQueryBuilder{}
 	queryOptions := defaultParser.getRequestOptions(r)
 	if queryOptions.Schema == "" {
 		queryOptions.Schema = DBE.defaultSchema
 	}
-	return context.WithValue(r.Context(), smoothTag,
+	return context.WithValue(ctx, smoothTag,
 		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
 }
 

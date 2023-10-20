@@ -12,7 +12,7 @@ import (
 func BenchmarkSerializer(b *testing.B) {
 
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
-	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
+	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
@@ -21,7 +21,7 @@ func BenchmarkSerializer(b *testing.B) {
 	}
 
 	ctx, conn, _ := WithDb(dbe_ctx, db)
-	defer ReleaseConnection(ctx, conn, true)
+	defer ReleaseConn(ctx, conn)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},

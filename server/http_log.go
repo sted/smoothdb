@@ -4,24 +4,23 @@ package server
 
 import (
 	"context"
+	"heligo"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/smoothdb/smoothdb/database"
 	"github.com/smoothdb/smoothdb/logging"
-
-	"github.com/rs/zerolog"
 )
 
-func HTTPLogger(logger *logging.Logger) Middleware {
-	return func(next Handler) Handler {
+func HTTPLogger(logger *logging.Logger) heligo.Middleware {
+	return func(next heligo.Handler) heligo.Handler {
 		zlog := logger.With().Str("domain", "HTTP").Logger()
 
-		return func(ctx context.Context, w ResponseWriter, r *Request) {
+		return func(ctx context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 
 			// return if zerolog is disabled
 			if zlog.GetLevel() == zerolog.Disabled {
-				next(ctx, w, r)
-				return
+				return next(ctx, w, r)
 			}
 
 			// before executing the next handlers
@@ -33,7 +32,7 @@ func HTTPLogger(logger *logging.Logger) Middleware {
 			}
 
 			// executes the next handler
-			next(ctx, w, r)
+			err := next(ctx, w, r)
 
 			// after executing the handlers
 			statusCode := w.Status()
@@ -63,13 +62,14 @@ func HTTPLogger(logger *logging.Logger) Middleware {
 				event.Str("method", r.Method)
 				event.Str("path", path)
 				event.Int("status", statusCode)
-				if w.Err() != nil {
-					event.Str("err", w.Err().Error())
+				if err != nil {
+					event.Str("err", err.Error())
 				}
 
 				// post the message
 				event.Msg("Request")
 			}
+			return err
 		}
 	}
 }

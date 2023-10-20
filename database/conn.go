@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -60,7 +59,7 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 
 // ReleaseConnection releases a connection to the proper pool.
 // It resets its role if requested and closes the transaction, based on the configuration.
-func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) error {
+func ReleaseConnection(ctx context.Context, conn *DbPoolConn, err bool, resetRole bool) error {
 	hasTX := DBE.config.TransactionEnd != "none"
 
 	if resetRole && !hasTX {
@@ -73,14 +72,14 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) er
 	if hasTX {
 		var end string
 
-		if ctx != context.Background() && ctx.(*gin.Context).Writer.Status() < 400 {
+		if !err {
 
 			switch DBE.config.TransactionEnd {
 			case "commit":
 				end = "COMMIT"
 			case "commit-allow-override":
 				sctx := GetSmoothContext(ctx)
-				if sctx.QueryOptions.TxRollback {
+				if sctx != nil && sctx.QueryOptions.TxRollback {
 					end = "ROLLBACK"
 				} else {
 					end = "COMMIT"
@@ -89,7 +88,7 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) er
 				end = "ROLLBACK"
 			case "rollback-allow-override":
 				sctx := GetSmoothContext(ctx)
-				if sctx.QueryOptions.TxCommit {
+				if sctx != nil && sctx.QueryOptions.TxCommit {
 					end = "COMMIT"
 				} else {
 					end = "ROLLBACK"
@@ -107,4 +106,10 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, resetRole bool) er
 
 	conn.Release()
 	return nil
+}
+
+// ReleaseConn releases a connection to the proper pool.
+// It is a simplified version of ReleaseConnection
+func ReleaseConn(ctx context.Context, conn *DbPoolConn) error {
+	return ReleaseConnection(ctx, conn, false, true)
 }

@@ -11,6 +11,7 @@ import (
 )
 
 var (
+	srv        *server.Server
 	adminToken string
 	user1Token string
 	user2Token string
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 		AllowAnon:        false,
 		EnableAdminRoute: true,
 		Logging: logging.Config{
-			Level:       "info",
+			Level:       "trace",
 			FileLogging: false,
 			StdOut:      true,
 		},
@@ -35,6 +36,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	srv = s
 
 	go s.Start()
 
@@ -62,7 +64,7 @@ func TestMain(m *testing.M) {
 				"cancreatedatabases": true
 			}`,
 		},
-		// grant role admin to anon
+		// grant role admin to auth
 		{
 			Method: "POST",
 			Query:  "/grants",
@@ -79,12 +81,30 @@ func TestMain(m *testing.M) {
 				"name": "user1"
 			}`,
 		},
+		// grant role user1 to auth
+		{
+			Method: "POST",
+			Query:  "/grants",
+			Body: `{
+				"targetname": "user1",
+				"grantee": "auth"
+			}`,
+		},
 		// create role user2
 		{
 			Method: "POST",
 			Query:  "/users",
 			Body: `{
 				"name": "user2"
+			}`,
+		},
+		// grant role user2 to auth
+		{
+			Method: "POST",
+			Query:  "/grants",
+			Body: `{
+				"targetname": "user2",
+				"grantee": "auth"
 			}`,
 		},
 		// delete database dbtest

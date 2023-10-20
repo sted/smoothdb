@@ -2,77 +2,84 @@ package server
 
 import (
 	"context"
+	"heligo"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
 )
 
-func InitSourcesRouter(router *Router, baseAPIURL string) {
+func (s *Server) initSourcesRouter() {
 
-	api := router.Group(baseAPIURL)
+	api := s.GetRouter().Group(s.Config.BaseAPIURL, DatabaseMiddleware(s, false))
 
 	// RECORDS
 
-	api.HandleWithDb("GET", "/:dbname/:sourcename", func(c context.Context, w ResponseWriter, r *Request) {
+	api.Handle("GET", "/:dbname/:sourcename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		json, err := db.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
-			w.JSONString(http.StatusOK, json)
+			JSONString(w, http.StatusOK, json)
 		} else {
-			w.WriteError(err)
+			WriteError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	api.HandleWithDb("POST", "/:dbname/:sourcename", func(c context.Context, w ResponseWriter, r *Request) {
+	api.Handle("POST", "/:dbname/:sourcename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
-		records, err := r.ReadInputRecords()
+		records, err := ReadInputRecords(r)
 		if err != nil {
-			w.WriteBadRequest(err)
-			return
+			WriteBadRequest(w, err)
+			return err
 		}
 		// [] as input cause no inserts
 		if noRecordsForInsert(c, w, records) {
-			return
+			return nil
 		}
 		data, count, err := db.CreateRecords(c, sourcename, records, r.URL.Query())
 		if err == nil {
 			if data == nil {
-				w.JSON(http.StatusCreated, count)
+				JSON(w, http.StatusCreated, count)
 			} else {
-				w.JSONString(http.StatusCreated, data)
+				JSONString(w, http.StatusCreated, data)
 			}
 		} else {
-			w.WriteError(err)
+			WriteError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	api.HandleWithDb("PATCH", "/:dbname/:sourcename", func(c context.Context, w ResponseWriter, r *Request) {
+	api.Handle("PATCH", "/:dbname/:sourcename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
-		records, err := r.ReadInputRecords()
+		records, err := ReadInputRecords(r)
 		if err != nil || len(records) > 1 {
-			w.WriteBadRequest(err)
-			return
+			WriteBadRequest(w, err)
+			return err
 		}
 		// {}, [] and [{}] as input cause no updates
 		if noRecordsForUpdate(c, w, records) {
-			return
+			return nil
 		}
 		data, _, err := db.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
 				w.WriteHeader(http.StatusNoContent)
 			} else {
-				w.JSONString(http.StatusOK, data)
+				JSONString(w, http.StatusOK, data)
 			}
 		} else {
-			w.WriteError(err)
+			WriteError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	api.HandleWithDb("DELETE", "/:dbname/:sourcename", func(c context.Context, w ResponseWriter, r *Request) {
+	api.Handle("DELETE", "/:dbname/:sourcename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		data, _, err := db.DeleteRecords(c, sourcename, r.URL.Query())
@@ -80,47 +87,52 @@ func InitSourcesRouter(router *Router, baseAPIURL string) {
 			if data == nil {
 				w.WriteHeader(http.StatusNoContent)
 			} else {
-				w.JSONString(http.StatusOK, data)
+				JSONString(w, http.StatusOK, data)
 			}
 		} else {
-			w.WriteError(err)
+			WriteError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// FUNCTIONS
 
-	// 	api.HandleWithDb("GET", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
-	// 		db := database.GetDb(c)
-	// 		fname := r.Param("fname")
-	// 		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
-	// 		if err == nil {
-	// 			w.JSONString(http.StatusOK, json)
-	// 		} else {
-	// 			w.WriteError(err)
-	// 		}
-	// 	})
+	api.Handle("GET", "/:dbname/rpc/:fname", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
+		db := database.GetDb(c)
+		fname := r.Param("fname")
+		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
+		if err == nil {
+			JSONString(w, http.StatusOK, json)
+		} else {
+			WriteError(w, err)
+		}
 
-	//	api.HandleWithDb("POST", "/:dbname/rpc/:fname", func(c context.Context, w ResponseWriter, r *Request) {
-	//		db := database.GetDb(c)
-	//		fname := r.Param("fname")
-	//		records, err := r.ReadInputRecords()
-	//		if err != nil {
-	//			w.WriteBadRequest(err)
-	//			return
-	//		}
-	//		// [] as input cause no inserts
-	//		if noRecordsForInsert(c, w, records) {
-	//			return
-	//		}
-	//		data, count, err := db.ExecFunction(c, fname, records[0], r.URL.Query())
-	//		if err == nil {
-	//			if data == nil {
-	//				w.JSON(http.StatusOK, count)
-	//			} else {
-	//				w.JSONString(http.StatusOK, data)
-	//			}
-	//		} else {
-	//			w.WriteServerError(err)
-	//		}
-	//	})
+		return nil
+	})
+
+	api.Handle("POST", "/:dbname/rpc/:fname", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
+		db := database.GetDb(c)
+		fname := r.Param("fname")
+		records, err := ReadInputRecords(r)
+		if err != nil {
+			WriteBadRequest(w, err)
+			return err
+		}
+		// [] as input cause no inserts
+		if noRecordsForInsert(c, w, records) {
+			return nil
+		}
+		data, count, err := db.ExecFunction(c, fname, records[0], r.URL.Query())
+		if err == nil {
+			if data == nil {
+				JSON(w, http.StatusOK, count)
+			} else {
+				JSONString(w, http.StatusOK, data)
+			}
+		} else {
+			WriteServerError(w, err)
+		}
+		return nil
+	})
 }

@@ -9,7 +9,7 @@ export default function() {
         headers: {
             'Content-Type': 'application/json',
             'Accept-Profile': 'test',
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic3RlZCJ9.-XquFDiIKNq5t6iov2bOD5k_LljFfAN7LqRzeWVuv7k'
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYW5vbnltb3VzIiwiaWQiOiIifQ.jppQJJyMyXuKOn8wlajnnAxZigC1CDGg8_54_otr7Gw'
         },
      };
     

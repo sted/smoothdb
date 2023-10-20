@@ -25,7 +25,7 @@ func TestSessions(t *testing.T) {
 		// create database db1
 		{
 			Method: "POST",
-			Query:  "/",
+			Query:  "",
 			Body:   `{"name": "db1"}`,
 		},
 		// create table records
@@ -58,7 +58,7 @@ func TestSessions(t *testing.T) {
 		// create database db2
 		{
 			Method: "POST",
-			Query:  "/",
+			Query:  "",
 			Body:   `{"name": "db2"}`,
 		},
 		// create table records

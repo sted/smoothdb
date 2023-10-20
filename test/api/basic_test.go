@@ -14,11 +14,6 @@ func TestRecords(t *testing.T) {
 	}
 
 	commands := []test.Command{
-		// drop table table_records
-		{
-			Method: "DELETE",
-			Query:  "/dbtest/tables/table_records",
-		},
 		// create table table_records
 		{
 			Method: "POST",
@@ -32,7 +27,9 @@ func TestRecords(t *testing.T) {
 					{"name": "float4", "type": "float4"},
 					{"name": "float8", "type": "float8"},
 					{"name": "interval", "type": "interval"}
-				]}`,
+				],
+				"ifnotexists": true
+			}`,
 		},
 	}
 	test.Prepare(cmdConfig, commands)

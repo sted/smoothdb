@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 func BenchmarkBase(b *testing.B) {
 
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
-	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
+	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
@@ -32,7 +32,7 @@ func BenchmarkBase(b *testing.B) {
 	}
 
 	ctx, conn, _ := WithDb(dbe_ctx, db)
-	defer ReleaseConnection(ctx, conn, true)
+	defer ReleaseConn(ctx, conn)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
@@ -82,7 +82,7 @@ func BenchmarkBase(b *testing.B) {
 func TestBase(t *testing.T) {
 
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
-	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
+	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base")
 	if err != nil {
@@ -91,7 +91,7 @@ func TestBase(t *testing.T) {
 	defer dbe.DeleteDatabase(dbe_ctx, "test_base")
 
 	ctx, conn, _ := WithDb(dbe_ctx, db)
-	defer ReleaseConnection(ctx, conn, true)
+	defer ReleaseConn(ctx, conn)
 
 	_, err = db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
@@ -135,7 +135,7 @@ func TestBase(t *testing.T) {
 func TestDDL(t *testing.T) {
 
 	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
-	defer ReleaseConnection(dbe_ctx, dbe_conn, true)
+	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl")
 	if err != nil {
@@ -144,7 +144,7 @@ func TestDDL(t *testing.T) {
 	defer dbe.DeleteDatabase(dbe_ctx, "test_ddl")
 
 	ctx, conn, _ := WithDb(dbe_ctx, db)
-	defer ReleaseConnection(ctx, conn, true)
+	defer ReleaseConn(ctx, conn)
 
 	table := Table{
 		Name: "b2",

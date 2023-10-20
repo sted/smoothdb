@@ -2,124 +2,147 @@ package server
 
 import (
 	"context"
+	"heligo"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
 )
 
-func TableListHandler(c context.Context, w ResponseWriter, r *Request) {
+func TableListHandler(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 	db := database.GetDb(c)
 	tables, err := db.GetTables(c)
 	if err == nil {
-		w.JSON(http.StatusOK, tables)
+		JSON(w, http.StatusOK, tables)
 	} else {
-		w.WriteServerError(err)
+		WriteServerError(w, err)
+		return err
 	}
+	return nil
 }
 
-func TableCreateHandler(c context.Context, w ResponseWriter, r *Request) {
+func TableCreateHandler(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 	db := database.GetDb(c)
 	var tableInput database.Table
 	r.Bind(&tableInput)
 	table, err := db.CreateTable(c, &tableInput)
 	if err == nil {
-		w.JSON(http.StatusCreated, table)
+		JSON(w, http.StatusCreated, table)
 	} else {
-		w.WriteServerError(err)
+		WriteServerError(w, err)
+		return err
 	}
+	return nil
 }
 
-func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) {
+func (s *Server) initAdminRouter() {
 
-	admin := root.Group(baseAdminURL)
+	dbe := s.DBE
+	router := s.GetRouter()
+
+	admin_dbe := router.Group(s.Config.BaseAdminURL, DatabaseMiddleware(s, true))
+	admin_db := router.Group(s.Config.BaseAdminURL, DatabaseMiddleware(s, false))
 
 	// ROLES
 
-	roles := admin.Group("/roles")
+	roles := admin_dbe.Group("/roles")
 
-	roles.HandleWithDb("GET", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	roles.Handle("GET", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		roles, _ := dbe.GetRoles(c)
-		w.JSON(http.StatusOK, roles)
+		JSON(w, http.StatusOK, roles)
+		return nil
 	})
 
-	roles.HandleWithDb("GET", "/:rolename", func(c context.Context, w ResponseWriter, r *Request) {
+	roles.Handle("GET", "/:rolename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("rolename")
 		role, err := dbe.GetRole(c, name)
 		if err == nil {
-			w.JSON(http.StatusOK, role)
+			JSON(w, http.StatusOK, role)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	roles.HandleWithDb("POST", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	roles.Handle("POST", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		var roleInput database.Role
 		r.Bind(&roleInput)
 
 		role, err := dbe.CreateRole(c, &roleInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, role)
+			JSON(w, http.StatusCreated, role)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	roles.HandleWithDb("DELETE", "/:rolename", func(c context.Context, w ResponseWriter, r *Request) {
+	roles.Handle("DELETE", "/:rolename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("rolename")
 
 		err := dbe.DeleteRole(c, name)
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// USERS
 
-	users := admin.Group("/users")
+	users := admin_dbe.Group("/users")
 
-	users.HandleWithDb("GET", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	users.Handle("GET", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		users, _ := dbe.GetUsers(c)
-		w.JSON(http.StatusOK, users)
+		JSON(w, http.StatusOK, users)
+		return nil
 	})
 
-	users.HandleWithDb("GET", "/:username", func(c context.Context, w ResponseWriter, r *Request) {
+	users.Handle("GET", "/:username", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("username")
 		user, err := dbe.GetUser(c, name)
 		if err == nil {
-			w.JSON(http.StatusOK, user)
+			JSON(w, http.StatusOK, user)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	users.HandleWithDb("POST", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	users.Handle("POST", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		var userInput database.User
 		r.Bind(&userInput)
 		user, err := dbe.CreateUser(c, &userInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, user)
+			JSON(w, http.StatusCreated, user)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	users.HandleWithDb("DELETE", "/:username", func(c context.Context, w ResponseWriter, r *Request) {
+	users.Handle("DELETE", "/:username", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("username")
 		err := dbe.DeleteUser(c, name)
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// GRANTS
 
-	grants := admin.Group("/grants")
+	grants := admin_db.Group("/grants")
 
-	grantsGetHandler := func(c context.Context, w ResponseWriter, r *Request) {
+	grantsGetHandler := func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		var privileges []database.Privilege
 		var err error
 
@@ -135,17 +158,19 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 		}
 
 		if err == nil {
-			w.JSON(http.StatusOK, privileges)
+			JSON(w, http.StatusOK, privileges)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	}
-	grants.HandleWithDb("GET", "/", grantsGetHandler)
-	grants.HandleWithDb("GET", "/:dbname", grantsGetHandler)
-	grants.HandleWithDb("GET", "/:dbname/:targettype", grantsGetHandler)
-	grants.HandleWithDb("GET", "/:dbname/:targettype/:targetname", grantsGetHandler)
+	grants.Handle("GET", "", grantsGetHandler)
+	grants.Handle("GET", "/:dbname", grantsGetHandler)
+	grants.Handle("GET", "/:dbname/:targettype", grantsGetHandler)
+	grants.Handle("GET", "/:dbname/:targettype/:targetname", grantsGetHandler)
 
-	grantsPostHandler := func(c context.Context, w ResponseWriter, r *Request) {
+	grantsPostHandler := func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 
 		dbname := r.Param("dbname")
@@ -166,16 +191,18 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		priv, err := db.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, priv)
+			JSON(w, http.StatusCreated, priv)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	}
-	grants.HandleWithDb("POST", "/", grantsPostHandler)
-	grants.HandleWithDb("POST", "/:dbname", grantsPostHandler)
-	grants.HandleWithDb("POST", "/:dbname/:targettype/:targetname", grantsPostHandler)
+	grants.Handle("POST", "", grantsPostHandler)
+	grants.Handle("POST", "/:dbname", grantsPostHandler)
+	grants.Handle("POST", "/:dbname/:targettype/:targetname", grantsPostHandler)
 
-	grantsDeleteHandler := func(c context.Context, w ResponseWriter, r *Request) {
+	grantsDeleteHandler := func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 
 		dbname := r.Param("dbname")
@@ -194,83 +221,95 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		err := db.DeletePrivilege(c, &privilegeInput)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	}
-	grants.HandleWithDb("DELETE", "/:dbname", grantsDeleteHandler)
-	grants.HandleWithDb("DELETE", "/:dbname/:targettype/:targetname", grantsDeleteHandler)
+	grants.Handle("DELETE", "/:dbname", grantsDeleteHandler)
+	grants.Handle("DELETE", "/:dbname/:targettype/:targetname", grantsDeleteHandler)
 
 	// DATABASES
 
-	// A group using DBE instead of a specific db
-	dbgroup := root.Group(baseAdminURL + "/databases")
+	dbegroup := admin_dbe.Group("/databases")
 
-	dbgroup.HandleWithDb("GET", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	dbegroup.Handle("GET", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		databases, _ := dbe.GetDatabases(c)
-		w.JSON(http.StatusOK, databases)
+		JSON(w, http.StatusOK, databases)
+		return nil
 	})
 
-	dbgroup.HandleWithDb("GET", "/:dbname", func(c context.Context, w ResponseWriter, r *Request) {
+	dbegroup.Handle("GET", "/:dbname", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("dbname")
 
 		db, err := dbe.GetDatabase(c, name)
 		if err == nil {
-			w.JSON(http.StatusOK, db)
+			JSON(w, http.StatusOK, db)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	dbgroup.HandleWithDb("POST", "/", func(c context.Context, w ResponseWriter, r *Request) {
+	dbegroup.Handle("POST", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		var databaseInput database.Database
 		r.Bind(&databaseInput)
 
 		database, err := dbe.CreateDatabase(c, databaseInput.Name)
 		if err == nil {
-			w.JSON(http.StatusCreated, database)
+			JSON(w, http.StatusCreated, database)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	dbgroup.HandleWithDb("DELETE", "/:dbname", func(c context.Context, w ResponseWriter, r *Request) {
+	dbegroup.Handle("DELETE", "/:dbname", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("dbname")
 
 		err := dbe.DeleteDatabase(c, name)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases := admin.Group("/databases")
+	databases := admin_db.Group("/databases")
 
 	// SCHEMAS
 
-	databases.HandleWithDb("GET", "/:dbname/schemas", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/schemas", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 
 		schemas, err := db.GetSchemas(c)
 		if err == nil {
-			w.JSON(http.StatusOK, schemas)
+			JSON(w, http.StatusOK, schemas)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/schemas/", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/schemas", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var schemaInput database.Schema
 		r.Bind(&schemaInput)
 
 		schema, err := db.CreateSchema(c, schemaInput.Name)
 		if err == nil {
-			w.JSON(http.StatusCreated, schema)
+			JSON(w, http.StatusCreated, schema)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/schemas/:schema", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/schemas/:schema", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("schema")
 
@@ -278,29 +317,33 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// TABLES
 
-	databases.HandleWithDb("GET", "/:dbname/tables", TableListHandler)
+	databases.Handle("GET", "/:dbname/tables", TableListHandler)
 
-	databases.HandleWithDb("GET", "/:dbname/tables/:table", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/tables/:table", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("table")
 
 		table, err := db.GetTable(c, name)
 		if err == nil {
-			w.JSON(http.StatusOK, table)
+			JSON(w, http.StatusOK, table)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/tables", TableCreateHandler)
+	databases.Handle("POST", "/:dbname/tables", TableCreateHandler)
 
-	databases.HandleWithDb("PATCH", "/:dbname/tables/:table", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("PATCH", "/:dbname/tables/:table", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var tableUpdate database.TableUpdate
 		tableUpdate.Name = r.Param("table")
@@ -308,13 +351,15 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		table, err := db.UpdateTable(c, &tableUpdate)
 		if err == nil {
-			w.JSON(http.StatusOK, table)
+			JSON(w, http.StatusOK, table)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/tables/:table", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/tables/:table", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("table")
 
@@ -322,73 +367,85 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// VIEWS
 
-	databases.HandleWithDb("GET", "/:dbname/views", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/views", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 
 		views, err := db.GetViews(c)
 		if err == nil {
-			w.JSON(http.StatusOK, views)
+			JSON(w, http.StatusOK, views)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("GET", "/:dbname/views/:view", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/views/:view", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("view")
 
 		view, err := db.GetView(c, name)
 		if err == nil {
-			w.JSON(http.StatusOK, view)
+			JSON(w, http.StatusOK, view)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/views/", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/views", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var viewInput database.View
 		r.Bind(&viewInput)
 
 		view, err := db.CreateView(c, &viewInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, view)
+			JSON(w, http.StatusCreated, view)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/views/:view", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/views/:view", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("view")
 
 		err := db.DeleteView(c, name)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// COLUMNS
 
-	databases.HandleWithDb("GET", "/:dbname/tables/:table/columns", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/tables/:table/columns", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 
 		columns, err := db.GetColumns(c, table)
 		if err == nil {
-			w.JSON(http.StatusOK, columns)
+			JSON(w, http.StatusOK, columns)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/tables/:table/columns", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/tables/:table/columns", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var columnInput database.Column
 		columnInput.Table = r.Param("table")
@@ -399,13 +456,15 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		column, err := db.CreateColumn(c, &columnInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, column)
+			JSON(w, http.StatusCreated, column)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("PATCH", "/:dbname/tables/:table/columns/:column", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("PATCH", "/:dbname/tables/:table/columns/:column", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var columnUpdate database.ColumnUpdate
 		columnUpdate.Table = r.Param("table")
@@ -414,38 +473,44 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		column, err := db.UpdateColumn(c, &columnUpdate)
 		if err == nil {
-			w.JSON(http.StatusOK, column)
+			JSON(w, http.StatusOK, column)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/tables/:table/columns/:column", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/tables/:table/columns/:column", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 		column := r.Param("column")
 
 		err := db.DeleteColumn(c, table, column, false)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// CONSTRAINTS
 
-	databases.HandleWithDb("GET", "/:dbname/tables/:table/constraints", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/tables/:table/constraints", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 
 		constraints, err := db.GetConstraints(c, table)
 		if err == nil {
-			w.JSON(http.StatusOK, constraints)
+			JSON(w, http.StatusOK, constraints)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/tables/:table/constraints", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/tables/:table/constraints", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var constraintInput database.Constraint
 		constraintInput.Table = r.Param("table")
@@ -453,38 +518,44 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		constant, err := db.CreateConstraint(c, &constraintInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, constant)
+			JSON(w, http.StatusCreated, constant)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/tables/:table/constraints/:name", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/tables/:table/constraints/:name", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 		name := r.Param("name")
 
 		err := db.DeleteConstraint(c, table, name)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// POLICIES
 
-	databases.HandleWithDb("GET", "/:dbname/tables/:table/policies", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/tables/:table/policies", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 
 		policies, err := db.GetPolicies(c, table)
 		if err == nil {
-			w.JSON(http.StatusOK, policies)
+			JSON(w, http.StatusOK, policies)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/tables/:table/policies", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/tables/:table/policies", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var policyInput database.Policy
 		policyInput.Table = r.Param("table")
@@ -492,56 +563,66 @@ func InitAdminRouter(root *Router, dbe *database.DbEngine, baseAdminURL string) 
 
 		policy, err := db.CreatePolicy(c, &policyInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, policy)
+			JSON(w, http.StatusCreated, policy)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/tables/:table/policies/:name", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/tables/:table/policies/:name", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		table := r.Param("table")
 		name := r.Param("name")
 
 		err := db.DeletePolicy(c, table, name)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
 	// FUNCTIONS
 
-	databases.HandleWithDb("GET", "/:dbname/functions", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("GET", "/:dbname/functions", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 
 		policies, err := db.GetFunctions(c)
 		if err == nil {
-			w.JSON(http.StatusOK, policies)
+			JSON(w, http.StatusOK, policies)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("POST", "/:dbname/functions", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("POST", "/:dbname/functions", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		var functionInput database.Function
 		r.Bind(&functionInput)
 
 		policy, err := db.CreateFunction(c, &functionInput)
 		if err == nil {
-			w.JSON(http.StatusCreated, policy)
+			JSON(w, http.StatusCreated, policy)
 		} else {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 
-	databases.HandleWithDb("DELETE", "/:dbname/functions/:name", func(c context.Context, w ResponseWriter, r *Request) {
+	databases.Handle("DELETE", "/:dbname/functions/:name", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		db := database.GetDb(c)
 		name := r.Param("name")
 
 		err := db.DeleteFunction(c, name)
 		if err != nil {
-			w.WriteServerError(err)
+			WriteServerError(w, err)
+			return err
 		}
+		return nil
 	})
 }

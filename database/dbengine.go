@@ -70,7 +70,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	}
 	// Auth role
 	if dbConfig.AuthRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" NOINHERIT")
+		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER")
 		if err != nil && err.(*pgconn.PgError).Code != "42710" {
 			return nil, err
 		}

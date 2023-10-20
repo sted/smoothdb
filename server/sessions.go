@@ -140,11 +140,11 @@ func sessionWatcher(s *Server) {
 							session = session.Prev
 						}
 
-					} else if spentTime > 1*time.Second && session.DbConn != nil {
+					} else if spentTime > 5*time.Second && session.DbConn != nil {
 
 						// Release and detach the database connection from the session
 						// (Acquire and attach are done in the auth middleware)
-						err := database.ReleaseConnection(context.Background(), session.DbConn, true)
+						err := database.ReleaseConnection(context.Background(), session.DbConn, false, true)
 						if err != nil {
 							sm.logger.Err(err).Msg("error releasing an expired session")
 						}
@@ -162,7 +162,7 @@ func sessionWatcher(s *Server) {
 			for k, list := range sm.Slots {
 				for session := list.Head; session != nil; session = session.Next {
 					if session.DbConn != nil {
-						database.ReleaseConnection(context.Background(), session.DbConn, false)
+						database.ReleaseConnection(context.Background(), session.DbConn, false, false)
 					}
 					delete(sm.Slots, k)
 				}
