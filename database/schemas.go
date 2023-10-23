@@ -13,7 +13,7 @@ const schemaQuery = `
 	SELECT n.nspname, pg_catalog.pg_get_userbyid(n.nspowner)
 	FROM pg_catalog.pg_namespace n`
 
-func (db *Database) GetSchemas(ctx context.Context) ([]Schema, error) {
+func GetSchemas(ctx context.Context) ([]Schema, error) {
 	conn := GetConn(ctx)
 	schemas := []Schema{}
 	rows, err := conn.Query(ctx, schemaQuery+" WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1;")
@@ -37,7 +37,7 @@ func (db *Database) GetSchemas(ctx context.Context) ([]Schema, error) {
 	return schemas, nil
 }
 
-func (db *Database) CreateSchema(ctx context.Context, name string) (*Schema, error) {
+func CreateSchema(ctx context.Context, name string) (*Schema, error) {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "CREATE SCHEMA \""+name+"\"")
 	if err != nil {
@@ -51,7 +51,7 @@ func (db *Database) CreateSchema(ctx context.Context, name string) (*Schema, err
 	return schema, nil
 }
 
-func (db *Database) DeleteSchema(ctx context.Context, name string, cascade bool) error {
+func DeleteSchema(ctx context.Context, name string, cascade bool) error {
 	conn := GetConn(ctx)
 	delete := "DROP SCHEMA \"" + name + "\""
 	if cascade {

@@ -83,7 +83,7 @@ func (db *Database) Activate(ctx context.Context) error {
 		return err
 	}
 	defer conn.Close(ctx)
-	c := WithDbConn(context.Background(), db, conn)
+	c := ContextWithDbConn(context.Background(), db, conn)
 	db.info, err = NewSchemaInfo(c, db)
 	if err != nil {
 		return err

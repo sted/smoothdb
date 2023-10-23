@@ -11,7 +11,7 @@ import (
 
 func BenchmarkSerializer(b *testing.B) {
 
-	dbe_ctx, dbe_conn, _ := WithDb(context.Background(), nil)
+	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "admin")
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
@@ -20,7 +20,7 @@ func BenchmarkSerializer(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ctx, conn, _ := WithDb(dbe_ctx, db)
+	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "admin")
 	defer ReleaseConn(ctx, conn)
 
 	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{

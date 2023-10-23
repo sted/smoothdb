@@ -15,7 +15,7 @@ require (
 
 replace heligo => ../../heligo
 
-replace github.com/rs/zerolog v1.29.1 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
+replace github.com/rs/zerolog v1.31.0 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

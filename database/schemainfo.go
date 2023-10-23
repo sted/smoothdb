@@ -52,7 +52,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	dbi.cachedFunctions = map[string]Function{}
 
 	// Types
-	types, err := db.GetTypes(ctx)
+	types, err := GetTypes(ctx)
 	if err != nil {
 		return nil, err
 	}

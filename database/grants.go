@@ -92,7 +92,7 @@ func parsePrivilege(s string, priv *Privilege) error {
 	return nil
 }
 
-func (dbe *DbEngine) GetDatabasePrivileges(ctx context.Context, dbname string) ([]Privilege, error) {
+func GetDatabasePrivileges(ctx context.Context, dbname string) ([]Privilege, error) {
 	conn := GetConn(ctx)
 	privileges := []Privilege{}
 
@@ -126,7 +126,7 @@ func (dbe *DbEngine) GetDatabasePrivileges(ctx context.Context, dbname string) (
 	return privileges, nil
 }
 
-func (db *Database) GetPrivileges(ctx context.Context, targetType string, targetName string) ([]Privilege, error) {
+func GetPrivileges(ctx context.Context, targetType string, targetName string) ([]Privilege, error) {
 	conn := GetConn(ctx)
 	privileges := []Privilege{}
 	var query string
@@ -163,7 +163,7 @@ func (db *Database) GetPrivileges(ctx context.Context, targetType string, target
 	return privileges, nil
 }
 
-func (db *Database) CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, error) {
+func CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, error) {
 	conn := GetConn(ctx)
 	create := "GRANT "
 	if len(privilege.Types) != 0 {
@@ -188,7 +188,7 @@ func (db *Database) CreatePrivilege(ctx context.Context, privilege *Privilege) (
 	return privilege, nil
 }
 
-func (db *Database) DeletePrivilege(ctx context.Context, privilege *Privilege) error {
+func DeletePrivilege(ctx context.Context, privilege *Privilege) error {
 	conn := GetConn(ctx)
 	delete := "REVOKE "
 	if len(privilege.Types) != 0 {

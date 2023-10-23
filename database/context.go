@@ -37,7 +37,7 @@ func GetSmoothContext(ctx context.Context) *SmoothContext {
 	return v.(*SmoothContext)
 }
 
-func WithDb(parent context.Context, db *Database) (context.Context, *DbPoolConn, error) {
+func ContextWithDb(parent context.Context, db *Database, role string) (context.Context, *DbPoolConn, error) {
 	var conn *DbPoolConn
 	var err error
 	if db != nil {
@@ -48,10 +48,11 @@ func WithDb(parent context.Context, db *Database) (context.Context, *DbPoolConn,
 	if err != nil {
 		return nil, nil, err
 	}
-	return WithDbConn(parent, db, conn.Conn()), conn, nil
+	PrepareConnection(parent, conn, role, "", true)
+	return ContextWithDbConn(parent, db, conn.Conn()), conn, nil
 }
 
-func WithDbConn(parent context.Context, db *Database, conn *DbConn) context.Context {
+func ContextWithDbConn(parent context.Context, db *Database, conn *DbConn) context.Context {
 
 	defaultParser := PostgRestParser{}
 	queryOptions := &QueryOptions{}

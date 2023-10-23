@@ -39,7 +39,7 @@ const typesQuery = `
 	GROUP by t.oid, n.nspname, c.relkind, r.rngsubtype;
 `
 
-func (db *Database) GetTypes(ctx context.Context) ([]Type, error) {
+func GetTypes(ctx context.Context) ([]Type, error) {
 	conn := GetConn(ctx)
 	types := []Type{}
 	rows, err := conn.Query(ctx, typesQuery)

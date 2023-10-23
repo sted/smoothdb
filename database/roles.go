@@ -10,7 +10,7 @@ type Role struct {
 	CanCreateRoles      bool     `json:"cancreateroles"`
 	CanCreateDatabases  bool     `json:"cancreatedatabases"`
 	CanBypassRLS        bool     `json:"canbypassrls"`
-	MemberOf            []string `json:"memberof"`
+	MemberOf            []string `json:"memberof"` // readonly for now
 }
 
 const rolesQuery = `
@@ -21,7 +21,7 @@ const rolesQuery = `
 	WHERE m.member = r.oid) as memberof
 	FROM pg_catalog.pg_roles r`
 
-func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
+func GetRoles(ctx context.Context) ([]Role, error) {
 	conn := GetConn(ctx)
 	roles := []Role{}
 	query := rolesQuery + ` WHERE r.rolname !~ '^pg_' ORDER BY 1`
@@ -47,7 +47,7 @@ func (dbe *DbEngine) GetRoles(ctx context.Context) ([]Role, error) {
 	return roles, nil
 }
 
-func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
+func GetRole(ctx context.Context, name string) (*Role, error) {
 	conn := GetConn(ctx)
 	role := &Role{}
 	err := conn.QueryRow(ctx, rolesQuery+" WHERE r.rolname = $1", name).
@@ -59,7 +59,7 @@ func (dbe *DbEngine) GetRole(ctx context.Context, name string) (*Role, error) {
 	return role, nil
 }
 
-func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) {
+func CreateRole(ctx context.Context, role *Role) (*Role, error) {
 	conn := GetConn(ctx)
 	create := "CREATE ROLE \"" + role.Name + "\""
 	if role.IsSuperUser {
@@ -84,10 +84,10 @@ func (dbe *DbEngine) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 	if err != nil {
 		return nil, err
 	}
-	return dbe.GetRole(ctx, role.Name)
+	return GetRole(ctx, role.Name)
 }
 
-func (dbe *DbEngine) DeleteRole(ctx context.Context, name string) error {
+func DeleteRole(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
 	return err

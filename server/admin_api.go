@@ -47,14 +47,14 @@ func (s *Server) initAdminRouter() {
 	roles := admin_dbe.Group("/roles")
 
 	roles.Handle("GET", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		roles, _ := dbe.GetRoles(c)
+		roles, _ := database.GetRoles(c)
 		JSON(w, http.StatusOK, roles)
 		return nil
 	})
 
 	roles.Handle("GET", "/:rolename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("rolename")
-		role, err := dbe.GetRole(c, name)
+		role, err := database.GetRole(c, name)
 		if err == nil {
 			JSON(w, http.StatusOK, role)
 		} else {
@@ -68,7 +68,7 @@ func (s *Server) initAdminRouter() {
 		var roleInput database.Role
 		r.Bind(&roleInput)
 
-		role, err := dbe.CreateRole(c, &roleInput)
+		role, err := database.CreateRole(c, &roleInput)
 		if err == nil {
 			JSON(w, http.StatusCreated, role)
 		} else {
@@ -81,7 +81,7 @@ func (s *Server) initAdminRouter() {
 	roles.Handle("DELETE", "/:rolename", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("rolename")
 
-		err := dbe.DeleteRole(c, name)
+		err := database.DeleteRole(c, name)
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
@@ -96,14 +96,14 @@ func (s *Server) initAdminRouter() {
 	users := admin_dbe.Group("/users")
 
 	users.Handle("GET", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		users, _ := dbe.GetUsers(c)
+		users, _ := database.GetUsers(c)
 		JSON(w, http.StatusOK, users)
 		return nil
 	})
 
 	users.Handle("GET", "/:username", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("username")
-		user, err := dbe.GetUser(c, name)
+		user, err := database.GetUser(c, name)
 		if err == nil {
 			JSON(w, http.StatusOK, user)
 		} else {
@@ -116,7 +116,7 @@ func (s *Server) initAdminRouter() {
 	users.Handle("POST", "", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		var userInput database.User
 		r.Bind(&userInput)
-		user, err := dbe.CreateUser(c, &userInput)
+		user, err := database.CreateUser(c, &userInput)
 		if err == nil {
 			JSON(w, http.StatusCreated, user)
 		} else {
@@ -128,7 +128,7 @@ func (s *Server) initAdminRouter() {
 
 	users.Handle("DELETE", "/:username", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
 		name := r.Param("username")
-		err := dbe.DeleteUser(c, name)
+		err := database.DeleteUser(c, name)
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
@@ -151,10 +151,9 @@ func (s *Server) initAdminRouter() {
 		targetName := r.Param("targetname")
 
 		if targetType == "" {
-			privileges, err = dbe.GetDatabasePrivileges(c, dbname)
+			privileges, err = database.GetDatabasePrivileges(c, dbname)
 		} else {
-			db := database.GetDb(c)
-			privileges, err = db.GetPrivileges(c, targetType, targetName)
+			privileges, err = database.GetPrivileges(c, targetType, targetName)
 		}
 
 		if err == nil {
@@ -171,8 +170,6 @@ func (s *Server) initAdminRouter() {
 	grants.Handle("GET", "/:dbname/:targettype/:targetname", grantsGetHandler)
 
 	grantsPostHandler := func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
-
 		dbname := r.Param("dbname")
 		targetType := r.Param("targettype")
 		targetName := r.Param("targetname")
@@ -189,7 +186,7 @@ func (s *Server) initAdminRouter() {
 		}
 		r.Bind(&privilegeInput)
 
-		priv, err := db.CreatePrivilege(c, &privilegeInput)
+		priv, err := database.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
 			JSON(w, http.StatusCreated, priv)
 		} else {
@@ -203,8 +200,6 @@ func (s *Server) initAdminRouter() {
 	grants.Handle("POST", "/:dbname/:targettype/:targetname", grantsPostHandler)
 
 	grantsDeleteHandler := func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
-
 		dbname := r.Param("dbname")
 		targetType := r.Param("targettype")
 		targetName := r.Param("targetname")
@@ -219,7 +214,7 @@ func (s *Server) initAdminRouter() {
 		privilegeInput.TargetName = targetName
 		r.Bind(&privilegeInput)
 
-		err := db.DeletePrivilege(c, &privilegeInput)
+		err := database.DeletePrivilege(c, &privilegeInput)
 		if err != nil {
 			WriteServerError(w, err)
 			return err
@@ -282,9 +277,7 @@ func (s *Server) initAdminRouter() {
 	// SCHEMAS
 
 	databases.Handle("GET", "/:dbname/schemas", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
-
-		schemas, err := db.GetSchemas(c)
+		schemas, err := database.GetSchemas(c)
 		if err == nil {
 			JSON(w, http.StatusOK, schemas)
 		} else {
@@ -295,11 +288,10 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("POST", "/:dbname/schemas", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
 		var schemaInput database.Schema
 		r.Bind(&schemaInput)
 
-		schema, err := db.CreateSchema(c, schemaInput.Name)
+		schema, err := database.CreateSchema(c, schemaInput.Name)
 		if err == nil {
 			JSON(w, http.StatusCreated, schema)
 		} else {
@@ -310,10 +302,9 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("DELETE", "/:dbname/schemas/:schema", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
 		name := r.Param("schema")
 
-		err := db.DeleteSchema(c, name, true)
+		err := database.DeleteSchema(c, name, true)
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
@@ -542,10 +533,9 @@ func (s *Server) initAdminRouter() {
 	// POLICIES
 
 	databases.Handle("GET", "/:dbname/tables/:table/policies", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
 		table := r.Param("table")
 
-		policies, err := db.GetPolicies(c, table)
+		policies, err := database.GetPolicies(c, table)
 		if err == nil {
 			JSON(w, http.StatusOK, policies)
 		} else {
@@ -556,12 +546,11 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("POST", "/:dbname/tables/:table/policies", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
 		var policyInput database.Policy
 		policyInput.Table = r.Param("table")
 		r.Bind(&policyInput)
 
-		policy, err := db.CreatePolicy(c, &policyInput)
+		policy, err := database.CreatePolicy(c, &policyInput)
 		if err == nil {
 			JSON(w, http.StatusCreated, policy)
 		} else {
@@ -572,11 +561,10 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("DELETE", "/:dbname/tables/:table/policies/:name", func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
-		db := database.GetDb(c)
 		table := r.Param("table")
 		name := r.Param("name")
 
-		err := db.DeletePolicy(c, table, name)
+		err := database.DeletePolicy(c, table, name)
 		if err != nil {
 			WriteServerError(w, err)
 			return err

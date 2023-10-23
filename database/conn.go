@@ -73,7 +73,6 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, err bool, resetRol
 		var end string
 
 		if !err {
-
 			switch DBE.config.TransactionEnd {
 			case "commit":
 				end = "COMMIT"

@@ -13,7 +13,7 @@ const usersQuery = `
 	JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
 	WHERE m.member = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = 'auth')`
 
-func (dbe *DbEngine) GetUsers(ctx context.Context) ([]User, error) {
+func GetUsers(ctx context.Context) ([]User, error) {
 	conn := GetConn(ctx)
 	roles := []User{}
 	query := usersQuery + ` ORDER BY 1`
@@ -38,7 +38,7 @@ func (dbe *DbEngine) GetUsers(ctx context.Context) ([]User, error) {
 	return roles, nil
 }
 
-func (dbe *DbEngine) GetUser(ctx context.Context, name string) (*User, error) {
+func GetUser(ctx context.Context, name string) (*User, error) {
 	conn := GetConn(ctx)
 	role := &User{}
 	err := conn.QueryRow(ctx, usersQuery+" AND b.rolname = $1", name).
@@ -49,7 +49,7 @@ func (dbe *DbEngine) GetUser(ctx context.Context, name string) (*User, error) {
 	return role, nil
 }
 
-func (dbe *DbEngine) CreateUser(ctx context.Context, role *User) (*User, error) {
+func CreateUser(ctx context.Context, role *User) (*User, error) {
 	conn := GetConn(ctx)
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -64,7 +64,7 @@ func (dbe *DbEngine) CreateUser(ctx context.Context, role *User) (*User, error) 
 		return nil, err
 	}
 
-	grant := "GRANT \"" + role.Name + "\" TO \"" + dbe.config.AuthRole + "\""
+	grant := "GRANT \"" + role.Name + "\" TO \"" + DBE.config.AuthRole + "\""
 	_, err = tx.Exec(ctx, grant)
 	if err != nil {
 		return nil, err
@@ -74,10 +74,10 @@ func (dbe *DbEngine) CreateUser(ctx context.Context, role *User) (*User, error) 
 	if err != nil {
 		return nil, err
 	}
-	return dbe.GetUser(ctx, role.Name)
+	return GetUser(ctx, role.Name)
 }
 
-func (dbe *DbEngine) DeleteUser(ctx context.Context, name string) error {
+func DeleteUser(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
 	return err

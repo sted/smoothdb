@@ -40,7 +40,7 @@ const policyQuery = `
 	JOIN pg_class c ON c.oid = pol.polrelid
 	JOIN pg_namespace n ON n.oid = c.relnamespace`
 
-func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
+func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	conn := GetConn(ctx)
 	policies := []Policy{}
 	query := policyQuery
@@ -70,7 +70,7 @@ func (db *Database) GetPolicies(ctx context.Context, ftablename string) ([]Polic
 	return policies, nil
 }
 
-func (db *Database) CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
+func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 	conn := GetConn(ctx)
 	create := "CREATE POLICY " + policy.Name + " ON " + policy.Table
 	if policy.Retrictive {
@@ -99,7 +99,7 @@ func (db *Database) CreatePolicy(ctx context.Context, policy *Policy) (*Policy, 
 	return policy, nil
 }
 
-func (db *Database) DeletePolicy(ctx context.Context, table string, name string) error {
+func DeletePolicy(ctx context.Context, table string, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP POLICY "+name+" ON "+table)
 	return err
