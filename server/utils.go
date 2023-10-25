@@ -16,20 +16,11 @@ import (
 
 type Data map[string]any
 
-func writeJSONContentType(w heligo.ResponseWriter) {
+func writeJSONContentType(w http.ResponseWriter) {
 	header := w.Header()
 	if val := header["Content-Type"]; len(val) == 0 {
 		header["Content-Type"] = []string{"application/json; charset=utf-8"}
 	}
-}
-
-func writeJSON(w heligo.ResponseWriter, obj any) error {
-	jsonBytes, err := json.Marshal(obj)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(jsonBytes)
-	return err
 }
 
 // bodyAllowedForStatus is a copy of http.bodyAllowedForStatus non-exported function.
@@ -45,67 +36,90 @@ func bodyAllowedForStatus(status int) bool {
 	return true
 }
 
-func JSON(w heligo.ResponseWriter, code int, obj any) error {
+func WriteJSON(w http.ResponseWriter, code int, obj any) (int, error) {
 	writeJSONContentType(w)
 	w.WriteHeader(code)
 	if !bodyAllowedForStatus(code) {
-		return nil
+		return code, nil
 	}
-	return writeJSON(w, obj)
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	_, err = w.Write(jsonBytes)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return code, err
 }
 
-func JSONString(w heligo.ResponseWriter, code int, json []byte) error {
+func WriteJSONString(w http.ResponseWriter, code int, json []byte) (int, error) {
 	writeJSONContentType(w)
 	w.WriteHeader(code)
 	if !bodyAllowedForStatus(code) {
-		return nil
+		return code, nil
 	}
 	_, err := w.Write(json)
-	return err
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return code, err
 }
 
-func noRecordsForInsert(ctx context.Context, w heligo.ResponseWriter, records []database.Record) bool {
+func WriteEmpty(w http.ResponseWriter, code int) (int, error) {
+	w.WriteHeader(code)
+	return code, nil
+}
+
+func noRecordsForInsert(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
 	if len(records) == 0 {
 		gi := database.GetSmoothContext(ctx)
+		var status int
 		if gi.QueryOptions.ReturnRepresentation {
-			JSONString(w, http.StatusCreated, []byte("[]"))
+			status = http.StatusCreated
+			WriteJSONString(w, status, []byte("[]"))
 		} else {
-			w.WriteHeader(http.StatusNoContent)
+			status = http.StatusNoContent
+			WriteEmpty(w, status)
 		}
-		return true
+		return true, status
 	}
-	return false
+	return false, 0
 }
 
-func noRecordsForUpdate(ctx context.Context, w heligo.ResponseWriter, records []database.Record) bool {
+func noRecordsForUpdate(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
 	if len(records) == 0 || len(records[0]) == 0 {
 		gi := database.GetSmoothContext(ctx)
+		var status int
 		if gi.QueryOptions.ReturnRepresentation {
-			JSONString(w, http.StatusOK, []byte("[]"))
+			status = http.StatusOK
+			WriteJSONString(w, status, []byte("[]"))
 		} else {
-			w.WriteHeader(http.StatusNoContent)
+			status = http.StatusNoContent
+			WriteEmpty(w, status)
 		}
-		return true
+		return true, status
 	}
-	return false
+	return false, 0
 }
 
-func WriteError(w heligo.ResponseWriter, err error) {
+func WriteError(w http.ResponseWriter, err error) (int, error) {
 	switch err.(type) {
 	case *database.ParseError, *database.BuildError:
-		WriteBadRequest(w, err)
+		return WriteBadRequest(w, err)
 	case *database.SerializeError:
 		w.WriteHeader(http.StatusNotAcceptable)
+		return http.StatusNotAcceptable, err
 	default:
-		WriteServerError(w, err)
+		return WriteServerError(w, err)
 	}
 }
 
-func WriteBadRequest(w heligo.ResponseWriter, err error) {
-	JSON(w, http.StatusBadRequest, Data{"error": err.Error()})
+func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
+	return WriteJSON(w, http.StatusBadRequest, Data{"error": err.Error()})
 }
 
-func WriteServerError(w heligo.ResponseWriter, err error) {
+func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	if _, ok := err.(*pgconn.PgError); ok {
 		dberr := err.(*pgconn.PgError)
 		var status int
@@ -126,15 +140,15 @@ func WriteServerError(w heligo.ResponseWriter, err error) {
 		default:
 			status = http.StatusInternalServerError
 		}
-		JSON(w, status, Data{
+		return WriteJSON(w, status, Data{
 			"code":    dberr.Code,
 			"message": dberr.Message,
 			"hint":    dberr.Hint,
 		})
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		JSON(w, http.StatusNotFound, nil)
+		return WriteJSON(w, http.StatusNotFound, nil)
 	} else {
-		JSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
+		return WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
 	}
 }
 

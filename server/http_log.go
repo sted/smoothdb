@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"heligo"
+	"net/http"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,7 +17,7 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 	return func(next heligo.Handler) heligo.Handler {
 		zlog := logger.With().Str("domain", "HTTP").Logger()
 
-		return func(ctx context.Context, w heligo.ResponseWriter, r heligo.Request) error {
+		return func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 
 			// return if zerolog is disabled
 			if zlog.GetLevel() == zerolog.Disabled {
@@ -32,10 +33,7 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 			}
 
 			// executes the next handler
-			err := next(ctx, w, r)
-
-			// after executing the handlers
-			statusCode := w.Status()
+			statusCode, err := next(ctx, w, r)
 
 			//
 			var event *zerolog.Event
@@ -69,7 +67,7 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 				// post the message
 				event.Msg("Request")
 			}
-			return err
+			return statusCode, err
 		}
 	}
 }

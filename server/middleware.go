@@ -9,7 +9,7 @@ import (
 	"github.com/smoothdb/smoothdb/database"
 )
 
-func AcquireSession(ctx context.Context, w heligo.ResponseWriter, r heligo.Request, server *Server, useDBE bool) (context.Context, *Session, error) {
+func AcquireSession(ctx context.Context, w http.ResponseWriter, r heligo.Request, server *Server, useDBE bool) (context.Context, *Session, error) {
 
 	var claims *Claims
 	var err error
@@ -75,8 +75,8 @@ func AcquireSession(ctx context.Context, w heligo.ResponseWriter, r heligo.Reque
 	return ctx, session, nil
 }
 
-func ReleaseSession(ctx context.Context, w heligo.ResponseWriter, server *Server, session *Session) {
-	err := w.Status() >= 400
+func ReleaseSession(ctx context.Context, status int, server *Server, session *Session) {
+	err := status >= 400
 	if !server.sessionManager.enabled {
 		database.ReleaseConnection(ctx, session.DbConn, err, true)
 	} else if database.HasTX(session.DbConn) {
@@ -88,15 +88,15 @@ func ReleaseSession(ctx context.Context, w heligo.ResponseWriter, server *Server
 
 func DatabaseMiddleware(server *Server, useDBE bool) heligo.Middleware {
 	return func(next heligo.Handler) heligo.Handler {
-		return func(c context.Context, w heligo.ResponseWriter, r heligo.Request) error {
+		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 			ctx, session, err := AcquireSession(c, w, r, server, useDBE)
 			if err != nil {
-				JSON(w, http.StatusInternalServerError, Data{"error": err})
-				return err
+				WriteJSON(w, http.StatusInternalServerError, Data{"error": err})
+				return http.StatusInternalServerError, err
 			}
-			next(ctx, w, r)
-			ReleaseSession(ctx, w, server, session)
-			return nil
+			status, err := next(ctx, w, r)
+			ReleaseSession(ctx, status, server, session)
+			return status, err
 		}
 	}
 }
