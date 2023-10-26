@@ -38,7 +38,7 @@ type Test struct {
 	Status      int
 }
 
-func initClient(cookies bool) *http.Client {
+func InitClient(cookies bool) *http.Client {
 	var client *http.Client
 	if cookies {
 		jar, _ := cookiejar.New(nil)
@@ -49,7 +49,7 @@ func initClient(cookies bool) *http.Client {
 	return client
 }
 
-func exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error) {
+func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error) {
 	rawURL := cmd.Query
 	if !strings.HasPrefix(rawURL, "http") {
 		rawURL = config.BaseUrl + rawURL
@@ -98,9 +98,9 @@ func exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 }
 
 func Prepare(config Config, commands []Command) {
-	client := initClient(!config.NoCookies)
+	client := InitClient(!config.NoCookies)
 	for _, cmd := range commands {
-		_, _, err := exec(client, config, &cmd)
+		_, _, err := Exec(client, config, &cmd)
 		if err != nil {
 			fmt.Printf("Error: %v", err)
 		}
@@ -108,10 +108,10 @@ func Prepare(config Config, commands []Command) {
 }
 
 func Execute(t *testing.T, config Config, tests []Test) {
-	client := initClient(!config.NoCookies)
+	client := InitClient(!config.NoCookies)
 	for i, test := range tests {
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
-		body, status, err := exec(client, config, command)
+		body, status, err := Exec(client, config, command)
 		if err != nil {
 			t.Errorf("Error: %v", err)
 		} else if test.Expected != "" {

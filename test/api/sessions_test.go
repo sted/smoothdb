@@ -8,9 +8,6 @@ import (
 
 func TestSessions(t *testing.T) {
 
-	i := 3
-	i++
-
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin/databases",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
