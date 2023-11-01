@@ -89,11 +89,11 @@ func TestBase(t *testing.T) {
 	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
+	dbe.DeleteDatabase(dbe_ctx, "test_base")
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer dbe.DeleteDatabase(dbe_ctx, "test_base")
 
 	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
 	defer ReleaseConn(ctx, conn)
@@ -142,11 +142,11 @@ func TestDDL(t *testing.T) {
 	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
+	dbe.DeleteDatabase(dbe_ctx, "test_ddl")
 	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer dbe.DeleteDatabase(dbe_ctx, "test_ddl")
 
 	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
 	defer ReleaseConn(ctx, conn)

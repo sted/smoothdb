@@ -11,79 +11,79 @@ import (
 )
 
 type Session struct {
-	Key        string
 	Claims     *Claims
-	InUse      atomic.Bool
 	LastUsedAt time.Time
 	Db         *database.Database
 	DbConn     *database.DbPoolConn
-	Prev       *Session
-	Next       *Session
+	key        string
+	inUse      atomic.Bool
+	prev       *Session
+	next       *Session
 }
 
 type SessionList struct {
-	Head *Session
-	Tail *Session
+	head *Session
+	tail *Session
 }
 
 func (sl *SessionList) isEmpty() bool {
-	return sl.Head == nil
+	return sl.head == nil
 }
 
 func (sl *SessionList) append(s *Session) {
 	if !sl.isEmpty() {
-		sl.Tail.Next = s
-		s.Prev = sl.Tail
-		sl.Tail = s
+		sl.tail.next = s
+		s.prev = sl.tail
+		sl.tail = s
 	} else {
-		sl.Head = s
-		sl.Tail = s
+		sl.head = s
+		sl.tail = s
 	}
 }
 
 func (sl *SessionList) remove(s *Session) {
-	if s == sl.Head {
-		sl.Head = s.Next
+	if s == sl.head {
+		sl.head = s.next
 	} else {
-		s.Prev.Next = s.Next
+		s.prev.next = s.next
 	}
-	if s == sl.Tail {
-		sl.Tail = s.Prev
+	if s == sl.tail {
+		sl.tail = s.prev
 	} else {
-		s.Next.Prev = s.Prev
+		s.next.prev = s.prev
 	}
 }
 
 func (sl *SessionList) frontToBack() {
-	if sl.Head == nil || sl.Head == sl.Tail {
+	if sl.head == nil || sl.head == sl.tail {
 		return
 	}
-	s := sl.Head
-	sl.Tail.Next = s
-	sl.Head = s.Next
-	s.Next = nil
-	s.Prev = sl.Tail
-	sl.Tail = s
+	s := sl.head
+	sl.tail.next = s
+	sl.head = s.next
+	s.next = nil
+	s.prev = sl.tail
+	sl.tail = s
 }
 
 func (sl *SessionList) toFront(s *Session) {
-	if sl.Head == s {
+	if sl.head == s {
 		return
 	}
-	if s == sl.Tail {
-		sl.Tail = s.Prev
+	if s == sl.tail {
+		sl.tail = s.prev
 	} else {
-		s.Next.Prev = s.Prev
+		s.next.prev = s.prev
 	}
-	s.Prev.Next = s.Next
-	s.Next = sl.Head
-	s.Prev = nil
-	sl.Head.Prev = s
-	sl.Head = s
+	s.prev.next = s.next
+	s.next = sl.head
+	s.prev = nil
+	sl.head.prev = s
+	sl.head = s
 }
 
 type SessionManager struct {
-	Slots   map[string]*SessionList
+	slots   map[string]*SessionList
 	mtx     sync.Mutex
 	logger  *logging.Logger
 	enabled bool
@@ -91,7 +91,7 @@ type SessionManager struct {
 
 func (s *Server) initSessionManager() {
 	s.sessionManager = &SessionManager{
-		Slots:   map[string]*SessionList{},
+		slots:   map[string]*SessionList{},
 		logger:  s.Logger,
 		enabled: s.Config.SessionMode != "none",
 	}
@@ -111,13 +111,13 @@ func sessionWatcher(s *Server) {
 			sm.mtx.Lock()
 			var count, inUse int
 
-			for k, list := range sm.Slots {
+			for k, list := range sm.slots {
 
-				for session := list.Head; session != nil; session = session.Next {
+				for session := list.head; session != nil; session = session.next {
 
 					count += 1
 
-					if session.InUse.Load() {
+					if session.inUse.Load() {
 						inUse += 1
 						continue
 					}
@@ -131,13 +131,13 @@ func sessionWatcher(s *Server) {
 
 						// Delete the session
 						list.remove(session)
-						if session.Prev == nil {
-							session = list.Head
+						if session.prev == nil {
+							session = list.head
 							if session == nil {
 								break
 							}
 						} else {
-							session = session.Prev
+							session = session.prev
 						}
 
 					} else if spentTime > 5*time.Second && session.DbConn != nil {
@@ -152,19 +152,19 @@ func sessionWatcher(s *Server) {
 					}
 				}
 				if list.isEmpty() {
-					delete(sm.Slots, k)
+					delete(sm.slots, k)
 				}
 			}
 			//fmt.Println("sessions: ", count, " in use: ", inUse)
 			sm.mtx.Unlock()
 
 		case <-s.shutdown:
-			for k, list := range sm.Slots {
-				for session := list.Head; session != nil; session = session.Next {
+			for k, list := range sm.slots {
+				for session := list.head; session != nil; session = session.next {
 					if session.DbConn != nil {
 						database.ReleaseConnection(context.Background(), session.DbConn, false, false)
 					}
-					delete(sm.Slots, k)
+					delete(sm.slots, k)
 				}
 			}
 			return
@@ -172,40 +172,34 @@ func sessionWatcher(s *Server) {
 	}
 }
 
-func (sm *SessionManager) newSession(key string, claims *Claims) *Session {
+func (sm *SessionManager) newSession(key string) *Session {
 	now := time.Now()
-	session := &Session{
-		Key:    key,
-		Claims: claims,
-	}
-	session.InUse.Store(true)
+	session := &Session{key: key}
+	session.inUse.Store(true)
 	session.LastUsedAt = now
-	list := sm.Slots[key]
+	list := sm.slots[key]
 	if list == nil {
 		list = &SessionList{}
-		sm.Slots[key] = list
+		sm.slots[key] = list
 	}
 	list.append(session)
 	return session
 }
 
-func (sm *SessionManager) getSession(key string, claims *Claims) (*Session, bool) {
+func (sm *SessionManager) getSession(key string) (*Session, bool) {
 	if !sm.enabled {
-		return &Session{
-			Key:    key,
-			Claims: claims,
-		}, true
+		return &Session{key: key}, true
 	}
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
-	list := sm.Slots[key]
+	list := sm.slots[key]
 	if list == nil || list.isEmpty() {
-		return sm.newSession(key, claims), true
+		return sm.newSession(key), true
 	}
-	session := list.Head
-	swapped := session.InUse.CompareAndSwap(false, true)
+	session := list.head
+	swapped := session.inUse.CompareAndSwap(false, true)
 	if !swapped {
-		return sm.newSession(key, claims), true
+		return sm.newSession(key), true
 	}
 	list.frontToBack()
 	return session, false
@@ -217,9 +211,9 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	}
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
-	list := sm.Slots[session.Key]
+	list := sm.slots[session.key]
 	list.toFront(session)
 	session.LastUsedAt = time.Now()
-	swapped := session.InUse.CompareAndSwap(true, false)
+	swapped := session.inUse.CompareAndSwap(true, false)
 	return swapped
 }

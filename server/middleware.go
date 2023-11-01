@@ -9,39 +9,35 @@ import (
 	"github.com/smoothdb/smoothdb/database"
 )
 
-func AcquireSession(ctx context.Context, w http.ResponseWriter, r heligo.Request, server *Server, useDBE bool) (context.Context, *Session, error) {
-
+func AcquireSession(ctx context.Context, r heligo.Request, server *Server, forceDBE bool) (context.Context, *Session, int, error) {
 	var claims *Claims
 	var err error
-
-	tokenString := extractAuthHeader(r.Request)
-
-	if tokenString != "" {
-		claims, err = server.authenticate(tokenString)
-		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			return nil, nil, err
-		}
-	} else {
-		tokenString = "anon"
-		claims = &Claims{Role: "anon"}
-	}
 	var db *database.Database
 	var dbconn *database.DbPoolConn
 	var newAcquire bool
 	var claimsString string
+
+	tokenString := extractAuthHeader(r.Request)
 	dbname := r.Param("dbname")
 	key := tokenString + "; "
-	if !useDBE {
+	if !forceDBE {
 		key += dbname
 	}
-	session, created := server.sessionManager.getSession(key, claims)
+	session, created := server.sessionManager.getSession(key)
 	if created {
-		if dbname != "" && !useDBE {
+		if tokenString != "" {
+			claims, err = server.authenticate(tokenString)
+			if err != nil {
+				return nil, nil, http.StatusUnauthorized, err
+			}
+		} else {
+			claims = &Claims{Role: server.Config.Database.AnonRole}
+		}
+		session.Claims = claims
+		if dbname != "" && !forceDBE {
 			db, err = database.DBE.GetActiveDatabase(ctx, dbname)
 			if err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				return nil, nil, err
+				return nil, nil, http.StatusNotFound, err
 			}
 			session.Db = db
 		}
@@ -51,8 +47,7 @@ func AcquireSession(ctx context.Context, w http.ResponseWriter, r heligo.Request
 	if session.DbConn == nil {
 		dbconn, err = database.AcquireConnection(ctx, db)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return nil, nil, err
+			return nil, nil, http.StatusInternalServerError, err
 		}
 		session.DbConn = dbconn
 		newAcquire = true
@@ -62,21 +57,19 @@ func AcquireSession(ctx context.Context, w http.ResponseWriter, r heligo.Request
 	} else {
 		dbconn = session.DbConn
 	}
-	err = database.PrepareConnection(ctx, dbconn, claims.Role, claimsString, newAcquire)
+	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return nil, nil, err
+		return nil, nil, http.StatusInternalServerError, err
 	}
-	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), claims.Role)
+	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return nil, nil, err
+		return nil, nil, http.StatusInternalServerError, err
 	}
-	return ctx, session, nil
+	return ctx, session, 200, nil
 }
 
 func ReleaseSession(ctx context.Context, status int, server *Server, session *Session) {
-	err := status >= 400
+	err := status >= http.StatusBadRequest
 	if !server.sessionManager.enabled {
 		database.ReleaseConnection(ctx, session.DbConn, err, true)
 	} else if database.HasTX(session.DbConn) {
@@ -89,12 +82,12 @@ func ReleaseSession(ctx context.Context, status int, server *Server, session *Se
 func DatabaseMiddleware(server *Server, useDBE bool) heligo.Middleware {
 	return func(next heligo.Handler) heligo.Handler {
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-			ctx, session, err := AcquireSession(c, w, r, server, useDBE)
+			ctx, session, status, err := AcquireSession(c, r, server, useDBE)
 			if err != nil {
-				WriteJSON(w, http.StatusInternalServerError, Data{"error": err})
-				return http.StatusInternalServerError, err
+				WriteJSON(w, status, Data{"error": err})
+				return status, err
 			}
-			status, err := next(ctx, w, r)
+			status, err = next(ctx, w, r)
 			ReleaseSession(ctx, status, server, session)
 			return status, err
 		}

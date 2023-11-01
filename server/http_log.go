@@ -18,7 +18,6 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 		zlog := logger.With().Str("domain", "HTTP").Logger()
 
 		return func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-
 			// return if zerolog is disabled
 			if zlog.GetLevel() == zerolog.Disabled {
 				return next(ctx, w, r)

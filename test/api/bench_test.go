@@ -1,8 +1,12 @@
 package test_api
 
 import (
+	"context"
+	"heligo"
+	"net/http"
 	"testing"
 
+	"github.com/smoothdb/smoothdb/server"
 	"github.com/smoothdb/smoothdb/test"
 )
 
@@ -11,6 +15,16 @@ func BenchmarkBase(b *testing.B) {
 		BaseUrl:       "http://localhost:8082/admin/databases",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
+
+	router := srv.GetRouter()
+	group := router.Group("/bench")
+	group.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return 200, nil
+	})
+	group_db := router.Group("/benchdb", server.DatabaseMiddleware(srv, false))
+	group_db.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return 200, nil
+	})
 
 	commands := []test.Command{ // create table table_records
 		{
@@ -33,34 +47,44 @@ func BenchmarkBase(b *testing.B) {
 	test.Prepare(cmdConfig, commands)
 
 	testConfig := test.Config{
-		BaseUrl:       "http://localhost:8082/api/dbtest",
+		BaseUrl:       "http://localhost:8082",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 		NoCookies:     true,
 	}
 
 	tests := []test.Test{
 		{
-			Description: "select records",
+			Description: "empty",
 			Method:      "GET",
-			Query:       "/table_records",
-			Expected: `[
-				{"name": "one", "int4": 1, "int8": 2, "float4": 1.2E3, "float8": 2.3, "interval": "1 year 2 mons 6 days 00:07:00"},
-				{"name": "two", "int4": -1, "int8": -50000000, "float4": -1.2, "float8": -2.34554, "interval": "3 mons 05:06:07"}
-			]`,
-			Status: 200,
+			Query:       "/bench/empty",
+			Status:      200,
+		},
+		{
+			Description: "middleware",
+			Method:      "GET",
+			Query:       "/benchdb/empty",
+			Status:      200,
+		},
+		{
+			Description: "select",
+			Method:      "GET",
+			Query:       "/api/dbtest/table_records",
+			Status:      200,
 		},
 	}
 
-	b.Run("Basic API bench", func(b *testing.B) {
+	client := test.InitClient(false)
 
-		client := test.InitClient(false)
-		command := &test.Command{tests[0].Description, tests[0].Method, tests[0].Query, tests[0].Body, tests[0].Headers}
+	for _, t := range tests {
+		command := &test.Command{t.Description, t.Method, t.Query, t.Body, t.Headers}
 
-		for i := 0; i < b.N; i++ {
-			_, _, err := test.Exec(client, testConfig, command)
-			if err != nil {
+		b.Run(t.Description, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _, err := test.Exec(client, testConfig, command)
+				if err != nil {
 
+				}
 			}
-		}
-	})
+		})
+	}
 }
