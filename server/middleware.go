@@ -18,6 +18,9 @@ func AcquireSession(ctx context.Context, r heligo.Request, server *Server, force
 	var claimsString string
 
 	tokenString := extractAuthHeader(r.Request)
+	if tokenString == "" && !server.Config.AllowAnon {
+		return nil, nil, http.StatusUnauthorized, err
+	}
 	dbname := r.Param("dbname")
 	key := tokenString + "; "
 	if !forceDBE {

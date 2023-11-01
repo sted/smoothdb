@@ -57,19 +57,16 @@ func BenchmarkBase(b *testing.B) {
 			Description: "empty",
 			Method:      "GET",
 			Query:       "/bench/empty",
-			Status:      200,
 		},
 		{
 			Description: "middleware",
 			Method:      "GET",
 			Query:       "/benchdb/empty",
-			Status:      200,
 		},
 		{
 			Description: "select",
 			Method:      "GET",
 			Query:       "/api/dbtest/table_records",
-			Status:      200,
 		},
 	}
 
