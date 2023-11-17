@@ -94,7 +94,7 @@ type QueryOptions struct {
 // Initially we will support PostgREST mode and later perhaps others (Django?).
 type RequestParser interface {
 	parse(mainTable string, filters Filters) (*QueryParts, error)
-	getRequestOptions(req *Request) *QueryOptions
+	getRequestOptions(req *Request) QueryOptions
 }
 
 type PostgRestParser struct {
@@ -809,9 +809,9 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	return parts, nil
 }
 
-func (p PostgRestParser) getRequestOptions(req *Request) *QueryOptions {
+func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
 	header := req.Header
-	options := &QueryOptions{}
+	options := QueryOptions{}
 
 	accept := header.Get("Accept")
 	mediatype, _, _ := mime.ParseMediaType(accept)

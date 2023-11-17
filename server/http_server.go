@@ -1,9 +1,10 @@
 package server
 
 import (
-	"heligo"
 	"net/http"
 	"time"
+
+	"github.com/sted/heligo"
 )
 
 func (server *Server) initHTTPServer() {
@@ -11,7 +12,7 @@ func (server *Server) initHTTPServer() {
 	//router := gin.New()
 	router := heligo.New()
 	//router.Use(gin.Recovery())
-	router.Use(HTTPLogger(server.Logger))
+	//router.Use(HTTPLogger(server.Logger))
 
 	// corsConfig := cors.DefaultConfig()
 	// corsConfig.AllowAllOrigins = true

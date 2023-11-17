@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"heligo"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
+	"github.com/sted/heligo"
 )
 
 func AcquireSession(ctx context.Context, r heligo.Request, server *Server, forceDBE bool) (context.Context, *Session, int, error) {

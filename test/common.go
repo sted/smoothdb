@@ -49,14 +49,14 @@ func InitClient(cookies bool) *http.Client {
 	return client
 }
 
-func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error) {
+func PrepareRequest(config Config, cmd *Command) (*http.Request, error) {
 	rawURL := cmd.Query
 	if !strings.HasPrefix(rawURL, "http") {
 		rawURL = config.BaseUrl + rawURL
 	}
 	query, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	query.RawQuery = query.Query().Encode()
 	method := cmd.Method
@@ -69,7 +69,7 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 	}
 	req, err := http.NewRequest(method, query.String(), bodyReader)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	for k, values := range config.CommonHeaders {
 		for _, v := range values {
@@ -85,16 +85,28 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 			}
 		}
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
+	return req, nil
+}
+
+func ReadResponse(resp *http.Response) ([]byte, int, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 0, err
 	}
 	resp.Body.Close()
 	return body, resp.StatusCode, nil
+}
+
+func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error) {
+	req, err := PrepareRequest(config, cmd)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	return ReadResponse(resp)
 }
 
 func Prepare(config Config, commands []Command) {

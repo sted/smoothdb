@@ -2,12 +2,12 @@ package test_api
 
 import (
 	"context"
-	"heligo"
 	"net/http"
 	"testing"
 
 	"github.com/smoothdb/smoothdb/server"
 	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/heligo"
 )
 
 func BenchmarkBase(b *testing.B) {
@@ -63,11 +63,11 @@ func BenchmarkBase(b *testing.B) {
 			Method:      "GET",
 			Query:       "/benchdb/empty",
 		},
-		{
-			Description: "select",
-			Method:      "GET",
-			Query:       "/api/dbtest/table_records",
-		},
+		// {
+		// 	Description: "select",
+		// 	Method:      "GET",
+		// 	Query:       "/api/dbtest/table_records",
+		// },
 	}
 
 	client := test.InitClient(false)
@@ -77,11 +77,13 @@ func BenchmarkBase(b *testing.B) {
 
 		b.Run(t.Description, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _, err := test.Exec(client, testConfig, command)
-				if err != nil {
-
-				}
+				b.StopTimer()
+				req, _ := test.PrepareRequest(testConfig, command)
+				b.StartTimer()
+				client.Do(req)
+				//test.ReadResponse(resp)
 			}
+
 		})
 	}
 }

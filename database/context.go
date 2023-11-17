@@ -7,7 +7,7 @@ import (
 
 type smoothCtxKey struct{}
 
-var smoothTag smoothCtxKey
+var smoothTag = smoothCtxKey{}
 
 type SmoothContext struct {
 	Db            *Database
@@ -15,7 +15,7 @@ type SmoothContext struct {
 	Role          string
 	RequestParser RequestParser
 	QueryBuilder  QueryBuilder
-	QueryOptions  *QueryOptions
+	QueryOptions  QueryOptions
 }
 
 func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbConn, role string) context.Context {
@@ -53,9 +53,8 @@ func ContextWithDb(parent context.Context, db *Database, role string) (context.C
 }
 
 func ContextWithDbConn(parent context.Context, db *Database, conn *DbConn) context.Context {
-
 	defaultParser := PostgRestParser{}
-	queryOptions := &QueryOptions{}
+	queryOptions := QueryOptions{}
 	defaultBuilder := DirectQueryBuilder{}
 
 	return context.WithValue(parent, smoothTag,

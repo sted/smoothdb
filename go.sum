@@ -30,6 +30,8 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/rs/xid v1.4.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=
 github.com/samber/lo v1.38.1 h1:j2XEAqXKb09Am4ebOg31SpvzUTTs6EN3VfgeLUhPdXM=
 github.com/samber/lo v1.38.1/go.mod h1:+m/ZKRl6ClXCE2Lgf3MsQlWfh4bn1bz6CXEOxnEXnEA=
+github.com/sted/heligo v0.1.0 h1:Y06rnGJxQQwcRASB0aXNwTcsUopYL/ndO3JaNZJ5dIA=
+github.com/sted/heligo v0.1.0/go.mod h1:4V4lUjw9DWR3VkO0JLeQRY+rGQBmT0m/Kn0qtwDNx5I=
 github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065 h1:q11r33JV0PjDlYdlR7KBGL7f9YsLbarrp0RmUzRaNq4=
 github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065/go.mod h1:Le6ESbR7hc+DP6Lt1THiV8CQSdkkNrd3R0XbEgp3ZBU=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

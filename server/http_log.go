@@ -4,13 +4,13 @@ package server
 
 import (
 	"context"
-	"heligo"
 	"net/http"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/smoothdb/smoothdb/database"
 	"github.com/smoothdb/smoothdb/logging"
+	"github.com/sted/heligo"
 )
 
 func HTTPLogger(logger *logging.Logger) heligo.Middleware {

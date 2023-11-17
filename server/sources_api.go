@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"heligo"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
+	"github.com/sted/heligo"
 )
 
 func (s *Server) initSourcesRouter() {

@@ -8,12 +8,10 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/rs/zerolog v1.31.0
 	github.com/samber/lo v1.38.1
+	github.com/sted/heligo v0.1.0
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	heligo v0.0.0-00010101000000-000000000000
 )
-
-replace heligo => ../../heligo
 
 replace github.com/rs/zerolog v1.31.0 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
 

@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"heligo"
 	"io"
 	"net/http"
 
-	"github.com/smoothdb/smoothdb/database"
-
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/smoothdb/smoothdb/database"
+	"github.com/sted/heligo"
 )
 
 type Data map[string]any
@@ -36,11 +35,11 @@ func bodyAllowedForStatus(status int) bool {
 	return true
 }
 
-func WriteJSON(w http.ResponseWriter, code int, obj any) (int, error) {
+func WriteJSON(w http.ResponseWriter, status int, obj any) (int, error) {
 	writeJSONContentType(w)
-	w.WriteHeader(code)
-	if !bodyAllowedForStatus(code) {
-		return code, nil
+	w.WriteHeader(status)
+	if !bodyAllowedForStatus(status) {
+		return status, nil
 	}
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
@@ -50,25 +49,25 @@ func WriteJSON(w http.ResponseWriter, code int, obj any) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
-	return code, err
+	return status, err
 }
 
-func WriteJSONString(w http.ResponseWriter, code int, json []byte) (int, error) {
+func WriteJSONString(w http.ResponseWriter, status int, json []byte) (int, error) {
 	writeJSONContentType(w)
-	w.WriteHeader(code)
-	if !bodyAllowedForStatus(code) {
-		return code, nil
+	w.WriteHeader(status)
+	if !bodyAllowedForStatus(status) {
+		return status, nil
 	}
 	_, err := w.Write(json)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
-	return code, err
+	return status, err
 }
 
-func WriteEmpty(w http.ResponseWriter, code int) (int, error) {
-	w.WriteHeader(code)
-	return code, nil
+func WriteEmpty(w http.ResponseWriter, status int) (int, error) {
+	w.WriteHeader(status)
+	return status, nil
 }
 
 func noRecordsForInsert(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
@@ -151,21 +150,6 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		return WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
 	}
 }
-
-// func (r *Request) Bind(obj any) error {
-// 	decoder := json.NewDecoder(r.Request.Body)
-// 	// if EnableDecoderUseNumber {
-// 	// 	decoder.UseNumber()
-// 	// }
-// 	// if EnableDecoderDisallowUnknownFields {
-// 	// 	decoder.DisallowUnknownFields()
-// 	// }
-// 	if err := decoder.Decode(obj); err != nil {
-// 		return err
-// 	}
-// 	//return validate(obj)
-// 	return nil
-// }
 
 func ReadInputRecords(r heligo.Request) ([]database.Record, error) {
 	body, err := io.ReadAll(r.Body)

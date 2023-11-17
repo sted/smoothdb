@@ -7,11 +7,11 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildInsert(table string, records []Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildExecute(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
 
 	preferredSerializer() ResultSerializer
 }
@@ -529,7 +529,7 @@ func onConflictClause(table, schema string, fields []string,
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
 	var fields string
@@ -577,7 +577,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	}
 	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
 		conflictFields := lo.Keys(parts.conflictFields)
-		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
+		onConflict := onConflictClause(table, schema, fieldList, conflictFields, &options, info)
 		if err != nil {
 			return "", nil, err
 		}
@@ -593,7 +593,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
 	update string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -631,7 +631,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
 	delete string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -651,7 +651,7 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 	return delete, valueList, nil
 }
 
-func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
 	exec string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -722,7 +722,7 @@ type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
@@ -765,7 +765,7 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)

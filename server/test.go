@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
-	"heligo"
 	"net/http"
 	"net/http/pprof"
 
 	"github.com/smoothdb/smoothdb/database"
+	"github.com/sted/heligo"
 )
 
 func (s *Server) initTestRouter() {

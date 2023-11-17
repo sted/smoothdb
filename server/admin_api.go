@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"heligo"
 	"net/http"
 
 	"github.com/smoothdb/smoothdb/database"
+	"github.com/sted/heligo"
 )
 
 func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -21,7 +21,7 @@ func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request
 func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	db := database.GetDb(c)
 	var tableInput database.Table
-	r.Bind(&tableInput)
+	r.ReadJSON(&tableInput)
 	table, err := db.CreateTable(c, &tableInput)
 	if err == nil {
 		return WriteJSON(w, http.StatusCreated, table)
@@ -59,7 +59,7 @@ func (s *Server) initAdminRouter() {
 
 	roles.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var roleInput database.Role
-		r.Bind(&roleInput)
+		r.ReadJSON(&roleInput)
 
 		role, err := database.CreateRole(c, &roleInput)
 		if err == nil {
@@ -101,7 +101,7 @@ func (s *Server) initAdminRouter() {
 
 	users.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var userInput database.User
-		r.Bind(&userInput)
+		r.ReadJSON(&userInput)
 		user, err := database.CreateUser(c, &userInput)
 		if err == nil {
 			return WriteJSON(w, http.StatusCreated, user)
@@ -164,7 +164,7 @@ func (s *Server) initAdminRouter() {
 			privilegeInput.TargetType = targetType
 			privilegeInput.TargetName = targetName
 		}
-		r.Bind(&privilegeInput)
+		r.ReadJSON(&privilegeInput)
 
 		priv, err := database.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
@@ -190,7 +190,7 @@ func (s *Server) initAdminRouter() {
 		var privilegeInput database.Privilege
 		privilegeInput.TargetType = targetType
 		privilegeInput.TargetName = targetName
-		r.Bind(&privilegeInput)
+		r.ReadJSON(&privilegeInput)
 
 		err := database.DeletePrivilege(c, &privilegeInput)
 		if err == nil {
@@ -224,7 +224,7 @@ func (s *Server) initAdminRouter() {
 
 	dbegroup.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var databaseInput database.Database
-		r.Bind(&databaseInput)
+		r.ReadJSON(&databaseInput)
 
 		database, err := dbe.CreateDatabase(c, databaseInput.Name)
 		if err == nil {
@@ -260,7 +260,7 @@ func (s *Server) initAdminRouter() {
 
 	databases.Handle("POST", "/:dbname/schemas", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var schemaInput database.Schema
-		r.Bind(&schemaInput)
+		r.ReadJSON(&schemaInput)
 
 		schema, err := database.CreateSchema(c, schemaInput.Name)
 		if err == nil {
@@ -303,7 +303,7 @@ func (s *Server) initAdminRouter() {
 		db := database.GetDb(c)
 		var tableUpdate database.TableUpdate
 		tableUpdate.Name = r.Param("table")
-		r.Bind(&tableUpdate)
+		r.ReadJSON(&tableUpdate)
 
 		table, err := db.UpdateTable(c, &tableUpdate)
 		if err == nil {
@@ -353,7 +353,7 @@ func (s *Server) initAdminRouter() {
 	databases.Handle("POST", "/:dbname/views", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		var viewInput database.View
-		r.Bind(&viewInput)
+		r.ReadJSON(&viewInput)
 
 		view, err := db.CreateView(c, &viewInput)
 		if err == nil {
@@ -393,7 +393,7 @@ func (s *Server) initAdminRouter() {
 		db := database.GetDb(c)
 		var columnInput database.Column
 		columnInput.Table = r.Param("table")
-		r.Bind(&columnInput)
+		r.ReadJSON(&columnInput)
 		if columnInput.Type == "" {
 			columnInput.Type = "text"
 		}
@@ -411,7 +411,7 @@ func (s *Server) initAdminRouter() {
 		var columnUpdate database.ColumnUpdate
 		columnUpdate.Table = r.Param("table")
 		columnUpdate.Name = r.Param("column")
-		r.Bind(&columnUpdate)
+		r.ReadJSON(&columnUpdate)
 
 		column, err := db.UpdateColumn(c, &columnUpdate)
 		if err == nil {
@@ -452,7 +452,7 @@ func (s *Server) initAdminRouter() {
 		db := database.GetDb(c)
 		var constraintInput database.Constraint
 		constraintInput.Table = r.Param("table")
-		r.Bind(&constraintInput)
+		r.ReadJSON(&constraintInput)
 
 		constant, err := db.CreateConstraint(c, &constraintInput)
 		if err == nil {
@@ -491,7 +491,7 @@ func (s *Server) initAdminRouter() {
 	databases.Handle("POST", "/:dbname/tables/:table/policies", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var policyInput database.Policy
 		policyInput.Table = r.Param("table")
-		r.Bind(&policyInput)
+		r.ReadJSON(&policyInput)
 
 		policy, err := database.CreatePolicy(c, &policyInput)
 		if err == nil {
@@ -529,7 +529,7 @@ func (s *Server) initAdminRouter() {
 	databases.Handle("POST", "/:dbname/functions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		var functionInput database.Function
-		r.Bind(&functionInput)
+		r.ReadJSON(&functionInput)
 
 		policy, err := db.CreateFunction(c, &functionInput)
 		if err == nil {
