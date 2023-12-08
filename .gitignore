@@ -4,5 +4,6 @@ config.jsonc
 __debug_bin
 smoothdb*.log
 misc/scratch.sql
-
+.vscode/*
+.DS_Store
 
