@@ -5,9 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/smoothdb/smoothdb/logging"
-	"github.com/smoothdb/smoothdb/server"
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/server"
+	"github.com/sted/smoothdb/test"
 )
 
 var (
@@ -18,15 +17,13 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	c := &server.Config{
-		Address:          "localhost:8082",
-		AllowAnon:        false,
-		EnableAdminRoute: true,
-		Logging: logging.Config{
-			Level:       "info",
-			FileLogging: false,
-			StdOut:      true,
-		},
+	c := map[string]any{
+		"Address":             "localhost:8082",
+		"AllowAnon":           false,
+		"EnableAdminRoute":    true,
+		"Logging.Level":       "info",
+		"Logging.FileLogging": false,
+		"Logging.StdOut":      false,
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
@@ -50,7 +47,6 @@ func TestMain(m *testing.M) {
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin",
 		CommonHeaders: test.Headers{"Authorization": {postgresToken}},
-		NoCookies:     true,
 	}
 
 	commands := []test.Command{

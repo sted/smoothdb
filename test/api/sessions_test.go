@@ -3,7 +3,7 @@ package test_api
 import (
 	"testing"
 
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/test"
 )
 
 func TestSessions(t *testing.T) {

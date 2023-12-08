@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/smoothdb/smoothdb/database"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
 )
 
 func (s *Server) initTestRouter() {

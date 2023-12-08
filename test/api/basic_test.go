@@ -3,7 +3,7 @@ package test_api
 import (
 	"testing"
 
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/test"
 )
 
 func TestRecords(t *testing.T) {
@@ -37,7 +37,6 @@ func TestRecords(t *testing.T) {
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
-		NoCookies:     true,
 	}
 
 	tests := []test.Test{

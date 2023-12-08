@@ -6,11 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/smoothdb/smoothdb/config"
-	"github.com/smoothdb/smoothdb/database"
-	"github.com/smoothdb/smoothdb/logging"
-
-	"github.com/imdario/mergo"
+	"github.com/sted/smoothdb/config"
+	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/logging"
 )
 
 type ConfigOptions struct {
@@ -78,10 +76,8 @@ Server Options:
 	-h, --help                       Show this message
 `
 
-func getFlags(defaultConfigPath string) (*Config, string) {
-	c := &Config{}
-	var configPath string
-
+func getFlags(defaultConfigPath string) (map[string]any, string) {
+	var configPath, address, dburl string
 	flags := flag.NewFlagSet("", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Printf("%s\n", usageStr)
@@ -89,45 +85,43 @@ func getFlags(defaultConfigPath string) (*Config, string) {
 	}
 	flags.StringVar(&configPath, "c", defaultConfigPath, "Configuration file")
 	flags.StringVar(&configPath, "config", defaultConfigPath, "Configuration file")
-	flags.StringVar(&c.Address, "a", c.Address, "Address")
-	flags.StringVar(&c.Address, "addr", c.Address, "Address")
-	flags.StringVar(&c.Database.URL, "d", c.Database.URL, "DatabaseURL")
-	flags.StringVar(&c.Database.URL, "dburl", c.Database.URL, "DatabaseURL")
+	flags.StringVar(&address, "a", "", "Address")
+	flags.StringVar(&address, "addr", "", "Address")
+	flags.StringVar(&dburl, "d", "", "DatabaseURL")
+	flags.StringVar(&dburl, "dburl", "", "DatabaseURL")
 	flags.Parse(os.Args[1:])
-	return c, configPath
+	m := map[string]any{}
+	return m, configPath
 }
 
-func getConfig(base *Config, opts *ConfigOptions) *Config {
-
+func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) *Config {
 	// Defaults
 	cfg := defaultConfig()
 
-	// Command line
-
 	var defaultConfigPath string
-	if opts == nil {
+	if configOpts == nil {
 		defaultConfigPath = "./config.jsonc"
 	} else {
-		defaultConfigPath = opts.ConfigFilePath
+		defaultConfigPath = configOpts.ConfigFilePath
 	}
-
-	var cliConfig *Config
+	var cliConfig map[string]any
 	configPath := defaultConfigPath
-	if opts == nil || !opts.SkipFlags {
+	if configOpts == nil || !configOpts.SkipFlags {
 		cliConfig, configPath = getFlags(defaultConfigPath)
 	}
 	// Configuration file
 	config.GetConfig(cfg, configPath)
-
-	if base != nil {
-		mergo.Merge(cfg, base, mergo.WithOverride)
+	// Merge base config
+	if baseConfig != nil {
+		config.MergeConfig(cfg, baseConfig)
 	}
 	// Environment
-	if opts == nil || !opts.SkipEnv {
+	if configOpts == nil || !configOpts.SkipEnv {
 		getEnvironment(cfg)
 	}
-	if opts == nil || !opts.SkipFlags {
-		mergo.Merge(cfg, cliConfig, mergo.WithOverride)
+	// Command line
+	if configOpts == nil || !configOpts.SkipFlags {
+		config.MergeConfig(cfg, cliConfig)
 	}
 
 	return cfg

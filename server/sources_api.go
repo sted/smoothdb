@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/smoothdb/smoothdb/database"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
 )
 
 func (s *Server) initSourcesRouter() {

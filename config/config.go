@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/tailscale/hujson"
 )
@@ -98,6 +99,45 @@ func SaveConfig(config any, configFile string) error {
 	err = os.WriteFile(configFile, b, 0777)
 	if err != nil {
 		return fmt.Errorf("error writing the configuration file (%w)", err)
+	}
+	return nil
+}
+
+func setField(config any, name string, value any) error {
+	structValue := reflect.ValueOf(config).Elem()
+	path := strings.Split(name, ".")
+
+	for _, p := range path[:len(path)-1] {
+		structValue = structValue.FieldByName(p)
+		if !structValue.IsValid() {
+			return fmt.Errorf("invalid field: %s", p)
+		}
+	}
+
+	field := structValue.FieldByName(path[len(path)-1])
+	if !field.IsValid() {
+		return fmt.Errorf("invalid field: %s", name)
+	}
+	if !field.CanSet() {
+		return fmt.Errorf("cannot set field: %s", name)
+	}
+
+	fieldValue := reflect.ValueOf(value)
+	if field.Type() != fieldValue.Type() {
+		return fmt.Errorf("wrong type: %s", name)
+	}
+
+	field.Set(fieldValue)
+	return nil
+}
+
+// MergeConfig merges configuration fields expressed as a flat map.
+// Nested fileds are written as "Logging.Level".
+func MergeConfig(config any, flatConfig map[string]any) error {
+	for name, value := range flatConfig {
+		if err := setField(config, name, value); err != nil {
+			return err
+		}
 	}
 	return nil
 }

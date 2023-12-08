@@ -3,7 +3,7 @@ package postgrest
 import (
 	"testing"
 
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/test"
 )
 
 func TestPostgREST_Insert(t *testing.T) {

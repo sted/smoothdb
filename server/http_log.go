@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/smoothdb/smoothdb/database"
-	"github.com/smoothdb/smoothdb/logging"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/logging"
 )
 
 func HTTPLogger(logger *logging.Logger) heligo.Middleware {

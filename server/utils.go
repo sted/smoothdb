@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/smoothdb/smoothdb/database"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
 )
 
 type Data map[string]any
@@ -35,7 +35,7 @@ func bodyAllowedForStatus(status int) bool {
 	return true
 }
 
-func WriteJSON(w http.ResponseWriter, status int, obj any) (int, error) {
+func WriteJSON[O any](w http.ResponseWriter, status int, obj O) (int, error) {
 	writeJSONContentType(w)
 	w.WriteHeader(status)
 	if !bodyAllowedForStatus(status) {
@@ -49,7 +49,8 @@ func WriteJSON(w http.ResponseWriter, status int, obj any) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
-	return status, err
+	return status, nil
+
 }
 
 func WriteJSONString(w http.ResponseWriter, status int, json []byte) (int, error) {
@@ -139,13 +140,13 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		default:
 			status = http.StatusInternalServerError
 		}
-		return WriteJSON(w, status, Data{
+		return WriteJSON(w, status, &Data{
 			"code":    dberr.Code,
 			"message": dberr.Message,
 			"hint":    dberr.Hint,
 		})
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		return WriteJSON(w, http.StatusNotFound, nil)
+		return WriteEmpty(w, http.StatusNotFound)
 	} else {
 		return WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
 	}

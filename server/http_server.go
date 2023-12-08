@@ -8,11 +8,9 @@ import (
 )
 
 func (server *Server) initHTTPServer() {
-	//gin.SetMode(gin.ReleaseMode)
-	//router := gin.New()
 	router := heligo.New()
 	//router.Use(gin.Recovery())
-	//router.Use(HTTPLogger(server.Logger))
+	router.Use(HTTPLogger(server.Logger))
 
 	// corsConfig := cors.DefaultConfig()
 	// corsConfig.AllowAllOrigins = true

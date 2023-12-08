@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/smoothdb/smoothdb/database"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
 )
 
 func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -24,7 +24,11 @@ func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	r.ReadJSON(&tableInput)
 	table, err := db.CreateTable(c, &tableInput)
 	if err == nil {
-		return WriteJSON(w, http.StatusCreated, table)
+		if table != nil {
+			return WriteJSON(w, http.StatusCreated, table)
+		} else {
+			return WriteEmpty(w, http.StatusCreated)
+		}
 	} else {
 		return WriteServerError(w, err)
 	}
@@ -307,7 +311,11 @@ func (s *Server) initAdminRouter() {
 
 		table, err := db.UpdateTable(c, &tableUpdate)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, table)
+			if table != nil {
+				return WriteJSON(w, http.StatusCreated, table)
+			} else {
+				return WriteEmpty(w, http.StatusCreated)
+			}
 		} else {
 			return WriteServerError(w, err)
 		}

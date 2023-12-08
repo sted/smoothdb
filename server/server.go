@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/smoothdb/smoothdb/database"
-	"github.com/smoothdb/smoothdb/logging"
+	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/logging"
 )
 
 type Server struct {
@@ -22,21 +22,21 @@ func NewServer() (*Server, error) {
 	return NewServerWithConfig(nil, nil)
 }
 
-func NewServerWithConfig(c *Config, opts *ConfigOptions) (*Server, error) {
-	config := getConfig(c, opts)
+func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Server, error) {
+	cfg := getConfig(config, configOpts)
 
 	// Logger
-	logger := logging.InitLogger(&config.Logging)
+	logger := logging.InitLogger(&cfg.Logging)
 
 	// DB Engine
-	dbe, err := database.InitDbEngine(&config.Database, logger)
+	dbe, err := database.InitDbEngine(&cfg.Database, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Main Server
 	s := &Server{
-		Config:            config,
+		Config:            cfg,
 		Logger:            logger,
 		DBE:               dbe,
 		shutdown:          make(chan struct{}),
@@ -64,9 +64,9 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) {
 	// HTTP server shutdown
 	s.HTTP.Shutdown(ctx)
-	// Close goroutines (now just the checker in the service manager)
+	// Close goroutines (for now just the checker in the service manager)
 	close(s.shutdown)
-	// Close database pools
-	s.DBE.Close()
+	// Close database pools - ok, not so graceful
+	// s.DBE.Close() @@ to be fixed, now blocks
 	close(s.shutdownCompleted)
 }

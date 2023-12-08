@@ -3,7 +3,7 @@ package test_api
 import (
 	"testing"
 
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/test"
 )
 
 func TestPolicies(t *testing.T) {
@@ -62,7 +62,6 @@ func TestPolicies(t *testing.T) {
 	testConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: nil,
-		NoCookies:     true,
 	}
 
 	tests := []test.Test{

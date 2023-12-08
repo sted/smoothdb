@@ -3,6 +3,6 @@ test.rest
 config.jsonc
 __debug_bin
 smoothdb*.log
-scratch.sql
+misc/scratch.sql
 
 

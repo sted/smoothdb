@@ -5,28 +5,23 @@ import (
 	"os"
 	"testing"
 
-	"github.com/smoothdb/smoothdb/database"
-	"github.com/smoothdb/smoothdb/logging"
-	"github.com/smoothdb/smoothdb/server"
-	"github.com/smoothdb/smoothdb/test"
+	"github.com/sted/smoothdb/server"
+	"github.com/sted/smoothdb/test"
 )
 
 var testConfig test.Config
 
 func TestMain(m *testing.M) {
-	c := &server.Config{
-		Address:          "localhost:8082",
-		AllowAnon:        true,
-		EnableAdminRoute: true,
-		Logging: logging.Config{
-			FileLogging: false,
-			StdOut:      true,
-		},
-		Database: database.Config{
-			SchemaSearchPath: []string{"test"},
-			TransactionEnd:   "rollback-allow-override",
-		},
-		JWTSecret: "reallyreallyreallyreallyverysafe",
+	c := map[string]any{
+		"Address":                   "localhost:8082",
+		"AllowAnon":                 false,
+		"EnableAdminRoute":          true,
+		"Logging.Level":             "info",
+		"Logging.FileLogging":       false,
+		"Logging.StdOut":            false,
+		"Database.SchemaSearchPath": []string{"test"},
+		"Database.TransactionEnd":   "rollback-allow-override",
+		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{

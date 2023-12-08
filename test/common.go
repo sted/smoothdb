@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"testing"
@@ -16,7 +15,6 @@ type Headers http.Header
 type Config struct {
 	BaseUrl       string
 	CommonHeaders Headers
-	NoCookies     bool
 }
 
 type Command struct {
@@ -38,14 +36,9 @@ type Test struct {
 	Status      int
 }
 
-func InitClient(cookies bool) *http.Client {
+func InitClient() *http.Client {
 	var client *http.Client
-	if cookies {
-		jar, _ := cookiejar.New(nil)
-		client = &http.Client{Jar: jar}
-	} else {
-		client = &http.Client{}
-	}
+	client = &http.Client{}
 	return client
 }
 
@@ -110,7 +103,7 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 }
 
 func Prepare(config Config, commands []Command) {
-	client := InitClient(!config.NoCookies)
+	client := InitClient()
 	for _, cmd := range commands {
 		_, _, err := Exec(client, config, &cmd)
 		if err != nil {
@@ -120,7 +113,7 @@ func Prepare(config Config, commands []Command) {
 }
 
 func Execute(t *testing.T, config Config, tests []Test) {
-	client := InitClient(!config.NoCookies)
+	client := InitClient()
 	for i, test := range tests {
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
 		body, status, err := Exec(client, config, command)

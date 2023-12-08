@@ -3,11 +3,12 @@ package test_api
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/smoothdb/smoothdb/server"
-	"github.com/smoothdb/smoothdb/test"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/server"
+	"github.com/sted/smoothdb/test"
 )
 
 func BenchmarkBase(b *testing.B) {
@@ -46,12 +47,6 @@ func BenchmarkBase(b *testing.B) {
 	}
 	test.Prepare(cmdConfig, commands)
 
-	testConfig := test.Config{
-		BaseUrl:       "http://localhost:8082",
-		CommonHeaders: test.Headers{"Authorization": {adminToken}},
-		NoCookies:     true,
-	}
-
 	tests := []test.Test{
 		{
 			Description: "empty",
@@ -70,18 +65,16 @@ func BenchmarkBase(b *testing.B) {
 		// },
 	}
 
-	client := test.InitClient(false)
-
 	for _, t := range tests {
-		command := &test.Command{t.Description, t.Method, t.Query, t.Body, t.Headers}
-
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest(t.Method, t.Query, nil)
+		req.Header.Add("Authorization", user1Token)
+		if err != nil {
+			panic(err)
+		}
 		b.Run(t.Description, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				req, _ := test.PrepareRequest(testConfig, command)
-				b.StartTimer()
-				client.Do(req)
-				//test.ReadResponse(resp)
+				router.ServeHTTP(w, req)
 			}
 
 		})

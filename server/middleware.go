@@ -3,10 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
-	"github.com/smoothdb/smoothdb/database"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/database"
 )
 
 func AcquireSession(ctx context.Context, r heligo.Request, server *Server, forceDBE bool) (context.Context, *Session, int, error) {
@@ -19,15 +20,15 @@ func AcquireSession(ctx context.Context, r heligo.Request, server *Server, force
 
 	tokenString := extractAuthHeader(r.Request)
 	if tokenString == "" && !server.Config.AllowAnon {
-		return nil, nil, http.StatusUnauthorized, err
+		return nil, nil, http.StatusUnauthorized, fmt.Errorf("unauthorized access")
 	}
 	dbname := r.Param("dbname")
 	key := tokenString + "; "
 	if !forceDBE {
 		key += dbname
 	}
-	session, created := server.sessionManager.getSession(key)
-	if created {
+	session, isNewSession := server.sessionManager.getSession(key)
+	if isNewSession {
 		if tokenString != "" {
 			claims, err = server.authenticate(tokenString)
 			if err != nil {
@@ -68,7 +69,7 @@ func AcquireSession(ctx context.Context, r heligo.Request, server *Server, force
 	if err != nil {
 		return nil, nil, http.StatusInternalServerError, err
 	}
-	return ctx, session, 200, nil
+	return ctx, session, http.StatusOK, nil
 }
 
 func ReleaseSession(ctx context.Context, status int, server *Server, session *Session) {
@@ -82,14 +83,16 @@ func ReleaseSession(ctx context.Context, status int, server *Server, session *Se
 	server.sessionManager.leaveSession(session)
 }
 
-func DatabaseMiddleware(server *Server, useDBE bool) heligo.Middleware {
+func DatabaseMiddleware(server *Server, forceDBE bool) heligo.Middleware {
 	return func(next heligo.Handler) heligo.Handler {
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-			ctx, session, status, err := AcquireSession(c, r, server, useDBE)
+			w.Header().Set("Server", "smoothdb")
+			ctx, session, status, err := AcquireSession(c, r, server, forceDBE)
 			if err != nil {
 				WriteJSON(w, status, Data{"error": err})
 				return status, err
 			}
+			//w.(http.Flusher).Flush() // to enable Transfer-Encoding: chunked
 			status, err = next(ctx, w, r)
 			ReleaseSession(ctx, status, server, session)
 			return status, err

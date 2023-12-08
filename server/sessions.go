@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/smoothdb/smoothdb/database"
-	"github.com/smoothdb/smoothdb/logging"
+	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/logging"
 )
 
 type Session struct {

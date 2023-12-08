@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/smoothdb/smoothdb/server"
+	"github.com/sted/smoothdb/server"
 )
 
 func stopHandler(s *server.Server) {
@@ -31,6 +31,7 @@ func main() {
 	go stopHandler(s)
 
 	fmt.Println("Starting server...")
+	fmt.Printf("Version %s\n", Version)
 	fmt.Println("Listening at ", s.Config.Address)
 	err = s.Start()
 	if err != nil {
