@@ -4,15 +4,13 @@ go 1.21.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
-	github.com/jackc/pgx/v5 v5.5.0
-	github.com/rs/zerolog v1.31.0
+	github.com/jackc/pgx/v5 v5.5.1
+	github.com/rs/zerolog v1.31.1-0.20231108200417-bb14b8b9de11
 	github.com/samber/lo v1.39.0
 	github.com/sted/heligo v0.1.1
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
-
-replace github.com/rs/zerolog v1.31.0 => github.com/sted/zerolog v0.0.0-20230413174247-61d5f1578065
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

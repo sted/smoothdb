@@ -18,7 +18,7 @@ type Logger struct {
 	*zerolog.Logger
 }
 
-// InitLogger initilaizes the wsbus logger
+// InitLogger initilaizes the logger
 func InitLogger(config *Config) *Logger {
 	var writers []io.Writer
 
@@ -26,13 +26,13 @@ func InitLogger(config *Config) *Logger {
 		writers = append(writers, newRollingFile(config))
 	}
 	if config.StdOut {
-		if config.ConsoleColor {
+		if config.PrettyConsole {
 			writers = append(writers, zerolog.ConsoleWriter{
-				Out:                   os.Stdout,
-				TimeFormat:            time.DateTime,
-				PartsOrder:            []string{"level", "time", "domain", "elapsed", "role", "method", "status", "message"},
-				FormatPartValueByName: partValueFormatter,
-				FieldsExclude:         []string{"domain", "elapsed", "role", "method", "status"},
+				Out:           os.Stdout,
+				TimeFormat:    time.DateTime,
+				PartsOrder:    []string{"level", "time", "domain", "elapsed", "role", "method", "status", "message"},
+				FormatPrepare: formatPrepare,
+				FieldsExclude: []string{"domain", "elapsed", "role", "method", "status"},
 			})
 		} else {
 			writers = append(writers, os.Stdout)
@@ -50,33 +50,22 @@ func InitLogger(config *Config) *Logger {
 	return &Logger{&zlogger}
 }
 
-func partValueFormatter(v any, k string) string {
-	var ret string
-
-	switch k {
-	case "domain":
-		ret = fmt.Sprintf("%-4s", v)
-	case "elapsed":
-		f, _ := strconv.ParseFloat(fmt.Sprint(v), 32)
-		ret = fmt.Sprintf("%8.3fms", f)
-	case "role":
-		ret = fmt.Sprintf("%-12s", v)
-	case "method":
-		s := v.(string)
-		if len(s) != 0 {
-			ret = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
-
-		}
-	case "status":
-		s := fmt.Sprint(v)
-		if len(s) != 0 {
-			i, _ := strconv.ParseUint(s, 10, 32)
-			ret = fmt.Sprintf("%s%3s%s", statusCodeColor(i), s, reset)
-		}
-	default:
-		ret = fmt.Sprintf("%s", v)
+func formatPrepare(evt map[string]any) error {
+	evt["domain"] = fmt.Sprintf("%-4s", evt["domain"])
+	f, _ := strconv.ParseFloat(fmt.Sprint(evt["elapsed"]), 32)
+	evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
+	evt["role"] = fmt.Sprintf("%-12s", evt["role"])
+	s := evt["method"].(string)
+	if len(s) != 0 {
+		evt["method"] = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
 	}
-	return ret
+	s = evt["status"].(string)
+	if len(s) != 0 {
+		i, _ := strconv.ParseUint(s, 10, 32)
+		evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), s, reset)
+	}
+
+	return nil
 }
 
 const (
