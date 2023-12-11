@@ -30,3 +30,7 @@ jobs:
 
     - name: Test
       run: make test
+      env:
+        DB_HOST: localhost
+        DB_USER: postgres
+        DB_PORT: 5432
