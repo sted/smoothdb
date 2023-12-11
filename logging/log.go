@@ -59,7 +59,7 @@ func formatPrepare(evt map[string]any) error {
 	if len(s) != 0 {
 		evt["method"] = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
 	}
-	s = evt["status"].(string)
+	s = fmt.Sprint(evt["status"]) // can be a number
 	if len(s) != 0 {
 		i, _ := strconv.ParseUint(s, 10, 32)
 		evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), s, reset)

@@ -120,5 +120,4 @@ func TestSessions(t *testing.T) {
 			test.Execute(t, testConfig, tests)
 		}
 	})
-
 }

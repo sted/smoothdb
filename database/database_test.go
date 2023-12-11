@@ -6,87 +6,45 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/samber/lo"
 )
 
 var dbe *DbEngine
 
 func TestMain(m *testing.M) {
-
-	dbe, _ = InitDbEngine(DefaultConfig(), nil)
-
-	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "")
+	var err error
+	config := DefaultConfig()
+	config.URL = "postgresql://postgres:postgres@localhost:5432"
+	dbe, err = InitDbEngine(config, nil)
+	if err != nil {
+		os.Exit(1)
+	}
+	dbe_ctx, dbe_conn, err := ContextWithDb(context.Background(), nil, "")
+	if err != nil {
+		os.Exit(1)
+	}
 	defer ReleaseConn(dbe_ctx, dbe_conn)
-	CreateRole(dbe_ctx, &Role{Name: "test", CanCreateDatabases: true})
-	CreatePrivilege(dbe_ctx, &Privilege{TargetName: "test", Grantee: dbe.config.AuthRole})
+	_, err = CreateRole(dbe_ctx, &Role{Name: "test", CanCreateDatabases: true})
+	if err != nil && err.(*pgconn.PgError).Code != "42710" {
+		os.Exit(1)
+	}
+	_, err = CreatePrivilege(dbe_ctx, &Privilege{TargetName: "test", Grantee: dbe.config.AuthRole})
+	if err != nil {
+		os.Exit(1)
+	}
 
 	code := m.Run()
 
 	os.Exit(code)
 }
 
-func BenchmarkBase(b *testing.B) {
-
-	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")
-	defer ReleaseConn(dbe_ctx, dbe_conn)
-
-	dbe.DeleteDatabase(dbe_ctx, "bench")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
-	defer ReleaseConn(ctx, conn)
-
-	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
-		{Name: "name", Type: "text"},
-		{Name: "number", Type: "integer"},
-		{Name: "date", Type: "timestamp"}}})
-
-	for i := 0; i < 10000; i++ {
-		_, _, err := db.CreateRecords(ctx, "b1", []Record{
-			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
-			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}}, nil)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	b.Run("Select1", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := db.GetRecords(ctx, "b1", nil)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-		}
-	})
-
-	b.Run("Select2", func(b *testing.B) {
-		SetQueryBuilder(ctx, QueryWithJSON{})
-		for i := 0; i < b.N; i++ {
-			_, err := db.GetRecords(ctx, "b1", nil)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-		}
-	})
-
-	// b.Run("Select3", func(b *testing.B) {
-	// 	for i := 0; i < b.N; i++ {
-	// 		_, err := db.GetRecords3(ctx, "b1")
-	// 		if err != nil {
-	// 			log.Print(err)
-	// 		}
-	// 	}
-	// })
-}
-
 func TestBase(t *testing.T) {
 
-	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")
+	dbe_ctx, dbe_conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test_base")
@@ -293,4 +251,63 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func BenchmarkBase(b *testing.B) {
+
+	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")
+	defer ReleaseConn(dbe_ctx, dbe_conn)
+
+	dbe.DeleteDatabase(dbe_ctx, "bench")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
+	defer ReleaseConn(ctx, conn)
+
+	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+		{Name: "name", Type: "text"},
+		{Name: "number", Type: "integer"},
+		{Name: "date", Type: "timestamp"}}})
+
+	for i := 0; i < 10000; i++ {
+		_, _, err := db.CreateRecords(ctx, "b1", []Record{
+			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
+			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}}, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.Run("Select1", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := db.GetRecords(ctx, "b1", nil)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+		}
+	})
+
+	b.Run("Select2", func(b *testing.B) {
+		SetQueryBuilder(ctx, QueryWithJSON{})
+		for i := 0; i < b.N; i++ {
+			_, err := db.GetRecords(ctx, "b1", nil)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+		}
+	})
+
+	// b.Run("Select3", func(b *testing.B) {
+	// 	for i := 0; i < b.N; i++ {
+	// 		_, err := db.GetRecords3(ctx, "b1")
+	// 		if err != nil {
+	// 			log.Print(err)
+	// 		}
+	// 	}
+	// })
 }

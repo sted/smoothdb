@@ -14,7 +14,9 @@ test:
 	$(GO) test $(TEST_FLAGS) ./test/postgrest
 
 # This is used to recreate PostgREST fixtures
-reset-postgrest-tests:
-	psql -c "drop database if exists pgrest" && psql -c "create database pgrest" && psql -f ./test/postgrest/fixtures/load.sql pgrest
+prepare-postgrest-tests:
+	psql -U postgres -c "drop database if exists pgrest" && \
+		psql -U postgres -c "create database pgrest" && \
+		psql -U postgres -f ./test/postgrest/fixtures/load.sql pgrest
 
 .PHONY: all build test

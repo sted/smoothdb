@@ -42,7 +42,7 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 	}
 
 	// set role and other configurations only on the first acquire
-	if newAcquire {
+	if newAcquire && role != "" {
 		_, err := conn.Exec(ctx, "SET ROLE "+role)
 		if err != nil {
 			return err

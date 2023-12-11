@@ -1,7 +1,7 @@
 smoothdb
 test.rest
 config.jsonc
-__debug_bin
+__debug_bin*
 smoothdb*.log
 misc/scratch.sql
 .vscode/*

@@ -1,4 +1,4 @@
-# SmoothDB
+# SmoothDB  ![Tests](https://github.com/sted/smoothdb/actions/workflows/tests.yml/badge.svg)
 
 SmoothDB provides a RESTful API to PostgreSQL databases.
 
@@ -63,7 +63,7 @@ POST /admin/databases HTTP/1.1
 ### Create a table
 
 ```http
-POST /admin/databases/test/tables HTTP/1.1
+POST /admin/databases/testdb/tables HTTP/1.1
 
 { 
     "name": "test",
@@ -183,7 +183,7 @@ Some areas needing particular attention:
 
 ### Tests
 
-There are thre kind of tests: 
+There are three categories of tests: 
 
 * Internal unit tests
 * API tests 
@@ -200,5 +200,5 @@ make test
 To initialize and reset PostgREST fixtures:
 
 ```
-make reset-postgrest-tests
+make prepare-postgrest-tests
 ```

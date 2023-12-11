@@ -1,0 +1,44 @@
+# This workflow will test a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  tests-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    - run: git fetch --prune --unshallow
+
+    - name: Start PostgreSQL service
+      run: |
+        sudo sed -i 's/peer/trust/; s/scram-sha-256/trust/' /etc/postgresql/14/main/pg_hba.conf
+        sudo systemctl start postgresql.service
+        pg_isready
+        psql -U postgres --command="CREATE ROLE auth LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER"
+
+    - name: Test PostgreSQL connection
+      run: |
+        psql -U postgres -d postgres -c 'SELECT version();'
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Prepare tests
+      run: make prepare-postgrest-tests
+
+    - name: Run tests
+      run: make test
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432
+  

@@ -89,7 +89,7 @@ func DatabaseMiddleware(server *Server, forceDBE bool) heligo.Middleware {
 			w.Header().Set("Server", "smoothdb")
 			ctx, session, status, err := AcquireSession(c, r, server, forceDBE)
 			if err != nil {
-				WriteJSON(w, status, Data{"error": err})
+				WriteJSON(w, status, Data{"error": err.Error()})
 				return status, err
 			}
 			//w.(http.Flusher).Flush() // to enable Transfer-Encoding: chunked
