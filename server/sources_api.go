@@ -19,6 +19,7 @@ func (s *Server) initSourcesRouter() {
 		sourcename := r.Param("sourcename")
 		json, err := db.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
+			w.Header().Set("Content-Location", r.RequestURI)
 			return WriteJSONString(w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
