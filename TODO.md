@@ -1,35 +1,35 @@
-* [√] Databases
-* [√] Tables
-* [√] Columns
-* [√] Generic records: different strategies: reflect, * [√] database, * [√] optimized
-* [√] Bulk inserts
-* [√] Table creation with columns 
-* [ ] Queries, filters: [√] postgrest mode, [ ] django mode, [ ] other
-* [√] Checks, constraints
-* [√] Views
-* [√] Alter tables, view and columns
-* [√] Some more operator: IN, etc
-* [√] Full Text Search (FTS)
-* [√] Resource embedding
-* [√] Sessions, JWT, Auth
-* [√] Roles
-* [√] Policies
-* [√] Grants
-* [√] Configuration (shared with other apps) 
-* [√] Logger
-* [√] pgx v5
-* [√] Schema management
-* [√] O2O: recognize unique and primary
-* [√] Upsert
-* [√] M2M Relationships
-* [√] aliases for embeds
-* [√] spreads for embeds (...table)
-* [√] uniform log for db and api
-* [√] nested embeds
-* [√] nested filters
-* [√] "singular" response
-* [√] Composite / Array Columns
-* [√] Range
+* [x] Databases
+* [x] Tables
+* [x] Columns
+* [x] Generic records: different strategies: reflect, * [x] database, * [x] optimized
+* [x] Bulk inserts
+* [x] Table creation with columns 
+* [ ] Queries, filters: [x] postgrest mode, [ ] django mode, [ ] other
+* [x] Checks, constraints
+* [x] Views
+* [x] Alter tables, view and columns
+* [x] Some more operator: IN, etc
+* [x] Full Text Search (FTS)
+* [x] Resource embedding
+* [x] Sessions, JWT, Auth
+* [x] Roles
+* [x] Policies
+* [x] Grants
+* [x] Configuration (shared with other apps) 
+* [x] Logger
+* [x] pgx v5
+* [x] Schema management
+* [x] O2O: recognize unique and primary
+* [x] Upsert
+* [x] M2M Relationships
+* [x] aliases for embeds
+* [x] spreads for embeds (...table)
+* [x] uniform log for db and api
+* [x] nested embeds
+* [x] nested filters
+* [x] "singular" response
+* [x] Composite / Array Columns
+* [x] Range
 * [ ] Related orders
 * [ ] !inner joins
 * [ ] hints for rels
