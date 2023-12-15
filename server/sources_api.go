@@ -10,11 +10,15 @@ import (
 
 func (s *Server) initSourcesRouter() {
 
-	api := s.GetRouter().Group(s.Config.BaseAPIURL, DatabaseMiddleware(s, false))
+	baseUrl := s.Config.BaseAPIURL
+	if !s.Config.ShortAPIURL {
+		baseUrl += "/:dbname"
+	}
+	api := s.GetRouter().Group(baseUrl, DatabaseMiddlewareStd(s, false))
 
 	// RECORDS
 
-	api.Handle("GET", "/:dbname/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("GET", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		json, err := db.GetRecords(c, sourcename, r.URL.Query())
@@ -26,7 +30,7 @@ func (s *Server) initSourcesRouter() {
 		}
 	})
 
-	api.Handle("POST", "/:dbname/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("POST", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		records, err := ReadInputRecords(r)
@@ -49,7 +53,7 @@ func (s *Server) initSourcesRouter() {
 		}
 	})
 
-	api.Handle("PATCH", "/:dbname/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		records, err := ReadInputRecords(r)
@@ -72,7 +76,7 @@ func (s *Server) initSourcesRouter() {
 		}
 	})
 
-	api.Handle("DELETE", "/:dbname/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("DELETE", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		data, _, err := db.DeleteRecords(c, sourcename, r.URL.Query())
@@ -89,7 +93,7 @@ func (s *Server) initSourcesRouter() {
 
 	// FUNCTIONS
 
-	api.Handle("GET", "/:dbname/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("GET", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		fname := r.Param("fname")
 		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
@@ -100,7 +104,7 @@ func (s *Server) initSourcesRouter() {
 		}
 	})
 
-	api.Handle("POST", "/:dbname/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		fname := r.Param("fname")
 		records, err := ReadInputRecords(r)

@@ -73,8 +73,6 @@ func GetConfig(config any, configFile string) error {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("error reading the configuration file (%w)", err)
-		} else {
-			SaveConfig(config, configFile)
 		}
 	} else {
 		b, err = hujson.Standardize(b)
@@ -87,6 +85,7 @@ func GetConfig(config any, configFile string) error {
 			}
 		}
 	}
+	SaveConfig(config, configFile)
 	return nil
 }
 

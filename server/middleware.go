@@ -10,7 +10,9 @@ import (
 	"github.com/sted/smoothdb/database"
 )
 
-func AcquireSession(ctx context.Context, r heligo.Request, server *Server, forceDBE bool) (context.Context, *Session, int, error) {
+type GetDatabaseNameFn func(ctx context.Context, r heligo.Request, server *Server) string
+
+func AcquireSession(ctx context.Context, r heligo.Request, server *Server, forceDBE bool, getDBName GetDatabaseNameFn) (context.Context, *Session, int, error) {
 	var claims *Claims
 	var err error
 	var db *database.Database
@@ -22,7 +24,7 @@ func AcquireSession(ctx context.Context, r heligo.Request, server *Server, force
 	if tokenString == "" && !server.Config.AllowAnon {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("unauthorized access")
 	}
-	dbname := r.Param("dbname")
+	dbname := getDBName(ctx, r, server)
 	key := tokenString + "; "
 	if !forceDBE {
 		key += dbname
@@ -83,11 +85,19 @@ func ReleaseSession(ctx context.Context, status int, server *Server, session *Se
 	server.sessionManager.leaveSession(session)
 }
 
-func DatabaseMiddleware(server *Server, forceDBE bool) heligo.Middleware {
+func getDatabaseName(ctx context.Context, r heligo.Request, server *Server) string {
+	if server.Config.ShortAPIURL {
+		return server.Config.Database.AllowedDatabases[0]
+	} else {
+		return r.Param("dbname")
+	}
+}
+
+func DatabaseMiddleware(server *Server, forceDBE bool, getDBName GetDatabaseNameFn) heligo.Middleware {
 	return func(next heligo.Handler) heligo.Handler {
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 			w.Header().Set("Server", "smoothdb")
-			ctx, session, status, err := AcquireSession(c, r, server, forceDBE)
+			ctx, session, status, err := AcquireSession(c, r, server, forceDBE, getDBName)
 			if err != nil {
 				WriteJSON(w, status, Data{"error": err.Error()})
 				return status, err
@@ -98,4 +108,8 @@ func DatabaseMiddleware(server *Server, forceDBE bool) heligo.Middleware {
 			return status, err
 		}
 	}
+}
+
+func DatabaseMiddlewareStd(server *Server, forceDBE bool) heligo.Middleware {
+	return DatabaseMiddleware(server, forceDBE, getDatabaseName)
 }

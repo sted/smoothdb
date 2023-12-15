@@ -22,9 +22,10 @@ type Config struct {
 	Address          string          `comment:"Server address and port (default localhost:8082)"`
 	AllowAnon        bool            `comment:"Allow unauthenticated connections"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
-	EnableAdminRoute bool            `comment:"Enable administration of databases and tables"`
+	EnableAdminRoute bool            `comment:"Enable administration of databases and tables (default: false)"`
 	SessionMode      string          `comment:"Session mode: none, role (default: role)"`
 	BaseAPIURL       string          `comment:"Base URL for the API (default: /api)"`
+	ShortAPIURL      bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
 	BaseAdminURL     string          `comment:"Base URL for the Admin API (default: /admin)"`
 	Database         database.Config `comment:"Database configuration"`
 	Logging          logging.Config  `comment:"Logging configuration"`
@@ -38,6 +39,7 @@ func defaultConfig() *Config {
 		EnableAdminRoute: false,
 		SessionMode:      "role",
 		BaseAPIURL:       "/api",
+		ShortAPIURL:      false,
 		BaseAdminURL:     "/admin",
 		Database:         *database.DefaultConfig(),
 		Logging:          *logging.DefaultConfig(),
@@ -99,7 +101,7 @@ func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) *Config {
 	cfg := defaultConfig()
 
 	var defaultConfigPath string
-	if configOpts == nil {
+	if configOpts == nil || configOpts.ConfigFilePath == "" {
 		defaultConfigPath = "./config.jsonc"
 	} else {
 		defaultConfigPath = configOpts.ConfigFilePath
@@ -125,4 +127,12 @@ func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) *Config {
 	}
 
 	return cfg
+}
+
+func checkConfig(cfg *Config) error {
+	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
+		fmt.Println("Warning: Cannot enable ShortAPIURL with Database.AllowedDatabases is not configured with a single db")
+		cfg.ShortAPIURL = false
+	}
+	return nil
 }

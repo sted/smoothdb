@@ -22,7 +22,7 @@ func BenchmarkBase(b *testing.B) {
 	group.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return 200, nil
 	})
-	group_db := router.Group("/benchdb", server.DatabaseMiddleware(srv, false))
+	group_db := router.Group("/benchdb", server.DatabaseMiddlewareStd(srv, false))
 	group_db.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return 200, nil
 	})

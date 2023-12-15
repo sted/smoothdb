@@ -25,8 +25,7 @@ func TestMain(m *testing.M) {
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
-			ConfigFilePath: "../../config.jsonc",
-			SkipFlags:      true,
+			SkipFlags: true,
 		})
 	if err != nil {
 		log.Fatal(err)

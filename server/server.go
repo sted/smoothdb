@@ -24,6 +24,10 @@ func NewServer() (*Server, error) {
 
 func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Server, error) {
 	cfg := getConfig(config, configOpts)
+	err := checkConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	// Logger
 	logger := logging.InitLogger(&cfg.Logging)

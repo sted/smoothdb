@@ -39,8 +39,8 @@ func (s *Server) initAdminRouter() {
 	dbe := s.DBE
 	router := s.GetRouter()
 
-	admin_dbe := router.Group(s.Config.BaseAdminURL, DatabaseMiddleware(s, true))
-	admin_db := router.Group(s.Config.BaseAdminURL, DatabaseMiddleware(s, false))
+	admin_dbe := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, true))
+	admin_db := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, false))
 
 	// ROLES
 
