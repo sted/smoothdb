@@ -58,11 +58,11 @@ func BenchmarkBase(b *testing.B) {
 			Method:      "GET",
 			Query:       "/benchdb/empty",
 		},
-		// {
-		// 	Description: "select",
-		// 	Method:      "GET",
-		// 	Query:       "/api/dbtest/table_records",
-		// },
+		{
+			Description: "select",
+			Method:      "GET",
+			Query:       "/api/dbtest/table_records",
+		},
 	}
 
 	for _, t := range tests {

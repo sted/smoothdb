@@ -113,3 +113,9 @@ func DatabaseMiddleware(server *Server, forceDBE bool, getDBName GetDatabaseName
 func DatabaseMiddlewareStd(server *Server, forceDBE bool) heligo.Middleware {
 	return DatabaseMiddleware(server, forceDBE, getDatabaseName)
 }
+
+func DatabaseMiddlewareWithName(server *Server, dbname string) heligo.Middleware {
+	return DatabaseMiddleware(server, false, func(ctx context.Context, r heligo.Request, server *Server) string {
+		return dbname
+	})
+}

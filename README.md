@@ -111,6 +111,17 @@ POST /api/testdb/test HTTP/1.1
 ]
 ```
 
+> [!IMPORTANT]
+> In these example we use the default configuration for SmoothDB.
+> To have fully PostgREST API compliancy, you should configure:
+> ```json 
+> 	EnableAdminRoute: false,
+> 	BaseAPIURL: "",
+> 	ShortAPIURL: true,
+> 	Database.AllowedDatabases: [<single_db_name>]
+> ```
+> With these configurations the "/admin" is no longer accessible and "/api/testdb/test..." becomes simply "/test...".
+
 ### Select records
 
 ```http
