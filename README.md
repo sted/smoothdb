@@ -95,7 +95,7 @@ POST /api/testdb/test HTTP/1.1
 		"b": 4444,
 		"c": [1,2,3,"d"]
 	},
-	"arr": "{1,2,3}",
+	"arr": [1,2,3],
 	"duration": "['2022-12-31 11:00','2023-01-01 06:00']"
 }
 ```
@@ -115,9 +115,9 @@ POST /api/testdb/test HTTP/1.1
 > In these example we use the default configuration for SmoothDB.
 > To have fully PostgREST API compliancy, you should configure:
 > ```json 
-> 	EnableAdminRoute: false,
-> 	BaseAPIURL: "",
-> 	ShortAPIURL: true,
+> 	EnableAdminRoute: false
+> 	BaseAPIURL: ""
+> 	ShortAPIURL: true
 > 	Database.AllowedDatabases: [<single_db_name>]
 > ```
 > With these configurations the "/admin" is no longer accessible and "/api/testdb/test..." becomes simply "/test...".
