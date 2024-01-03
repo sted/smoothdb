@@ -77,7 +77,8 @@ POST /admin/databases/testdb/tables HTTP/1.1
 		{"name": "duration", "type": "tsrange"},
 		{"name": "other", "type": "text", "constraints": ["REFERENCES test (col1)"]}
 	],
-	"constraints": ["PRIMARY KEY (col1)"]}
+	"constraints": ["PRIMARY KEY (col1)"]
+}
 ```
 
 ### Insert records

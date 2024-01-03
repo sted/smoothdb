@@ -33,7 +33,7 @@ func BenchmarkSerializer(b *testing.B) {
 		_, _, err := db.CreateRecords(ctx, "b1",
 			[]Record{
 				{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
-				{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"},
+				{"name": "Sted", "number": 55, "date": nil},
 			},
 			nil)
 		if err != nil {
@@ -72,6 +72,30 @@ func BenchmarkSerializer(b *testing.B) {
 				log.Print(err)
 				return
 			}
+		}
+	})
+
+	b.Run("Structs", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			copiedRows.CurrentRow = -1
+			_, err := db.rowsToStructs(copiedRows)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+			//fmt.Printf("%v", s)
+		}
+	})
+
+	b.Run("Maps", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			copiedRows.CurrentRow = -1
+			_, err := db.rowsToMaps(copiedRows)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+			//fmt.Printf("%v", m)
 		}
 	})
 }
@@ -126,23 +150,30 @@ func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	// Get the column descriptions
 	columns := rows.FieldDescriptions()
 
+	var rawValues [][][]byte
+
+	// Iterate over the rows and read the values
+	for rows.Next() {
+		rowValues := make([][]byte, len(columns))
+
+		// Copying the values from the current row
+		for i, val := range rows.RawValues() {
+			rowValues[i] = make([]byte, len(val))
+			copy(rowValues[i], val)
+		}
+
+		rawValues = append(rawValues, rowValues)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	// Create a new CustomRows instance with the extracted values and column descriptions
 	customRows := &CustomRows{
 		FieldDescriptions_: columns,
-		RawValues_:         make([][][]byte, 20000),
+		RawValues_:         rawValues,
 		CurrentRow:         -1,
-	}
-
-	// Iterate over the rows and read the values
-	i := 0
-	for rows.Next() {
-		rowValues := make([][]byte, len(columns))
-		copy(rowValues, rows.RawValues())
-		customRows.RawValues_[i] = rowValues
-		i += 1
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
 	}
 
 	return customRows, nil

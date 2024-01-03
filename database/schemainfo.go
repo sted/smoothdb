@@ -68,7 +68,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, t := range tables {
-		//t.Columns, err = db.GetColumns(ctx, t.Name)
+		t.Columns, err = db.GetColumns(ctx, t.Name)
 		dbi.cachedTables[t.Name] = t
 	}
 	// Column types

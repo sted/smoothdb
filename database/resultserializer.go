@@ -355,7 +355,7 @@ func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
 }
 
 func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo) error {
-	if buf == nil {
+	if len(buf) == 0 {
 		d.WriteString("null")
 		return nil
 	}
