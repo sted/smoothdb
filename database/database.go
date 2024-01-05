@@ -39,9 +39,6 @@ func (db *Database) Activate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if DBE.config.AuthRole != "" {
-		config.ConnConfig.User = DBE.config.AuthRole
-	}
 	config.MinConns = DBE.config.MinPoolConnections
 	config.MaxConns = DBE.config.MaxPoolConnections
 	config.ConnConfig.Tracer = DBE.dbtracer

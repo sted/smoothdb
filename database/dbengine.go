@@ -24,6 +24,7 @@ type DbEngine struct {
 	allowedDatabases map[string]struct{}
 	exec             *QueryExecutor
 	defaultSchema    string
+	authRole         string
 }
 
 // InitDbEngine creates a connection pool, connects to the engine and initializes it
@@ -36,6 +37,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if err != nil {
 		return nil, err
 	}
+	DBE.authRole = poolConfig.ConnConfig.User
 	if logger != nil {
 		DBE.dbtracer = &tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
@@ -68,13 +70,6 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	} else {
 		DBE.defaultSchema = "public"
 	}
-	// Auth role
-	if dbConfig.AuthRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AuthRole+" LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER")
-		if err != nil && err.(*pgconn.PgError).Code != "42710" {
-			return nil, err
-		}
-	}
 	// Anon role
 	if dbConfig.AnonRole != "" {
 		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AnonRole+" NOLOGIN")
@@ -82,11 +77,9 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 			return nil, err
 		}
 		// Grant anon to auth
-		if dbConfig.AuthRole != "" {
-			_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+dbConfig.AuthRole)
-			if err != nil {
-				return nil, err
-			}
+		_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+DBE.authRole)
+		if err != nil {
+			return nil, err
 		}
 	}
 
