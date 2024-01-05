@@ -64,7 +64,7 @@ func fillColumnConstraints(column *Column, constraints []Constraint) {
 	}
 }
 
-func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
+func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
 	conn := GetConn(ctx)
 	constraints := []Constraint{}
 	query := constraintsQuery
@@ -102,7 +102,7 @@ func (db *Database) GetConstraints(ctx context.Context, tablename string) ([]Con
 	return constraints, nil
 }
 
-func (db *Database) CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
+func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
 	conn := GetConn(ctx)
 	create := "ALTER TABLE " + constraint.Table + " ADD "
 	create += constraint.Definition
@@ -111,17 +111,17 @@ func (db *Database) CreateConstraint(ctx context.Context, constraint *Constraint
 	if err != nil {
 		return nil, err
 	}
-	db.refreshTable(ctx, constraint.Table)
+	//db.refreshTable(ctx, constraint.Table)
 	return constraint, nil
 }
 
-func (db *Database) DeleteConstraint(ctx context.Context, table string, name string) error {
+func DeleteConstraint(ctx context.Context, table string, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "ALTER TABLE "+table+" DROP CONSTRAINT "+name)
 	if err != nil {
 		return err
 	}
-	db.refreshTable(ctx, table)
+	//db.refreshTable(ctx, table)
 	return nil
 }
 

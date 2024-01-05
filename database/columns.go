@@ -25,9 +25,9 @@ const columnsQuery = `
 	FROM information_schema.columns
 	WHERE table_name = $1 AND table_schema = $2`
 
-func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
+func GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := db.GetConstraints(ctx, ftablename)
+	constraints, err := GetConstraints(ctx, ftablename)
 	if err != nil {
 		return nil, err
 	}
@@ -56,9 +56,9 @@ func (db *Database) GetColumns(ctx context.Context, ftablename string) ([]Column
 	return columns, nil
 }
 
-func (db *Database) GetColumn(ctx context.Context, ftablename string, name string) (*Column, error) {
+func GetColumn(ctx context.Context, ftablename string, name string) (*Column, error) {
 	conn := GetConn(ctx)
-	constraints, err := db.GetConstraints(ctx, ftablename)
+	constraints, err := GetConstraints(ctx, ftablename)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (db *Database) GetColumn(ctx context.Context, ftablename string, name strin
 	return column, nil
 }
 
-func (db *Database) CreateColumn(ctx context.Context, column *Column) (*Column, error) {
+func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	conn := GetConn(ctx)
 	create := "ALTER TABLE " + column.Table + " ADD COLUMN "
 	composeColumnSQL(&create, column)
@@ -83,11 +83,11 @@ func (db *Database) CreateColumn(ctx context.Context, column *Column) (*Column, 
 	if err != nil {
 		return nil, err
 	}
-	db.refreshTable(ctx, column.Table)
+	//db.refreshTable(ctx, column.Table)
 	return column, nil
 }
 
-func (db *Database) UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Column, error) {
+func UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Column, error) {
 	conn := GetConn(ctx)
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -149,7 +149,7 @@ func (db *Database) UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Co
 	return &Column{}, nil
 }
 
-func (db *Database) DeleteColumn(ctx context.Context, table string, name string, cascade bool) error {
+func DeleteColumn(ctx context.Context, table string, name string, cascade bool) error {
 	conn := GetConn(ctx)
 	delete := "ALTER TABLE " + table + " DROP COLUMN " + name
 	if cascade {
@@ -159,7 +159,7 @@ func (db *Database) DeleteColumn(ctx context.Context, table string, name string,
 	if err != nil {
 		return err
 	}
-	db.refreshTable(ctx, table)
+	//db.refreshTable(ctx, table)
 	return nil
 }
 
@@ -189,7 +189,7 @@ const columnTypesQuery = `
 		table_schema, table_name, ordinal_position;
 `
 
-func (db *Database) GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
+func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
 	conn := GetConn(ctx)
 	types := []ColumnType{}
 	rows, err := conn.Query(ctx, columnTypesQuery)

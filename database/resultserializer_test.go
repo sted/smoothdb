@@ -23,7 +23,7 @@ func BenchmarkSerializer(b *testing.B) {
 	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "admin")
 	defer ReleaseConn(ctx, conn)
 
-	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+	CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
 		{Name: "date", Type: "timestamp"},

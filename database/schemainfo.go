@@ -63,16 +63,16 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		}
 	}
 	// Tables
-	tables, err := db.GetTables(ctx)
+	tables, err := GetTables(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, t := range tables {
-		t.Columns, err = db.GetColumns(ctx, t.Name)
+		t.Columns, err = GetColumns(ctx, t.Name)
 		dbi.cachedTables[t.Name] = t
 	}
 	// Column types
-	colTypes, err := db.GetColumnTypes(ctx)
+	colTypes, err := GetColumnTypes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		dbi.cachedColumnTypes[t.Table][t.Name] = t
 	}
 	// Constraints
-	constraints, err := db.GetConstraints(ctx, "")
+	constraints, err := GetConstraints(ctx, "")
 	if err != nil {
 		return nil, err
 	}

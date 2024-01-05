@@ -8,32 +8,6 @@ import (
 	"github.com/sted/smoothdb/database"
 )
 
-func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-	db := database.GetDb(c)
-	tables, err := db.GetTables(c)
-	if err == nil {
-		return WriteJSON(w, http.StatusOK, tables)
-	} else {
-		return WriteServerError(w, err)
-	}
-}
-
-func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-	db := database.GetDb(c)
-	var tableInput database.Table
-	r.ReadJSON(&tableInput)
-	table, err := db.CreateTable(c, &tableInput)
-	if err == nil {
-		if table != nil {
-			return WriteJSON(w, http.StatusCreated, table)
-		} else {
-			return WriteEmpty(w, http.StatusCreated)
-		}
-	} else {
-		return WriteServerError(w, err)
-	}
-}
-
 func (s *Server) initAdminRouter() {
 
 	dbe := s.DBE
@@ -288,50 +262,10 @@ func (s *Server) initAdminRouter() {
 	// TABLES
 
 	databases.Handle("GET", "/:dbname/tables", TableListHandler)
-
-	databases.Handle("GET", "/:dbname/tables/:table", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
-		name := r.Param("table")
-
-		table, err := db.GetTable(c, name)
-		if err == nil {
-			return WriteJSON(w, http.StatusOK, table)
-		} else {
-			return WriteServerError(w, err)
-		}
-	})
-
+	databases.Handle("GET", "/:dbname/tables/:table", TableGetHandler)
 	databases.Handle("POST", "/:dbname/tables", TableCreateHandler)
-
-	databases.Handle("PATCH", "/:dbname/tables/:table", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
-		var tableUpdate database.TableUpdate
-		tableUpdate.Name = r.Param("table")
-		r.ReadJSON(&tableUpdate)
-
-		table, err := db.UpdateTable(c, &tableUpdate)
-		if err == nil {
-			if table != nil {
-				return WriteJSON(w, http.StatusCreated, table)
-			} else {
-				return WriteEmpty(w, http.StatusCreated)
-			}
-		} else {
-			return WriteServerError(w, err)
-		}
-	})
-
-	databases.Handle("DELETE", "/:dbname/tables/:table", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
-		name := r.Param("table")
-
-		err := db.DeleteTable(c, name)
-		if err == nil {
-			return WriteEmpty(w, http.StatusNoContent)
-		} else {
-			return WriteServerError(w, err)
-		}
-	})
+	databases.Handle("PATCH", "/:dbname/tables/:table", TableUpdateHandler)
+	databases.Handle("DELETE", "/:dbname/tables/:table", TableDeleteHandler)
 
 	// VIEWS
 
@@ -386,10 +320,9 @@ func (s *Server) initAdminRouter() {
 	// COLUMNS
 
 	databases.Handle("GET", "/:dbname/tables/:table/columns", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		table := r.Param("table")
 
-		columns, err := db.GetColumns(c, table)
+		columns, err := database.GetColumns(c, table)
 		if err == nil {
 			return WriteJSON(w, http.StatusOK, columns)
 		} else {
@@ -398,7 +331,6 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("POST", "/:dbname/tables/:table/columns", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		var columnInput database.Column
 		columnInput.Table = r.Param("table")
 		r.ReadJSON(&columnInput)
@@ -406,7 +338,7 @@ func (s *Server) initAdminRouter() {
 			columnInput.Type = "text"
 		}
 
-		column, err := db.CreateColumn(c, &columnInput)
+		column, err := database.CreateColumn(c, &columnInput)
 		if err == nil {
 			return WriteJSON(w, http.StatusCreated, column)
 		} else {
@@ -415,13 +347,12 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("PATCH", "/:dbname/tables/:table/columns/:column", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		var columnUpdate database.ColumnUpdate
 		columnUpdate.Table = r.Param("table")
 		columnUpdate.Name = r.Param("column")
 		r.ReadJSON(&columnUpdate)
 
-		column, err := db.UpdateColumn(c, &columnUpdate)
+		column, err := database.UpdateColumn(c, &columnUpdate)
 		if err == nil {
 			return WriteJSON(w, http.StatusOK, column)
 		} else {
@@ -430,11 +361,10 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("DELETE", "/:dbname/tables/:table/columns/:column", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		table := r.Param("table")
 		column := r.Param("column")
 
-		err := db.DeleteColumn(c, table, column, false)
+		err := database.DeleteColumn(c, table, column, false)
 		if err == nil {
 			return WriteEmpty(w, http.StatusOK)
 		} else {
@@ -445,10 +375,9 @@ func (s *Server) initAdminRouter() {
 	// CONSTRAINTS
 
 	databases.Handle("GET", "/:dbname/tables/:table/constraints", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		table := r.Param("table")
 
-		constraints, err := db.GetConstraints(c, table)
+		constraints, err := database.GetConstraints(c, table)
 		if err == nil {
 			return WriteJSON(w, http.StatusOK, constraints)
 		} else {
@@ -457,12 +386,11 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("POST", "/:dbname/tables/:table/constraints", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		var constraintInput database.Constraint
 		constraintInput.Table = r.Param("table")
 		r.ReadJSON(&constraintInput)
 
-		constant, err := db.CreateConstraint(c, &constraintInput)
+		constant, err := database.CreateConstraint(c, &constraintInput)
 		if err == nil {
 			return WriteJSON(w, http.StatusCreated, constant)
 		} else {
@@ -471,11 +399,10 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("DELETE", "/:dbname/tables/:table/constraints/:name", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		table := r.Param("table")
 		name := r.Param("name")
 
-		err := db.DeleteConstraint(c, table, name)
+		err := database.DeleteConstraint(c, table, name)
 		if err == nil {
 			return WriteEmpty(w, http.StatusOK)
 		} else {

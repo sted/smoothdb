@@ -25,12 +25,9 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer ReleaseConn(dbe_ctx, dbe_conn)
-	_, err = CreateRole(dbe_ctx, &Role{Name: "test", CanCreateDatabases: true})
+
+	_, err = CreateUser(dbe_ctx, &User{Name: "test", CanCreateDatabases: true})
 	if err != nil && err.(*pgconn.PgError).Code != "42710" {
-		os.Exit(1)
-	}
-	_, err = CreatePrivilege(dbe_ctx, &Privilege{TargetName: "test", Grantee: dbe.config.AuthRole})
-	if err != nil {
 		os.Exit(1)
 	}
 
@@ -56,7 +53,7 @@ func TestBase(t *testing.T) {
 	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
 	defer ReleaseConn(ctx, conn)
 
-	_, err = db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+	_, err = CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
 		{Name: "date", Type: "timestamp"},
@@ -122,12 +119,12 @@ func TestDDL(t *testing.T) {
 	}
 
 	t.Run("Create and drop table", func(t *testing.T) {
-		_, err := db.CreateTable(ctx, &table)
+		_, err := CreateTable(ctx, &table)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		table_, err := db.GetTable(ctx, "b2")
+		table_, err := GetTable(ctx, "b2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +134,7 @@ func TestDDL(t *testing.T) {
 			table_.Constraints[1] != "PRIMARY KEY (id)" {
 			t.Fatal("the returned table is not correct")
 		}
-		columns, err := db.GetColumns(ctx, "b2")
+		columns, err := GetColumns(ctx, "b2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,29 +162,29 @@ func TestDDL(t *testing.T) {
 			!columns[4].NotNull {
 			t.Fatal(err)
 		}
-		err = db.DeleteTable(ctx, "b2")
+		err = DeleteTable(ctx, "b2")
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("Add and drop columns", func(t *testing.T) {
-		_, err := db.CreateTable(ctx, &Table{Name: "b3"})
+		_, err := CreateTable(ctx, &Table{Name: "b3"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = db.CreateColumn(ctx, &Column{Name: "c1", Type: "numeric", Table: "b3"})
+		_, err = CreateColumn(ctx, &Column{Name: "c1", Type: "numeric", Table: "b3"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = db.CreateColumn(ctx, &Column{Name: "c2", Type: "text", Table: "b3"})
+		_, err = CreateColumn(ctx, &Column{Name: "c2", Type: "text", Table: "b3"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		columns, err := db.GetColumns(ctx, "b3")
+		columns, err := GetColumns(ctx, "b3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,12 +192,12 @@ func TestDDL(t *testing.T) {
 			t.Fatal("columns are not correct")
 		}
 
-		err = db.DeleteColumn(ctx, "b3", "c2", false)
+		err = DeleteColumn(ctx, "b3", "c2", false)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		columns, err = db.GetColumns(ctx, "b3")
+		columns, err = GetColumns(ctx, "b3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,24 +205,24 @@ func TestDDL(t *testing.T) {
 			t.Fatal("columns are not correct")
 		}
 
-		err = db.DeleteTable(ctx, "b3")
+		err = DeleteTable(ctx, "b3")
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("Update columns", func(t *testing.T) {
-		_, err := db.CreateTable(ctx, &Table{Name: "b4"})
+		_, err := CreateTable(ctx, &Table{Name: "b4"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = db.CreateColumn(ctx, &Column{Name: "c1", Type: "numeric", Table: "b4"})
+		_, err = CreateColumn(ctx, &Column{Name: "c1", Type: "numeric", Table: "b4"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = db.UpdateColumn(ctx, &ColumnUpdate{
+		_, err = UpdateColumn(ctx, &ColumnUpdate{
 			Name:    "c1",
 			NewName: lo.ToPtr("ccc"),
 			Type:    lo.ToPtr("text"),
@@ -237,7 +234,7 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		column, err := db.GetColumn(ctx, "b4", "ccc")
+		column, err := GetColumn(ctx, "b4", "ccc")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,7 +243,7 @@ func TestDDL(t *testing.T) {
 			//|| column.Check != "CHECK (ccc <> 'pluto'::text)"
 			t.Fatal("column is not correct after the update")
 		}
-		err = db.DeleteTable(ctx, "b4")
+		err = DeleteTable(ctx, "b4")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,7 +264,7 @@ func BenchmarkBase(b *testing.B) {
 	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
 	defer ReleaseConn(ctx, conn)
 
-	db.CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
+	CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
 		{Name: "name", Type: "text"},
 		{Name: "number", Type: "integer"},
 		{Name: "date", Type: "timestamp"}}})

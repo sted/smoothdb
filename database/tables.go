@@ -52,9 +52,9 @@ const tablesQuery = `
   	WHERE c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]) AND 
 		n.nspname NOT IN ('pg_catalog', 'information_schema')`
 
-func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
+func GetTables(ctx context.Context) ([]Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := db.GetConstraints(ctx, "")
+	constraints, err := GetConstraints(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -82,9 +82,9 @@ func (db *Database) GetTables(ctx context.Context) ([]Table, error) {
 	return tables, nil
 }
 
-func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
+func GetTable(ctx context.Context, name string) (*Table, error) {
 	conn := GetConn(ctx)
-	constraints, err := db.GetConstraints(ctx, name)
+	constraints, err := GetConstraints(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (db *Database) GetTable(ctx context.Context, name string) (*Table, error) {
 		return nil, err
 	}
 	fillTableConstraints(&table, constraints)
-	table.Columns, err = db.GetColumns(ctx, name)
+	table.Columns, err = GetColumns(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func composeColumnSQL(sql *string, column *Column) {
 	}
 }
 
-func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, error) {
+func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	options := gi.QueryOptions
@@ -153,14 +153,14 @@ func (db *Database) CreateTable(ctx context.Context, table *Table) (*Table, erro
 	//db.refreshTable(ctx, table.Name)
 
 	if options.ReturnRepresentation {
-		table, _ = db.GetTable(ctx, table.Name)
+		table, _ = GetTable(ctx, table.Name)
 		return table, nil
 	} else {
 		return nil, nil
 	}
 }
 
-func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
+func UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
 	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	options := gi.QueryOptions
@@ -217,14 +217,14 @@ func (db *Database) UpdateTable(ctx context.Context, table *TableUpdate) (*Table
 	}
 
 	if options.ReturnRepresentation {
-		table, _ := db.GetTable(ctx, table.Name)
+		table, _ := GetTable(ctx, table.Name)
 		return table, nil
 	} else {
 		return nil, nil
 	}
 }
 
-func (db *Database) DeleteTable(ctx context.Context, name string) error {
+func DeleteTable(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP TABLE \""+name+"\"")
 	if err != nil {
