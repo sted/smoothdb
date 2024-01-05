@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -41,10 +43,13 @@ func (db *Database) rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
 				v = time.Unix(
 					secFromUnixEpochToY2K+microsecSinceY2K/1000000,
 					(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
+			default:
+				// Handle unsupported data types
+				return nil, fmt.Errorf("unsupported data type OID: %d", fds[i].DataTypeOID)
 			}
-			m[fd.Name] = v
-			array = append(array, m)
+			m[strings.Title(fd.Name)] = v
 		}
+		array = append(array, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

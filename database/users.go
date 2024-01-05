@@ -3,15 +3,17 @@ package database
 import "context"
 
 type User struct {
-	Name     string   `json:"name"`
-	MemberOf []string `json:"memberof"`
+	Name               string   `json:"name"`
+	MemberOf           []string `json:"memberof"`
+	CanCreateRoles     bool     `json:"cancreateroles"`
+	CanCreateDatabases bool     `json:"cancreatedatabases"`
 }
 
 const usersQuery = `
 	SELECT b.rolname
 	FROM pg_catalog.pg_auth_members m
 	JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)
-	WHERE m.member = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = 'auth')`
+	WHERE m.member = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = $1)`
 
 func GetUsers(ctx context.Context) ([]User, error) {
 	conn := GetConn(ctx)
@@ -41,7 +43,7 @@ func GetUsers(ctx context.Context) ([]User, error) {
 func GetUser(ctx context.Context, name string) (*User, error) {
 	conn := GetConn(ctx)
 	role := &User{}
-	err := conn.QueryRow(ctx, usersQuery+" AND b.rolname = $1", name).
+	err := conn.QueryRow(ctx, usersQuery+" AND b.rolname = $2", DBE.authRole, name).
 		Scan(&role.Name)
 	if err != nil {
 		return nil, err
@@ -49,7 +51,7 @@ func GetUser(ctx context.Context, name string) (*User, error) {
 	return role, nil
 }
 
-func CreateUser(ctx context.Context, role *User) (*User, error) {
+func CreateUser(ctx context.Context, user *User) (*User, error) {
 	conn := GetConn(ctx)
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -57,14 +59,19 @@ func CreateUser(ctx context.Context, role *User) (*User, error) {
 	}
 	defer tx.Rollback(ctx)
 
-	create := "CREATE ROLE \"" + role.Name + "\""
+	create := "CREATE ROLE \"" + user.Name + "\""
 	create += " NOLOGIN"
+	if user.CanCreateRoles {
+		create += " CREATEROLE"
+	}
+	if user.CanCreateDatabases {
+		create += " CREATEDB"
+	}
 	_, err = tx.Exec(ctx, create)
 	if err != nil {
 		return nil, err
 	}
-
-	grant := "GRANT \"" + role.Name + "\" TO \"" + DBE.config.AuthRole + "\""
+	grant := "GRANT \"" + user.Name + "\" TO \"" + DBE.authRole + "\""
 	_, err = tx.Exec(ctx, grant)
 	if err != nil {
 		return nil, err
@@ -74,7 +81,7 @@ func CreateUser(ctx context.Context, role *User) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	return GetUser(ctx, role.Name)
+	return GetUser(ctx, user.Name)
 }
 
 func DeleteUser(ctx context.Context, name string) error {

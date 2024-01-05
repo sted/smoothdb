@@ -19,8 +19,8 @@ type ConfigOptions struct {
 
 // Config holds the current configuration
 type Config struct {
-	Address          string          `comment:"Server address and port (default localhost:8082)"`
-	AllowAnon        bool            `comment:"Allow unauthenticated connections"`
+	Address          string          `comment:"Server address and port (default: localhost:8082)"`
+	AllowAnon        bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
 	EnableAdminRoute bool            `comment:"Enable administration of databases and tables (default: false)"`
 	SessionMode      string          `comment:"Session mode: none, role (default: role)"`
