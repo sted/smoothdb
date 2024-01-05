@@ -2,7 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"time"
 
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/logging"
@@ -16,6 +20,8 @@ type Server struct {
 	sessionManager    *SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
+	OnBeforeStart     func(*Server)
+	OnBeforeShutdown  func(*Server)
 }
 
 func NewServer() (*Server, error) {
@@ -57,6 +63,9 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 }
 
 func (s *Server) Start() error {
+	if s.OnBeforeStart != nil {
+		s.OnBeforeStart(s)
+	}
 	err := s.HTTP.ListenAndServe()
 	if err == http.ErrServerClosed {
 		// wait for graceful shutdown
@@ -66,6 +75,9 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) {
+	if s.OnBeforeShutdown != nil {
+		s.OnBeforeShutdown(s)
+	}
 	// HTTP server shutdown
 	s.HTTP.Shutdown(ctx)
 	// Close goroutines (for now just the checker in the service manager)
@@ -73,4 +85,27 @@ func (s *Server) Shutdown(ctx context.Context) {
 	// Close database pools - ok, not so graceful
 	// s.DBE.Close() @@ to be fixed, now blocks
 	close(s.shutdownCompleted)
+}
+
+func (s *Server) stopHandler() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel()
+	fmt.Println("\nStarting shutdown...")
+	s.Shutdown(ctx)
+}
+
+func (s *Server) Run() {
+	go s.stopHandler()
+	err := s.Start()
+	if err != nil {
+		if err == http.ErrServerClosed {
+			fmt.Println("Stopped.")
+		} else {
+			fmt.Println(err.Error())
+		}
+		os.Exit(1)
+	}
 }
