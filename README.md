@@ -181,6 +181,155 @@ GET /api/testdb/orders?select=id,amount,companies(name,category) HTTP/1.1
 ]
 ```
 
+## Example for using smoothdb in your application
+
+You can embed smoothdb functionalities in your backend app with relative ease.
+
+This short example is a minimal app that exposes a **/products** GET route to obtain the JSON array of the products and a **/view** route to view them in a formatted HTML table.
+
+In this note we omit error handling for brevity, see the whole example in [examples/server.go](examples/server.go).
+
+```go
+import (
+	smoothdb "github.com/sted/smoothdb/server"
+)
+
+func main() {
+	// base configuration
+	baseConfig := map[string]any{
+		"Address":                   ":8085",
+		"AllowAnon":                 true,
+		"BaseAPIURL":                "",
+		"ShortAPIURL":               true,
+		"Logging.FilePath":          "./example.log",
+		"Database.AllowedDatabases": []string{"example"},
+	}
+	// smoothdb initialization
+	s, _ := smoothdb.NewServerWithConfig(baseConfig, nil)
+	
+	// -- here the database is connected and the standard routes are prepared
+	
+	// prepare db content
+	prepareContent(s)
+	// create template and a view route
+	prepareView(s)
+	// run
+	s.Run()
+}
+```
+In *prepareContent* we see the basic interactions with the database.
+
+```go
+func prepareContent(s *smoothdb.Server) error {
+
+	dbe_ctx, _, _ := database.ContextWithDb(context.Background(), nil, "postgres")
+	// create a database
+	db, _ := s.DBE.CreateActiveDatabase(dbe_ctx, "example", true)
+	ctx, _, err := database.ContextWithDb(context.Background(), db, "postgres")
+	// delete previous table if exists
+	database.DeleteTable(ctx, "products", true)
+	// create a table 'products'
+	database.CreateTable(ctx, &database.Table{
+		Name: "products",
+		Columns: []database.Column{
+			{Name: "name", Type: "text"},
+			{Name: "price", Type: "int4"},
+			{Name: "avail", Type: "bool"},
+		},
+		IfNotExists: true,
+	})
+	// insert records
+	db.CreateRecords(ctx, "products", []database.Record{
+		{"name": "QuantumDrive SSD 256GB", "price": 59, "avail": true},
+		{"name": "SolarGlow LED Lamp", "price": 99, "avail": false},
+		{"name": "AquaPure Water Filter", "price": 20, "avail": true},
+		{"name": "BreezeMax Portable Fan", "price": 5, "avail": true},
+		{"name": "Everlast Smartwatch", "price": 200, "avail": false},
+		{"name": "JavaPro Coffee Maker", "price": 45, "avail": true},
+		{"name": "SkyView Drone", "price": 150, "avail": true},
+		{"name": "EcoCharge Solar Charger", "price": 30, "avail": false},
+		{"name": "GigaBoost WiFi Extender", "price": 75, "avail": true},
+		{"name": "ZenSound Noise-Canceling Headphones", "price": 10, "avail": false},
+	}, nil)
+	// grant read access to everyone
+	database.CreatePrivilege(ctx, &database.Privilege{
+		TargetName: "products",
+		TargetType: "table",
+		Types:      []string{"select"},
+		Grantee:    "public",
+	})
+	return nil
+}
+```
+
+In *prepareView* we create a standard html/template and register a route to view the content.
+
+```go
+func prepareView(s *smoothdb.Server) error {
+	// create the template
+	t, err := template.New("").Parse(`
+		<html>
+		<head>
+		<style>
+			table {
+				margin-left: auto;
+    			margin-right: auto;
+				border-collapse: collapse;
+				border: 2px solid rgb(200, 200, 200);
+				letter-spacing: 1px;
+				font-family: sans-serif;
+				font-size: 0.8rem;
+			}
+			th {
+				background-color: #3f87a6;
+				color: #fff;
+		  	}
+			td {
+				background-color: #e4f0f5;
+			}
+			td,th {
+				border: 1px solid rgb(190, 190, 190);
+				padding: 5px 10px;
+			}  
+		</style>
+		</head>
+		<body>
+		<h1>Products</h1>
+		<table>
+			<tr><th>Name</th><th>Price</th><th>Avail</th></tr>
+			{{range .}}
+				<tr>
+					<td><b>{{.Name}}</b></td><td>{{.Price}}</td><td>{{.Avail}}</td>
+				</tr>
+			{{end}}
+		</table>
+		</body>`)
+	if err != nil {
+		return err
+	}
+	// register a route
+	r := s.GetRouter()
+	m := smoothdb.DatabaseMiddlewareWithName(s, "example")
+	g := r.Group("/view", m)
+	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		db := database.GetDb(ctx)
+		results, err := db.GetStructures(ctx, "products")
+		if err != nil {
+			return smoothdb.WriteError(w, err)
+		}
+		t.Execute(w, results)
+		return 200, nil
+	})
+	return nil
+}
+```
+
+To try the example
+
+	go run server.go
+
+in the examples directory and browse to *localhost:8085/products* and *localhost:8085/view*.
+
 ## Development
 
 Contributions are warmly welcomed in the form of Pull Requests and Issue reporting.
