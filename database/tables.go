@@ -224,9 +224,14 @@ func UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
 	}
 }
 
-func DeleteTable(ctx context.Context, name string) error {
+func DeleteTable(ctx context.Context, name string, ifExists bool) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP TABLE \""+name+"\"")
+	delete := "DROP TABLE"
+	if ifExists {
+		delete += " IF EXISTS"
+	}
+	delete += " \"" + name + "\""
+	_, err := conn.Exec(ctx, delete)
 	if err != nil {
 		return err
 	}

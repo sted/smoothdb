@@ -15,7 +15,7 @@ import (
 // This is experimental.
 // For now it seems much slower than rowsToStructs
 
-func (db *Database) rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
+func rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
 	fds := rows.FieldDescriptions()
 	array := make([]map[string]any, 0, 1000)
 	var v any
@@ -81,5 +81,5 @@ func (db *Database) GetMaps(ctx context.Context, query string) ([]map[string]any
 		return nil, err
 	}
 	defer rows.Close()
-	return db.rowsToMaps(rows)
+	return rowsToMaps(rows)
 }

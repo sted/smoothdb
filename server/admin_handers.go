@@ -61,7 +61,7 @@ func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 
 func TableDeleteHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	name := r.Param("table")
-	err := database.DeleteTable(c, name)
+	err := database.DeleteTable(c, name, false)
 	if err == nil {
 		return WriteEmpty(w, http.StatusNoContent)
 	} else {

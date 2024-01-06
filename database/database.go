@@ -100,6 +100,7 @@ func (db *Database) Close() {
 	db.pool.Close()
 }
 
+// @@ to be implemented and used
 func (db *Database) refreshTable(ctx context.Context, name string) {
 	// table := Table{}
 	// table.Columns, _ = db.GetColumns(ctx, name)

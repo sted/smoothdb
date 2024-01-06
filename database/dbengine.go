@@ -162,11 +162,14 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 	return db, nil
 }
 
-func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
+func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, noErrIfExists bool) (*DatabaseInfo, error) {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "CREATE DATABASE \""+name+"\"")
+	create := "CREATE DATABASE \"" + name + "\""
+	_, err := conn.Exec(ctx, create)
 	if err != nil {
-		return nil, err
+		if e, ok := err.(*pgconn.PgError); !ok || !noErrIfExists || e.Code != "42P04" {
+			return nil, err
+		}
 	}
 	return dbe.GetDatabase(ctx, name)
 }
@@ -218,8 +221,8 @@ func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (*Datab
 	return db, nil
 }
 
-func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
-	_, err := dbe.CreateDatabase(ctx, name)
+func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string, noErrIfExists bool) (*Database, error) {
+	_, err := dbe.CreateDatabase(ctx, name, noErrIfExists)
 	if err != nil {
 		return nil, err
 	}

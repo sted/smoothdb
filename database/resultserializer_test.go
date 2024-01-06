@@ -15,7 +15,7 @@ func BenchmarkSerializer(b *testing.B) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench", true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func BenchmarkSerializer(b *testing.B) {
 	b.Run("Structs", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, err := db.rowsToStructs(copiedRows)
+			_, err := rowsToStructs(copiedRows)
 			if err != nil {
 				log.Print(err)
 				return
@@ -90,7 +90,7 @@ func BenchmarkSerializer(b *testing.B) {
 	b.Run("Maps", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, err := db.rowsToMaps(copiedRows)
+			_, err := rowsToMaps(copiedRows)
 			if err != nil {
 				log.Print(err)
 				return

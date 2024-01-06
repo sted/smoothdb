@@ -45,7 +45,7 @@ func TestBase(t *testing.T) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test_base")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestDDL(t *testing.T) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test_ddl")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestDDL(t *testing.T) {
 			!columns[4].NotNull {
 			t.Fatal(err)
 		}
-		err = DeleteTable(ctx, "b2")
+		err = DeleteTable(ctx, "b2", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +205,7 @@ func TestDDL(t *testing.T) {
 			t.Fatal("columns are not correct")
 		}
 
-		err = DeleteTable(ctx, "b3")
+		err = DeleteTable(ctx, "b3", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +243,7 @@ func TestDDL(t *testing.T) {
 			//|| column.Check != "CHECK (ccc <> 'pluto'::text)"
 			t.Fatal("column is not correct after the update")
 		}
-		err = DeleteTable(ctx, "b4")
+		err = DeleteTable(ctx, "b4", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,7 +256,7 @@ func BenchmarkBase(b *testing.B) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench")
+	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench", true)
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -204,7 +204,7 @@ func (s *Server) initAdminRouter() {
 		var databaseInput database.Database
 		r.ReadJSON(&databaseInput)
 
-		database, err := dbe.CreateDatabase(c, databaseInput.Name)
+		database, err := dbe.CreateDatabase(c, databaseInput.Name, false)
 		if err == nil {
 			return WriteJSON(w, http.StatusCreated, database)
 		} else {

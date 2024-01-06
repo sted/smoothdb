@@ -21,7 +21,7 @@ var typeMap2 = map[uint32]any{
 	pgtype.TimestampOID: time.Now(),
 }
 
-func (db *Database) rowsToStructs(rows pgx.Rows) ([]any, error) {
+func rowsToStructs(rows pgx.Rows) ([]any, error) {
 	fds := rows.FieldDescriptions()
 	var structFields []reflect.StructField
 	for i := range fds {
@@ -101,5 +101,5 @@ func (db *Database) GetStructures(ctx context.Context, query string) ([]any, err
 		return nil, err
 	}
 	defer rows.Close()
-	return db.rowsToStructs(rows)
+	return rowsToStructs(rows)
 }
