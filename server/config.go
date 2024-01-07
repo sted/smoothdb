@@ -22,8 +22,9 @@ type Config struct {
 	Address          string          `comment:"Server address and port (default: localhost:8082)"`
 	AllowAnon        bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret        string          `comment:"Secret for JWT tokens"`
-	EnableAdminRoute bool            `comment:"Enable administration of databases and tables (default: false)"`
 	SessionMode      string          `comment:"Session mode: none, role (default: role)"`
+	EnableAdminRoute bool            `comment:"Enable administration of databases and tables (default: false)"`
+	EnableAPIRoute   bool            `comment:"Enable API access (default: true)"`
 	BaseAPIURL       string          `comment:"Base URL for the API (default: /api)"`
 	ShortAPIURL      bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
 	BaseAdminURL     string          `comment:"Base URL for the Admin API (default: /admin)"`
@@ -36,8 +37,9 @@ func defaultConfig() *Config {
 		Address:          ":8081",
 		AllowAnon:        false,
 		JWTSecret:        "",
-		EnableAdminRoute: false,
 		SessionMode:      "role",
+		EnableAdminRoute: false,
+		EnableAPIRoute:   true,
 		BaseAPIURL:       "/api",
 		ShortAPIURL:      false,
 		BaseAdminURL:     "/admin",

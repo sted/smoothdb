@@ -29,7 +29,9 @@ func (server *Server) initHTTPServer() {
 	if server.Config.EnableAdminRoute {
 		server.initAdminRouter()
 	}
-	server.initSourcesRouter()
+	if server.Config.EnableAPIRoute {
+		server.initSourcesRouter()
+	}
 	server.initTestRouter()
 }
 

@@ -124,7 +124,11 @@ func prepareView(s *smoothdb.Server) error {
 			return smoothdb.WriteError(w, err)
 		}
 		err = t.Execute(w, results)
-		return 200, err
+		if err == nil {
+			return http.StatusOK, nil
+		} else {
+			return http.StatusInternalServerError, err
+		}
 	})
 	return nil
 }
