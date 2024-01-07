@@ -462,11 +462,10 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("POST", "/:dbname/functions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		var functionInput database.Function
 		r.ReadJSON(&functionInput)
 
-		policy, err := db.CreateFunction(c, &functionInput)
+		policy, err := database.CreateFunction(c, &functionInput)
 		if err == nil {
 			return WriteJSON(w, http.StatusCreated, policy)
 		} else {
@@ -475,10 +474,9 @@ func (s *Server) initAdminRouter() {
 	})
 
 	databases.Handle("DELETE", "/:dbname/functions/:name", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		name := r.Param("name")
 
-		err := db.DeleteFunction(c, name)
+		err := database.DeleteFunction(c, name)
 		if err == nil {
 			return WriteEmpty(w, http.StatusOK)
 		} else {

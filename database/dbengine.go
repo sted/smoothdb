@@ -22,7 +22,6 @@ type DbEngine struct {
 	dbtracer         pgx.QueryTracer
 	activeDatabases  sync.Map
 	allowedDatabases map[string]struct{}
-	exec             *QueryExecutor
 	defaultSchema    string
 	authRole         string
 }
@@ -31,7 +30,7 @@ type DbEngine struct {
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	context := context.Background()
 
-	DBE = &DbEngine{config: dbConfig, exec: &QueryExecutor{}}
+	DBE = &DbEngine{config: dbConfig}
 
 	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {

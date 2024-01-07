@@ -19,9 +19,8 @@ func (s *Server) initSourcesRouter() {
 	// RECORDS
 
 	api.Handle("GET", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
-		json, err := db.GetRecords(c, sourcename, r.URL.Query())
+		json, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			w.Header().Set("Content-Location", r.RequestURI)
 			return WriteJSONString(w, http.StatusOK, json)
@@ -31,7 +30,6 @@ func (s *Server) initSourcesRouter() {
 	})
 
 	api.Handle("POST", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		records, err := ReadInputRecords(r)
 		if err != nil {
@@ -41,7 +39,7 @@ func (s *Server) initSourcesRouter() {
 		if ok, status := noRecordsForInsert(c, w, records); ok {
 			return status, nil
 		}
-		data, count, err := db.CreateRecords(c, sourcename, records, r.URL.Query())
+		data, count, err := database.CreateRecords(c, sourcename, records, r.URL.Query())
 		if err == nil {
 			if data == nil {
 				return WriteJSON(w, http.StatusCreated, count)
@@ -54,7 +52,6 @@ func (s *Server) initSourcesRouter() {
 	})
 
 	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
 		records, err := ReadInputRecords(r)
 		if err != nil || len(records) > 1 {
@@ -64,7 +61,7 @@ func (s *Server) initSourcesRouter() {
 		if ok, status := noRecordsForUpdate(c, w, records); ok {
 			return status, nil
 		}
-		data, _, err := db.UpdateRecords(c, sourcename, records[0], r.URL.Query())
+		data, _, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
 				return WriteEmpty(w, http.StatusNoContent)
@@ -77,9 +74,8 @@ func (s *Server) initSourcesRouter() {
 	})
 
 	api.Handle("DELETE", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		sourcename := r.Param("sourcename")
-		data, _, err := db.DeleteRecords(c, sourcename, r.URL.Query())
+		data, _, err := database.DeleteRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			if data == nil {
 				return WriteEmpty(w, http.StatusNoContent)
@@ -94,9 +90,8 @@ func (s *Server) initSourcesRouter() {
 	// FUNCTIONS
 
 	api.Handle("GET", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		fname := r.Param("fname")
-		json, _, err := db.ExecFunction(c, fname, nil, r.URL.Query())
+		json, _, err := database.ExecFunction(c, fname, nil, r.URL.Query())
 		if err == nil {
 			return WriteJSONString(w, http.StatusOK, json)
 		} else {
@@ -105,7 +100,6 @@ func (s *Server) initSourcesRouter() {
 	})
 
 	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		fname := r.Param("fname")
 		records, err := ReadInputRecords(r)
 		if err != nil {
@@ -115,7 +109,7 @@ func (s *Server) initSourcesRouter() {
 		if ok, status := noRecordsForInsert(c, w, records); ok {
 			return status, nil
 		}
-		data, count, err := db.ExecFunction(c, fname, records[0], r.URL.Query())
+		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
 				return WriteJSON(w, http.StatusOK, count)

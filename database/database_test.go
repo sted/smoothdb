@@ -63,13 +63,13 @@ func TestBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		db.CreateRecords(ctx, "b1", []Record{
+		CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true, "float4": 3.1},
 			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}}, nil)
 	}
 
 	t.Run("Select1", func(t *testing.T) {
-		_, err := db.GetRecords(ctx, "b1", nil)
+		_, err := GetRecords(ctx, "b1", nil)
 		if err != nil {
 			t.Error(err)
 		}
@@ -77,14 +77,14 @@ func TestBase(t *testing.T) {
 
 	t.Run("Select2", func(t *testing.T) {
 		SetQueryBuilder(ctx, QueryWithJSON{})
-		_, err := db.GetRecords(ctx, "b1", nil)
+		_, err := GetRecords(ctx, "b1", nil)
 		if err != nil {
 			t.Error(err)
 		}
 	})
 
 	// t.Run("Select3", func(t *testing.T) {
-	// 	j, err := db.GetRecords3(ctx, "b1")
+	// 	j, err := GetRecords3(ctx, "b1")
 	// 	if err != nil {
 	// 		log.Print(err)
 	// 	}
@@ -270,7 +270,7 @@ func BenchmarkBase(b *testing.B) {
 		{Name: "date", Type: "timestamp"}}})
 
 	for i := 0; i < 10000; i++ {
-		_, _, err := db.CreateRecords(ctx, "b1", []Record{
+		_, _, err := CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00"},
 			{"name": "Sted", "number": 55, "date": "1940-10-22T17:00"}}, nil)
 		if err != nil {
@@ -280,7 +280,7 @@ func BenchmarkBase(b *testing.B) {
 
 	b.Run("Select1", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := db.GetRecords(ctx, "b1", nil)
+			_, err := GetRecords(ctx, "b1", nil)
 			if err != nil {
 				log.Print(err)
 				return
@@ -291,7 +291,7 @@ func BenchmarkBase(b *testing.B) {
 	b.Run("Select2", func(b *testing.B) {
 		SetQueryBuilder(ctx, QueryWithJSON{})
 		for i := 0; i < b.N; i++ {
-			_, err := db.GetRecords(ctx, "b1", nil)
+			_, err := GetRecords(ctx, "b1", nil)
 			if err != nil {
 				log.Print(err)
 				return
@@ -301,7 +301,7 @@ func BenchmarkBase(b *testing.B) {
 
 	// b.Run("Select3", func(b *testing.B) {
 	// 	for i := 0; i < b.N; i++ {
-	// 		_, err := db.GetRecords3(ctx, "b1")
+	// 		_, err := GetRecords3(ctx, "b1")
 	// 		if err != nil {
 	// 			log.Print(err)
 	// 		}

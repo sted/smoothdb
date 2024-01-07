@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// This is experimental.
+// @@ This is experimental.
 // For now it seems much slower than rowsToStructs
 
 func rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
@@ -58,7 +58,7 @@ func rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
 }
 
 // /table?filter
-func (db *Database) GetMaps(ctx context.Context, query string) ([]map[string]any, error) {
+func GetMaps(ctx context.Context, query string) ([]map[string]any, error) {
 	url, err := url.Parse(query)
 	if err != nil {
 		return nil, err
@@ -71,11 +71,10 @@ func (db *Database) GetMaps(ctx context.Context, query string) ([]map[string]any
 		return nil, err
 	}
 	options := gi.QueryOptions
-	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, db.info)
+	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, err
 	}
-	//info := gi.Db.info
 	rows, err := gi.Conn.Query(ctx, sel, values...)
 	if err != nil {
 		return nil, err

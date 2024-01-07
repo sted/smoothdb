@@ -239,7 +239,7 @@ func prepareContent(s *smoothdb.Server) error {
 		IfNotExists: true,
 	})
 	// insert records
-	db.CreateRecords(ctx, "products", []database.Record{
+	database.CreateRecords(ctx, "products", []database.Record{
 		{"name": "QuantumDrive SSD 256GB", "price": 59, "avail": true},
 		{"name": "SolarGlow LED Lamp", "price": 99, "avail": false},
 		{"name": "AquaPure Water Filter", "price": 20, "avail": true},
@@ -267,7 +267,7 @@ In *prepareView* we create a standard html/template and register a route to view
 ```go
 func prepareView(s *smoothdb.Server) error {
 	// create the template
-	t, err := template.New("").Parse(`
+	t, _ := template.New("").Parse(`
 		<html>
 		<head>
 		<style>
@@ -304,21 +304,22 @@ func prepareView(s *smoothdb.Server) error {
 			{{end}}
 		</table>
 		</body>`)
-	if err != nil {
-		return err
-	}
+	
 	// register a route
 	r := s.GetRouter()
 	m := smoothdb.DatabaseMiddlewareWithName(s, "example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(ctx)
-		results, err := db.GetStructures(ctx, "products")
+		results, err := database.GetStructures(ctx, "products")
 		if err != nil {
 			return smoothdb.WriteError(w, err)
 		}
 		t.Execute(w, results)
-		return 200, nil
+		if err == nil {
+			return http.StatusOK, nil
+		} else {
+			return http.StatusInternalServerError, err
+		}
 	})
 	return nil
 }

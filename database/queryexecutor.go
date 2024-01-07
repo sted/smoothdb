@@ -4,8 +4,6 @@ import (
 	"context"
 )
 
-type QueryExecutor struct{}
-
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
 	options := gi.QueryOptions
@@ -25,7 +23,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, er
 	return data, err
 }
 
-func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
+func Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -39,7 +37,7 @@ func (QueryExecutor) Select(ctx context.Context, table string, filters Filters) 
 	return querySerialize(ctx, query, values)
 }
 
-func (QueryExecutor) Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
+func Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -63,7 +61,7 @@ func (QueryExecutor) Insert(ctx context.Context, table string, records []Record,
 	}
 }
 
-func (QueryExecutor) Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
+func Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -87,7 +85,7 @@ func (QueryExecutor) Update(ctx context.Context, table string, record Record, fi
 	}
 }
 
-func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
+func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -111,7 +109,7 @@ func (QueryExecutor) Delete(ctx context.Context, table string, filters Filters) 
 	}
 }
 
-func (QueryExecutor) Execute(ctx context.Context, function string, record Record, filters Filters) ([]byte, int64, error) {
+func Execute(ctx context.Context, function string, record Record, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(function, filters)
 	if err != nil {

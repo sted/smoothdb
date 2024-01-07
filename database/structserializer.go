@@ -78,7 +78,7 @@ func rowsToStructs(rows pgx.Rows) ([]any, error) {
 }
 
 // /table?filter
-func (db *Database) GetStructures(ctx context.Context, query string) ([]any, error) {
+func GetStructures(ctx context.Context, query string) ([]any, error) {
 	url, err := url.Parse(query)
 	if err != nil {
 		return nil, err
@@ -91,11 +91,10 @@ func (db *Database) GetStructures(ctx context.Context, query string) ([]any, err
 		return nil, err
 	}
 	options := gi.QueryOptions
-	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, db.info)
+	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, err
 	}
-	//info := gi.Db.info
 	rows, err := gi.Conn.Query(ctx, sel, values...)
 	if err != nil {
 		return nil, err

@@ -94,7 +94,7 @@ func composeSignature(name string, args []Argument) string {
 	return sig
 }
 
-func (db *Database) CreateFunction(ctx context.Context, function *Function) (*Function, error) {
+func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
 	conn := GetConn(ctx)
 	create := "CREATE FUNCTION "
 	create += composeSignature(function.Name, function.Arguments)
@@ -121,12 +121,12 @@ func (db *Database) CreateFunction(ctx context.Context, function *Function) (*Fu
 	return function, nil
 }
 
-func (db *Database) DeleteFunction(ctx context.Context, name string) error {
+func DeleteFunction(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP FUNCTION "+name)
 	return err
 }
 
-func (db *Database) ExecFunction(ctx context.Context, name string, record Record, filters Filters) ([]byte, int64, error) {
-	return db.exec.Execute(ctx, name, record, filters)
+func ExecFunction(ctx context.Context, name string, record Record, filters Filters) ([]byte, int64, error) {
+	return Execute(ctx, name, record, filters)
 }

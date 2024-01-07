@@ -46,7 +46,7 @@ func prepareContent(s *smoothdb.Server) error {
 		return err
 	}
 	// insert records
-	_, _, err = db.CreateRecords(ctx, "products", []database.Record{
+	_, _, err = database.CreateRecords(ctx, "products", []database.Record{
 		{"name": "QuantumDrive SSD 256GB", "price": 59, "avail": true},
 		{"name": "SolarGlow LED Lamp", "price": 99, "avail": false},
 		{"name": "AquaPure Water Filter", "price": 20, "avail": true},
@@ -118,8 +118,7 @@ func prepareView(s *smoothdb.Server) error {
 	m := smoothdb.DatabaseMiddlewareWithName(s, "example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(ctx)
-		results, err := db.GetStructures(ctx, "products")
+		results, err := database.GetStructures(ctx, "products")
 		if err != nil {
 			return smoothdb.WriteError(w, err)
 		}

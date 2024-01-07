@@ -19,7 +19,6 @@ type Database struct {
 	DatabaseInfo
 	activated atomic.Bool
 	pool      *pgxpool.Pool
-	exec      *QueryExecutor
 	info      *SchemaInfo
 }
 
@@ -91,7 +90,6 @@ func (db *Database) Activate(ctx context.Context) error {
 		return err
 	}
 	db.pool = pool
-	db.exec = DBE.exec
 
 	return nil
 }
