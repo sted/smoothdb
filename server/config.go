@@ -30,6 +30,7 @@ type Config struct {
 	BaseAdminURL         string          `comment:"Base URL for the Admin API (default: /admin)"`
 	CORSAllowedOrigins   []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
 	CORSAllowCredentials bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
+	EnableTestRoute      bool            `comment:"Enable test access (default: false)"`
 	Database             database.Config `comment:"Database configuration"`
 	Logging              logging.Config  `comment:"Logging configuration"`
 }
@@ -47,6 +48,7 @@ func defaultConfig() *Config {
 		BaseAdminURL:         "/admin",
 		CORSAllowedOrigins:   []string{"*"},
 		CORSAllowCredentials: false,
+		EnableTestRoute:      false,
 		Database:             *database.DefaultConfig(),
 		Logging:              *logging.DefaultConfig(),
 	}
@@ -64,9 +66,9 @@ func getEnvironment(c *Config) {
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 	}
-	enableAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
-	if enableAnon != "" {
-		c.AllowAnon = strings.ToLower(enableAnon) == "true"
+	allowAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
+	if allowAnon != "" {
+		c.AllowAnon = strings.ToLower(allowAnon) == "true"
 	}
 	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {

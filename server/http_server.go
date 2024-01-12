@@ -21,7 +21,9 @@ func (server *Server) initHTTPServer() {
 	if server.Config.EnableAPIRoute {
 		server.initSourcesRouter()
 	}
-	server.initTestRouter()
+	if server.Config.EnableTestRoute {
+		server.initTestRouter()
+	}
 
 	server.HTTP = &http.Server{
 		Addr:         server.Config.Address,
