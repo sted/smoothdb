@@ -8,24 +8,13 @@ import (
 )
 
 func (server *Server) initHTTPServer() {
-	router := heligo.New()
+	server.router = heligo.New()
 	//router.Use(gin.Recovery())
-	router.Use(HTTPLogger(server.Logger))
+	server.router.Use(HTTPLogger(server.Logger))
 
-	// corsConfig := cors.DefaultConfig()
-	// corsConfig.AllowAllOrigins = true
-	// //config.AllowCredentials = true
-	// corsConfig.AllowHeaders = []string{"Authorization", "X-Client-Info", "Accept-Profile"}
-	// router.Use(cors.New(corsConfig))
-	// root := router.Group("/")
-
-	server.HTTP = &http.Server{
-		Addr:         server.Config.Address,
-		Handler:      router,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+	if len(server.Config.CORSAllowedOrigins) != 0 {
+		server.initCORS()
 	}
-
 	if server.Config.EnableAdminRoute {
 		server.initAdminRouter()
 	}
@@ -33,8 +22,15 @@ func (server *Server) initHTTPServer() {
 		server.initSourcesRouter()
 	}
 	server.initTestRouter()
+
+	server.HTTP = &http.Server{
+		Addr:         server.Config.Address,
+		Handler:      server.router,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
 }
 
 func (server *Server) GetRouter() *heligo.Router {
-	return server.HTTP.Handler.(*heligo.Router)
+	return server.router
 }

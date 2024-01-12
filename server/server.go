@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/logging"
 )
@@ -17,6 +18,7 @@ type Server struct {
 	Logger            *logging.Logger
 	DBE               *database.DbEngine
 	HTTP              *http.Server
+	router            *heligo.Router
 	sessionManager    *SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}

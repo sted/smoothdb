@@ -19,32 +19,36 @@ type ConfigOptions struct {
 
 // Config holds the current configuration
 type Config struct {
-	Address          string          `comment:"Server address and port (default: localhost:8082)"`
-	AllowAnon        bool            `comment:"Allow unauthenticated connections (default: false)"`
-	JWTSecret        string          `comment:"Secret for JWT tokens"`
-	SessionMode      string          `comment:"Session mode: none, role (default: role)"`
-	EnableAdminRoute bool            `comment:"Enable administration of databases and tables (default: false)"`
-	EnableAPIRoute   bool            `comment:"Enable API access (default: true)"`
-	BaseAPIURL       string          `comment:"Base URL for the API (default: /api)"`
-	ShortAPIURL      bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
-	BaseAdminURL     string          `comment:"Base URL for the Admin API (default: /admin)"`
-	Database         database.Config `comment:"Database configuration"`
-	Logging          logging.Config  `comment:"Logging configuration"`
+	Address              string          `comment:"Server address and port (default: localhost:8082)"`
+	AllowAnon            bool            `comment:"Allow unauthenticated connections (default: false)"`
+	JWTSecret            string          `comment:"Secret for JWT tokens"`
+	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
+	EnableAdminRoute     bool            `comment:"Enable administration of databases and tables (default: false)"`
+	EnableAPIRoute       bool            `comment:"Enable API access (default: true)"`
+	BaseAPIURL           string          `comment:"Base URL for the API (default: /api)"`
+	ShortAPIURL          bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
+	BaseAdminURL         string          `comment:"Base URL for the Admin API (default: /admin)"`
+	CORSAllowedOrigins   []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
+	CORSAllowCredentials bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
+	Database             database.Config `comment:"Database configuration"`
+	Logging              logging.Config  `comment:"Logging configuration"`
 }
 
 func defaultConfig() *Config {
 	return &Config{
-		Address:          ":8081",
-		AllowAnon:        false,
-		JWTSecret:        "",
-		SessionMode:      "role",
-		EnableAdminRoute: false,
-		EnableAPIRoute:   true,
-		BaseAPIURL:       "/api",
-		ShortAPIURL:      false,
-		BaseAdminURL:     "/admin",
-		Database:         *database.DefaultConfig(),
-		Logging:          *logging.DefaultConfig(),
+		Address:              ":8081",
+		AllowAnon:            false,
+		JWTSecret:            "",
+		SessionMode:          "role",
+		EnableAdminRoute:     false,
+		EnableAPIRoute:       true,
+		BaseAPIURL:           "/api",
+		ShortAPIURL:          false,
+		BaseAdminURL:         "/admin",
+		CORSAllowedOrigins:   []string{"*"},
+		CORSAllowCredentials: false,
+		Database:             *database.DefaultConfig(),
+		Logging:              *logging.DefaultConfig(),
 	}
 }
 
