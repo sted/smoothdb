@@ -13,9 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var typeMap2 = map[uint32]any{
+var typeMap = map[uint32]any{
+	pgtype.Int2OID:      int16(0),
 	pgtype.Int4OID:      int32(0),
 	pgtype.OIDOID:       int32(0),
+	pgtype.Int8OID:      int64(0),
 	pgtype.TextOID:      string(""),
 	pgtype.BoolOID:      bool(false),
 	pgtype.TimestampOID: time.Now(),
@@ -27,7 +29,7 @@ func rowsToStructs(rows pgx.Rows) ([]any, error) {
 	for i := range fds {
 		newField := reflect.StructField{
 			Name: strings.Title(fds[i].Name),
-			Type: reflect.PtrTo(reflect.TypeOf(typeMap2[fds[i].DataTypeOID])),
+			Type: reflect.PtrTo(reflect.TypeOf(typeMap[fds[i].DataTypeOID])),
 			//Tag:  reflect.StructTag("`json:\"" + strings.ToLower(field.Name+"\"`")),
 		}
 		structFields = append(structFields, newField)

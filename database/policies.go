@@ -46,7 +46,6 @@ func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	query := policyQuery
 	schemaname, tablename := splitTableName(ftablename)
 	query += " WHERE c.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
-
 	query += " ORDER BY tablename"
 	rows, err := conn.Query(ctx, query)
 	if err != nil {

@@ -33,8 +33,8 @@ func (s *Server) initTestRouter() {
 	})
 
 	// Register pprof handlers
-	router.Handle("GET", "/debug/pprof/", heligo.Adapt(pprof.Index))
-	router.Handle("GET", "/debug/pprof/:cmd", heligo.Adapt(pprof.Index))
+	router.Handle("GET", "/debug/pprof/", heligo.AdaptFunc(pprof.Index))
+	router.Handle("GET", "/debug/pprof/:cmd", heligo.AdaptFunc(pprof.Index))
 	// router.Handle("GET", "/debug/pprof/cmdline", pprof.Cmdline)
 	// router.Handle("GET", "/debug/pprof/profile", pprof.Profile)
 	// router.Handle("GET", "/debug/pprof/symbol", pprof.Symbol)
