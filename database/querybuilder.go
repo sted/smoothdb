@@ -21,7 +21,8 @@ type QueryBuilder interface {
 type Join struct {
 	name     string        // join name, crafted to be unique
 	fields   string        // fields to be selected in the related table (eg. a, b::text, c AS C)
-	inner    string        // nested joins
+	nested   string        // nested joins
+	inner    bool          // is a inner join
 	rel      *Relationship // base relationship
 	relLabel string        // label for the relationship, taken from the select clause
 }
@@ -103,8 +104,8 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 	if rel.JunctionTable != "" {
 		sel += ", " + quoteParts(rel.JunctionTable)
 	}
-	if join.inner != "" {
-		sel += " " + join.inner
+	if join.nested != "" {
+		sel += " " + join.nested
 	}
 	sel += " WHERE "
 	if rel.JunctionTable == "" {
@@ -202,9 +203,6 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	joinSeq := []Join{}
 
 	for i, sfield := range parts.selectFields {
-		if i != 0 {
-			selClause += ", "
-		}
 		if sfield.relation != nil {
 			if sfield.relation.parent != "" {
 				parentTable = sfield.relation.parent
@@ -222,19 +220,24 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			}
 			joinName = labelWithNumber(parentTable+"_"+labelRelName, stack.level+1)
 
-			switch frel.Type {
-			case M2O, O2O:
-				if sfield.relation.spread {
-					selClause += quote(joinName) + ".*"
-				} else {
-					selClause += " row_to_json(" + quote(joinName) + ".*) AS " + quote(labelRelName)
+			if len(sfield.relation.fields) != 0 {
+				if i != 0 {
+					selClause += ", "
 				}
-			case O2M, M2M:
-				if sfield.relation.spread {
-					err = &BuildError{"A spread operation on " + relatedTable + " is not possible"}
-					return "", "", nil, err
+				switch frel.Type {
+				case M2O, O2O:
+					if sfield.relation.spread {
+						selClause += quote(joinName) + ".*"
+					} else {
+						selClause += " row_to_json(" + quote(joinName) + ".*) AS " + quote(labelRelName)
+					}
+				case O2M, M2M:
+					if sfield.relation.spread {
+						err = &BuildError{"A spread operation on " + relatedTable + " is not possible"}
+						return "", "", nil, err
+					}
+					selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
 				}
-				selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
 			}
 			_, relatedTable = splitTableName(frel.RelatedTable)
 			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree}
@@ -242,8 +245,11 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			if err != nil {
 				return "", "", nil, err
 			}
-			joinSeq = append(joinSeq, Join{joinName, sc, j, frel, sfield.label})
+			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label})
 		} else {
+			if i != 0 {
+				selClause += ", "
+			}
 			var fieldPart string
 			if !stack.afterWithClause {
 				if stack.level == 0 {
@@ -268,7 +274,12 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 		for _, join := range joinSeq {
 			relName := join.name
 			selectForJoin := selectForJoinClause(join, label, parts, stack)
-			joins += " LEFT JOIN LATERAL ("
+			if join.inner {
+				joins += " INNER"
+			} else {
+				joins += " LEFT"
+			}
+			joins += " JOIN LATERAL ("
 			switch join.rel.Type {
 			case M2O, O2O:
 				joins += selectForJoin
@@ -278,7 +289,12 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 				joins += selectForJoin
 				joins += " ) AS \"_" + relName + "\""
 			}
-			joins += ") AS \"" + relName + "\" ON TRUE"
+			joins += ") AS \"" + relName + "\" ON"
+			if join.inner && (join.rel.Type == O2M || join.rel.Type == M2M) {
+				joins += " \"" + relName + "\" IS NOT NULL"
+			} else {
+				joins += " TRUE"
+			}
 			for i := range join.rel.Columns {
 				keys = append(keys, quoteParts(join.rel.Table)+"."+quote(join.rel.Columns[i]))
 			}

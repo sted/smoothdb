@@ -2500,28 +2500,74 @@ func TestPostgREST_Query(t *testing.T) {
 		//           {"id":4,"name":"OSX"},
 		//           {"id":5,"name":"Orphan"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "empty embed works on a many-to-one relationship",
+			Query:       "/projects?select=id,name,clients()",
+			Headers:     nil,
+			Expected: `[
+				          {"id":1,"name":"Windows 7"},
+				          {"id":2,"name":"Windows 10"},
+				          {"id":3,"name":"IOS"},
+				          {"id":4,"name":"OSX"},
+				          {"id":5,"name":"Orphan"}]`,
+			Status: 200,
+		},
 		//       get "/projects?select=id,name,clients!inner()&clients.id=eq.2" `shouldRespondWith`
 		//         [json|[
 		//           {"id":3,"name":"IOS"},
 		//           {"id":4,"name":"OSX"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "empty embed works on a many-to-one relationship",
+			Query:       "/projects?select=id,name,clients!inner()&clients.id=eq.2",
+			Headers:     nil,
+			Expected: `[
+				          {"id":3,"name":"IOS"},
+				          {"id":4,"name":"OSX"}]`,
+			Status: 200,
+		},
 		//     it "works on a one-to-many relationship" $ do
 		//       get "/clients?select=id,name,projects()" `shouldRespondWith`
 		//         [json| [{"id":1,"name":"Microsoft"}, {"id":2,"name":"Apple"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "empty embed works on a one-to-many relationship",
+			Query:       "/clients?select=id,name,projects()",
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Microsoft"}, {"id":2,"name":"Apple"}]`,
+			Status:      200,
+		},
 		//       get "/clients?select=id,name,projects!inner()&projects.name=eq.IOS" `shouldRespondWith`
 		//         [json|[{"id":2,"name":"Apple"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "empty embed works on a one-to-many relationship",
+			Query:       "/clients?select=id,name,projects!inner()&projects.name=eq.IOS",
+			Headers:     nil,
+			Expected:    `[{"id":2,"name":"Apple"}]`,
+			Status:      200,
+		},
 		//     it "works on a many-to-many relationship" $ do
 		//       get "/users?select=*,tasks!inner()" `shouldRespondWith`
 		//         [json| [{"id":1,"name":"Angela Martin"}, {"id":2,"name":"Michael Scott"}, {"id":3,"name":"Dwight Schrute"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "empty embed works on a many-to-many relationship",
+			Query:       "/users?select=*,tasks!inner()",
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Angela Martin"}, {"id":2,"name":"Michael Scott"}, {"id":3,"name":"Dwight Schrute"}]`,
+			Status:      200,
+		},
 		//       get "/users?select=*,tasks!inner()&tasks.id=eq.3" `shouldRespondWith`
 		//         [json|[{"id":1,"name":"Angela Martin"}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "empty embed works on a many-to-many relationship",
+			Query:       "/users?select=*,tasks!inner()&tasks.id=eq.3",
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Angela Martin"}]`,
+			Status:      200,
+		},
 		//   context "empty root select" $
 		//     it "gives all columns" $ do
 		//       get "/projects?select=" `shouldRespondWith`
@@ -2532,6 +2578,18 @@ func TestPostgREST_Query(t *testing.T) {
 		//           {"id":4,"name":"OSX","client_id":2},
 		//           {"id":5,"name":"Orphan","client_id":null}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "empty root select gives all columns",
+			Query:       "/projects?select=",
+			Headers:     nil,
+			Expected: `[
+				          {"id":1,"name":"Windows 7","client_id":1},
+				          {"id":2,"name":"Windows 10","client_id":1},
+				          {"id":3,"name":"IOS","client_id":2},
+				          {"id":4,"name":"OSX","client_id":2},
+				          {"id":5,"name":"Orphan","client_id":null}]`,
+			Status: 200,
+		},
 		//       get "/rpc/getallprojects?select=" `shouldRespondWith`
 		//         [json|[
 		//           {"id":1,"name":"Windows 7","client_id":1},
@@ -2540,7 +2598,18 @@ func TestPostgREST_Query(t *testing.T) {
 		//           {"id":4,"name":"OSX","client_id":2},
 		//           {"id":5,"name":"Orphan","client_id":null}]|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "empty root select gives all columns",
+			Query:       "/rpc/getallprojects?select=",
+			Headers:     nil,
+			Expected: `[
+				          {"id":1,"name":"Windows 7","client_id":1},
+				          {"id":2,"name":"Windows 10","client_id":1},
+				          {"id":3,"name":"IOS","client_id":2},
+				          {"id":4,"name":"OSX","client_id":2},
+				          {"id":5,"name":"Orphan","client_id":null}]`,
+			Status: 200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

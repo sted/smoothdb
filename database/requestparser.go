@@ -43,6 +43,8 @@ type SelectRelation struct {
 	name   string        // the (related) table name
 	parent string        // the parent table
 	spread bool          // has a spread operator?
+	inner  bool          // is an inner join?
+	fk     string        //
 	fields []SelectField // requested fields
 }
 
@@ -273,10 +275,14 @@ func (p *PostgRestParser) reset() {
 // Values := Value | ValueList
 // ValueList := '(' Value (',' Value)* ')'
 
-func (p *PostgRestParser) field(mayHaveTable bool) (f Field, err error) {
+func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, err error) {
 	token := p.next()
 	if token == "" {
-		return f, &ParseError{"field expected"}
+		if mayBeEmpty {
+			token = "*"
+		} else {
+			return f, &ParseError{"field expected"}
+		}
 	}
 	if mayHaveTable {
 		// tables
@@ -316,7 +322,7 @@ func (p *PostgRestParser) field(mayHaveTable bool) (f Field, err error) {
 
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
-	p.scan(s, ".,():", "->>", "->", "::", "...")
+	p.scan(s, ".,():!", "->>", "->", "::", "...")
 	return p.selectList(nil)
 }
 
@@ -336,8 +342,8 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 }
 
 func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []SelectField, err error) {
-	var label, cast string
-	var spread bool
+	var label, cast, fk string
+	var spread, inner bool
 	token := p.next()
 	if token == "..." {
 		spread = true
@@ -349,20 +355,26 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	} else {
 		p.back()
 	}
-	field, err := p.field(false)
+	field, err := p.field(false, true)
 	if err != nil {
 		return nil, err
 	}
 	if label == "" {
 		label = field.last
 	}
-	token = p.lookAhead()
-	if token == "::" {
+	if p.lookAhead() == "::" {
 		p.next()
 		cast = p.next()
-		token = p.lookAhead()
 	}
-	if token != "(" {
+	if p.lookAhead() == "!" {
+		p.next()
+		fk = p.next()
+		if fk == "inner" {
+			fk = ""
+			inner = true
+		}
+	}
+	if p.lookAhead() != "(" {
 		// field
 
 		if spread {
@@ -387,10 +399,12 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		if rel != nil {
 			parent = rel.name
 		}
-		newrel := &SelectRelation{field.name, parent, spread, nil}
-		newrel.fields, err = p.selectList(newrel)
-		if err != nil {
-			return nil, err
+		newrel := &SelectRelation{field.name, parent, spread, inner, fk, nil}
+		if p.lookAhead() != ")" {
+			newrel.fields, err = p.selectList(newrel)
+			if err != nil {
+				return nil, err
+			}
 		}
 		selectFields = append(selectFields, SelectField{label: label, relation: newrel})
 	}
@@ -408,7 +422,7 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 		return nil, &ParseError{"order fields expected"}
 	}
 	for {
-		field, err := p.field(false)
+		field, err := p.field(false, false)
 		if err != nil {
 			return nil, err
 		}
@@ -624,7 +638,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			mayHaveTable = false
 			nextSep = "."
 		}
-		node.field, err = p.field(mayHaveTable)
+		node.field, err = p.field(mayHaveTable, false)
 		if err != nil {
 			return err
 		}
