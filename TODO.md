@@ -31,7 +31,7 @@
 * [x] Composite / Array Columns
 * [x] Range
 * [ ] Related orders
-* [ ] !inner joins
+* [x] !inner joins
 * [ ] hints for rels
 * [ ] embeds with views
 * [ ] Functions (rpc)
@@ -53,7 +53,7 @@
 * [ ] application/octet-stream as output
 * [ ] application/x-www-form-urlencoded as input
 * [ ] HEAD, OPTIONS
-* [ ] CORS
+* [x] CORS
 * [ ] Encryption
 * [ ] TLS
 * [ ] Open telemetry
