@@ -189,6 +189,11 @@ This short example is a minimal app that exposes a **/products** GET route to ob
 
 In this note we omit error handling for brevity, see the whole example in [examples/server.go](examples/server.go).
 
+> [!WARNING]
+> While you can already be confident with the retro compatibility of the API, because of the goal of
+> compatibility with PostgREST, this is not yet the case for the exported functions in the various
+> packages.
+
 ```go
 import (
 	smoothdb "github.com/sted/smoothdb/server"
