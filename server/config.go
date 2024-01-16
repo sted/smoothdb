@@ -55,7 +55,7 @@ func defaultConfig() *Config {
 }
 
 func getEnvironment(c *Config) {
-	dburl := os.Getenv("SMOOTH_DATABASE_URL")
+	dburl := os.Getenv("SMOOTHDB_DATABASE_URL")
 	if dburl != "" {
 		c.Database.URL = dburl
 	}

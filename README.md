@@ -379,7 +379,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 
 | Name | Description |
 | --- | --- | 
-| SMOOTH_DATABASE_URL | Database.URL |
+| SMOOTHDB_DATABASE_URL | Database.URL |
 | SMOOTHDB_ALLOW_ANON | AllowAnon |
 | SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 
 | SMOOTHDB_DEBUG | true forces: AllowAnon: true, EnableAdminRoute: true, Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |

@@ -40,5 +40,5 @@ jobs:
     - name: Run tests
       run: make test
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432
+        SMOOTHDB_DATABASE_URL: postgresql://postgres:postgres@localhost:5432
   
