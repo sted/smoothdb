@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 		"Logging.FileLogging":       false,
 		"Logging.StdOut":            false,
 		"Database.SchemaSearchPath": []string{"test"},
-		"Database.TransactionEnd":   "rollback-allow-override",
+		"Database.TransactionMode":  "rollback-allow-override",
 		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 	}
 	s, err := server.NewServerWithConfig(c,
