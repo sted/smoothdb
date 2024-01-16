@@ -21,7 +21,7 @@ func (server *Server) initHTTPServer() {
 	if server.Config.EnableAPIRoute {
 		server.initSourcesRouter()
 	}
-	if server.Config.EnableTestRoute {
+	if server.Config.EnableDebugRoute {
 		server.initTestRouter()
 	}
 

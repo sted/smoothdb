@@ -319,7 +319,7 @@ func prepareView(s *smoothdb.Server) error {
 		if err != nil {
 			return smoothdb.WriteError(w, err)
 		}
-		t.Execute(w, results)
+		err = t.Execute(w, results)
 		if err == nil {
 			return http.StatusOK, nil
 		} else {
@@ -335,6 +335,71 @@ To try the example
 	go run server.go
 
 in the examples directory and browse to *localhost:8085/products* and *localhost:8085/view*.
+
+## Configuration
+
+Configuration parameters can be provided via configuration file, environment variables and command line, with increasing priority.
+
+### Configuration file
+
+The configuration file *config.jsonc* (JSON with Comments) is created automatically on the first start, in the working directory. It contains the following parameters with their defaults:
+
+| Name | Description | Default |
+| --- | --- | --- |
+| Address | Server address and port | 4000 |
+| AllowAnon | Allow unauthenticated connections | false |
+| JWTSecret | Secret for JWT tokens | "" |
+| SessionMode | Session mode: "none", "role" | "role" |
+| EnableAdminRoute | Enable administration of databases and tables | false |
+| EnableAPIRoute | Enable API access | true |
+| BaseAPIURL | Base URL for the API | "/api" |
+| ShortAPIURL | Skip database name in API URL. Database.AllowedDatabases must contain a single db | false |
+| BaseAdminURL | Base URL for the Admin API | "/admin" |
+| CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
+| CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
+| General transaction mode for operations | Enable debug access | false |
+| Database.URL | Database URL as postgresql://user:pwd@host:port | "postgres://localhost:5432" |
+| Database.MinPoolConnections | Miminum connections per pool | 10 |
+| Database.MaxPoolConnections | Maximum connections per pool | 100 |
+| Database.AnonRole | Anonymous role | "anon" |
+| Database.AllowedDatabases | Allowed databases | [] for all |
+| Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
+| Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
+| Logging.Level | Log level: trace, debug, info, warn, error, fatal, panic | "info" |
+| Logging.FileLogging | Enable logging to file | true |
+| Logging.FilePath | File path for file-based logging | "./smoothdb.log" |
+| Logging.MaxSize | MaxSize is the maximum size in megabytes of the log file before it gets rotated | 25 |
+| Logging.MaxBackups |  MaxBackups is the maximum number of old log files to retain | 3 |
+| Logging.MaxAge | MaxAge is the maximum number of days to retain old log files | 5 |
+| Logging.Compress | True to compress old log files | false |
+| Logging.StdOut | Enable logging to stdout | false |
+| Logging.PrettyConsole | Enable pretty and colorful output for stdout | false |
+
+### Environment variables
+
+| Name | Description |
+| --- | --- | 
+| SMOOTH_DATABASE_URL | Database.URL |
+| SMOOTHDB_ALLOW_ANON | AllowAnon |
+| SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 
+| SMOOTHDB_DEBUG | true forces: AllowAnon: true, EnableAdminRoute: true, Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
+	
+### Command line parameters
+
+You can pass some configuration parameters in the command line:
+
+```
+$ ./smoothdb -h
+
+Usage: smoothdb [options]
+
+Server Options:
+	-a, --addr <host>                Bind to host address (default: localhost:4000)
+	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
+	-c, --config <file>              Configuration file (default: ./config.jsonc)
+	-h, --help                       Show this message
+```
+
 
 ## Development
 

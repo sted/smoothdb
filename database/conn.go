@@ -33,7 +33,7 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 // If the role parameter is not empty, it binds the role to the connection.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool) error {
 	// transaction
-	needTX := DBE.config.TransactionEnd != "none"
+	needTX := DBE.config.TransactionMode != "none"
 	if needTX {
 		_, err := conn.Exec(ctx, "BEGIN")
 		if err != nil {
@@ -60,7 +60,7 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 // ReleaseConnection releases a connection to the proper pool.
 // It resets its role if requested and closes the transaction, based on the configuration.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, err bool, resetRole bool) error {
-	hasTX := DBE.config.TransactionEnd != "none"
+	hasTX := DBE.config.TransactionMode != "none"
 
 	if resetRole && !hasTX {
 		_, err := conn.Exec(ctx, "SET ROLE NONE")
@@ -73,7 +73,7 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, err bool, resetRol
 		var end string
 
 		if !err {
-			switch DBE.config.TransactionEnd {
+			switch DBE.config.TransactionMode {
 			case "commit":
 				end = "COMMIT"
 			case "commit-allow-override":

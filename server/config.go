@@ -19,7 +19,7 @@ type ConfigOptions struct {
 
 // Config holds the current configuration
 type Config struct {
-	Address              string          `comment:"Server address and port (default: localhost:8082)"`
+	Address              string          `comment:"Server address and port (default: localhost:4000)"`
 	AllowAnon            bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret            string          `comment:"Secret for JWT tokens"`
 	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
@@ -30,14 +30,14 @@ type Config struct {
 	BaseAdminURL         string          `comment:"Base URL for the Admin API (default: /admin)"`
 	CORSAllowedOrigins   []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
 	CORSAllowCredentials bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
-	EnableTestRoute      bool            `comment:"Enable test access (default: false)"`
+	EnableDebugRoute     bool            `comment:"Enable debug access (default: false)"`
 	Database             database.Config `comment:"Database configuration"`
 	Logging              logging.Config  `comment:"Logging configuration"`
 }
 
 func defaultConfig() *Config {
 	return &Config{
-		Address:              ":8081",
+		Address:              ":4000",
 		AllowAnon:            false,
 		JWTSecret:            "",
 		SessionMode:          "role",
@@ -48,14 +48,14 @@ func defaultConfig() *Config {
 		BaseAdminURL:         "/admin",
 		CORSAllowedOrigins:   []string{"*"},
 		CORSAllowCredentials: false,
-		EnableTestRoute:      false,
+		EnableDebugRoute:     false,
 		Database:             *database.DefaultConfig(),
 		Logging:              *logging.DefaultConfig(),
 	}
 }
 
 func getEnvironment(c *Config) {
-	dburl := os.Getenv("DATABASE_URL")
+	dburl := os.Getenv("SMOOTH_DATABASE_URL")
 	if dburl != "" {
 		c.Database.URL = dburl
 	}
@@ -65,6 +65,7 @@ func getEnvironment(c *Config) {
 		c.EnableAdminRoute = true
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
+		c.EnableDebugRoute = true
 	}
 	allowAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
 	if allowAnon != "" {
@@ -80,7 +81,7 @@ const usageStr = `
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>                Bind to host address (default: localhost:8081)
+	-a, --addr <host>                Bind to host address (default: localhost:4000)
 	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
 	-c, --config <file>              Configuration file (default: ./config.jsonc)
 	-h, --help                       Show this message
