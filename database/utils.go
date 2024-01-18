@@ -154,7 +154,9 @@ func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 
 		// Copying the values from the current row
 		for i, val := range rows.RawValues() {
-			rowValues[i] = make([]byte, len(val))
+			if val != nil {
+				rowValues[i] = make([]byte, len(val))
+			}
 			copy(rowValues[i], val)
 		}
 
