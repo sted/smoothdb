@@ -16,9 +16,9 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, er
 	serializer := gi.QueryBuilder.preferredSerializer()
 	var data []byte
 	if options.Singular {
-		data, err = serializer.SerializeSingle(ctx, rows, false, info)
+		data, err = serializer.SerializeSingle(rows, false, info)
 	} else {
-		data, err = serializer.Serialize(ctx, rows, false, info)
+		data, err = serializer.Serialize(rows, false, info)
 	}
 	return data, err
 }
@@ -136,9 +136,9 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	}
 	var data []byte
 	if f != nil && !f.ReturnIsSet {
-		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(ctx, rows, scalar, info)
+		data, err = gi.QueryBuilder.preferredSerializer().SerializeSingle(rows, scalar, info)
 	} else {
-		data, err = gi.QueryBuilder.preferredSerializer().Serialize(ctx, rows, scalar, info)
+		data, err = gi.QueryBuilder.preferredSerializer().Serialize(rows, scalar, info)
 	}
 	return data, 0, err
 }

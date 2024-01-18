@@ -29,7 +29,7 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 }
 
 // PrepareConnection starts a transaction if the configuration requires it,
-// i.e. if TransactionEnd is not equal to 'none'.
+// i.e. if TransactionMode is not equal to 'none'.
 // If the role parameter is not empty, it binds the role to the connection.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool) error {
 	// transaction

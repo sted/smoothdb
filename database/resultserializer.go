@@ -1,10 +1,8 @@
 package database
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -18,8 +16,8 @@ const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
-	Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
-	SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
+	Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
+	SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
 }
 
 type DirectJSONSerializer struct {
@@ -127,29 +125,27 @@ func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
 }
 
 func (d *DirectJSONSerializer) appendInt2(buf []byte) {
-	d.WriteString(strconv.FormatInt(int64(int16(binary.BigEndian.Uint16(buf))), 10))
+	d.WriteString(strconv.FormatInt(int64(toInt16(buf)), 10))
 }
 
 func (d *DirectJSONSerializer) appendInt4(buf []byte) {
-	d.WriteString(strconv.FormatInt(int64(int32(binary.BigEndian.Uint32(buf))), 10))
+	d.WriteString(strconv.FormatInt(int64(toInt32(buf)), 10))
 }
 
 func (d *DirectJSONSerializer) appendInt8(buf []byte) {
-	d.WriteString(strconv.FormatInt(int64(binary.BigEndian.Uint64(buf)), 10))
+	d.WriteString(strconv.FormatInt(toInt64(buf), 10))
 }
 
 func (d *DirectJSONSerializer) appendFloat4(buf []byte) {
-	n := binary.BigEndian.Uint32(buf)
-	d.WriteString(strconv.FormatFloat(float64(math.Float32frombits(n)), 'g', -1, 32))
+	d.WriteString(strconv.FormatFloat(float64(toFloat32(buf)), 'g', -1, 32))
 }
 
 func (d *DirectJSONSerializer) appendFloat8(buf []byte) {
-	n := binary.BigEndian.Uint64(buf)
-	d.WriteString(strconv.FormatFloat(float64(math.Float64frombits(n)), 'g', -1, 64))
+	d.WriteString(strconv.FormatFloat(toFloat64(buf), 'g', -1, 64))
 }
 
 func (d *DirectJSONSerializer) appendBool(buf []byte) {
-	if buf[0] == 1 {
+	if toBool(buf) {
 		d.WriteString("true")
 	} else {
 		d.WriteString("false")
@@ -158,10 +154,7 @@ func (d *DirectJSONSerializer) appendBool(buf []byte) {
 
 func (d *DirectJSONSerializer) appendTime(buf []byte) {
 	d.WriteByte('"')
-	microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
-	tim := time.Unix(
-		secFromUnixEpochToY2K+microsecSinceY2K/1000000,
-		(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
+	tim := toTime(buf)
 	d.date = d.dateBuf[:0]
 	d.date = tim.AppendFormat(d.date, time.RFC3339Nano)
 	d.Write(d.date)
@@ -355,7 +348,7 @@ func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
 }
 
 func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo) error {
-	if len(buf) == 0 {
+	if buf == nil {
 		d.WriteString("null")
 		return nil
 	}
@@ -370,14 +363,14 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 		d.appendFloat4(buf)
 	case pgtype.Float8OID:
 		d.appendFloat8(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID:
-		d.appendString(buf, true)
-	case pgtype.JSONOID, pgtype.JSONBOID:
-		d.appendJSON(buf)
 	case pgtype.BoolOID:
 		d.appendBool(buf)
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID:
+		d.appendString(buf, true)
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		d.appendTime(buf)
+	case pgtype.JSONOID, pgtype.JSONBOID:
+		d.appendJSON(buf)
 	case pgtype.IntervalOID:
 		d.appendInterval(buf)
 	case 3614: // text search
@@ -404,7 +397,7 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 	return nil
 }
 
-func (d *DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 	first := true
 
@@ -445,7 +438,7 @@ func (d *DirectJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, sca
 	return []byte(d.String()), nil
 }
 
-func (d *DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
 
 	// verify that we have at least one row
@@ -487,7 +480,7 @@ func (d *DirectJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Row
 
 type DatabaseJSONSerializer struct{}
 
-func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
@@ -496,7 +489,7 @@ func (DatabaseJSONSerializer) Serialize(ctx context.Context, rows pgx.Rows, scal
 	return values[0], nil
 }
 
-func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (DatabaseJSONSerializer) SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
@@ -507,6 +500,6 @@ func (DatabaseJSONSerializer) SerializeSingle(ctx context.Context, rows pgx.Rows
 
 type ReflectSerializer struct{}
 
-func (ReflectSerializer) Serialize(ctx context.Context, rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (ReflectSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
 	return []byte{}, nil
 }
