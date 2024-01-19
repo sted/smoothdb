@@ -11,9 +11,9 @@ The main differences are:
 * SmoothDB is in development and alpha quality. Prefer PostgREST for now, which is rock solid
 * SmoothDB is faster and has a lower CPU load 
 * It is written in Go
-* Can be used both stand-alone and as a library (my main motivation for writing this)
-* It also supports DDL (create / alter / drop databases, tables, manage constraints, roles, etc)
-* Supports multiple databases
+* Can be used both stand-alone and as a library (the main motivation for writing this)
+* It also supports DDL operations (create / alter / drop databases, tables, manage constraints, roles, etc)
+* Supports multiple databases with a single instance
 
 See [TODO.md](TODO.md) for the many things to be completed.
 Please create issues to let me know your priorities.
@@ -28,16 +28,14 @@ go install github.com/sted/smoothdb@latest
 
 ### Start
 
-```
-smoothdb
-```
-
-Starting SmoothDB this way, it creates a configuration file named **config.jsonc** in the current directory, which can be edited for further customizations.
+Starting SmoothDB, it creates a configuration file named **config.jsonc** in the current directory, with default values:  edit it for further customizations (see [Configuration](#configuration-file)).
 
 ## API
 
 Here you find some examples for the API.
 For more detailed information, see [PostgREST API](https://postgrest.org/en/stable/references/api.html).
+
+The compability with PostgREST has also the great advantage of being able to use the many existing client libraries, starting from [postgrest-js](https://github.com/supabase/postgrest-js). See the [complete list of available client libraries](https://github.com/supabase/postgrest-js).
 
 The default Content-Type is "**application/json**".
 
@@ -45,7 +43,19 @@ The default Content-Type is "**application/json**".
 
 Like PostgREST (see [PostgREST Authentication](https://postgrest.org/en/stable/references/auth.html)), smoothdb is designed to keep the database at the center of API security.
 
-To make an authenticated request, the client must include an Authorization HTTP header with the value **Bearer \<jwt\>**. For instance:
+To make an authenticated request, the client must include an Authorization HTTP header with the value **Bearer \<jwt\>**, where **jwt** is a [Java Web Token](jwt.io). 
+
+A valid JWT for SmoothDB must include at least the **role** claim in the payload:
+
+```json
+{
+	"role": "user1"
+}
+```
+
+To generate a JWT for testing, you can use the generator at [jwt.io](jwt.io), using as a secret the same value configured in the configuration file for JWTSecret.
+
+This is an example of an authenticated API call:
 
 ```http
 GET /test HTTP/1.1
