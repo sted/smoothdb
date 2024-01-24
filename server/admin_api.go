@@ -15,6 +15,7 @@ func (s *Server) initAdminRouter() {
 
 	admin_dbe := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, true))
 	admin_db := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, false))
+	admin_other := router.Group(s.Config.BaseAdminURL)
 
 	// ROLES
 
@@ -482,5 +483,12 @@ func (s *Server) initAdminRouter() {
 		} else {
 			return WriteServerError(w, err)
 		}
+	})
+
+	// SESSIONS
+
+	admin_other.Handle("GET", "/sessions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		stats := s.sessionManager.statistics()
+		return WriteJSON(w, http.StatusOK, stats)
 	})
 }

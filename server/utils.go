@@ -15,11 +15,19 @@ import (
 
 type Data map[string]any
 
-func writeJSONContentType(w http.ResponseWriter) {
+func writeContentType(w http.ResponseWriter, ct string) {
 	header := w.Header()
 	if val := header["Content-Type"]; len(val) == 0 {
-		header["Content-Type"] = []string{"application/json; charset=utf-8"}
+		header["Content-Type"] = []string{ct}
 	}
+}
+
+func writeJSONContentType(w http.ResponseWriter) {
+	writeContentType(w, "application/json; charset=utf-8")
+}
+
+func writeHTMLContentType(w http.ResponseWriter) {
+	writeContentType(w, "text/html; charset=utf-8")
 }
 
 // bodyAllowedForStatus is a copy of http.bodyAllowedForStatus non-exported function.
@@ -35,7 +43,7 @@ func bodyAllowedForStatus(status int) bool {
 	return true
 }
 
-func WriteJSON[O any](w http.ResponseWriter, status int, obj O) (int, error) {
+func WriteJSON(w http.ResponseWriter, status int, obj any) (int, error) {
 	writeJSONContentType(w)
 	w.WriteHeader(status)
 	if !bodyAllowedForStatus(status) {
@@ -43,13 +51,10 @@ func WriteJSON[O any](w http.ResponseWriter, status int, obj O) (int, error) {
 	}
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return status, err
 	}
 	_, err = w.Write(jsonBytes)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	return status, nil
+	return status, err
 
 }
 
@@ -60,9 +65,16 @@ func WriteJSONString(w http.ResponseWriter, status int, json []byte) (int, error
 		return status, nil
 	}
 	_, err := w.Write(json)
-	if err != nil {
-		return http.StatusInternalServerError, err
+	return status, err
+}
+
+func WriteHTMLString(w http.ResponseWriter, status int, html string) (int, error) {
+	writeHTMLContentType(w)
+	w.WriteHeader(status)
+	if !bodyAllowedForStatus(status) {
+		return status, nil
 	}
+	_, err := w.Write([]byte(html))
 	return status, err
 }
 

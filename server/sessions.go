@@ -87,6 +87,8 @@ type SessionManager struct {
 	mtx     sync.Mutex
 	logger  *logging.Logger
 	enabled bool
+	count   int
+	inUse   int
 }
 
 func (s *Server) initSessionManager() {
@@ -109,16 +111,17 @@ func sessionWatcher(s *Server) {
 		case <-ticker.C:
 			now := time.Now()
 			sm.mtx.Lock()
-			var count, inUse int
+			sm.count = 0
+			sm.inUse = 0
 
 			for k, list := range sm.slots {
 
 				for session := list.head; session != nil; session = session.next {
 
-					count += 1
+					sm.count += 1
 
 					if session.inUse.Load() {
-						inUse += 1
+						sm.inUse += 1
 						continue
 					}
 					// Here we have a session not in use, which cannot be used now
@@ -155,7 +158,6 @@ func sessionWatcher(s *Server) {
 					delete(sm.slots, k)
 				}
 			}
-			//fmt.Println("sessions: ", count, " in use: ", inUse)
 			sm.mtx.Unlock()
 
 		case <-s.shutdown:
@@ -216,4 +218,15 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	session.LastUsedAt = time.Now()
 	swapped := session.inUse.CompareAndSwap(true, false)
 	return swapped
+}
+
+type SessionStatistics struct {
+	Count int
+	InUse int
+}
+
+func (sm *SessionManager) statistics() SessionStatistics {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	return SessionStatistics{sm.count, sm.inUse}
 }

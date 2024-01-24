@@ -49,7 +49,7 @@ A valid JWT for SmoothDB must include at least the **role** claim in the payload
 
 ```json
 {
-	"role": "user1"
+    "role": "user1"
 }
 ```
 

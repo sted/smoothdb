@@ -14,6 +14,10 @@ func (s *Server) initTestRouter() {
 	dbe := s.DBE
 	router := s.GetRouter()
 
+	router.Handle("GET", "/test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return WriteHTMLString(w, http.StatusOK, "smoothdb at your service")
+	})
+
 	router.Handle("GET", "/test/prepare/:test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		//test := c.Param("test")
 		conn, _ := dbe.AcquireConnection(c)
