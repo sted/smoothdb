@@ -87,7 +87,9 @@ func ReleaseSession(ctx context.Context, status int, server *Server, session *Se
 		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, false)
 		session.DbConn = nil
 	}
-	server.Logger.Err(err).Msg("error releasing database connection")
+	if err != nil {
+		server.Logger.Err(err).Msg("error releasing database connection")
+	}
 	server.sessionManager.leaveSession(session)
 }
 
