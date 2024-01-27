@@ -75,13 +75,19 @@ func AcquireSession(ctx context.Context, r heligo.Request, server *Server, force
 }
 
 func ReleaseSession(ctx context.Context, status int, server *Server, session *Session) {
-	err := status >= http.StatusBadRequest
+	var err error
+	httpErr := status >= http.StatusBadRequest
+	// Release the connection only if:
+	// - the sessionmanager is not enabled
+	// - the connection has an open transaction
+	// Otherwise it will be released in the sessionmanager after a cer
 	if !server.sessionManager.enabled {
-		database.ReleaseConnection(ctx, session.DbConn, err, true)
+		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
 	} else if database.HasTX(session.DbConn) {
-		database.ReleaseConnection(ctx, session.DbConn, err, false)
+		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, false)
 		session.DbConn = nil
 	}
+	server.Logger.Err(err).Msg("error releasing database connection")
 	server.sessionManager.leaveSession(session)
 }
 

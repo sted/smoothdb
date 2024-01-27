@@ -56,7 +56,7 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 	}
 
 	// Initialize session manager
-	s.initSessionManager()
+	s.sessionManager = newSessionManager(logger, s.Config.SessionMode != "none", s.shutdown)
 
 	// Initialize HTTP Server
 	s.initHTTPServer()

@@ -10,6 +10,8 @@ import (
 	"github.com/sted/smoothdb/logging"
 )
 
+// A Session for SmoothDB is the way to cache information about
+// a user and his connection to a database
 type Session struct {
 	Claims     *Claims
 	LastUsedAt time.Time
@@ -82,85 +84,100 @@ func (sl *SessionList) toFront(s *Session) {
 	sl.head = s
 }
 
+// SessionManager manages user sessions and monitors them efficiently.
+// When disabled, it simply returns Sessions without managing or monitoring.
 type SessionManager struct {
-	slots   map[string]*SessionList
-	mtx     sync.Mutex
-	logger  *logging.Logger
-	enabled bool
-	count   int
-	inUse   int
+	slots    map[string]*SessionList
+	mtx      sync.Mutex
+	logger   *logging.Logger
+	enabled  bool
+	shutdown chan struct{}
+	paused   bool
+	count    int
+	inUse    int
 }
 
-func (s *Server) initSessionManager() {
-	s.sessionManager = &SessionManager{
-		slots:   map[string]*SessionList{},
-		logger:  s.Logger,
-		enabled: s.Config.SessionMode != "none",
+func newSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
+	sm := &SessionManager{
+		slots:    map[string]*SessionList{},
+		logger:   logger,
+		enabled:  enabled,
+		shutdown: shutdown,
 	}
-	if s.sessionManager.enabled {
-		go sessionWatcher(s)
+	if enabled {
+		go sm.sessionWatcher()
 	}
+	return sm
 }
 
-func sessionWatcher(s *Server) {
-	sm := s.sessionManager
+func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.Duration) {
+	now := time.Now()
+	sm.mtx.Lock()
+
+	if sm.paused {
+		return
+	}
+	sm.count = 0
+	sm.inUse = 0
+
+	for k, list := range sm.slots {
+
+		for session := list.head; session != nil; session = session.next {
+
+			sm.count += 1
+
+			if session.inUse.Load() {
+				sm.inUse += 1
+				continue
+			}
+			// Here we have a session not in use, which cannot be used now
+			// because we hold a lock on the session manager and making
+			// the session usable requires a lock
+
+			spentTime := now.Sub(session.LastUsedAt)
+
+			if spentTime > sessionTimeout && session.DbConn == nil {
+
+				// Delete the session
+				list.remove(session)
+				sm.count -= 1
+				// if session.prev == nil {
+				// 	session = list.head
+				// 	if session == nil {
+				// 		break
+				// 	}
+				// } else {
+				// 	session = session.prev
+				// }
+
+			} else if spentTime > connTimeout && session.DbConn != nil {
+
+				// Release and detach the database connection from the session
+				// (Acquire and attach are done in the auth middleware)
+				// The session is preserved and can be reused
+				err := database.ReleaseConnection(context.Background(), session.DbConn, false, true)
+				if err != nil {
+					sm.logger.Err(err).Msg("error releasing an expired session")
+				}
+				session.DbConn = nil
+			}
+		}
+		if list.isEmpty() {
+			delete(sm.slots, k)
+		}
+	}
+	sm.mtx.Unlock()
+}
+
+func (sm *SessionManager) sessionWatcher() {
+
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
 		select {
 		case <-ticker.C:
-			now := time.Now()
-			sm.mtx.Lock()
-			sm.count = 0
-			sm.inUse = 0
-
-			for k, list := range sm.slots {
-
-				for session := list.head; session != nil; session = session.next {
-
-					sm.count += 1
-
-					if session.inUse.Load() {
-						sm.inUse += 1
-						continue
-					}
-					// Here we have a session not in use, which cannot be used now
-					// because we hold a lock on the session manager and making
-					// the session usable requires a lock
-
-					spentTime := now.Sub(session.LastUsedAt)
-
-					if spentTime > 5*time.Second {
-
-						// Delete the session
-						list.remove(session)
-						if session.prev == nil {
-							session = list.head
-							if session == nil {
-								break
-							}
-						} else {
-							session = session.prev
-						}
-
-					} else if spentTime > 5*time.Second && session.DbConn != nil {
-
-						// Release and detach the database connection from the session
-						// (Acquire and attach are done in the auth middleware)
-						err := database.ReleaseConnection(context.Background(), session.DbConn, false, true)
-						if err != nil {
-							sm.logger.Err(err).Msg("error releasing an expired session")
-						}
-						session.DbConn = nil
-					}
-				}
-				if list.isEmpty() {
-					delete(sm.slots, k)
-				}
-			}
-			sm.mtx.Unlock()
-
-		case <-s.shutdown:
+			sm.watch(5*time.Second, 1*time.Second)
+		case <-sm.shutdown:
 			for k, list := range sm.slots {
 				for session := list.head; session != nil; session = session.next {
 					if session.DbConn != nil {
@@ -220,13 +237,20 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	return swapped
 }
 
+func (sm *SessionManager) pauseWatcher(pause bool) {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	sm.paused = pause
+}
+
 type SessionStatistics struct {
 	Count int
 	InUse int
+	Users int
 }
 
 func (sm *SessionManager) statistics() SessionStatistics {
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
-	return SessionStatistics{sm.count, sm.inUse}
+	return SessionStatistics{sm.count, sm.inUse, len(sm.slots)}
 }
