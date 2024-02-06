@@ -368,7 +368,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
 | CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
 | General transaction mode for operations | Enable debug access | false |
-| Database.URL | Database URL as postgresql://user:pwd@host:port | "postgres://localhost:5432" |
+| Database.URL | Database URL as postgresql://user:pwd@host:port/database | "postgres://localhost:5432" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
 | Database.AnonRole | Anonymous role | "anon" |
@@ -410,6 +410,15 @@ Server Options:
 	-h, --help                       Show this message
 ```
 
+### Database configuration
+
+The way SmoothDB connect to PostgreSQL is through the Database.URL configuration:
+	
+	postgres[ql]://[user:password@]host:port[/database]
+
+The specified user will be used as the **authenticator**, so it should be a user with limited privileges.
+
+Specifying the database in the URL is a way to restrict the allowed databases just to this one and should not conflict with the Database.AllowedDatabases configuration (ie the latter should be empty or contain just the same db name).
 
 ## Development
 

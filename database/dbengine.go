@@ -36,6 +36,14 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if err != nil {
 		return nil, err
 	}
+	configDbName := poolConfig.ConnConfig.Config.Database
+	if configDbName != "" {
+		if len(dbConfig.AllowedDatabases) == 0 {
+			dbConfig.AllowedDatabases = append(dbConfig.AllowedDatabases, configDbName)
+		} else if len(dbConfig.AllowedDatabases) > 1 || dbConfig.AllowedDatabases[0] != configDbName {
+			return nil, fmt.Errorf("invalid configuration: Database.URL and Database.AllowedDatabases conflicting")
+		}
+	}
 	DBE.authRole = poolConfig.ConnConfig.User
 	if logger != nil {
 		DBE.dbtracer = &tracelog.TraceLog{

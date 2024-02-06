@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
@@ -29,14 +29,14 @@ func (db *Database) Activate(ctx context.Context) error {
 	defer db.activated.Store(true)
 
 	connString := DBE.config.URL
-	if !strings.HasSuffix(connString, "/") {
-		connString += "/"
-	}
-	connString += db.Name
-
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return err
+	}
+	if config.ConnConfig.Config.Database == "" {
+		config.ConnConfig.Config.Database = db.Name
+	} else if config.ConnConfig.Config.Database != db.Name {
+		return fmt.Errorf("cannot connect to %q", db.Name)
 	}
 	config.MinConns = DBE.config.MinPoolConnections
 	config.MaxConns = DBE.config.MaxPoolConnections
@@ -74,7 +74,7 @@ func (db *Database) Activate(ctx context.Context) error {
 		return nil
 	}
 
-	conn, err := pgx.Connect(ctx, connString)
+	conn, err := pgx.ConnectConfig(ctx, config.ConnConfig)
 	if err != nil {
 		return err
 	}
