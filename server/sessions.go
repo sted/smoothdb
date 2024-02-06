@@ -141,14 +141,6 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 				// Delete the session
 				list.remove(session)
 				sm.count -= 1
-				// if session.prev == nil {
-				// 	session = list.head
-				// 	if session == nil {
-				// 		break
-				// 	}
-				// } else {
-				// 	session = session.prev
-				// }
 
 			} else if spentTime > connTimeout && session.DbConn != nil {
 

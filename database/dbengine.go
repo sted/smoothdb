@@ -111,7 +111,7 @@ func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, erro
 
 // IsDatabaseAllowed chacks if a database is usable
 func (dbe *DbEngine) IsDatabaseAllowed(name string) bool {
-	if dbe.allowedDatabases == nil {
+	if len(dbe.allowedDatabases) == 0 {
 		return true
 	}
 	_, ok := dbe.allowedDatabases[name]
@@ -137,7 +137,9 @@ func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 		if err != nil {
 			return databases, err
 		}
-		databases = append(databases, database)
+		if dbe.IsDatabaseAllowed(database.Name) {
+			databases = append(databases, database)
+		}
 	}
 
 	if err := rows.Err(); err != nil {
