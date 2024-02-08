@@ -6,4 +6,5 @@ __debug_bin*
 misc/scratch.sql
 .vscode/*
 .DS_Store
+*.pem
 

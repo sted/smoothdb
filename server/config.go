@@ -19,7 +19,9 @@ type ConfigOptions struct {
 
 // Config holds the current configuration
 type Config struct {
-	Address              string          `comment:"Server address and port (default: localhost:4000)"`
+	Address              string          `comment:"Server address and port (default: 0.0.0.0:4000)"`
+	CertFile             string          `comment:"TLS certificate file (default: '')"`
+	KeyFile              string          `comment:"TLS certificate key file (default: '')"`
 	AllowAnon            bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret            string          `comment:"Secret for JWT tokens"`
 	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
@@ -38,6 +40,8 @@ type Config struct {
 func defaultConfig() *Config {
 	return &Config{
 		Address:              ":4000",
+		CertFile:             "",
+		KeyFile:              "",
 		AllowAnon:            false,
 		JWTSecret:            "",
 		SessionMode:          "role",

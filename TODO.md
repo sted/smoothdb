@@ -37,6 +37,9 @@
 * [ ] Functions (rpc)
 * [ ] function params with GET
 * [ ] Generate OpenAPI
+* [ ] Projects / Views
+* [ ] Admin
+* [ ] Plugins
 * [ ] Computed relationships
 * [ ] More types: Multirange, Domain, Numeric
 * [ ] Check returned headers, count, range, location, etc
@@ -54,8 +57,8 @@
 * [ ] application/x-www-form-urlencoded as input
 * [ ] HEAD, OPTIONS
 * [x] CORS
-* [ ] Encryption
-* [ ] TLS
+* [x] TLS
+* [ ] Db Encryption
 * [ ] Open telemetry
 * [ ] Table inheritance
 * [ ] pg_vector

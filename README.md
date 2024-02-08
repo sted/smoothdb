@@ -22,9 +22,13 @@ Please create issues to let me know your priorities.
 
 ### Install and build
 
+If you have Go installed, installing the binary is easy:
+
 ```
 go install github.com/sted/smoothdb@latest
 ```
+
+To test your installation (provided $GOPATH/bin is in your path) by typing `smoothdb`.
 
 ### Start
 
@@ -357,6 +361,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Name | Description | Default |
 | --- | --- | --- |
 | Address | Server address and port | 4000 |
+| CertFile | TLS certificate file | "" |
+| KeyFile | TLS certificate key file | "" |
 | AllowAnon | Allow unauthenticated connections | false |
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none", "role" | "role" |

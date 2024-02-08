@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/sted/heligo"
@@ -18,6 +21,7 @@ type Server struct {
 	Logger            *logging.Logger
 	DBE               *database.DbEngine
 	HTTP              *http.Server
+	tlsConfig         *tls.Config
 	router            *heligo.Router
 	sessionManager    *SessionManager
 	shutdown          chan struct{}
@@ -68,7 +72,7 @@ func (s *Server) Start() error {
 	if s.OnBeforeStart != nil {
 		s.OnBeforeStart(s)
 	}
-	err := s.HTTP.ListenAndServe()
+	err := s.startHTTPServer()
 	if err == http.ErrServerClosed {
 		// wait for graceful shutdown
 		<-s.shutdownCompleted
@@ -105,6 +109,8 @@ func (s *Server) Run() {
 	if err != nil {
 		if err == http.ErrServerClosed {
 			fmt.Println("Stopped.")
+		} else if errors.Is(err, syscall.EADDRINUSE) {
+			fmt.Printf("EndPoint address already in use. Is there another smoothdb running? (%s)\n", err)
 		} else {
 			fmt.Println(err.Error())
 		}
