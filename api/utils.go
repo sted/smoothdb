@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"context"
@@ -15,84 +15,16 @@ import (
 
 type Data map[string]any
 
-func writeContentType(w http.ResponseWriter, ct string) {
-	header := w.Header()
-	if val := header["Content-Type"]; len(val) == 0 {
-		header["Content-Type"] = []string{ct}
-	}
-}
-
-func writeJSONContentType(w http.ResponseWriter) {
-	writeContentType(w, "application/json; charset=utf-8")
-}
-
-func writeHTMLContentType(w http.ResponseWriter) {
-	writeContentType(w, "text/html; charset=utf-8")
-}
-
-// bodyAllowedForStatus is a copy of http.bodyAllowedForStatus non-exported function.
-func bodyAllowedForStatus(status int) bool {
-	switch {
-	case status >= 100 && status <= 199:
-		return false
-	case status == http.StatusNoContent:
-		return false
-	case status == http.StatusNotModified:
-		return false
-	}
-	return true
-}
-
-func WriteJSON(w http.ResponseWriter, status int, obj any) (int, error) {
-	writeJSONContentType(w)
-	w.WriteHeader(status)
-	if !bodyAllowedForStatus(status) {
-		return status, nil
-	}
-	jsonBytes, err := json.Marshal(obj)
-	if err != nil {
-		return status, err
-	}
-	_, err = w.Write(jsonBytes)
-	return status, err
-
-}
-
-func WriteJSONString(w http.ResponseWriter, status int, json []byte) (int, error) {
-	writeJSONContentType(w)
-	w.WriteHeader(status)
-	if !bodyAllowedForStatus(status) {
-		return status, nil
-	}
-	_, err := w.Write(json)
-	return status, err
-}
-
-func WriteHTMLString(w http.ResponseWriter, status int, html string) (int, error) {
-	writeHTMLContentType(w)
-	w.WriteHeader(status)
-	if !bodyAllowedForStatus(status) {
-		return status, nil
-	}
-	_, err := w.Write([]byte(html))
-	return status, err
-}
-
-func WriteEmpty(w http.ResponseWriter, status int) (int, error) {
-	w.WriteHeader(status)
-	return status, nil
-}
-
 func noRecordsForInsert(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
 	if len(records) == 0 {
 		gi := database.GetSmoothContext(ctx)
 		var status int
 		if gi.QueryOptions.ReturnRepresentation {
 			status = http.StatusCreated
-			WriteJSONString(w, status, []byte("[]"))
+			heligo.WriteJSONString(w, status, []byte("[]"))
 		} else {
 			status = http.StatusNoContent
-			WriteEmpty(w, status)
+			heligo.WriteEmpty(w, status)
 		}
 		return true, status
 	}
@@ -105,10 +37,10 @@ func noRecordsForUpdate(ctx context.Context, w http.ResponseWriter, records []da
 		var status int
 		if gi.QueryOptions.ReturnRepresentation {
 			status = http.StatusOK
-			WriteJSONString(w, status, []byte("[]"))
+			heligo.WriteJSONString(w, status, []byte("[]"))
 		} else {
 			status = http.StatusNoContent
-			WriteEmpty(w, status)
+			heligo.WriteEmpty(w, status)
 		}
 		return true, status
 	}
@@ -128,7 +60,7 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 }
 
 func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
-	return WriteJSON(w, http.StatusBadRequest, Data{"error": err.Error()})
+	return heligo.WriteJSON(w, http.StatusBadRequest, Data{"error": err.Error()})
 }
 
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
@@ -152,15 +84,15 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		default:
 			status = http.StatusInternalServerError
 		}
-		return WriteJSON(w, status, &Data{
+		return heligo.WriteJSON(w, status, &Data{
 			"code":    dberr.Code,
 			"message": dberr.Message,
 			"hint":    dberr.Hint,
 		})
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		return WriteEmpty(w, http.StatusNotFound)
+		return heligo.WriteEmpty(w, http.StatusNotFound)
 	} else {
-		return WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
+		return heligo.WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
 	}
 }
 

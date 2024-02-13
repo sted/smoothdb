@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"context"
@@ -6,16 +6,17 @@ import (
 	"net/http/pprof"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func (s *Server) initTestRouter() {
+func InitTestRouter(api common.APIHelper) {
 
-	dbe := s.DBE
-	router := s.GetRouter()
+	dbe := database.DBE
+	router := api.Router()
 
 	router.Handle("GET", "/test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		return WriteHTMLString(w, http.StatusOK, "smoothdb at your service")
+		return heligo.WriteHTMLString(w, http.StatusOK, "smoothdb at your service")
 	})
 
 	router.Handle("GET", "/test/prepare/:test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {

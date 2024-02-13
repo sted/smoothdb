@@ -12,18 +12,19 @@ import (
 	"time"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/logging"
 )
 
 type Server struct {
 	Config            *Config
-	Logger            *logging.Logger
+	logger            *logging.Logger
 	DBE               *database.DbEngine
 	HTTP              *http.Server
 	tlsConfig         *tls.Config
 	router            *heligo.Router
-	sessionManager    *SessionManager
+	sessionManager    *authn.SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
 	OnBeforeStart     func(*Server)
@@ -53,14 +54,14 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 	// Main Server
 	s := &Server{
 		Config:            cfg,
-		Logger:            logger,
+		logger:            logger,
 		DBE:               dbe,
 		shutdown:          make(chan struct{}),
 		shutdownCompleted: make(chan struct{}),
 	}
 
 	// Initialize session manager
-	s.sessionManager = newSessionManager(logger, s.Config.SessionMode != "none", s.shutdown)
+	s.sessionManager = authn.NewSessionManager(logger, s.Config.SessionMode != "none", s.shutdown)
 
 	// Initialize HTTP Server
 	s.initHTTPServer()
@@ -116,4 +117,36 @@ func (s *Server) Run() {
 		}
 		os.Exit(1)
 	}
+}
+
+func (s *Server) JWTSecret() string {
+	return s.Config.JWTSecret
+}
+
+func (s *Server) AllowAnon() bool {
+	return s.Config.AllowAnon
+}
+
+func (s *Server) AnonRole() string {
+	return s.Config.Database.AnonRole
+}
+
+func (s *Server) BaseAdminURL() string {
+	return s.Config.BaseAdminURL
+}
+
+func (s *Server) BaseAPIURL() string {
+	return s.Config.BaseAPIURL
+}
+
+func (s *Server) HasShortAPIURL() bool {
+	return s.Config.ShortAPIURL
+}
+
+func (s *Server) SessionManager() *authn.SessionManager {
+	return s.sessionManager
+}
+
+func (s *Server) Logger() *logging.Logger {
+	return s.logger
 }

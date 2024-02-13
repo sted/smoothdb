@@ -1,4 +1,4 @@
-package server
+package authn
 
 import (
 	"fmt"
@@ -42,8 +42,8 @@ func GenerateToken(role, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func (server *Server) authenticate(tokenString string) (*Claims, error) {
-	claims, err := parseAuthHeader(tokenString, server.Config.JWTSecret)
+func authenticate(tokenString string, jwtSecret string) (*Claims, error) {
+	claims, err := parseAuthHeader(tokenString, jwtSecret)
 	if err != nil {
 		return nil, err
 	}

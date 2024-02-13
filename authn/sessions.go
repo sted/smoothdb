@@ -1,4 +1,4 @@
-package server
+package authn
 
 import (
 	"context"
@@ -97,7 +97,7 @@ type SessionManager struct {
 	inUse    int
 }
 
-func newSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
+func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
 	sm := &SessionManager{
 		slots:    map[string]*SessionList{},
 		logger:   logger,
@@ -241,7 +241,7 @@ type SessionStatistics struct {
 	Users int
 }
 
-func (sm *SessionManager) statistics() SessionStatistics {
+func (sm *SessionManager) Statistics() SessionStatistics {
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 	return SessionStatistics{sm.count, sm.inUse, len(sm.slots)}

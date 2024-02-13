@@ -210,6 +210,11 @@ In this note we omit error handling for brevity, see the whole example in [examp
 
 ```go
 import (
+	...
+	
+	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/api"
+	"github.com/sted/smoothdb/database"
 	smoothdb "github.com/sted/smoothdb/server"
 )
 
@@ -325,13 +330,13 @@ func prepareView(s *smoothdb.Server) error {
 		</body>`)
 	
 	// register a route
-	r := s.GetRouter()
-	m := smoothdb.DatabaseMiddlewareWithName(s, "example")
+	r := s.Router()
+	m := s.MiddlewareWithDbName("example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		results, err := database.GetStructures(ctx, "products")
 		if err != nil {
-			return smoothdb.WriteError(w, err)
+			return api.WriteError(w, err)
 		}
 		err = t.Execute(w, results)
 		if err == nil {

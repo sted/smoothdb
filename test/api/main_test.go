@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/server"
 	"github.com/sted/smoothdb/test"
 )
@@ -38,10 +39,10 @@ func TestMain(m *testing.M) {
 
 	// Tear-up
 
-	postgresToken, _ := server.GenerateToken("postgres", s.Config.JWTSecret)
-	adminToken, _ = server.GenerateToken("admin", s.Config.JWTSecret)
-	user1Token, _ = server.GenerateToken("user1", s.Config.JWTSecret)
-	user2Token, _ = server.GenerateToken("user2", s.Config.JWTSecret)
+	postgresToken, _ := authn.GenerateToken("postgres", s.JWTSecret())
+	adminToken, _ = authn.GenerateToken("admin", s.JWTSecret())
+	user1Token, _ = authn.GenerateToken("user1", s.JWTSecret())
+	user2Token, _ = authn.GenerateToken("user2", s.JWTSecret())
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin",

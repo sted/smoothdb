@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/server"
 	"github.com/sted/smoothdb/test"
 )
@@ -31,8 +32,8 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
-	postgresToken, _ := server.GenerateToken("postgres", s.Config.JWTSecret)
-	anonymousToken, _ := server.GenerateToken("postgrest_test_anonymous", s.Config.JWTSecret)
+	postgresToken, _ := authn.GenerateToken("postgres", s.JWTSecret())
+	anonymousToken, _ := authn.GenerateToken("postgrest_test_anonymous", s.JWTSecret())
 
 	testConfig = test.Config{
 		BaseUrl: "http://localhost:8082/api/pgrest",

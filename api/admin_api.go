@@ -1,21 +1,22 @@
-package server
+package api
 
 import (
 	"context"
 	"net/http"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func (s *Server) initAdminRouter() {
+func InitAdminRouter(api common.APIHelper) {
 
-	dbe := s.DBE
-	router := s.GetRouter()
+	dbe := database.DBE
+	router := api.Router()
 
-	admin_dbe := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, true))
-	admin_db := router.Group(s.Config.BaseAdminURL, DatabaseMiddlewareStd(s, false))
-	admin_other := router.Group(s.Config.BaseAdminURL)
+	admin_dbe := router.Group(api.BaseAdminURL(), api.MiddlewareDBE())
+	admin_db := router.Group(api.BaseAdminURL(), api.MiddlewareStd())
+	admin_other := router.Group(api.BaseAdminURL())
 
 	// ROLES
 
@@ -23,14 +24,14 @@ func (s *Server) initAdminRouter() {
 
 	roles.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		roles, _ := database.GetRoles(c)
-		return WriteJSON(w, http.StatusOK, roles)
+		return heligo.WriteJSON(w, http.StatusOK, roles)
 	})
 
 	roles.Handle("GET", "/:rolename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("rolename")
 		role, err := database.GetRole(c, name)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, role)
+			return heligo.WriteJSON(w, http.StatusOK, role)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -42,7 +43,7 @@ func (s *Server) initAdminRouter() {
 
 		role, err := database.CreateRole(c, &roleInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, role)
+			return heligo.WriteJSON(w, http.StatusCreated, role)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -53,7 +54,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeleteRole(c, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteEmpty(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -65,14 +66,14 @@ func (s *Server) initAdminRouter() {
 
 	users.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		users, _ := database.GetUsers(c)
-		return WriteJSON(w, http.StatusOK, users)
+		return heligo.WriteJSON(w, http.StatusOK, users)
 	})
 
 	users.Handle("GET", "/:username", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("username")
 		user, err := database.GetUser(c, name)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, user)
+			return heligo.WriteJSON(w, http.StatusOK, user)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -83,7 +84,7 @@ func (s *Server) initAdminRouter() {
 		r.ReadJSON(&userInput)
 		user, err := database.CreateUser(c, &userInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, user)
+			return heligo.WriteJSON(w, http.StatusCreated, user)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -93,7 +94,7 @@ func (s *Server) initAdminRouter() {
 		name := r.Param("username")
 		err := database.DeleteUser(c, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteEmpty(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -118,7 +119,7 @@ func (s *Server) initAdminRouter() {
 		}
 
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, privileges)
+			return heligo.WriteJSON(w, http.StatusOK, privileges)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -147,7 +148,7 @@ func (s *Server) initAdminRouter() {
 
 		priv, err := database.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, priv)
+			return heligo.WriteJSON(w, http.StatusCreated, priv)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -173,7 +174,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeletePrivilege(c, &privilegeInput)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -187,7 +188,7 @@ func (s *Server) initAdminRouter() {
 
 	dbegroup.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		databases, _ := dbe.GetDatabases(c)
-		return WriteJSON(w, http.StatusOK, databases)
+		return heligo.WriteJSON(w, http.StatusOK, databases)
 	})
 
 	dbegroup.Handle("GET", "/:dbname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -195,7 +196,7 @@ func (s *Server) initAdminRouter() {
 
 		db, err := dbe.GetDatabase(c, name)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, db)
+			return heligo.WriteJSON(w, http.StatusOK, db)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -207,7 +208,7 @@ func (s *Server) initAdminRouter() {
 
 		database, err := dbe.CreateDatabase(c, databaseInput.Name, false)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, database)
+			return heligo.WriteJSON(w, http.StatusCreated, database)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -218,7 +219,7 @@ func (s *Server) initAdminRouter() {
 
 		err := dbe.DeleteDatabase(c, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -231,7 +232,7 @@ func (s *Server) initAdminRouter() {
 	databases.Handle("GET", "/:dbname/schemas", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		schemas, err := database.GetSchemas(c)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, schemas)
+			return heligo.WriteJSON(w, http.StatusOK, schemas)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -243,7 +244,7 @@ func (s *Server) initAdminRouter() {
 
 		schema, err := database.CreateSchema(c, schemaInput.Name)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, schema)
+			return heligo.WriteJSON(w, http.StatusCreated, schema)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -254,7 +255,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeleteSchema(c, name, true)
 		if err == nil {
-			return WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteEmpty(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -275,7 +276,7 @@ func (s *Server) initAdminRouter() {
 
 		views, err := db.GetViews(c)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, views)
+			return heligo.WriteJSON(w, http.StatusOK, views)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -287,7 +288,7 @@ func (s *Server) initAdminRouter() {
 
 		view, err := db.GetView(c, name)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, view)
+			return heligo.WriteJSON(w, http.StatusOK, view)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -300,7 +301,7 @@ func (s *Server) initAdminRouter() {
 
 		view, err := db.CreateView(c, &viewInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, view)
+			return heligo.WriteJSON(w, http.StatusCreated, view)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -312,7 +313,7 @@ func (s *Server) initAdminRouter() {
 
 		err := db.DeleteView(c, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -325,7 +326,7 @@ func (s *Server) initAdminRouter() {
 
 		columns, err := database.GetColumns(c, table)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, columns)
+			return heligo.WriteJSON(w, http.StatusOK, columns)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -341,7 +342,7 @@ func (s *Server) initAdminRouter() {
 
 		column, err := database.CreateColumn(c, &columnInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, column)
+			return heligo.WriteJSON(w, http.StatusCreated, column)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -355,7 +356,7 @@ func (s *Server) initAdminRouter() {
 
 		column, err := database.UpdateColumn(c, &columnUpdate)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, column)
+			return heligo.WriteJSON(w, http.StatusOK, column)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -367,7 +368,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeleteColumn(c, table, column, false)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -380,7 +381,7 @@ func (s *Server) initAdminRouter() {
 
 		constraints, err := database.GetConstraints(c, table)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, constraints)
+			return heligo.WriteJSON(w, http.StatusOK, constraints)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -393,7 +394,7 @@ func (s *Server) initAdminRouter() {
 
 		constant, err := database.CreateConstraint(c, &constraintInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, constant)
+			return heligo.WriteJSON(w, http.StatusCreated, constant)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -405,7 +406,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeleteConstraint(c, table, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -418,7 +419,7 @@ func (s *Server) initAdminRouter() {
 
 		policies, err := database.GetPolicies(c, table)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, policies)
+			return heligo.WriteJSON(w, http.StatusOK, policies)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -431,7 +432,7 @@ func (s *Server) initAdminRouter() {
 
 		policy, err := database.CreatePolicy(c, &policyInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, policy)
+			return heligo.WriteJSON(w, http.StatusCreated, policy)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -443,7 +444,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeletePolicy(c, table, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -456,7 +457,7 @@ func (s *Server) initAdminRouter() {
 
 		policies, err := db.GetFunctions(c)
 		if err == nil {
-			return WriteJSON(w, http.StatusOK, policies)
+			return heligo.WriteJSON(w, http.StatusOK, policies)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -468,7 +469,7 @@ func (s *Server) initAdminRouter() {
 
 		policy, err := database.CreateFunction(c, &functionInput)
 		if err == nil {
-			return WriteJSON(w, http.StatusCreated, policy)
+			return heligo.WriteJSON(w, http.StatusCreated, policy)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -479,7 +480,7 @@ func (s *Server) initAdminRouter() {
 
 		err := database.DeleteFunction(c, name)
 		if err == nil {
-			return WriteEmpty(w, http.StatusOK)
+			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -488,7 +489,7 @@ func (s *Server) initAdminRouter() {
 	// SESSIONS
 
 	admin_other.Handle("GET", "/sessions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		stats := s.sessionManager.statistics()
-		return WriteJSON(w, http.StatusOK, stats)
+		stats := api.SessionStatistics()
+		return heligo.WriteJSON(w, http.StatusOK, stats)
 	})
 }

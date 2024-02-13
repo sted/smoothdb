@@ -2,7 +2,7 @@ import http from "k6/http";
 
 export default function() {
     
-    const url = "http://localhost:8081/api/pgrest/projects?select=id,name,clients(*)";
+    const url = "http://localhost:4000/api/pgrest/projects?select=id,name,clients(*)";
     //const url = "http://localhost:8081/api/test_anon/t1";
 
     const params = {

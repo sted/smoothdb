@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/sted/heligo"
-	"github.com/sted/smoothdb/server"
 	"github.com/sted/smoothdb/test"
 )
 
@@ -17,12 +16,12 @@ func BenchmarkBase(b *testing.B) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	router := srv.GetRouter()
+	router := srv.Router()
 	group := router.Group("/bench")
 	group.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return 200, nil
 	})
-	group_db := router.Group("/benchdb", server.DatabaseMiddlewareStd(srv, false))
+	group_db := router.Group("/benchdb", srv.MiddlewareStd())
 	group_db.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return 200, nil
 	})

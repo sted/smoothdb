@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	tables, err := database.GetTables(c)
 	if err == nil {
-		return WriteJSON(w, http.StatusOK, tables)
+		return heligo.WriteJSON(w, http.StatusOK, tables)
 	} else {
 		return WriteServerError(w, err)
 	}
@@ -23,9 +23,9 @@ func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	table, err := database.CreateTable(c, &tableInput)
 	if err == nil {
 		if table != nil {
-			return WriteJSON(w, http.StatusCreated, table)
+			return heligo.WriteJSON(w, http.StatusCreated, table)
 		} else {
-			return WriteEmpty(w, http.StatusCreated)
+			return heligo.WriteEmpty(w, http.StatusCreated)
 		}
 	} else {
 		return WriteServerError(w, err)
@@ -36,7 +36,7 @@ func TableGetHandler(c context.Context, w http.ResponseWriter, r heligo.Request)
 	name := r.Param("table")
 	table, err := database.GetTable(c, name)
 	if err == nil {
-		return WriteJSON(w, http.StatusOK, table)
+		return heligo.WriteJSON(w, http.StatusOK, table)
 	} else {
 		return WriteServerError(w, err)
 	}
@@ -50,9 +50,9 @@ func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	table, err := database.UpdateTable(c, &tableUpdate)
 	if err == nil {
 		if table != nil {
-			return WriteJSON(w, http.StatusCreated, table)
+			return heligo.WriteJSON(w, http.StatusCreated, table)
 		} else {
-			return WriteEmpty(w, http.StatusCreated)
+			return heligo.WriteEmpty(w, http.StatusCreated)
 		}
 	} else {
 		return WriteServerError(w, err)
@@ -63,7 +63,7 @@ func TableDeleteHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	name := r.Param("table")
 	err := database.DeleteTable(c, name, false)
 	if err == nil {
-		return WriteEmpty(w, http.StatusNoContent)
+		return heligo.WriteEmpty(w, http.StatusNoContent)
 	} else {
 		return WriteServerError(w, err)
 	}

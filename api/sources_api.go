@@ -1,20 +1,21 @@
-package server
+package api
 
 import (
 	"context"
 	"net/http"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func (s *Server) initSourcesRouter() {
+func InitSourcesRouter(apiHelper common.APIHelper) {
 
-	baseUrl := s.Config.BaseAPIURL
-	if !s.Config.ShortAPIURL {
+	baseUrl := apiHelper.BaseAPIURL()
+	if !apiHelper.HasShortAPIURL() {
 		baseUrl += "/:dbname"
 	}
-	api := s.GetRouter().Group(baseUrl, DatabaseMiddlewareStd(s, false))
+	api := apiHelper.Router().Group(baseUrl, apiHelper.MiddlewareStd())
 
 	// RECORDS
 
@@ -23,7 +24,7 @@ func (s *Server) initSourcesRouter() {
 		json, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			w.Header().Set("Content-Location", r.RequestURI)
-			return WriteJSONString(w, http.StatusOK, json)
+			return heligo.WriteJSONString(w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
 		}
@@ -42,9 +43,9 @@ func (s *Server) initSourcesRouter() {
 		data, count, err := database.CreateRecords(c, sourcename, records, r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return WriteJSON(w, http.StatusCreated, count)
+				return heligo.WriteJSON(w, http.StatusCreated, count)
 			} else {
-				return WriteJSONString(w, http.StatusCreated, data)
+				return heligo.WriteJSONString(w, http.StatusCreated, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -64,9 +65,9 @@ func (s *Server) initSourcesRouter() {
 		data, _, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return WriteEmpty(w, http.StatusNoContent)
+				return heligo.WriteEmpty(w, http.StatusNoContent)
 			} else {
-				return WriteJSONString(w, http.StatusOK, data)
+				return heligo.WriteJSONString(w, http.StatusOK, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -78,9 +79,9 @@ func (s *Server) initSourcesRouter() {
 		data, _, err := database.DeleteRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return WriteEmpty(w, http.StatusNoContent)
+				return heligo.WriteEmpty(w, http.StatusNoContent)
 			} else {
-				return WriteJSONString(w, http.StatusOK, data)
+				return heligo.WriteJSONString(w, http.StatusOK, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -93,7 +94,7 @@ func (s *Server) initSourcesRouter() {
 		fname := r.Param("fname")
 		json, _, err := database.ExecFunction(c, fname, nil, r.URL.Query())
 		if err == nil {
-			return WriteJSONString(w, http.StatusOK, json)
+			return heligo.WriteJSONString(w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
 		}
@@ -112,9 +113,9 @@ func (s *Server) initSourcesRouter() {
 		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return WriteJSON(w, http.StatusOK, count)
+				return heligo.WriteJSON(w, http.StatusOK, count)
 			} else {
-				return WriteJSONString(w, http.StatusOK, data)
+				return heligo.WriteJSONString(w, http.StatusOK, data)
 			}
 		} else {
 			return WriteServerError(w, err)

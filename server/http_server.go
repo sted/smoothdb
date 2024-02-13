@@ -6,54 +6,55 @@ import (
 	"time"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/api"
 )
 
-func (server *Server) initHTTPServer() {
-	server.router = heligo.New()
+func (s *Server) initHTTPServer() {
+	s.router = heligo.New()
 	//router.Use(gin.Recovery())
-	server.router.Use(HTTPLogger(server.Logger))
+	s.router.Use(HTTPLogger(s.logger))
 
-	cfg := server.Config
+	cfg := s.Config
 	if len(cfg.CORSAllowedOrigins) != 0 {
-		server.initCORS()
+		s.initCORS()
 	}
 	if cfg.EnableAdminRoute {
-		server.initAdminRouter()
+		api.InitAdminRouter(s)
 	}
 	if cfg.EnableAPIRoute {
-		server.initSourcesRouter()
+		api.InitSourcesRouter(s)
 	}
 	if cfg.EnableDebugRoute {
-		server.initTestRouter()
+		api.InitTestRouter(s)
 	}
 
 	if cfg.CertFile != "" {
 		// Load certificates
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err == nil {
-			server.tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+			s.tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 		} else {
-			server.Logger.Warn().Err(err)
+			s.logger.Warn().Err(err)
 		}
 	}
 
-	server.HTTP = &http.Server{
+	s.HTTP = &http.Server{
 		Addr:         cfg.Address,
-		Handler:      server.router,
+		Handler:      s.router,
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,
 	}
 }
 
-func (server *Server) startHTTPServer() error {
-	if server.tlsConfig == nil {
-		return server.HTTP.ListenAndServe()
+func (s *Server) startHTTPServer() error {
+	if s.tlsConfig == nil {
+		return s.HTTP.ListenAndServe()
 	} else {
-		server.HTTP.TLSConfig = server.tlsConfig
-		return server.HTTP.ListenAndServeTLS("", "")
+		s.HTTP.TLSConfig = s.tlsConfig
+		return s.HTTP.ListenAndServeTLS("", "")
 	}
 }
 
-func (server *Server) GetRouter() *heligo.Router {
-	return server.router
+func (s *Server) Router() *heligo.Router {
+	return s.router
 }
