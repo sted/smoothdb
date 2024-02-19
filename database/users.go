@@ -43,7 +43,7 @@ func GetUsers(ctx context.Context) ([]User, error) {
 func GetUser(ctx context.Context, name string) (*User, error) {
 	conn := GetConn(ctx)
 	role := &User{}
-	err := conn.QueryRow(ctx, usersQuery+" AND b.rolname = $2", DBE.authRole, name).
+	err := conn.QueryRow(ctx, usersQuery+" AND b.rolname = $2", dbe.authRole, name).
 		Scan(&role.Name)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func CreateUser(ctx context.Context, user *User) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	grant := "GRANT \"" + user.Name + "\" TO \"" + DBE.authRole + "\""
+	grant := "GRANT \"" + user.Name + "\" TO \"" + dbe.authRole + "\""
 	_, err = tx.Exec(ctx, grant)
 	if err != nil {
 		return nil, err

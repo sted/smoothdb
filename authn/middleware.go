@@ -12,6 +12,7 @@ import (
 )
 
 type MiddlewareConfig interface {
+	GetDatabase(context.Context, string) (*database.Database, error)
 	JWTSecret() string
 	AllowAnon() bool
 	AnonRole() string
@@ -55,7 +56,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		}
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
-			db, err = database.DBE.GetActiveDatabase(ctx, dbname)
+			db, err = m.GetDatabase(ctx, dbname)
 			if err != nil {
 				return nil, nil, http.StatusNotFound, err
 			}

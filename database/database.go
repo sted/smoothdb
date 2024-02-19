@@ -28,7 +28,7 @@ type Database struct {
 func (db *Database) Activate(ctx context.Context) error {
 	defer db.activated.Store(true)
 
-	connString := DBE.config.URL
+	connString := dbe.config.URL
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return err
@@ -38,16 +38,16 @@ func (db *Database) Activate(ctx context.Context) error {
 	} else if config.ConnConfig.Config.Database != db.Name {
 		return fmt.Errorf("cannot connect to %q", db.Name)
 	}
-	config.MinConns = DBE.config.MinPoolConnections
-	config.MaxConns = DBE.config.MaxPoolConnections
-	config.ConnConfig.Tracer = DBE.dbtracer
+	config.MinConns = dbe.config.MinPoolConnections
+	config.MaxConns = dbe.config.MaxPoolConnections
+	config.ConnConfig.Tracer = dbe.dbtracer
 
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		var set string
 		var err error
-		if len(DBE.config.SchemaSearchPath) != 0 {
+		if len(dbe.config.SchemaSearchPath) != 0 {
 			set = "set_config('search_path', '"
-			for i, schema := range DBE.config.SchemaSearchPath {
+			for i, schema := range dbe.config.SchemaSearchPath {
 				if i != 0 {
 					set += ", "
 				}

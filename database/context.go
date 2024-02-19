@@ -26,7 +26,7 @@ func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbCon
 	defaultBuilder := DirectQueryBuilder{}
 	queryOptions := defaultParser.getRequestOptions(r)
 	if queryOptions.Schema == "" {
-		queryOptions.Schema = DBE.defaultSchema
+		queryOptions.Schema = dbe.defaultSchema
 	}
 	return context.WithValue(ctx, smoothTag,
 		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
@@ -51,7 +51,7 @@ func ContextWithDb(parent context.Context, db *Database, role string) (context.C
 	if db != nil {
 		conn, err = db.AcquireConnection(parent)
 	} else {
-		conn, err = DBE.AcquireConnection(parent)
+		conn, err = dbe.AcquireConnection(parent)
 	}
 	if err != nil {
 		return nil, nil, err

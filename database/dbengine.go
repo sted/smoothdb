@@ -13,7 +13,7 @@ import (
 	"github.com/sted/smoothdb/logging"
 )
 
-var DBE *DbEngine
+var dbe *DbEngine
 
 // DbEngine represents the database engine (a "cluster")
 type DbEngine struct {
@@ -30,7 +30,7 @@ type DbEngine struct {
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	context := context.Background()
 
-	DBE = &DbEngine{config: dbConfig}
+	dbe = &DbEngine{config: dbConfig}
 
 	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
@@ -44,13 +44,13 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 			return nil, fmt.Errorf("invalid configuration: Database.URL and Database.AllowedDatabases conflicting")
 		}
 	}
-	DBE.authRole = poolConfig.ConnConfig.User
+	dbe.authRole = poolConfig.ConnConfig.User
 	if logger != nil {
-		DBE.dbtracer = &tracelog.TraceLog{
+		dbe.dbtracer = &tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
 			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
 		}
-		poolConfig.ConnConfig.Tracer = DBE.dbtracer
+		poolConfig.ConnConfig.Tracer = dbe.dbtracer
 	}
 
 	// Create DBE connection pool
@@ -58,7 +58,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot create pool with %q (%w)", dbConfig.URL, err)
 	}
-	DBE.pool = pool
+	dbe.pool = pool
 
 	// Test connection
 	err = pool.Ping(context)
@@ -67,15 +67,15 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	}
 
 	if len(dbConfig.AllowedDatabases) != 0 {
-		DBE.allowedDatabases = map[string]struct{}{}
+		dbe.allowedDatabases = map[string]struct{}{}
 		for _, dbname := range dbConfig.AllowedDatabases {
-			DBE.allowedDatabases[dbname] = struct{}{}
+			dbe.allowedDatabases[dbname] = struct{}{}
 		}
 	}
 	if len(dbConfig.SchemaSearchPath) != 0 {
-		DBE.defaultSchema = dbConfig.SchemaSearchPath[0]
+		dbe.defaultSchema = dbConfig.SchemaSearchPath[0]
 	} else {
-		DBE.defaultSchema = "public"
+		dbe.defaultSchema = "public"
 	}
 	// Anon role
 	if dbConfig.AnonRole != "" {
@@ -84,13 +84,13 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 			return nil, err
 		}
 		// Grant anon to auth
-		_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+DBE.authRole)
+		_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+dbe.authRole)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return DBE, nil
+	return dbe, nil
 }
 
 // Close closes the database engine and all of its active databases

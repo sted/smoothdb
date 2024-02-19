@@ -20,7 +20,7 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 	if db != nil {
 		conn, err = db.AcquireConnection(ctx)
 	} else {
-		conn, err = DBE.AcquireConnection(ctx)
+		conn, err = dbe.AcquireConnection(ctx)
 	}
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 // If the role parameter is not empty, it binds the role to the connection.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool) error {
 	// transaction
-	needTX := DBE.config.TransactionMode != "none"
+	needTX := dbe.config.TransactionMode != "none"
 	if needTX {
 		_, err := conn.Exec(ctx, "BEGIN")
 		if err != nil {
@@ -60,7 +60,7 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 // ReleaseConnection releases a connection to the proper pool.
 // It resets its role if requested and closes the transaction, based on the configuration.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, resetRole bool) error {
-	hasTX := DBE.config.TransactionMode != "none"
+	hasTX := dbe.config.TransactionMode != "none"
 
 	if resetRole && !hasTX {
 		_, err := conn.Exec(ctx, "SET ROLE NONE")
@@ -73,7 +73,7 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, rese
 		var end string
 
 		if !httpErr {
-			switch DBE.config.TransactionMode {
+			switch dbe.config.TransactionMode {
 			case "commit":
 				end = "COMMIT"
 			case "commit-allow-override":

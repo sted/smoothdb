@@ -10,8 +10,6 @@ import (
 	"github.com/samber/lo"
 )
 
-var dbe *DbEngine
-
 func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()

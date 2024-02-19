@@ -119,6 +119,14 @@ func (s *Server) Run() {
 	}
 }
 
+func (s *Server) GetDBE() *database.DbEngine {
+	return s.DBE
+}
+
+func (s *Server) GetDatabase(ctx context.Context, name string) (*database.Database, error) {
+	return s.DBE.GetActiveDatabase(ctx, name)
+}
+
 func (s *Server) JWTSecret() string {
 	return s.Config.JWTSecret
 }
