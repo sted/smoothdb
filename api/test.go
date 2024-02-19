@@ -6,13 +6,12 @@ import (
 	"net/http/pprof"
 
 	"github.com/sted/heligo"
-	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func InitTestRouter(api common.APIHelper) {
+func InitTestRouter(api Helper) {
 
-	dbe := database.DBE
+	dbe := api.GetDBE()
 	router := api.Router()
 
 	router.Handle("GET", "/test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {

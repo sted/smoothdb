@@ -5,17 +5,16 @@ import (
 	"net/http"
 
 	"github.com/sted/heligo"
-	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func InitSourcesRouter(apiHelper common.APIHelper) {
+func InitSourcesRouter(apiHelper Helper) {
 
-	baseUrl := apiHelper.BaseAPIURL()
+	baseURL := apiHelper.BaseAPIURL()
 	if !apiHelper.HasShortAPIURL() {
-		baseUrl += "/:dbname"
+		baseURL += "/:dbname"
 	}
-	api := apiHelper.Router().Group(baseUrl, apiHelper.MiddlewareStd())
+	api := apiHelper.Router().Group(baseURL, apiHelper.MiddlewareStd())
 
 	// RECORDS
 

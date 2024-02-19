@@ -5,26 +5,30 @@ import (
 	"net/http"
 
 	"github.com/sted/heligo"
-	"github.com/sted/smoothdb/common"
 	"github.com/sted/smoothdb/database"
 )
 
-func InitAdminRouter(api common.APIHelper) {
+func InitAdminRouter(apiHelper Helper) {
 
-	dbe := database.DBE
-	router := api.Router()
+	dbe := apiHelper.GetDBE()
+	router := apiHelper.Router()
 
-	admin_dbe := router.Group(api.BaseAdminURL(), api.MiddlewareDBE())
-	admin_db := router.Group(api.BaseAdminURL(), api.MiddlewareStd())
-	admin_other := router.Group(api.BaseAdminURL())
+	adminURL := apiHelper.BaseAdminURL()
+	admin_dbe := router.Group(adminURL, apiHelper.MiddlewareDBE())
+	admin_db := router.Group(adminURL, apiHelper.MiddlewareStd())
+	admin_other := router.Group(adminURL)
 
 	// ROLES
 
 	roles := admin_dbe.Group("/roles")
 
 	roles.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		roles, _ := database.GetRoles(c)
-		return heligo.WriteJSON(w, http.StatusOK, roles)
+		roles, err := database.GetRoles(c)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, roles)
+		} else {
+			return WriteServerError(w, err)
+		}
 	})
 
 	roles.Handle("GET", "/:rolename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -65,8 +69,12 @@ func InitAdminRouter(api common.APIHelper) {
 	users := admin_dbe.Group("/users")
 
 	users.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		users, _ := database.GetUsers(c)
-		return heligo.WriteJSON(w, http.StatusOK, users)
+		users, err := database.GetUsers(c)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, users)
+		} else {
+			return WriteServerError(w, err)
+		}
 	})
 
 	users.Handle("GET", "/:username", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -187,8 +195,12 @@ func InitAdminRouter(api common.APIHelper) {
 	dbegroup := admin_dbe.Group("/databases")
 
 	dbegroup.Handle("GET", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		databases, _ := dbe.GetDatabases(c)
-		return heligo.WriteJSON(w, http.StatusOK, databases)
+		databases, err := dbe.GetDatabases(c)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, databases)
+		} else {
+			return WriteServerError(w, err)
+		}
 	})
 
 	dbegroup.Handle("GET", "/:dbname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -489,7 +501,7 @@ func InitAdminRouter(api common.APIHelper) {
 	// SESSIONS
 
 	admin_other.Handle("GET", "/sessions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		stats := api.SessionStatistics()
+		stats := apiHelper.SessionStatistics()
 		return heligo.WriteJSON(w, http.StatusOK, stats)
 	})
 }
