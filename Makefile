@@ -1,7 +1,7 @@
 
 VERSION=$(shell git describe --tags `git rev-list --tags --max-count=1`)
 GO=go
-TEST_FLAGS=-v -count=1
+TEST_FLAGS=-v -count=1 -race
 
 all: build
 

@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,16 +16,20 @@ type DatabaseInfo struct {
 
 type Database struct {
 	DatabaseInfo
-	activated atomic.Bool
-	pool      *pgxpool.Pool
-	info      *SchemaInfo
+	activation    chan struct{}
+	activationErr error
+	pool          *pgxpool.Pool
+	info          *SchemaInfo
 }
 
-// Activate initializes a database and starts its connection pool.
-// It signals a db as activated even if there is an error, which
-// is managed in DBE
-func (db *Database) Activate(ctx context.Context) error {
-	defer db.activated.Store(true)
+// activate initializes a database and starts its connection pool
+func (db *Database) activate(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			db.activationErr = err
+		}
+		close(db.activation)
+	}()
 
 	connString := dbe.config.URL
 	config, err := pgxpool.ParseConfig(connString)

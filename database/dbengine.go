@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -21,6 +20,7 @@ type DbEngine struct {
 	pool             *pgxpool.Pool
 	dbtracer         pgx.QueryTracer
 	activeDatabases  sync.Map
+	activeCreateLock sync.Mutex
 	allowedDatabases map[string]struct{}
 	defaultSchema    string
 	authRole         string
@@ -171,12 +171,12 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 	return db, nil
 }
 
-func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, noErrIfExists bool) (*DatabaseInfo, error) {
+func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, getIfExists bool) (*DatabaseInfo, error) {
 	conn := GetConn(ctx)
 	create := "CREATE DATABASE \"" + name + "\""
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
-		if e, ok := err.(*pgconn.PgError); !ok || !noErrIfExists || e.Code != "42P04" {
+		if e, ok := err.(*pgconn.PgError); !ok || !getIfExists || e.Code != "42P04" {
 			return nil, err
 		}
 	}
@@ -184,56 +184,89 @@ func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, noErrIfExi
 }
 
 func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
-	db, err := dbe.GetActiveDatabase(ctx, name)
-	if err != nil {
-		return err
+	db_, exists := dbe.activeDatabases.Load(name)
+	if exists {
+		db := db_.(*Database)
+		db.pool.Close()
+		dbe.activeDatabases.Delete(name)
 	}
-	db.pool.Close()
-	dbe.activeDatabases.Delete(name)
 
 	// SELECT pg_terminate_backend(pg_stat_activity.pid)
 	// FROM pg_stat_activity
 	// WHERE pg_stat_activity.datname = 'target_db'
 	// AND pid <> pg_backend_pid();
+
 	conn := GetConn(ctx)
-	_, err = conn.Exec(ctx, "DROP DATABASE \""+name+"\" (FORCE)")
+	_, err := conn.Exec(ctx, "DROP DATABASE \""+name+"\" (FORCE)")
 	return err
 }
 
-func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (*Database, error) {
-
-	db_, loaded := dbe.activeDatabases.LoadOrStore(name, &Database{})
-	db := db_.(*Database)
-	if loaded {
-		if !db.activated.Load() {
-			for {
-				time.Sleep(10 * time.Millisecond)
-				if db.activated.Load() {
-					break
-				}
+// GetActiveDatabase allows to get a database and ensures it is activated (eg it has a connection pool
+// and its cached information)
+func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (db *Database, err error) {
+	db_, exists := dbe.activeDatabases.LoadOrStore(name, &Database{
+		activation: make(chan struct{}),
+	})
+	db = db_.(*Database)
+	if exists {
+		select {
+		case <-db.activation:
+			if db.activationErr == nil {
+				return db, nil
+			} else {
+				return nil, db.activationErr
 			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	} else {
+		defer func() {
+			if err != nil {
+				dbe.activeDatabases.Delete(name)
+			}
+		}()
+
 		dbi, err := dbe.GetDatabase(ctx, name)
 		if err != nil {
-			dbe.activeDatabases.Delete(name)
+			close(db.activation)
 			return nil, err
 		}
 		db.Name = dbi.Name
 		db.Owner = dbi.Owner
-		err = db.Activate(ctx)
+		err = db.activate(ctx)
 		if err != nil {
-			dbe.activeDatabases.Delete(name)
 			return nil, fmt.Errorf("cannot activate database %q (%w)", name, err)
 		}
 	}
 	return db, nil
 }
 
-func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string, noErrIfExists bool) (*Database, error) {
-	_, err := dbe.CreateDatabase(ctx, name, noErrIfExists)
+func (dbe *DbEngine) createActiveDatabase(ctx context.Context, name string) (*Database, error) {
+	_, err := dbe.CreateDatabase(ctx, name, false)
 	if err != nil {
 		return nil, err
 	}
 	return dbe.GetActiveDatabase(ctx, name)
+}
+
+// CreateActiveDatabase allows to create a database and ensures it is activated
+func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
+	dbe.activeCreateLock.Lock()
+	defer dbe.activeCreateLock.Unlock()
+	return dbe.createActiveDatabase(ctx, name)
+}
+
+// GetOrCreateActiveDatabase allows to get or create a database and ensures it is activated
+func (dbe *DbEngine) GetOrCreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
+	db, err := dbe.GetActiveDatabase(ctx, name)
+	if err == nil {
+		return db, err
+	}
+	dbe.activeCreateLock.Lock()
+	defer dbe.activeCreateLock.Unlock()
+	db, err = dbe.GetActiveDatabase(ctx, name)
+	if err == nil {
+		return db, err
+	}
+	return dbe.createActiveDatabase(ctx, name)
 }

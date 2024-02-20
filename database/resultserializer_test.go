@@ -12,7 +12,7 @@ func BenchmarkSerializer(b *testing.B) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench", true)
+	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "bench")
 	if err != nil {
 		b.Fatal(err)
 	}

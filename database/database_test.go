@@ -43,7 +43,7 @@ func TestBase(t *testing.T) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test_base")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_base", true)
+	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "test_base")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestDDL(t *testing.T) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test_ddl")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test_ddl", true)
+	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "test_ddl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func BenchmarkBase(b *testing.B) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "bench")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "bench", true)
+	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "bench")
 	if err != nil {
 		b.Fatal(err)
 	}

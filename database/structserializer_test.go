@@ -14,7 +14,7 @@ func TestStructSerializer(t *testing.T) {
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test")
-	db, err := dbe.CreateActiveDatabase(dbe_ctx, "test", true)
+	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

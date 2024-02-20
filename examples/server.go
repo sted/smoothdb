@@ -20,7 +20,7 @@ func prepareContent(s *smoothdb.Server) error {
 		return err
 	}
 	// create a database
-	db, err := s.DBE.CreateActiveDatabase(dbe_ctx, "example", true)
+	db, err := s.DBE.GetOrCreateActiveDatabase(dbe_ctx, "example")
 	if err != nil {
 		return err
 	}

@@ -248,7 +248,7 @@ func prepareContent(s *smoothdb.Server) error {
 
 	dbe_ctx, _, _ := database.ContextWithDb(context.Background(), nil, "postgres")
 	// create a database
-	db, _ := s.DBE.CreateActiveDatabase(dbe_ctx, "example", true)
+	db, _ := s.DBE.GetOrCreateActiveDatabase(dbe_ctx, "example")
 	ctx, _, err := database.ContextWithDb(context.Background(), db, "postgres")
 	// delete previous table if exists
 	database.DeleteTable(ctx, "products", true)
