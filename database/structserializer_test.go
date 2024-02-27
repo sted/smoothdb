@@ -10,7 +10,7 @@ import (
 
 func TestStructSerializer(t *testing.T) {
 
-	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "postgres")
+	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "admin")
 	defer ReleaseConn(dbe_ctx, dbe_conn)
 
 	dbe.DeleteDatabase(dbe_ctx, "test")
@@ -19,7 +19,7 @@ func TestStructSerializer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "postgres")
+	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "admin")
 	defer ReleaseConn(ctx, conn)
 
 	CreateTable(ctx, &Table{Name: "t1", Columns: []Column{

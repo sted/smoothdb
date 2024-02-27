@@ -37,9 +37,10 @@
 * [ ] Functions (rpc)
 * [ ] function params with GET
 * [ ] Generate OpenAPI
-* [ ] Projects / Views
+* [ ] Projects
 * [ ] Admin
 * [ ] Plugins
+* [ ] SQL injection mitigation and related tests
 * [ ] Computed relationships
 * [ ] More types: Multirange, Domain, Numeric
 * [ ] Check returned headers, count, range, location, etc

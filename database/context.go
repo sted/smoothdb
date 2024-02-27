@@ -42,7 +42,7 @@ func GetSmoothContext(ctx context.Context) *SmoothContext {
 }
 
 // ContextWithDb creates a context and gets a connection to the requested database,
-// with a specific role. The db parameter can be nil, to indicate the database engine (DBE).
+// with a specific role. The db parameter can be nil, to indicate the system database.
 // It is used to start a communication with a database, both internally and from code using
 // smoothdb as a library.
 func ContextWithDb(parent context.Context, db *Database, role string) (context.Context, *DbPoolConn, error) {

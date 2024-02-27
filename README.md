@@ -28,7 +28,9 @@ If you have Go installed, installing the binary is easy:
 go install github.com/sted/smoothdb@latest
 ```
 
-To test your installation (provided $GOPATH/bin is in your path) by typing `smoothdb`.
+To test your installation (provided $GOPATH/bin is in your path), type `smoothdb`.
+
+Packages will follow.
 
 ### Start
 
