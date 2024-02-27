@@ -60,6 +60,7 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 // ReleaseConnection releases a connection to the proper pool.
 // It resets its role if requested and closes the transaction, based on the configuration.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, resetRole bool) error {
+	defer conn.Release()
 	hasTX := dbe.config.TransactionMode != "none"
 
 	if resetRole && !hasTX {
@@ -102,8 +103,6 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, rese
 			return err
 		}
 	}
-
-	conn.Release()
 	return nil
 }
 
