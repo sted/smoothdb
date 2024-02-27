@@ -12,15 +12,19 @@ import (
 	"github.com/sted/smoothdb/logging"
 )
 
+const (
+	SMOOTHDB = "smoothdb"
+)
+
 var dbe *DbEngine
 
-// DbEngine represents the database engine (a "cluster")
+// DbEngine represents the database engine (the PostgreSQL instance or "cluster")
 type DbEngine struct {
 	config           *Config
 	pool             *pgxpool.Pool
 	dbtracer         pgx.QueryTracer
 	activeDatabases  sync.Map
-	activeCreateLock sync.Mutex
+	dbCreationLock   sync.Mutex
 	allowedDatabases map[string]struct{}
 	defaultSchema    string
 	authRole         string
@@ -36,15 +40,15 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if err != nil {
 		return nil, err
 	}
+	// System db
 	configDbName := poolConfig.ConnConfig.Config.Database
-	if configDbName != "" {
-		if len(dbConfig.AllowedDatabases) == 0 {
-			dbConfig.AllowedDatabases = append(dbConfig.AllowedDatabases, configDbName)
-		} else if len(dbConfig.AllowedDatabases) > 1 || dbConfig.AllowedDatabases[0] != configDbName {
-			return nil, fmt.Errorf("invalid configuration: Database.URL and Database.AllowedDatabases conflicting")
-		}
+	if configDbName == "" {
+		configDbName = SMOOTHDB
 	}
+
+	// Authenticator role
 	dbe.authRole = poolConfig.ConnConfig.User
+	// Db logging
 	if logger != nil {
 		dbe.dbtracer = &tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
@@ -77,18 +81,6 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	} else {
 		dbe.defaultSchema = "public"
 	}
-	// Anon role
-	if dbConfig.AnonRole != "" {
-		_, err = pool.Exec(context, "CREATE ROLE "+dbConfig.AnonRole+" NOLOGIN")
-		if err != nil && err.(*pgconn.PgError).Code != "42710" {
-			return nil, err
-		}
-		// Grant anon to auth
-		_, err = pool.Exec(context, "GRANT "+dbConfig.AnonRole+" TO "+dbe.authRole)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	return dbe, nil
 }
@@ -117,7 +109,7 @@ func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, erro
 // 	return databases
 // }
 
-// IsDatabaseAllowed chacks if a database is usable
+// IsDatabaseAllowed checks if a database can be managed by smoothdb
 func (dbe *DbEngine) IsDatabaseAllowed(name string) bool {
 	if len(dbe.allowedDatabases) == 0 {
 		return true
@@ -130,6 +122,7 @@ const databaseQuery = `
 	SELECT d.datname, pg_catalog.pg_get_userbyid(d.datdba)
 	FROM pg_catalog.pg_database d`
 
+// GetDatabases lists the available databases, filtering the not-managed ones
 func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 	conn := GetConn(ctx)
 	databases := []DatabaseInfo{}
@@ -139,14 +132,14 @@ func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 	}
 	defer rows.Close()
 
-	database := DatabaseInfo{}
+	dbi := DatabaseInfo{}
 	for rows.Next() {
-		err := rows.Scan(&database.Name, &database.Owner)
+		err := rows.Scan(&dbi.Name, &dbi.Owner)
 		if err != nil {
 			return databases, err
 		}
-		if dbe.IsDatabaseAllowed(database.Name) {
-			databases = append(databases, database)
+		if dbe.IsDatabaseAllowed(dbi.Name) {
+			databases = append(databases, dbi)
 		}
 	}
 
@@ -156,22 +149,28 @@ func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 	return databases, nil
 }
 
+// GetDatabase gets information about a database.
+// Use GetActiveDatabase to get an active instance of a database
 func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	if !dbe.IsDatabaseAllowed(name) {
 		return nil, fmt.Errorf("database %q not found or not allowed", name)
 	}
-
-	db := &DatabaseInfo{}
+	dbi := &DatabaseInfo{}
+	// dbe.pool instead GetConn so this func can be used inside others
 	err := dbe.pool.QueryRow(ctx, databaseQuery+
-		" WHERE d.datname = $1", name).Scan(&db.Name, &db.Owner)
+		" WHERE d.datname = $1", name).Scan(&dbi.Name, &dbi.Owner)
 	if err != nil {
 		return nil, fmt.Errorf("database %q not found (%w)", name, err)
 	}
-
-	return db, nil
+	return dbi, nil
 }
 
+// CreateDatabase creates a new database
+// Use CreateActiveDatabase to create an active instance of a database
 func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, getIfExists bool) (*DatabaseInfo, error) {
+	if !dbe.IsDatabaseAllowed(name) {
+		return nil, fmt.Errorf("database %q not allowed", name)
+	}
 	conn := GetConn(ctx)
 	create := "CREATE DATABASE \"" + name + "\""
 	_, err := conn.Exec(ctx, create)
@@ -183,6 +182,61 @@ func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, getIfExist
 	return dbe.GetDatabase(ctx, name)
 }
 
+var terminateQuery = `SELECT pg_terminate_backend(pid)
+	FROM pg_stat_activity WHERE datname = $1
+	AND pid <> pg_backend_pid();`
+
+func enableConnections(ctx context.Context, name string, enable bool) error {
+	conn := GetConn(ctx)
+	enableStr := "false"
+	if enable {
+		enableStr = "true"
+	}
+	query := "ALTER DATABASE \"" + name + "\" WITH ALLOW_CONNECTIONS " + enableStr
+	_, err := conn.Exec(ctx, query)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func terminateSessions(ctx context.Context, name string) error {
+	conn := GetConn(ctx)
+	_, err := conn.Exec(ctx, terminateQuery, name)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// CloneDatabase creates a new database cloning a source db.
+// The force parameter can be used to stop all the connections to the source db, which is a prerequisite.
+func (dbe *DbEngine) CloneDatabase(ctx context.Context, name string, source string, force bool) (*DatabaseInfo, error) {
+	if !dbe.IsDatabaseAllowed(name) {
+		return nil, fmt.Errorf("database %q not allowed", name)
+	}
+	if force {
+		err := enableConnections(ctx, source, false)
+		if err != nil {
+			return nil, err
+		}
+		defer enableConnections(ctx, source, true)
+		err = terminateSessions(ctx, source)
+		if err != nil {
+			return nil, err
+		}
+	}
+	conn := GetConn(ctx)
+	create := "CREATE DATABASE \"" + name + "\" WITH TEMPLATE \"" + source + "\""
+	_, err := conn.Exec(ctx, create)
+	if err != nil {
+		return nil, err
+	}
+	return dbe.GetDatabase(ctx, name)
+}
+
+// DeleteDatabase deletes a database.
+// It blocks until all connections are returned to pool.
 func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
 	db_, exists := dbe.activeDatabases.Load(name)
 	if exists {
@@ -190,12 +244,6 @@ func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
 		db.pool.Close()
 		dbe.activeDatabases.Delete(name)
 	}
-
-	// SELECT pg_terminate_backend(pg_stat_activity.pid)
-	// FROM pg_stat_activity
-	// WHERE pg_stat_activity.datname = 'target_db'
-	// AND pid <> pg_backend_pid();
-
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP DATABASE \""+name+"\" (FORCE)")
 	return err
@@ -251,8 +299,8 @@ func (dbe *DbEngine) createActiveDatabase(ctx context.Context, name string) (*Da
 
 // CreateActiveDatabase allows to create a database and ensures it is activated
 func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
-	dbe.activeCreateLock.Lock()
-	defer dbe.activeCreateLock.Unlock()
+	dbe.dbCreationLock.Lock()
+	defer dbe.dbCreationLock.Unlock()
 	return dbe.createActiveDatabase(ctx, name)
 }
 
@@ -262,8 +310,8 @@ func (dbe *DbEngine) GetOrCreateActiveDatabase(ctx context.Context, name string)
 	if err == nil {
 		return db, err
 	}
-	dbe.activeCreateLock.Lock()
-	defer dbe.activeCreateLock.Unlock()
+	dbe.dbCreationLock.Lock()
+	defer dbe.dbCreationLock.Unlock()
 	db, err = dbe.GetActiveDatabase(ctx, name)
 	if err == nil {
 		return db, err

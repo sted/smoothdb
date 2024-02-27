@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,11 +35,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if config.ConnConfig.Config.Database == "" {
-		config.ConnConfig.Config.Database = db.Name
-	} else if config.ConnConfig.Config.Database != db.Name {
-		return fmt.Errorf("cannot connect to %q", db.Name)
-	}
+	config.ConnConfig.Config.Database = db.Name
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
