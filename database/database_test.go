@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 	defer ReleaseConn(ctx, conn)
 
 	_, err = CreateUser(ctx, &User{Name: "test", CanCreateDatabases: true})
-	if err != nil && IsExist(err) {
+	if err != nil && !IsExist(err) {
 		os.Exit(1)
 	}
 
