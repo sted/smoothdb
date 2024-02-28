@@ -76,7 +76,8 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		case "42P04", // duplicate database
 			"42P06", // duplicate schema
 			"42P07", // duplicate table
-			"23505": // unique constraint violation
+			"23505", // unique constraint violation
+			"42710": // duplicated role
 			status = http.StatusConflict
 		case "22P02", // invalid_text_representation
 			"42703": // undefined_column

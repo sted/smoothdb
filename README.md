@@ -34,7 +34,15 @@ Packages will follow.
 
 ### Start
 
-Starting SmoothDB, it creates a configuration file named **config.jsonc** in the current directory, with default values:  edit it for further customizations (see [Configuration](#configuration-file)).
+Starting SmoothDB, it creates a configuration file named **config.jsonc** in the current directory, with default values:  edit it for further customizations (see [Configuration](#Configuration-file)).
+
+You can configure the database instance for SmoothDb invoking
+
+```
+smoothdb --initdb
+```
+
+Details in [Database configuration](#Database-configuration).
 
 ## API
 
@@ -367,7 +375,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 
 | Name | Description | Default |
 | --- | --- | --- |
-| Address | Server address and port | 4000 |
+| Address | Server address and port | 0.0.0.0:4000 |
 | CertFile | TLS certificate file | "" |
 | KeyFile | TLS certificate key file | "" |
 | AllowAnon | Allow unauthenticated connections | false |
@@ -381,10 +389,10 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
 | CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
 | General transaction mode for operations | Enable debug access | false |
-| Database.URL | Database URL as postgresql://user:pwd@host:port/database | "postgres://localhost:5432" |
+| Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
-| Database.AnonRole | Anonymous role | "anon" |
+| Database.AnonRole | Anonymous role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
@@ -417,9 +425,10 @@ $ ./smoothdb -h
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>                Bind to host address (default: localhost:4000)
-	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
-	-c, --config <file>              Configuration file (default: ./config.jsonc)
+	-a, --addr <host>                Bind to host address (default: '0.0.0.0:4000')
+	-d, --dburl <url>                Database URL	
+	-c, --config <file>              Configuration file (default: './config.jsonc')
+	--initdb                         Initialize db interactively and exit
 	-h, --help                       Show this message
 ```
 
@@ -427,11 +436,22 @@ Server Options:
 
 The way SmoothDB connect to PostgreSQL is through the Database.URL configuration:
 	
-	postgres[ql]://[user:password@]host:port[/database]
+	postgresql://[user:password@]host:port[/database]
 
 The specified user will be used as the **authenticator**, so it should be a user with limited privileges.
+The authenticator must be able to login and should not "inherits” the privileges of roles it is a member of.
 
-Specifying the database in the URL is a way to restrict the allowed databases just to this one and should not conflict with the Database.AllowedDatabases configuration (ie the latter should be empty or contain just the same db name).
+```sql
+CREATE ROLE auth LOGIN NOINHERIT
+```
+
+Invoking
+
+```
+smoothdb --initdb
+```
+
+and following the prompt, is an easy way to initialize the role and other configurations
 
 ## Development
 

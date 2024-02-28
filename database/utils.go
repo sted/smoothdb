@@ -9,8 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+func escapeIdent(identifier string) string {
+	return strings.ReplaceAll(identifier, `"`, `""`)
+}
+
 func quote(s string) string {
-	return strconv.Quote(s)
+	return strconv.Quote(escapeIdent(s))
+}
+
+func escapeLiteral(identifier string) string {
+	return strings.ReplaceAll(identifier, `'`, `''`)
+}
+
+func quoteLit(s string) string {
+	return "'" + escapeLiteral(s) + "'"
 }
 
 func quoteParts(s string) string {
@@ -142,6 +154,19 @@ func (cr *CustomRows) Close() {
 	cr.CurrentRow = -1
 }
 
+func IsExist(err error) bool {
+	pgerr := err.(*pgconn.PgError)
+	if pgerr == nil {
+		return false
+	}
+	code := pgerr.Code
+	return code == "42P04" || // duplicate database
+		code == "42P06" || // duplicate schema
+		code == "42P07" || // duplicate table
+		code == "23505" || // unique constraint violation
+		code == "42710" // duplicate role
+}
+
 func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	// Get the column descriptions
 	columns := rows.FieldDescriptions()
@@ -175,4 +200,26 @@ func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	}
 
 	return customRows, nil
+}
+
+type PostgresConfig struct {
+	Host     string // host (e.g. localhost) or absolute path to unix domain socket directory (e.g. /private/tmp)
+	Port     uint16
+	Database string
+	User     string
+	Password string
+}
+
+func ParsePostgresURL(url string) (*PostgresConfig, error) {
+	config, err := pgconn.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgresConfig{
+		Host:     config.Host,
+		Port:     config.Port,
+		Database: config.Database,
+		User:     config.User,
+		Password: config.Password,
+	}, nil
 }

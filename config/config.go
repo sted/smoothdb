@@ -68,29 +68,30 @@ func writeArray(a any) *hujson.Array {
 }
 
 // GetConfig reads the configuration file
-func GetConfig(config any, configFile string) error {
+func GetConfig[T any](defaultConfig T, configFile string) (T, error) {
+	config := defaultConfig
 	b, err := os.ReadFile(configFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("error reading the configuration file (%w)", err)
+			return config, fmt.Errorf("error reading the configuration file (%w)", err)
 		}
 	} else {
 		b, err = hujson.Standardize(b)
 		if err != nil {
-			return fmt.Errorf("invalid configuration file (%w)", err)
+			return config, fmt.Errorf("invalid configuration file (%w)", err)
 		} else {
 			err = json.Unmarshal(b, config)
 			if err != nil {
-				return fmt.Errorf("invalid configuration file (%w)", err)
+				return config, fmt.Errorf("invalid configuration file (%w)", err)
 			}
 		}
 	}
 	SaveConfig(config, configFile)
-	return nil
+	return config, nil
 }
 
 // SaveConfig saves the configuration file
-func SaveConfig(config any, configFile string) error {
+func SaveConfig[T any](config T, configFile string) error {
 	b, err := writeConfig(config)
 	if err != nil {
 		return fmt.Errorf("error writing the configuration file (%w)", err)

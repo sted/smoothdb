@@ -36,8 +36,11 @@ func NewServer() (*Server, error) {
 }
 
 func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Server, error) {
-	cfg := getConfig(config, configOpts)
-	err := checkConfig(cfg)
+	cfg, err := getConfig(config, configOpts)
+	if err != nil {
+		return nil, err
+	}
+	err = checkConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +128,10 @@ func (s *Server) GetDBE() *database.DbEngine {
 
 func (s *Server) GetDatabase(ctx context.Context, name string) (*database.Database, error) {
 	return s.DBE.GetActiveDatabase(ctx, name)
+}
+
+func (s *Server) GetSystemDatabase(ctx context.Context) (*database.Database, error) {
+	return s.DBE.GetOrCreateActiveDatabase(ctx, database.SMOOTHDB)
 }
 
 func (s *Server) JWTSecret() string {

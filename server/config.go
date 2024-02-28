@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sted/smoothdb/config"
@@ -39,7 +41,7 @@ type Config struct {
 
 func defaultConfig() *Config {
 	return &Config{
-		Address:              ":4000",
+		Address:              "0.0.0.0:4000",
 		CertFile:             "",
 		KeyFile:              "",
 		AllowAnon:            false,
@@ -85,33 +87,42 @@ const usageStr = `
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>                Bind to host address (default: localhost:4000)
-	-d, --dburl <url>                Database URL (default: postgres://localhost:5432)			
-	-c, --config <file>              Configuration file (default: ./config.jsonc)
-	-h, --help                       Show this message
+	-a, --addr <host>		Bind to host address (default: '0.0.0.0:4000')
+	-d, --dburl <dburl>		Database URL			
+	-c, --config <path>		Configuration file (default: './config.jsonc')
+	--initdb				Initialize db interactively and exit
+	-h, --help				Show this message
 `
 
-func getFlags(defaultConfigPath string) (map[string]any, string) {
+func getFlags(defaultConfigPath string) (map[string]any, string, bool) {
 	var configPath, address, dburl string
-	flags := flag.NewFlagSet("", flag.ExitOnError)
+	var initdb bool
+	flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Printf("%s\n", usageStr)
 		os.Exit(0)
 	}
-	flags.StringVar(&configPath, "c", defaultConfigPath, "Configuration file")
-	flags.StringVar(&configPath, "config", defaultConfigPath, "Configuration file")
-	flags.StringVar(&address, "a", "", "Address")
-	flags.StringVar(&address, "addr", "", "Address")
-	flags.StringVar(&dburl, "d", "", "DatabaseURL")
-	flags.StringVar(&dburl, "dburl", "", "DatabaseURL")
+	flags.StringVar(&configPath, "c", defaultConfigPath, "")
+	flags.StringVar(&configPath, "config", defaultConfigPath, "")
+	flags.StringVar(&address, "a", "", "")
+	flags.StringVar(&address, "addr", "", "")
+	flags.StringVar(&dburl, "d", "", "")
+	flags.StringVar(&dburl, "dburl", "", "")
+	flags.BoolVar(&initdb, "initdb", false, "")
 	flags.Parse(os.Args[1:])
 	m := map[string]any{}
-	return m, configPath
+	if address != "" {
+		m["Address"] = address
+	}
+	if dburl != "" {
+		m["Database.URL"] = dburl
+	}
+	return m, configPath, initdb
 }
 
-func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) *Config {
+func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) (*Config, error) {
 	// Defaults
-	cfg := defaultConfig()
+	defaultCfg := defaultConfig()
 
 	var defaultConfigPath string
 	if configOpts == nil || configOpts.ConfigFilePath == "" {
@@ -121,31 +132,107 @@ func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) *Config {
 	}
 	var cliConfig map[string]any
 	configPath := defaultConfigPath
+	var initdb bool
 	if configOpts == nil || !configOpts.SkipFlags {
-		cliConfig, configPath = getFlags(defaultConfigPath)
+		cliConfig, configPath, initdb = getFlags(defaultConfigPath)
 	}
 	// Configuration file
-	config.GetConfig(cfg, configPath)
+	cfg, err := config.GetConfig(defaultCfg, configPath)
+	if err != nil {
+		return nil, err
+	}
 	// Merge base config
 	if baseConfig != nil {
-		config.MergeConfig(cfg, baseConfig)
+		err = config.MergeConfig(cfg, baseConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Environment
 	if configOpts == nil || !configOpts.SkipEnv {
 		getEnvironment(cfg)
 	}
-	// Command line
+	// Merge command line config
 	if configOpts == nil || !configOpts.SkipFlags {
-		config.MergeConfig(cfg, cliConfig)
+		err = config.MergeConfig(cfg, cliConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
-
-	return cfg
+	if initdb {
+		adminURL, dbcfg, err := askDbConfig()
+		err = config.MergeConfig(cfg, dbcfg)
+		if err != nil {
+			return nil, err
+		}
+		err = database.PrepareDatabase(adminURL, &cfg.Database)
+		if err != nil {
+			return nil, err
+		}
+		config.SaveConfig(cfg, configPath)
+		os.Exit(0)
+	}
+	return cfg, nil
 }
 
 func checkConfig(cfg *Config) error {
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
-		fmt.Println("Warning: Cannot enable ShortAPIURL with Database.AllowedDatabases is not configured with a single db")
+		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
 	}
+	canContinue, err := database.CheckDatabase(&cfg.Database)
+	if err != nil {
+		return err
+	}
+	if !canContinue {
+		return fmt.Errorf("Exiting")
+	}
 	return nil
+}
+
+func askOption(description, defaultValue string) string {
+	reader := bufio.NewReader(os.Stdin)
+	if defaultValue != "" {
+		description += " (press enter for the default '%s') "
+		fmt.Printf(description, defaultValue)
+	} else {
+		fmt.Print(description)
+	}
+	value, _ := reader.ReadString('\n')
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = defaultValue
+	}
+	return value
+}
+
+func askDbConfig() (string, map[string]any, error) {
+	const (
+		defaultAdminURL = "postgres://postgres:postgres@localhost:5432"
+		defaultAuth     = "auth"
+	)
+	var (
+		adminURL string
+		pgconfig *database.PostgresConfig
+		err      error
+	)
+	config := map[string]any{}
+
+	for {
+		adminURL = askOption("Database URL for administration: ", defaultAdminURL)
+		pgconfig, err = database.ParsePostgresURL(adminURL)
+		if err == nil {
+			break
+		} else {
+
+		}
+	}
+
+	authUser := askOption("Authenticator user: ", defaultAuth)
+	authPassword := askOption("Authenticator password: ", "")
+	config["Database.URL"] = "postgresql://" + authUser + ":" + authPassword + "@" +
+		pgconfig.Host + ":" + strconv.FormatUint(uint64(pgconfig.Port), 10) + "/" + database.SMOOTHDB
+	config["Database.AnonRole"] = askOption("Anonymous user: ", database.DEFAULT_ANON)
+
+	return adminURL, config, nil
 }

@@ -11,6 +11,7 @@ import (
 type Helper interface {
 	GetDBE() *database.DbEngine
 	GetDatabase(context.Context, string) (*database.Database, error)
+	GetSystemDatabase(context.Context) (*database.Database, error)
 
 	Router() *heligo.Router
 	MiddlewareStd() heligo.Middleware
