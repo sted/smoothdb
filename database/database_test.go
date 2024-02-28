@@ -6,26 +6,25 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/samber/lo"
 )
 
 func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()
-	config.URL = "postgresql://postgres:postgres@localhost:5432"
+	config.URL = "postgresql://auth:@0.0.0.0:5432/postgres"
 	dbe, err = InitDbEngine(config, nil)
 	if err != nil {
 		os.Exit(1)
 	}
-	dbe_ctx, dbe_conn, err := ContextWithDb(context.Background(), nil, "")
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "admin")
 	if err != nil {
 		os.Exit(1)
 	}
-	defer ReleaseConn(dbe_ctx, dbe_conn)
+	defer ReleaseConn(ctx, conn)
 
-	_, err = CreateUser(dbe_ctx, &User{Name: "test", CanCreateDatabases: true})
-	if err != nil && err.(*pgconn.PgError).Code != "42710" {
+	_, err = CreateUser(ctx, &User{Name: "test", CanCreateDatabases: true})
+	if err != nil && IsExist(err) {
 		os.Exit(1)
 	}
 
@@ -36,27 +35,34 @@ func TestMain(m *testing.M) {
 
 func TestBase(t *testing.T) {
 
-	dbe_ctx, dbe_conn, err := ContextWithDb(context.Background(), nil, "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ReleaseConn(dbe_ctx, dbe_conn)
-
-	dbe.DeleteDatabase(dbe_ctx, "test_base")
-	db, err := dbe.GetOrCreateActiveDatabase(dbe_ctx, "test_base")
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, conn, _ := ContextWithDb(dbe_ctx, db, "test")
+	dbe.DeleteDatabase(ctx, "test_base")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer ReleaseConn(ctx, conn)
 
-	_, err = CreateTable(ctx, &Table{Name: "b1", Columns: []Column{
-		{Name: "name", Type: "text"},
-		{Name: "number", Type: "integer"},
-		{Name: "date", Type: "timestamp"},
-		{Name: "bool", Type: "bool"},
-		{Name: "float4", Type: "float4"}}})
+	_, err = CreateTable(ctx, &Table{
+		Name: "b1",
+		Columns: []Column{
+			{Name: "name", Type: "text"},
+			{Name: "number", Type: "integer"},
+			{Name: "date", Type: "timestamp"},
+			{Name: "bool", Type: "bool"},
+			{Name: "float4", Type: "float4"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
