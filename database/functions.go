@@ -74,7 +74,7 @@ func (db *Database) GetFunctions(ctx context.Context) ([]Function, error) {
 }
 
 func composeSignature(name string, args []Argument) string {
-	sig := name + "("
+	sig := quoteParts(name) + "("
 	for i, a := range args {
 		if i != 0 {
 			sig += ", "
@@ -123,7 +123,7 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 
 func DeleteFunction(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+name)
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+quoteParts(name))
 	return err
 }
 

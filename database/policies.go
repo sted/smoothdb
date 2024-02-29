@@ -71,7 +71,7 @@ func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 
 func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 	conn := GetConn(ctx)
-	create := "CREATE POLICY " + policy.Name + " ON " + policy.Table
+	create := "CREATE POLICY " + quote(policy.Name) + " ON " + quoteParts(policy.Table)
 	if policy.Retrictive {
 		create += " AS RESTRICTIVE"
 	}
@@ -82,7 +82,7 @@ func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 			if i != 0 {
 				create += ", "
 			}
-			create += role
+			create += quote(role)
 		}
 	}
 	if policy.Using != nil {
@@ -100,6 +100,6 @@ func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 
 func DeletePolicy(ctx context.Context, table string, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP POLICY "+name+" ON "+table)
+	_, err := conn.Exec(ctx, "DROP POLICY "+quote(name)+" ON "+quoteParts(table))
 	return err
 }

@@ -173,12 +173,12 @@ func CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, err
 			}
 			create += t
 		}
-		create += " ON " + privilege.TargetType + " " + privilege.TargetName
+		create += " ON " + privilege.TargetType + " " + quoteParts(privilege.TargetName)
 	} else {
 		// grant role to role
-		create += privilege.TargetName
+		create += quoteParts(privilege.TargetName)
 	}
-	create += " TO " + privilege.Grantee
+	create += " TO " + quote(privilege.Grantee)
 	// to implement: with grant option
 
 	_, err := conn.Exec(ctx, create)
@@ -198,12 +198,12 @@ func DeletePrivilege(ctx context.Context, privilege *Privilege) error {
 			}
 			delete += t
 		}
-		delete += " ON " + privilege.TargetType + " " + privilege.TargetName
+		delete += " ON " + privilege.TargetType + " " + quoteParts(privilege.TargetName)
 	} else {
 		// revoke role from role
-		delete += privilege.TargetName
+		delete += quoteParts(privilege.TargetName)
 	}
-	delete += " FROM " + privilege.Grantee
+	delete += " FROM " + quote(privilege.Grantee)
 	// to implement: with grant option
 
 	_, err := conn.Exec(ctx, delete)

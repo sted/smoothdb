@@ -59,7 +59,7 @@ func CreateUser(ctx context.Context, user *User) (*User, error) {
 	}
 	defer tx.Rollback(ctx)
 
-	create := "CREATE ROLE \"" + user.Name + "\""
+	create := "CREATE ROLE " + quote(user.Name)
 	create += " NOLOGIN"
 	if user.CanCreateRoles {
 		create += " CREATEROLE"
@@ -71,7 +71,7 @@ func CreateUser(ctx context.Context, user *User) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	grant := "GRANT \"" + user.Name + "\" TO \"" + dbe.authRole + "\""
+	grant := "GRANT " + quote(user.Name) + " TO " + quote(dbe.authRole)
 	_, err = tx.Exec(ctx, grant)
 	if err != nil {
 		return nil, err
@@ -86,6 +86,6 @@ func CreateUser(ctx context.Context, user *User) (*User, error) {
 
 func DeleteUser(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
+	_, err := conn.Exec(ctx, "DROP ROLE "+quote(name))
 	return err
 }

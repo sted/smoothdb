@@ -135,7 +135,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
 	}
-	create += "\"" + table.Name + "\""
+	create += quoteParts(table.Name)
 	create += " (" + columnList
 	for _, constraint := range table.Constraints {
 		create += ", " + constraint
@@ -172,11 +172,11 @@ func UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
 	defer tx.Rollback(ctx)
 
 	var alter string
-	prefix := "ALTER TABLE \"" + table.Name + "\""
+	prefix := "ALTER TABLE " + quoteParts(table.Name)
 
 	// NAME
 	if table.NewName != nil {
-		alter = prefix + " RENAME TO \"" + *table.NewName + "\""
+		alter = prefix + " RENAME TO " + quote(*table.NewName)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return nil, err
@@ -184,7 +184,7 @@ func UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
 	}
 	// SCHEMA
 	if table.NewSchema != nil {
-		alter = prefix + " SET SCHEMA " + *table.NewSchema
+		alter = prefix + " SET SCHEMA " + quote(*table.NewSchema)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return nil, err
@@ -192,7 +192,7 @@ func UpdateTable(ctx context.Context, table *TableUpdate) (*Table, error) {
 	}
 	// OWNER
 	if table.Owner != nil {
-		alter = prefix + " OWNER TO " + *table.Owner
+		alter = prefix + " OWNER TO " + quote(*table.Owner)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return nil, err
@@ -230,7 +230,7 @@ func DeleteTable(ctx context.Context, name string, ifExists bool) error {
 	if ifExists {
 		delete += " IF EXISTS"
 	}
-	delete += " \"" + name + "\""
+	delete += quote(name)
 	_, err := conn.Exec(ctx, delete)
 	if err != nil {
 		return err

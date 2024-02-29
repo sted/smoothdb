@@ -74,7 +74,7 @@ func (db *Database) CreateView(ctx context.Context, view *View) (*View, error) {
 	if view.Materialized {
 		create += "MATERIALIZED "
 	}
-	create += "VIEW " + view.Name + " AS " + view.Definition
+	create += "VIEW " + quoteParts(view.Name) + " AS " + view.Definition
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (db *Database) CreateView(ctx context.Context, view *View) (*View, error) {
 
 func (db *Database) DeleteView(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP VIEW "+name)
+	_, err := conn.Exec(ctx, "DROP VIEW "+quoteParts(name))
 	if err != nil {
 		return err
 	}

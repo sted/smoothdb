@@ -61,7 +61,7 @@ func GetRole(ctx context.Context, name string) (*Role, error) {
 
 func CreateRole(ctx context.Context, role *Role) (*Role, error) {
 	conn := GetConn(ctx)
-	create := "CREATE ROLE \"" + role.Name + "\""
+	create := "CREATE ROLE " + quote(role.Name)
 	if role.IsSuperUser {
 		create += " SUPERUSER"
 	}
@@ -89,6 +89,6 @@ func CreateRole(ctx context.Context, role *Role) (*Role, error) {
 
 func DeleteRole(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP ROLE \""+name+"\"")
+	_, err := conn.Exec(ctx, "DROP ROLE "+quote(name))
 	return err
 }

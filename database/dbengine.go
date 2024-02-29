@@ -227,7 +227,7 @@ func (dbe *DbEngine) CloneDatabase(ctx context.Context, name string, source stri
 		}
 	}
 	conn := GetConn(ctx)
-	create := "CREATE DATABASE \"" + name + "\" WITH TEMPLATE \"" + source + "\""
+	create := "CREATE DATABASE " + quote(name) + " WITH TEMPLATE " + quote(source)
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {
 		dbe.activeDatabases.Delete(name)
 	}
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP DATABASE \""+name+"\" (FORCE)")
+	_, err := conn.Exec(ctx, "DROP DATABASE "+quote(name)+" (FORCE)")
 	return err
 }
 

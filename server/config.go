@@ -208,7 +208,7 @@ func askOption(description, defaultValue string) string {
 
 func askDbConfig() (string, map[string]any, error) {
 	const (
-		defaultAdminURL = "postgres://postgres:postgres@localhost:5432"
+		defaultAdminURL = "postgresql://postgres:postgres@localhost:5432"
 		defaultAuth     = "auth"
 	)
 	var (
@@ -231,7 +231,7 @@ func askDbConfig() (string, map[string]any, error) {
 	authUser := askOption("Authenticator user: ", defaultAuth)
 	authPassword := askOption("Authenticator password: ", "")
 	config["Database.URL"] = "postgresql://" + authUser + ":" + authPassword + "@" +
-		pgconfig.Host + ":" + strconv.FormatUint(uint64(pgconfig.Port), 10) + "/" + database.SMOOTHDB
+		pgconfig.Host + ":" + strconv.Itoa(int(pgconfig.Port)) + "/" + database.SMOOTHDB
 	config["Database.AnonRole"] = askOption("Anonymous user: ", database.DEFAULT_ANON)
 
 	return adminURL, config, nil

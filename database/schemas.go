@@ -39,7 +39,7 @@ func GetSchemas(ctx context.Context) ([]Schema, error) {
 
 func CreateSchema(ctx context.Context, name string) (*Schema, error) {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "CREATE SCHEMA \""+name+"\"")
+	_, err := conn.Exec(ctx, "CREATE SCHEMA "+quote(name))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func CreateSchema(ctx context.Context, name string) (*Schema, error) {
 
 func DeleteSchema(ctx context.Context, name string, cascade bool) error {
 	conn := GetConn(ctx)
-	delete := "DROP SCHEMA \"" + name + "\""
+	delete := "DROP SCHEMA " + quote(name)
 	if cascade {
 		delete += " CASCADE"
 	}

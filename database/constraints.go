@@ -104,7 +104,7 @@ func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error)
 
 func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
 	conn := GetConn(ctx)
-	create := "ALTER TABLE " + constraint.Table + " ADD "
+	create := "ALTER TABLE " + quoteParts(constraint.Table) + " ADD "
 	create += constraint.Definition
 
 	_, err := conn.Exec(ctx, create)
@@ -117,7 +117,7 @@ func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint,
 
 func DeleteConstraint(ctx context.Context, table string, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "ALTER TABLE "+table+" DROP CONSTRAINT "+name)
+	_, err := conn.Exec(ctx, "ALTER TABLE "+quoteParts(table)+" DROP CONSTRAINT "+quote(name))
 	if err != nil {
 		return err
 	}
