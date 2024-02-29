@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -15,17 +16,20 @@ func TestMain(m *testing.M) {
 	config.URL = "postgresql://auth:@0.0.0.0:5432/postgres"
 	dbe, err = InitDbEngine(config, nil)
 	if err != nil {
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 	ctx, conn, err := ContextWithDb(context.Background(), nil, "admin")
 	if err != nil {
-		os.Exit(1)
+		fmt.Println(err.Error())
+		os.Exit(2)
 	}
 	defer ReleaseConn(ctx, conn)
 
 	_, err = CreateUser(ctx, &User{Name: "test", CanCreateDatabases: true})
 	if err != nil && !IsExist(err) {
-		os.Exit(1)
+		fmt.Println(err.Error())
+		os.Exit(3)
 	}
 
 	code := m.Run()
