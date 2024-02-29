@@ -13,13 +13,13 @@ import (
 func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()
-	config.URL = "postgresql://auth:@0.0.0.0:5432/postgres"
+	config.URL = "postgresql://postgres:postgres@0.0.0.0:5432"
 	dbe, err = InitDbEngine(config, nil)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	ctx, conn, err := ContextWithDb(context.Background(), nil, "admin")
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "postgres")
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(2)
