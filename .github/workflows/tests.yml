@@ -23,7 +23,7 @@ jobs:
         sudo sed -i 's/peer/trust/; s/scram-sha-256/trust/' /etc/postgresql/14/main/pg_hba.conf
         sudo systemctl start postgresql.service
         pg_isready
-#        psql -U postgres --command="CREATE ROLE auth LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER"
+        psql -U postgres --command="CREATE ROLE auth LOGIN NOINHERIT"
 
     - name: Test PostgreSQL connection
       run: |
