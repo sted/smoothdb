@@ -16,8 +16,7 @@ const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
-	Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
-	SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error)
+	Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error)
 }
 
 type DirectJSONSerializer struct {
@@ -397,18 +396,19 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 	return nil
 }
 
-func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error) {
 	fds := rows.FieldDescriptions()
-	first := true
+	count := 0
 
-	d.WriteByte('[')
+	if !single {
+		d.WriteByte('[')
+	}
 
 	for rows.Next() {
+		count++
 		bufRaw := rows.RawValues()
-		if !first {
+		if count > 1 {
 			d.WriteByte(',')
-		} else {
-			first = false
 		}
 		if !scalar {
 			d.WriteByte('{')
@@ -430,76 +430,29 @@ func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, info *Schem
 			d.WriteByte('}')
 		}
 	}
-	d.WriteByte(']')
+	if !single {
+		d.WriteByte(']')
+	}
 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return []byte(d.String()), nil
-}
-
-func (d *DirectJSONSerializer) SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
-	fds := rows.FieldDescriptions()
-
-	// verify that we have at least one row
-	hasRow := rows.Next()
-	if !hasRow {
-		return nil, &SerializeError{}
-	}
-	bufRaw := rows.RawValues()
-
-	if !scalar {
-		d.WriteByte('{')
-	}
-	for i := range fds {
-		buf := bufRaw[i]
-		fd := fds[i]
-		if i > 0 {
-			d.WriteByte(',')
+	if single {
+		// verify that we have at least one and one only row
+		if count != 1 {
+			return nil, &SerializeError{}
 		}
-		if !scalar {
-			d.WriteByte('"')
-			d.WriteString(fds[i].Name)
-			d.WriteString("\":")
-		}
-		d.appendType(buf, fd.DataTypeOID, info)
-	}
-	if !scalar {
-		d.WriteByte('}')
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	// verify that we have just one row
-	hasRow = rows.Next()
-	if hasRow {
-		return nil, &SerializeError{}
 	}
 	return []byte(d.String()), nil
 }
 
 type DatabaseJSONSerializer struct{}
 
-func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
+func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
 		return []byte{}, err
 	}
 	return values[0], nil
-}
-
-func (DatabaseJSONSerializer) SerializeSingle(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
-	rows.Next()
-	values := rows.RawValues()
-	if err := rows.Err(); err != nil {
-		return []byte{}, err
-	}
-	return values[0], nil
-}
-
-type ReflectSerializer struct{}
-
-func (ReflectSerializer) Serialize(rows pgx.Rows, scalar bool, info *SchemaInfo) ([]byte, error) {
-	return []byte{}, nil
 }
