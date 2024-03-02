@@ -16,7 +16,7 @@ const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 type ResultSerializer interface {
-	Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error)
+	Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error)
 }
 
 type DirectJSONSerializer struct {
@@ -396,9 +396,9 @@ func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo
 	return nil
 }
 
-func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error) {
+func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	fds := rows.FieldDescriptions()
-	count := 0
+	var count int64
 
 	if !single {
 		d.WriteByte('[')
@@ -435,24 +435,24 @@ func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if single {
 		// verify that we have at least one and one only row
 		if count != 1 {
-			return nil, &SerializeError{}
+			return nil, 0, &SerializeError{}
 		}
 	}
-	return []byte(d.String()), nil
+	return []byte(d.String()), count, nil
 }
 
 type DatabaseJSONSerializer struct{}
 
-func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, error) {
+func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	rows.Next()
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
-		return []byte{}, err
+		return []byte{}, 0, err
 	}
-	return values[0], nil
+	return values[0], 0, nil
 }

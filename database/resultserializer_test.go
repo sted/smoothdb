@@ -53,7 +53,7 @@ func BenchmarkSerializer(b *testing.B) {
 	b.Run("Serialize", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, err := serializer.Serialize(copiedRows, false, false, info)
+			_, _, err := serializer.Serialize(copiedRows, false, false, info)
 			if err != nil {
 				log.Print(err)
 				return
@@ -64,7 +64,7 @@ func BenchmarkSerializer(b *testing.B) {
 	b.Run("Serialize_2", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, err := serializer.Serialize(copiedRows, false, false, info)
+			_, _, err := serializer.Serialize(copiedRows, false, false, info)
 			if err != nil {
 				log.Print(err)
 				return

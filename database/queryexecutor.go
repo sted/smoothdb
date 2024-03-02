@@ -4,30 +4,30 @@ import (
 	"context"
 )
 
-func querySerialize(ctx context.Context, query string, values []any) ([]byte, error) {
+func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := gi.QueryOptions
 	info := gi.Db.info
 	rows, err := gi.Conn.Query(ctx, query, values...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	serializer := gi.QueryBuilder.preferredSerializer()
-	data, err := serializer.Serialize(rows, false, options.Singular, info)
-	return data, err
+	data, count, err := serializer.Serialize(rows, false, options.Singular, info)
+	return data, count, err
 }
 
-func Select(ctx context.Context, table string, filters Filters) ([]byte, error) {
+func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	options := gi.QueryOptions
 	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	return querySerialize(ctx, query, values)
 }
@@ -44,9 +44,7 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		var data []byte
-		data, err = querySerialize(ctx, insert, values)
-		return data, 0, err
+		return querySerialize(ctx, insert, values)
 	} else {
 		tag, err := gi.Conn.Exec(ctx, insert, values...)
 		if err != nil {
@@ -68,9 +66,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		var data []byte
-		data, err = querySerialize(ctx, update, values)
-		return data, 0, err
+		return querySerialize(ctx, update, values)
 	} else {
 		tag, err := gi.Conn.Exec(ctx, update, values...)
 		if err != nil {
@@ -92,9 +88,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		var data []byte
-		data, err = querySerialize(ctx, delete, values)
-		return data, 0, err
+		return querySerialize(ctx, delete, values)
 	} else {
 		tag, err := gi.Conn.Exec(ctx, delete, values...)
 		if err != nil {
@@ -129,8 +123,6 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}
 	}
-	var data []byte
 	single := f != nil && !f.ReturnIsSet
-	data, err = gi.QueryBuilder.preferredSerializer().Serialize(rows, scalar, single, info)
-	return data, 0, err
+	return gi.QueryBuilder.preferredSerializer().Serialize(rows, scalar, single, info)
 }

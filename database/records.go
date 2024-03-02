@@ -6,7 +6,7 @@ import (
 
 type Record = map[string]any
 
-func GetRecords(ctx context.Context, table string, filters Filters) ([]byte, error) {
+func GetRecords(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	return Select(ctx, table, filters)
 }
 
