@@ -19,7 +19,10 @@ func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request
 
 func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	var tableInput database.Table
-	r.ReadJSON(&tableInput)
+	err := r.ReadJSON(&tableInput)
+	if err != nil {
+		return WriteBadRequest(w, err)
+	}
 	table, err := database.CreateTable(c, &tableInput)
 	if err == nil {
 		if table != nil {
@@ -45,8 +48,10 @@ func TableGetHandler(c context.Context, w http.ResponseWriter, r heligo.Request)
 func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	var tableUpdate database.TableUpdate
 	tableUpdate.Name = r.Param("table")
-	r.ReadJSON(&tableUpdate)
-
+	err := r.ReadJSON(&tableUpdate)
+	if err != nil {
+		return WriteBadRequest(w, err)
+	}
 	table, err := database.UpdateTable(c, &tableUpdate)
 	if err == nil {
 		if table != nil {

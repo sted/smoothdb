@@ -43,8 +43,10 @@ func InitAdminRouter(apiHelper Helper) {
 
 	roles.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var roleInput database.Role
-		r.ReadJSON(&roleInput)
-
+		err := r.ReadJSON(&roleInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		role, err := database.CreateRole(c, &roleInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, role)
@@ -89,7 +91,10 @@ func InitAdminRouter(apiHelper Helper) {
 
 	users.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var userInput database.User
-		r.ReadJSON(&userInput)
+		err := r.ReadJSON(&userInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		user, err := database.CreateUser(c, &userInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, user)
@@ -152,8 +157,10 @@ func InitAdminRouter(apiHelper Helper) {
 			privilegeInput.TargetType = targetType
 			privilegeInput.TargetName = targetName
 		}
-		r.ReadJSON(&privilegeInput)
-
+		err := r.ReadJSON(&privilegeInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		priv, err := database.CreatePrivilege(c, &privilegeInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, priv)
@@ -178,9 +185,11 @@ func InitAdminRouter(apiHelper Helper) {
 		var privilegeInput database.Privilege
 		privilegeInput.TargetType = targetType
 		privilegeInput.TargetName = targetName
-		r.ReadJSON(&privilegeInput)
-
-		err := database.DeletePrivilege(c, &privilegeInput)
+		err := r.ReadJSON(&privilegeInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = database.DeletePrivilege(c, &privilegeInput)
 		if err == nil {
 			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {
@@ -216,8 +225,10 @@ func InitAdminRouter(apiHelper Helper) {
 
 	dbegroup.Handle("POST", "", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var databaseInput database.Database
-		r.ReadJSON(&databaseInput)
-
+		err := r.ReadJSON(&databaseInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		database, err := dbe.CreateDatabase(c, databaseInput.Name, false)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, database)
@@ -252,8 +263,10 @@ func InitAdminRouter(apiHelper Helper) {
 
 	databases.Handle("POST", "/:dbname/schemas", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var schemaInput database.Schema
-		r.ReadJSON(&schemaInput)
-
+		err := r.ReadJSON(&schemaInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		schema, err := database.CreateSchema(c, schemaInput.Name)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, schema)
@@ -309,8 +322,10 @@ func InitAdminRouter(apiHelper Helper) {
 	databases.Handle("POST", "/:dbname/views", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		db := database.GetDb(c)
 		var viewInput database.View
-		r.ReadJSON(&viewInput)
-
+		err := r.ReadJSON(&viewInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		view, err := db.CreateView(c, &viewInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, view)
@@ -347,7 +362,10 @@ func InitAdminRouter(apiHelper Helper) {
 	databases.Handle("POST", "/:dbname/tables/:table/columns", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var columnInput database.Column
 		columnInput.Table = r.Param("table")
-		r.ReadJSON(&columnInput)
+		err := r.ReadJSON(&columnInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		if columnInput.Type == "" {
 			columnInput.Type = "text"
 		}
@@ -364,8 +382,10 @@ func InitAdminRouter(apiHelper Helper) {
 		var columnUpdate database.ColumnUpdate
 		columnUpdate.Table = r.Param("table")
 		columnUpdate.Name = r.Param("column")
-		r.ReadJSON(&columnUpdate)
-
+		err := r.ReadJSON(&columnUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		column, err := database.UpdateColumn(c, &columnUpdate)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusOK, column)
@@ -402,8 +422,10 @@ func InitAdminRouter(apiHelper Helper) {
 	databases.Handle("POST", "/:dbname/tables/:table/constraints", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var constraintInput database.Constraint
 		constraintInput.Table = r.Param("table")
-		r.ReadJSON(&constraintInput)
-
+		err := r.ReadJSON(&constraintInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		constant, err := database.CreateConstraint(c, &constraintInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, constant)
@@ -440,8 +462,10 @@ func InitAdminRouter(apiHelper Helper) {
 	databases.Handle("POST", "/:dbname/tables/:table/policies", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var policyInput database.Policy
 		policyInput.Table = r.Param("table")
-		r.ReadJSON(&policyInput)
-
+		err := r.ReadJSON(&policyInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		policy, err := database.CreatePolicy(c, &policyInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, policy)
@@ -477,8 +501,10 @@ func InitAdminRouter(apiHelper Helper) {
 
 	databases.Handle("POST", "/:dbname/functions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var functionInput database.Function
-		r.ReadJSON(&functionInput)
-
+		err := r.ReadJSON(&functionInput)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
 		policy, err := database.CreateFunction(c, &functionInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, policy)
