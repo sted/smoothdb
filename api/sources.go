@@ -20,9 +20,9 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("GET", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		json, _, err := database.GetRecords(c, sourcename, r.URL.Query())
+		json, count, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
-			w.Header().Set("Content-Location", r.RequestURI)
+			database.SetResponseHeaders(c, w, r.Request, count)
 			return heligo.WriteJSONString(w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)

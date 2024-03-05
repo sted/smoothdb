@@ -15,22 +15,24 @@ func TestPostgREST_Query(t *testing.T) {
 		//     `shouldRespondWith` [json| [{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-0/*"] }
 		{
-			Description: "matches with equality",
-			Query:       "/items?id=eq.5",
-			Headers:     nil,
-			Expected:    `[{"id":5}]`,
-			Status:      200,
+			Description:     "matches with equality",
+			Query:           "/items?id=eq.5",
+			Headers:         nil,
+			Expected:        `[{"id":5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
 		},
 		// it "matches with equality using not operator" $
 		//   get "/items?id=not.eq.5&order=id"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-13/*"] }
 		{
-			Description: "matches with equality using not operator",
-			Query:       "/items?id=not.eq.5&order=id",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
-			Status:      200,
+			Description:     "matches with equality using not operator",
+			Query:           "/items?id=not.eq.5&order=id",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-13/*"},
+			Status:          200,
 		},
 		// it "matches with more than one condition using not operator" $
 		//   get "/simple_pk?k=like.*yx&extra=not.eq.u" `shouldRespondWith` "[]"
@@ -46,43 +48,47 @@ func TestPostgREST_Query(t *testing.T) {
 		//     `shouldRespondWith` [json| [{"id":14},{"id":15}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-1/*"] }
 		{
-			Description: "matches with inequality using not operator",
-			Query:       "/items?id=not.lt.14&order=id.asc",
-			Headers:     nil,
-			Expected:    `[{"id":14},{"id":15}]`,
-			Status:      200,
+			Description:     "matches with inequality using not operator",
+			Query:           "/items?id=not.lt.14&order=id.asc",
+			Headers:         nil,
+			Expected:        `[{"id":14},{"id":15}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
 		},
 		//   get "/items?id=not.gt.2&order=id.asc"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":2}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-1/*"] }
 		{
-			Description: "matches with inequality using not operator",
-			Query:       "/items?id=not.gt.2&order=id.asc",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":2}]`,
-			Status:      200,
+			Description:     "matches with inequality using not operator",
+			Query:           "/items?id=not.gt.2&order=id.asc",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
 		},
 		// it "matches items IN" $
 		//   get "/items?id=in.(1,3,5)"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":3},{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 		{
-			Description: "matches items IN",
-			Query:       "/items?id=in.(1,3,5)",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
-			Status:      200,
+			Description:     "matches items IN",
+			Query:           "/items?id=in.(1,3,5)",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":3},{"id":5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		// it "matches items NOT IN using not operator" $
 		//   get "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)"
 		//     `shouldRespondWith` [json| [{"id":1},{"id":3},{"id":5}] |]
 		//     { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 		{
-			Description: "matches items NOT IN using not operator",
-			Query:       "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":3},{"id":5}]`,
-			Status:      200,
+			Description:     "matches items NOT IN using not operator",
+			Query:           "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":3},{"id":5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		// it "matches nulls using not operator" $
 		//   get "/no_pk?a=not.is.null" `shouldRespondWith`
@@ -1790,11 +1796,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			Description: "by a column asc",
-			Query:       "/items?id=lte.2&order=id.asc",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":2}]`,
-			Status:      200,
+			Description:     "by a column asc",
+			Query:           "/items?id=lte.2&order=id.asc",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
 		},
 		//   it "by a column desc" $
 		// 	get "/items?id=lte.2&order=id.desc"
@@ -1803,11 +1810,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			Description: "by a column desc",
-			Query:       "/items?id=lte.2&order=id.desc",
-			Headers:     nil,
-			Expected:    `[{"id":2},{"id":1}]`,
-			Status:      200,
+			Description:     "by a column desc",
+			Query:           "/items?id=lte.2&order=id.desc",
+			Headers:         nil,
+			Expected:        `[{"id":2},{"id":1}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
 		},
 		//   it "by a column with nulls first" $
 		// 	get "/no_pk?order=a.nullsfirst"
@@ -1819,11 +1827,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			Description: "by a column with nulls first",
-			Query:       "/no_pk?order=a.nullsfirst",
-			Headers:     nil,
-			Expected:    `[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
-			Status:      200,
+			Description:     "by a column with nulls first",
+			Query:           "/no_pk?order=a.nullsfirst",
+			Headers:         nil,
+			Expected:        `[{"a":null,"b":null},{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		//   it "by a column asc with nulls last" $
 		// 	get "/no_pk?order=a.asc.nullslast"
@@ -1834,11 +1843,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			Description: "by a column asc with nulls last",
-			Query:       "/no_pk?order=a.asc.nullslast",
-			Headers:     nil,
-			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
-			Status:      200,
+			Description:     "by a column asc with nulls last",
+			Query:           "/no_pk?order=a.asc.nullslast",
+			Headers:         nil,
+			Expected:        `[{"a":"1","b":"0"},{"a":"2","b":"0"},{"a":null,"b":null}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		//   it "by a column desc with nulls first" $
 		// 	get "/no_pk?order=a.desc.nullsfirst"
@@ -1849,11 +1859,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			Description: "by a column desc with nulls first",
-			Query:       "/no_pk?order=a.desc.nullsfirst",
-			Headers:     nil,
-			Expected:    `[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
-			Status:      200,
+			Description:     "by a column desc with nulls first",
+			Query:           "/no_pk?order=a.desc.nullsfirst",
+			Headers:         nil,
+			Expected:        `[{"a":null,"b":null},{"a":"2","b":"0"},{"a":"1","b":"0"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		//   it "by a column desc with nulls last" $
 		// 	get "/no_pk?order=a.desc.nullslast"
@@ -1864,11 +1875,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-2/*"]
 		// 	  }
 		{
-			Description: "by a column desc with nulls last",
-			Query:       "/no_pk?order=a.desc.nullslast",
-			Headers:     nil,
-			Expected:    `[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
-			Status:      200,
+			Description:     "by a column desc with nulls last",
+			Query:           "/no_pk?order=a.desc.nullslast",
+			Headers:         nil,
+			Expected:        `[{"a":"2","b":"0"},{"a":"1","b":"0"},{"a":null,"b":null}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
 		},
 		//   it "by two columns with nulls and direction specified" $
 		// 	get "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc"
@@ -1892,7 +1904,8 @@ func TestPostgREST_Query(t *testing.T) {
 				{"client_id":1,"id":2,"name":"Windows 10"},
 				{"client_id":1,"id":1,"name":"Windows 7"},
 				{"client_id":null,"id":5,"name":"Orphan"}]`,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-4/*"},
+			Status:          200,
 		},
 		//   it "by a column with no direction or nulls specified" $
 		// 	get "/items?id=lte.2&order=id"
@@ -1901,11 +1914,12 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Range" <:> "0-1/*"]
 		// 	  }
 		{
-			Description: "by a column with no direction or nulls specified",
-			Query:       "/items?id=lte.2&order=id",
-			Headers:     nil,
-			Expected:    `[{"id":1},{"id":2}]`,
-			Status:      200,
+			Description:     "by a column with no direction or nulls specified",
+			Query:           "/items?id=lte.2&order=id",
+			Headers:         nil,
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
 		},
 		//   it "without other constraints" $
 		// 	get "/items?order=id.asc" `shouldRespondWith` 200

@@ -4,6 +4,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,6 +90,10 @@ type QueryOptions struct {
 	TxCommit             bool
 	TxRollback           bool
 	Singular             bool
+	HasRange             bool
+	RangeMin             int64
+	RangeMax             int64
+	Count                string // exact, planned, estimated
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -823,6 +828,8 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	return parts, nil
 }
 
+var rangeRe = regexp.MustCompile(`^(\d+)?-(\d+)?$`)
+
 func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
 	header := req.Header
 	options := QueryOptions{}
@@ -852,6 +859,17 @@ func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
 			options.TxCommit = true
 		case "tx=rollback":
 			options.TxRollback = true
+		}
+	}
+
+	rangeValues := header.Values("Range")
+	if l := len(rangeValues); l != 0 {
+		r := rangeValues[l-1]
+		matches := rangeRe.FindStringSubmatch(r)
+		if matches != nil {
+			options.HasRange = true
+			options.RangeMin, _ = strconv.ParseInt(matches[1], 10, 64)
+			options.RangeMax, _ = strconv.ParseInt(matches[2], 10, 64)
 		}
 	}
 

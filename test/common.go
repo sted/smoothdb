@@ -27,19 +27,18 @@ type Command struct {
 
 // We don't embed Command to simplify tests writing
 type Test struct {
-	Description string
-	Method      string
-	Query       string
-	Body        string
-	Headers     Headers
-	Expected    string
-	Status      int
+	Description     string
+	Method          string
+	Query           string
+	Body            string
+	Headers         Headers
+	Expected        string
+	ExpectedHeaders map[string]string
+	Status          int
 }
 
 func InitClient() *http.Client {
-	var client *http.Client
-	client = &http.Client{}
-	return client
+	return &http.Client{}
 }
 
 func PrepareRequest(config Config, cmd *Command) (*http.Request, error) {
@@ -81,23 +80,23 @@ func PrepareRequest(config Config, cmd *Command) (*http.Request, error) {
 	return req, nil
 }
 
-func ReadResponse(resp *http.Response) ([]byte, int, error) {
+func ReadResponse(resp *http.Response) ([]byte, *http.Header, int, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	resp.Body.Close()
-	return body, resp.StatusCode, nil
+	return body, &resp.Header, resp.StatusCode, nil
 }
 
-func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error) {
+func Exec(client *http.Client, config Config, cmd *Command) ([]byte, *http.Header, int, error) {
 	req, err := PrepareRequest(config, cmd)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	return ReadResponse(resp)
 }
@@ -105,7 +104,7 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, int, error)
 func Prepare(config Config, commands []Command) {
 	client := InitClient()
 	for _, cmd := range commands {
-		_, _, err := Exec(client, config, &cmd)
+		_, _, _, err := Exec(client, config, &cmd)
 		if err != nil {
 			fmt.Printf("Error: %v", err)
 		}
@@ -116,7 +115,7 @@ func Execute(t *testing.T, config Config, tests []Test) {
 	client := InitClient()
 	for i, test := range tests {
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
-		body, status, err := Exec(client, config, command)
+		body, header, status, err := Exec(client, config, command)
 		if err != nil {
 			t.Errorf("Error: %v", err)
 		} else if test.Expected != "" {
@@ -131,6 +130,15 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i,
 					test.Description, json1, json2, test.Query)
 			}
+		}
+		if test.ExpectedHeaders != nil {
+			for k, v := range test.ExpectedHeaders {
+				if v != (*header)[k][0] {
+					t.Errorf("\n%d. %v\nExpected header \n\t\"%v\", \ngot \n\t\"%v\"", i,
+						test.Description, v, (*header)[k][0])
+				}
+			}
+
 		}
 		if test.Status != 0 && test.Status != status {
 			t.Errorf("\n%d. %v\nExpected status \n\t\"%v\", \ngot \n\t\"%v\"", i,

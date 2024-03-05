@@ -7,11 +7,11 @@ import (
 )
 
 type QueryBuilder interface {
-	BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildInsert(table string, records []Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildDelete(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildExecute(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 
 	preferredSerializer() ResultSerializer
 }
@@ -545,7 +545,7 @@ func onConflictClause(table, schema string, fields []string,
 
 type CommonBuilder struct{}
 
-func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
 	var fields string
@@ -593,7 +593,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	}
 	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
 		conflictFields := lo.Keys(parts.conflictFields)
-		onConflict := onConflictClause(table, schema, fieldList, conflictFields, &options, info)
+		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
 		if err != nil {
 			return "", nil, err
 		}
@@ -609,7 +609,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	return insert, valueList, nil
 }
 
-func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	update string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -647,7 +647,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	return update, valueList, nil
 }
 
-func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	delete string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
@@ -667,8 +667,48 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options QueryO
 	return delete, valueList, nil
 }
 
-func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options QueryOptions, info *SchemaInfo) (
-	exec string, valueList []any, err error) {
+func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+	nmarker := len(valueList)
+	if joins != "" {
+		query += " " + joins
+	}
+	if whereClause != "" {
+		query += " WHERE " + whereClause
+	}
+	if orderClause != "" {
+		query += " ORDER BY " + orderClause
+	}
+	if parts.limit != "" || options.HasRange {
+		nmarker += 1
+		query += " LIMIT $" + strconv.Itoa(nmarker)
+		var limit string
+		if parts.limit != "" {
+			limit = parts.limit
+			options.RangeMax, _ = strconv.ParseInt(limit, 10, 64)
+			options.RangeMax -= 1
+		} else {
+			limit = strconv.FormatInt(options.RangeMax-options.RangeMin+1, 10)
+		}
+		valueList = append(valueList, limit)
+	}
+	if parts.offset != "" {
+		nmarker += 1
+		query += " OFFSET $" + strconv.Itoa(nmarker)
+		var offset string
+		if parts.offset != "" {
+			offset = parts.offset
+			options.RangeMin, _ = strconv.ParseInt(offset, 10, 64)
+			options.RangeMax += options.RangeMin
+		} else {
+			offset = strconv.FormatInt(options.RangeMin, 10)
+		}
+		valueList = append(valueList, offset)
+	}
+	return query, valueList, nil
+}
+
+func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+	query string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
 	var pairs string
@@ -707,38 +747,17 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	}
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
-	nmarker := len(valueList)
 	orderClause := orderClause("t", "", "", parts.orderFields, info)
+	query = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	exec = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
-	if joins != "" {
-		exec += " " + joins
-	}
-	if whereClause != "" {
-		exec += " WHERE " + whereClause
-	}
-	if orderClause != "" {
-		exec += " ORDER BY " + orderClause
-	}
-	if parts.limit != "" {
-		nmarker += 1
-		exec += " LIMIT $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.limit)
-	}
-	if parts.offset != "" {
-		nmarker += 1
-
-		exec += " OFFSET $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.offset)
-	}
-	return exec, valueList, nil
+	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
 	CommonBuilder
 }
 
-func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error) {
+func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
@@ -746,31 +765,10 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options Q
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
-	nmarker := len(valueList)
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
-
 	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
-	if joins != "" {
-		query += " " + joins
-	}
-	if whereClause != "" {
-		query += " WHERE " + whereClause
-	}
-	if orderClause != "" {
-		query += " ORDER BY " + orderClause
-	}
-	if parts.limit != "" {
-		nmarker += 1
-		query += " LIMIT $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.limit)
-	}
-	if parts.offset != "" {
-		nmarker += 1
 
-		query += " OFFSET $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.offset)
-	}
-	return query, valueList, nil
+	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 func (DirectQueryBuilder) preferredSerializer() ResultSerializer {
@@ -781,7 +779,7 @@ type QueryWithJSON struct {
 	CommonBuilder
 }
 
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryOptions, info *SchemaInfo) (string, []any, error) {
+func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
 	stack := BuildStack{info: info}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
@@ -789,7 +787,6 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryO
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
-	nmarker := len(valueList)
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
 	query := "SELECT "
 	if selectClause == "*" {
@@ -797,27 +794,7 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options QueryO
 	} else {
 		query += "SELECT " + selectClause + " FROM " + table
 	}
-	if joins != "" {
-		query += " " + joins
-	}
-	if whereClause != "" {
-		query += " WHERE " + whereClause
-	}
-	if orderClause != "" {
-		query += " ORDER BY " + orderClause
-	}
-	if parts.limit != "" {
-		nmarker += 1
-		query += " LIMIT $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.limit)
-	}
-	if parts.offset != "" {
-		nmarker += 1
-
-		query += " OFFSET $" + strconv.Itoa(nmarker)
-		valueList = append(valueList, parts.offset)
-	}
-	return query, valueList, nil
+	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 func (QueryWithJSON) preferredSerializer() ResultSerializer {

@@ -71,7 +71,7 @@ func GetMaps(ctx context.Context, query string) ([]map[string]any, error) {
 		return nil, err
 	}
 	options := gi.QueryOptions
-	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
+	sel, values, err := gi.QueryBuilder.BuildSelect(table, parts, &options, gi.Db.info)
 	if err != nil {
 		return nil, err
 	}

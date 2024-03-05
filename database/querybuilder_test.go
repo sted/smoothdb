@@ -142,7 +142,7 @@ func TestQueryBuilder(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		query, values, err := DirectQueryBuilder{}.BuildSelect("table", parts, QueryOptions{}, nil)
+		query, values, err := DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
 		if err != nil {
 			t.Error(err)
 		}
