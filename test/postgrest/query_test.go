@@ -2192,13 +2192,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchHeaders = [matchContentTypeJson] }
 
 		// @@ do not work
-		// {
-		// 	Description: "will select and filter a quoted column that has PostgREST reserved characters",
-		// 	Query:       "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
-		// 	Expected:    `[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
+		{
+			Description: "will select and filter a quoted column that has PostgREST reserved characters",
+			Query:       "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
+			Expected:    `[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   it "will select and filter a column that has dollars in(without double quoting)" $
 		// 	get "/do$llar$s?select=a$num$&a$num$=eq.100" `shouldRespondWith`
 		// 	  [json|[{"a$num$":100}]|]

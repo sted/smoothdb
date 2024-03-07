@@ -97,24 +97,31 @@ func TestWeirdNames(t *testing.T) {
 			Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
 			Status:      200,
 		},
+		{
+			Description: "select the table with a single column",
+			Method:      "GET",
+			Query:       "http://localhost:8082/api/dbtest/table1?select=\"a.a\"",
+			Body:        ``,
+			Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+			Status:      200,
+		},
+		{
+			Description: "select the table with a single column",
+			Method:      "GET",
+			Query:       "http://localhost:8082/api/dbtest/table1?select='a.a'",
+			Body:        ``,
+			Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+			Status:      200,
+		},
 		// @@ this should work
-		// {
-		// 	Description: "select the table with a single column",
-		// 	Method:      "GET",
-		// 	Query:       "http://localhost:8082/api/dbtest/table1?select=\"a.a\"",
-		// 	Body:        ``,
-		// 	Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
-		// 	Status:      200,
-		// },
-		// @@ this should work
-		// {
-		// 	Description: "select the table with a single column",
-		// 	Method:      "GET",
-		// 	Query:       "http://localhost:8082/api/dbtest/table1?select='a.a'",
-		// 	Body:        ``,
-		// 	Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "select the table with a single column",
+			Method:      "GET",
+			Query:       "http://localhost:8082/api/dbtest/table1?select=%22a.a%22",
+			Body:        ``,
+			Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+			Status:      200,
+		},
 		{
 			Description: "delete a table",
 			Method:      "DELETE",

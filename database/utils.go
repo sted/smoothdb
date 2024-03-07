@@ -35,6 +35,13 @@ func quoteParts(s string) string {
 
 func quoteIf(s string, q bool) string {
 	if q {
+		return quote(s)
+	} else {
+		return s
+	}
+}
+func quotePartsIf(s string, q bool) string {
+	if q {
 		return quoteParts(s)
 	} else {
 		return s
@@ -48,7 +55,7 @@ func normalize(rel, schema, table string, quote bool) string {
 	if schema != "" {
 		rel = schema + "." + rel
 	}
-	return quoteIf(rel, quote)
+	return quotePartsIf(rel, quote)
 }
 
 // _s adds schema
