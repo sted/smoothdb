@@ -182,7 +182,7 @@ outer:
 					continue outer
 				}
 			}
-			if cur == '"' {
+			if cur == '"' || cur == '\'' {
 				if len(normal) != 0 {
 					p.tokens = append(p.tokens, string(normal))
 					normal = nil
@@ -202,7 +202,7 @@ outer:
 				wasSep = false
 			}
 		} else if state == 1 { // quoted
-			if cur == '"' {
+			if cur == '"' || cur == '\'' {
 				state = 0
 				p.tokens = append(p.tokens, string(quoted))
 				wasSep = true
