@@ -66,6 +66,61 @@ func TestWeirdNames(t *testing.T) {
 			Query:       "/databases/dbtest/tables/' Wt",
 			Status:      204,
 		},
+		{
+			Description: "create a table with a column with a dot",
+			Method:      "POST",
+			Query:       "/databases/dbtest/tables",
+			Body:        `{"name": "table1", "columns": [{"name": "a.a", "type": "int"}]}`,
+			Status:      201,
+		},
+		{
+			Description: "get the table",
+			Method:      "GET",
+			Query:       "/databases/dbtest/tables/table1",
+			Body:        ``,
+			Status:      200,
+		},
+		{
+			Description: "insert in the table",
+			Method:      "POST",
+			Query:       "http://localhost:8082/api/dbtest/table1",
+			Body: `[
+				{"a.a":1},{"a.a":2},{"a.a":3}
+			]`,
+			Status: 201,
+		},
+		{
+			Description: "select the table",
+			Method:      "GET",
+			Query:       "http://localhost:8082/api/dbtest/table1",
+			Body:        ``,
+			Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+			Status:      200,
+		},
+		// @@ this should work
+		// {
+		// 	Description: "select the table with a single column",
+		// 	Method:      "GET",
+		// 	Query:       "http://localhost:8082/api/dbtest/table1?select=\"a.a\"",
+		// 	Body:        ``,
+		// 	Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+		// 	Status:      200,
+		// },
+		// @@ this should work
+		// {
+		// 	Description: "select the table with a single column",
+		// 	Method:      "GET",
+		// 	Query:       "http://localhost:8082/api/dbtest/table1?select='a.a'",
+		// 	Body:        ``,
+		// 	Expected:    `[{"a.a":1},{"a.a":2},{"a.a":3}]`,
+		// 	Status:      200,
+		// },
+		{
+			Description: "delete a table",
+			Method:      "DELETE",
+			Query:       "/databases/dbtest/tables/table1",
+			Status:      204,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

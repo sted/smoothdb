@@ -13,7 +13,14 @@ import (
 	"github.com/sted/smoothdb/database"
 )
 
-type Data map[string]any
+type SmoothError struct {
+	Subsystem string
+	Message   string
+	Code      string
+	Hint      string
+	Details   string
+	Position  int32
+}
 
 func noRecordsForInsert(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
 	if len(records) == 0 {
@@ -60,10 +67,12 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 }
 
 func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
-	return heligo.WriteJSON(w, http.StatusBadRequest, Data{"error": err.Error()})
+	heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Message: err.Error()})
+	return http.StatusBadRequest, err
 }
 
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
+	var status int
 	if _, ok := err.(*pgconn.PgError); ok {
 		dberr := err.(*pgconn.PgError)
 		var status int
@@ -85,16 +94,21 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		default:
 			status = http.StatusInternalServerError
 		}
-		return heligo.WriteJSON(w, status, &Data{
-			"code":    dberr.Code,
-			"message": dberr.Message,
-			"hint":    dberr.Hint,
+		heligo.WriteJSON(w, status, SmoothError{
+			Subsystem: "database",
+			Message:   dberr.Message,
+			Code:      dberr.Code,
+			Hint:      dberr.Hint,
+			Details:   dberr.Detail,
 		})
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		return heligo.WriteEmpty(w, http.StatusNotFound)
+		status = http.StatusNotFound
+		heligo.WriteEmpty(w, status)
 	} else {
-		return heligo.WriteJSON(w, http.StatusInternalServerError, Data{"error": err.Error()})
+		status = http.StatusInternalServerError
+		heligo.WriteJSON(w, status, SmoothError{Message: err.Error()})
 	}
+	return status, err
 }
 
 func ReadInputRecords(r heligo.Request) ([]database.Record, error) {
