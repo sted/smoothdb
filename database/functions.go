@@ -127,6 +127,6 @@ func DeleteFunction(ctx context.Context, name string) error {
 	return err
 }
 
-func ExecFunction(ctx context.Context, name string, record Record, filters Filters) ([]byte, int64, error) {
-	return Execute(ctx, name, record, filters)
+func ExecFunction(ctx context.Context, name string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
+	return Execute(ctx, name, record, filters, readonly)
 }

@@ -31,11 +31,13 @@
 * [x] Composite / Array Columns
 * [x] Range
 * [ ] Related orders
+* [ ] Related limit and ofset
 * [x] !inner joins
 * [ ] hints for rels
 * [ ] embeds with views
-* [ ] Functions (rpc)
-* [ ] function params with GET
+* [x] Functions (rpc)
+* [x] function params with GET
+* [ ] variadic function and prefer single-object
 * [ ] Generate OpenAPI
 * [ ] Projects
 * [ ] Admin

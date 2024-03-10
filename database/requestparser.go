@@ -102,6 +102,7 @@ type QueryOptions struct {
 type RequestParser interface {
 	parse(mainTable string, filters Filters) (*QueryParts, error)
 	getRequestOptions(req *Request) QueryOptions
+	filterParameters(filters Filters) Filters
 }
 
 type PostgRestParser struct {
@@ -115,9 +116,9 @@ type ParseError struct {
 
 func (e *ParseError) Error() string { return e.msg }
 
-// var postgRestReservedWords = []string{
-// 	"select", "order", "limit", "offset", "not", "and", "or",
-// }
+var postgRestReservedWords = map[string]struct{}{
+	"select": {}, "column": {}, "order": {}, "limit": {}, "offset": {}, "not": {}, "and": {}, "or": {}, "on_conlict": {},
+}
 
 // From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
 var postgRestParserOperators = map[string]string{
@@ -145,6 +146,36 @@ var postgRestParserOperators = map[string]string{
 	"plfts":  "@@",
 	"phfts":  "@@",
 	"wfts":   "@@",
+}
+
+// filterParameters checks the map of filters and skip the keys with this rationale:
+// - they are not reserved words and
+// - they do not have an operator prefixing their value
+// It returns the skipped parameters.
+func (p PostgRestParser) filterParameters(filters Filters) Filters {
+	skipped := make(Filters)
+	for k, vv := range filters {
+		if _, exists := postgRestReservedWords[k]; !exists {
+			var toRemove []int
+			for i, v := range vv {
+				prefix := strings.SplitN(v, ".", 2)[0]
+				if _, exists := postgRestParserOperators[prefix]; !exists {
+					skipped[k] = append(skipped[k], v)
+					toRemove = append(toRemove, i)
+				}
+			}
+			for i := len(toRemove) - 1; i >= 0; i-- {
+				index := toRemove[i]
+				vv = append(vv[:index], vv[index+1:]...)
+			}
+			if len(vv) == 0 {
+				delete(filters, k)
+			} else {
+				filters[k] = vv
+			}
+		}
+	}
+	return skipped
 }
 
 // scan splits the string s using the separators and

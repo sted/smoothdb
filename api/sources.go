@@ -91,8 +91,9 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("GET", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		fname := r.Param("fname")
-		json, _, err := database.ExecFunction(c, fname, nil, r.URL.Query())
+		json, count, err := database.ExecFunction(c, fname, nil, r.URL.Query(), true)
 		if err == nil {
+			database.SetResponseHeaders(c, w, r.Request, count)
 			return heligo.WriteJSONString(w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
@@ -109,15 +110,16 @@ func InitSourcesRouter(apiHelper Helper) {
 		if ok, status := noRecordsForInsert(c, w, records); ok {
 			return status, nil
 		}
-		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query())
+		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query(), false)
 		if err == nil {
 			if data == nil {
 				return heligo.WriteJSON(w, http.StatusOK, count)
 			} else {
+				database.SetResponseHeaders(c, w, r.Request, count)
 				return heligo.WriteJSONString(w, http.StatusOK, data)
 			}
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
 		}
 	})
 }

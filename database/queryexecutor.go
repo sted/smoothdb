@@ -25,7 +25,7 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, &options, gi.Db.info)
+	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -39,7 +39,7 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, &options, gi.Db.info)
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -61,7 +61,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, &options, gi.Db.info)
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -83,7 +83,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := gi.QueryOptions
-	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, &options, gi.Db.info)
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -98,15 +98,30 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 }
 
-func Execute(ctx context.Context, function string, record Record, filters Filters) ([]byte, int64, error) {
+func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
+	var params Filters
+	if readonly {
+		params = gi.RequestParser.filterParameters(filters)
+	}
 	parts, err := gi.RequestParser.parse(function, filters)
 	if err != nil {
 		return nil, 0, err
 	}
+	if readonly {
+		if len(record) != 0 {
+
+		}
+		record = make(map[string]any)
+		for k, vv := range params {
+			for _, v := range vv {
+				record[k] = v
+			}
+		}
+	}
 	options := gi.QueryOptions
 	info := gi.Db.info
-	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, &options, info)
+	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}

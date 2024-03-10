@@ -17,12 +17,32 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Range" <:> "0-0/*"]
 		//         }
+		{
+			Description:     "a proc that returns a set returns paginated results",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange",
+			Body:            `{ "min": 2, "max": 4 }`,
+			Headers:         test.Headers{"Range": []string{"0-0"}},
+			Expected:        `[ {"id": 3} ]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		//     request methodGet "/rpc/getitemrange?min=2&max=4"
 		//             (rangeHdrs (ByteRangeFromTo 0 0)) ""
 		//        `shouldRespondWith` [json| [{"id":3}] |]
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Range" <:> "0-0/*"]
 		//         }
+		{
+			Description:     "a proc that returns a set returns paginated results",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-0"}},
+			Expected:        `[ {"id": 3} ]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		//     request methodHead "/rpc/getitemrange?min=2&max=4"
 		//         (rangeHdrs (ByteRangeFromTo 0 0)) ""
 		//       `shouldRespondWith`
@@ -85,7 +105,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/getitemrange?min=2&max=4" `shouldRespondWith`
 		//       [json| [ {"id": 3}, {"id":4} ] |]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns proper json",
+			Method:      "GET",
+			Query:       "/rpc/getitemrange?min=2&max=4",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `[ {"id": 3}, {"id":4} ]`,
+			Status:      200,
+		},
 		//   it "returns CSV" $ do
 		//     request methodPost "/rpc/getitemrange"
 		//             (acceptHdrs "text/csv")
@@ -122,7 +150,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		},
 		//   it "should fail with 404 on unknown proc name" $
 		//     get "/rpc/fake" `shouldRespondWith` 404
-
+		{
+			Description: "should fail with 404 on unknown proc name",
+			Method:      "GET",
+			Query:       "/rpc/fake",
+			Status:      404,
+		},
 		//   it "should fail with 404 and hint the closest proc on unknown proc name" $
 		//     get "/rpc/sayhell" `shouldRespondWith`
 		//       [json| {
@@ -136,8 +169,19 @@ func TestPostgREST_RPC(t *testing.T) {
 
 		//   it "should fail with 404 on unknown proc args" $ do
 		//     get "/rpc/sayhello" `shouldRespondWith` 404
+		{
+			Description: "should fail with 404 on unknown proc args",
+			Method:      "GET",
+			Query:       "/rpc/sayhello",
+			Status:      404,
+		},
 		//     get "/rpc/sayhello?any_arg=value" `shouldRespondWith` 404
-
+		{
+			Description: "should fail with 404 on unknown proc args",
+			Method:      "GET",
+			Query:       "/rpc/sayhello?any_arg=value",
+			Status:      404,
+		},
 		//   it "should fail with 404 and hint the closest args on unknown proc args" $
 		//     get "/rpc/sayhello?nam=Peter" `shouldRespondWith`
 		//       [json| {
@@ -148,7 +192,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 404
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
-
+		{
+			Description: "should fail with 404 and hint the closest args on unknown proc args",
+			Method:      "GET",
+			Query:       "/rpc/sayhello?any_arg=value",
+			Status:      404,
+		},
 		//   it "should not ignore unknown args and fail with 404" $
 		//     get "/rpc/add_them?a=1&b=2&smthelse=blabla" `shouldRespondWith`
 		//     [json| {
@@ -159,7 +208,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     { matchStatus  = 404
 		//     , matchHeaders = [matchContentTypeJson]
 		//     }
-
+		{
+			Description: "should fail with 404 and hint the closest args on unknown proc args",
+			Method:      "GET",
+			Query:       "/rpc/add_them?a=1&b=2&smthelse=blabla",
+			Status:      404,
+		},
 		//   it "should fail with 404 when no json arg is found with prefer single object" $
 		//     request methodPost "/rpc/sayhello"
 		//       [("Prefer","params=single-object")]
@@ -173,7 +227,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     { matchStatus  = 404
 		//     , matchHeaders = [matchContentTypeJson]
 		//     }
-
+		{
+			Description: "should fail with 404 when no json arg is found with prefer single object",
+			Method:      "GET",
+			Query:       "/rpc/add_them?a=1&b=2&smthelse=blabla",
+			Status:      404,
+		},
 		//   it "should fail with 404 for overloaded functions with unknown args" $ do
 		//     get "/rpc/overloaded?wrong_arg=value" `shouldRespondWith`
 		//       [json| {
@@ -210,18 +269,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   get "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX" `shouldRespondWith`
 		//     [json|{"user": "mscott", "fullName": "Michael Scott", "SSN": "401-32-XXXX"}|]
 		//     { matchHeaders = [matchContentTypeJson] }
-
-		// @@ params without op for args
-
-		// {
-		// 	Description: "works when having uppercase identifiers",
-		// 	Method:      "GET",
-		// 	Query:       "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX",
-		// 	Body:        ``,
-		// 	Headers:     nil,
-		// 	Expected:    `{"user": "mscott", "fullName": "Michael Scott", "SSN": "401-32-XXXX"}`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "works when having uppercase identifiers",
+			Method:      "GET",
+			Query:       "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `{"user": "mscott", "fullName": "Michael Scott", "SSN": "401-32-XXXX"}`,
+			Status:      200,
+		},
 		//   post "/rpc/quotedFunction"
 		//     [json|{"user": "dschrute", "fullName": "Dwight Schrute", "SSN": "030-18-XXXX"}|]
 		//     `shouldRespondWith`
@@ -251,7 +307,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		},
 		//     get "/rpc/getproject?id=1" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client_id":1}]|]
-
+		{
+			Description: "returns a project",
+			Method:      "GET",
+			Query:       "/rpc/getproject?id=1",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1}]`,
+			Status:      200,
+		},
 		//   it "can filter proc results" $ do
 		//     post "/rpc/getallprojects?id=gt.1&id=lt.5&select=id" [json| {} |] `shouldRespondWith`
 		//       [json|[{"id":2},{"id":3},{"id":4}]|]
@@ -272,7 +336,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			Description: "can filter proc results",
 			Method:      "GET",
 			Query:       "/rpc/getallprojects?id=gt.1&id=lt.5&select=id",
-			Body:        `{}`,
+			Body:        ``,
 			Headers:     nil,
 			Expected:    `[{"id":2},{"id":3},{"id":4}]`,
 			Status:      200,
@@ -283,19 +347,29 @@ func TestPostgREST_RPC(t *testing.T) {
 		//          { matchStatus = 200
 		//          , matchHeaders = ["Content-Range" <:> "1-2/*"] }
 		{
-			Description: "can limit proc results",
-			Method:      "POST",
-			Query:       "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1",
-			Body:        `{}`,
-			Headers:     nil,
-			Expected:    `[{"id":3},{"id":4}]`,
-			Status:      200,
+			Description:     "can limit proc results",
+			Method:          "POST",
+			Query:           "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1",
+			Body:            `{}`,
+			Headers:         nil,
+			Expected:        `[{"id":3},{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/*"},
+			Status:          200,
 		},
 		//     get "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1"
 		//       `shouldRespondWith` [json|[{"id":3},{"id":4}]|]
 		//          { matchStatus = 200
 		//          , matchHeaders = ["Content-Range" <:> "1-2/*"] }
-
+		{
+			Description:     "can limit proc results",
+			Method:          "GET",
+			Query:           "/rpc/getallprojects?id=gt.1&id=lt.5&select=id&limit=2&offset=1",
+			Body:            `{}`,
+			Headers:         nil,
+			Expected:        `[{"id":3},{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/*"},
+			Status:          200,
+		},
 		//   it "select works on the first level" $ do
 		//     post "/rpc/getproject?select=id,name" [json| { "id": 1} |] `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7"}]|]
@@ -310,7 +384,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		},
 		//     get "/rpc/getproject?id=1&select=id,name" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7"}]|]
-
+		{
+			Description: "select works on the first level",
+			Method:      "GET",
+			Query:       "/rpc/getproject?id=1&select=id,name",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7"}]`,
+			Status:      200,
+		},
 		// context "foreign entities embedding" $ do
 		//   it "can embed if related tables are in the exposed schema" $ do
 		//     post "/rpc/getproject?select=id,name,client:clients(id),tasks(id)" [json| { "id": 1} |] `shouldRespondWith`
@@ -328,13 +410,38 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/getproject?id=1&select=id,name,client:clients(id),tasks(id)" `shouldRespondWith`
 		//       [json|[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can embed if related tables are in the exposed schema",
+			Method:      "GET",
+			Query:       "/rpc/getproject?id=1&select=id,name,client:clients(id),tasks(id)",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]`,
+			Status:      200,
+		},
 		//   it "cannot embed if the related table is not in the exposed schema" $ do
 		//     post "/rpc/single_article?select=*,article_stars(*)" [json|{ "id": 1}|]
 		//       `shouldRespondWith` 400
+		{
+			Description: "cannot embed if the related table is not in the exposed schema",
+			Method:      "POST",
+			Query:       "/rpc/single_article?select=*,article_stars(*)",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      400,
+		},
 		//     get "/rpc/single_article?id=1&select=*,article_stars(*)"
 		//       `shouldRespondWith` 400
-
+		{
+			Description: "cannot embed if the related table is not in the exposed schema",
+			Method:      "GET",
+			Query:       "/rpc/single_article?id=1&select=*,article_stars(*)",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      400,
+		},
 		//   it "can embed if the related tables are in a hidden schema but exposed as views" $ do
 		//     post "/rpc/single_article?select=id,articleStars(userId)"
 		//         [json|{ "id": 2}|]
@@ -442,10 +549,25 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json| { "id": 1} |]
 		//         `shouldRespondWith`
 		//           [json|[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]|]
+		{
+			Description: "can embed if rpc returns domain of table type",
+			Method:      "POST",
+			Query:       "/rpc/getproject_domain?select=id,name,client:clients(id),tasks(id)",
+			Body:        `{ "id": 1}`,
+			Expected:    `[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]`,
+			Status:      200,
+		},
 		//       get "/rpc/getproject_domain?id=1&select=id,name,client:clients(id),tasks(id)"
 		//         `shouldRespondWith`
 		//           [json|[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]|]
-
+		{
+			Description: "can embed if rpc returns domain of table type",
+			Method:      "GET",
+			Query:       "/rpc/getproject_domain?id=1&select=id,name,client:clients(id),tasks(id)",
+			Body:        ``,
+			Expected:    `[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]`,
+			Status:      200,
+		},
 		// context "a proc that returns an empty rowset" $
 		//   it "returns empty json array" $ do
 		//     post "/rpc/test_empty_rowset" [json| {} |] `shouldRespondWith`
@@ -541,7 +663,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     post "/rpc/ret_domain" [json|{ "val": "8" }|] `shouldRespondWith`
 		//       [json|8|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns domain value",
+			Method:      "POST",
+			Query:       "/rpc/ret_domain",
+			Body:        `{ "val": "8" }`,
+			Headers:     nil,
+			Expected:    `8`,
+			Status:      200,
+		},
 		//   it "returns range" $
 		//     post "/rpc/ret_range" [json|{ "low": 10, "up": 20 }|] `shouldRespondWith`
 		//       [json|"[10,20)"|]
@@ -584,14 +714,30 @@ func TestPostgREST_RPC(t *testing.T) {
 		},
 		//   it "cannot return composite type in hidden schema" $
 		//     post "/rpc/ret_point_3d" [json|{}|] `shouldRespondWith` 401
-
+		{
+			Description: "cannot return composite type in hidden schema",
+			Method:      "POST",
+			Query:       "/rpc/ret_point_3d",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    ``,
+			Status:      401,
+		},
 		//   when (actualPgVersion >= pgVersion110) $
 		//     it "returns domain of composite type" $
 		//       post "/rpc/ret_composite_domain"
 		//           [json|{}|]
 		//         `shouldRespondWith`
 		//           [json|{"x": 10, "y": 5}|]
-
+		{
+			Description: "returns domain of composite type",
+			Method:      "POST",
+			Query:       "/rpc/ret_composite_domain",
+			Body:        `{}`,
+			Headers:     nil,
+			Expected:    `{"x": 10, "y": 5}`,
+			Status:      200,
+		},
 		//   it "returns single row from table" $
 		//     post "/rpc/single_article?select=id"
 		//         [json|{"id": 2}|]
@@ -838,24 +984,56 @@ func TestPostgREST_RPC(t *testing.T) {
 		// it "returns proper output when having the same return col name as the proc name" $ do
 		//   post "/rpc/test" [json|{}|] `shouldRespondWith`
 		//     [json|[{"test":"hello","value":1}]|] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns proper output when having the same return col name as the proc name",
+			Method:      "POST",
+			Query:       "/rpc/test",
+			Body:        `{}`,
+			Expected:    `[{"test":"hello","value":1}]`,
+			Status:      200,
+		},
 		//   get "/rpc/test" `shouldRespondWith`
 		//     [json|[{"test":"hello","value":1}]|] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns proper output when having the same return col name as the proc name",
+			Method:      "GET",
+			Query:       "/rpc/test",
+			Expected:    `[{"test":"hello","value":1}]`,
+			Status:      200,
+		},
 		// context "procs with OUT/INOUT params" $ do
 		//   it "returns an object result when there is a single OUT param" $ do
 		//     get "/rpc/single_out_param?num=5"
 		//       `shouldRespondWith`
 		//         [json|{"num_plus_one":6}|]
-
+		{
+			Description: "returns an object result when there  is a single OUT params",
+			Method:      "GET",
+			Query:       "/rpc/single_out_param?num=5",
+			Expected:    `{"num_plus_one":6}`,
+			Status:      200,
+		},
 		//     get "/rpc/single_json_out_param?a=1&b=two"
 		//       `shouldRespondWith`
 		//         [json|{"my_json": {"a": 1, "b": "two"}}|]
-
+		{
+			Description: "returns an object result when there  is a single OUT params",
+			Method:      "GET",
+			Query:       "/rpc/single_json_out_param?a=1&b=two",
+			Expected:    `{"my_json": {"a": 1, "b": "two"}}`,
+			Status:      200,
+		},
 		//   it "returns an object result when there is a single INOUT param" $
 		//     get "/rpc/single_inout_param?num=2"
 		//       `shouldRespondWith`
 		//         [json|{"num":3}|]
-
+		{
+			Description: "returns an object result when there is a single INOUT params",
+			Method:      "GET",
+			Query:       "/rpc/single_inout_param?num=2",
+			Expected:    `{"num":3}`,
+			Status:      200,
+		},
 		//   it "returns an object result when there are many OUT params" $
 		//     get "/rpc/many_out_params"
 		//       `shouldRespondWith`
@@ -871,7 +1049,13 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/many_inout_params?num=1&str=two&b=false"
 		//       `shouldRespondWith`
 		//         [json|{"num":1,"str":"two","b":false}|]
-
+		{
+			Description: "returns an object result when there are many INOUT params",
+			Method:      "GET",
+			Query:       "/rpc/many_inout_params?num=1&str=two&b=false",
+			Expected:    `{"num":1,"str":"two","b":false}`,
+			Status:      200,
+		},
 		// context "procs with TABLE return" $ do
 		//   it "returns an object result when there is a single-column TABLE return type" $
 		//     get "/rpc/single_column_table_return"
