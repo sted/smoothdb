@@ -8,7 +8,7 @@
 * [ ] unified query for tables and views (relations)
 * [ ] caching and refreshing constraints
 * [ ] drop materialized views
-* [ ] cannot drop databases reliably
+* [x] cannot drop databases reliably
 * [ ] support for numeric
 * [ ] support for duration
 * [ ] support for multirange

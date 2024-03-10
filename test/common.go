@@ -133,7 +133,7 @@ func Execute(t *testing.T, config Config, tests []Test) {
 		}
 		if test.ExpectedHeaders != nil {
 			for k, v := range test.ExpectedHeaders {
-				if v != (*header)[k][0] {
+				if (*header)[k] == nil || v != (*header)[k][0] {
 					t.Errorf("\n%d. %v\nExpected header \n\t\"%v\", \ngot \n\t\"%v\"", i,
 						test.Description, v, (*header)[k][0])
 				}

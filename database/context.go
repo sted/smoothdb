@@ -17,7 +17,7 @@ type SmoothContext struct {
 	Role          string
 	RequestParser RequestParser
 	QueryBuilder  QueryBuilder
-	QueryOptions  QueryOptions
+	QueryOptions  *QueryOptions
 }
 
 // FillContext compiles and inserts the information related to the database, cresting a new derived context
@@ -29,7 +29,7 @@ func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbCon
 		queryOptions.Schema = dbe.defaultSchema
 	}
 	return context.WithValue(ctx, smoothTag,
-		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
+		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, &queryOptions})
 }
 
 // GetSmoothContext gets SmoothContext from the standard context
@@ -67,7 +67,7 @@ func ContextWithDbConn(parent context.Context, db *Database, conn *DbConn) conte
 	defaultBuilder := DirectQueryBuilder{}
 
 	return context.WithValue(parent, smoothTag,
-		&SmoothContext{db, conn, "", defaultParser, defaultBuilder, queryOptions})
+		&SmoothContext{db, conn, "", defaultParser, defaultBuilder, &queryOptions})
 }
 
 // GetConn gets the database connection from the current context
