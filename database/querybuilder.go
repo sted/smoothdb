@@ -737,7 +737,11 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype.IsTable {
-			t = rettype.Name
+			if rettype.IsDomain {
+				t = rettype.DomainSubType
+			} else {
+				t = rettype.Name
+			}
 			s = rettype.Schema
 		}
 	}
