@@ -138,12 +138,12 @@ POST /api/testdb/test HTTP/1.1
 
 > [!IMPORTANT]
 > In these example we use the default configuration for SmoothDB.
-> To have fully PostgREST API compliancy, you should configure:
+> To have fully PostgREST API compliancy, you should have a configuration similar to:
 > ```json 
 > 	EnableAdminRoute: false
 > 	BaseAPIURL: ""
 > 	ShortAPIURL: true
-> 	Database.AllowedDatabases: [<single_db_name>]
+> 	Database.AllowedDatabases: ["testdb"]
 > ```
 > With these configurations the "/admin" is no longer accessible and "/api/testdb/test..." becomes simply "/test...".
 
@@ -185,7 +185,23 @@ Pagination is controlled with **limit** and **offset** query parameters:
 GET /api/testdb/pages?limit=15&offset=30 HTTP/1.1
 ```
 
-The **Range** header will be added soon.
+Often it is better to manage pagination "out of band", using the Range header:
+
+```http
+GET /api/testdb/pages HTTP/1.1
+Range-Unit: items
+Range: 30-44
+```
+
+In both ways the response will be similar to:
+
+```http
+HTTP/1.1 200 OK
+Range-Unit: items
+Content-Range: 30-44/*
+```
+
+If both limit or offset parameters and range are present, the latter has precedence.
 
 ### Relationships
 
@@ -473,7 +489,7 @@ There are three categories of tests:
 * API tests 
 * PostgREST tests
 
-The last ones are taken directly from the original project.
+The last ones are taken directly from the PostgREST project.
 
 To launch all the tests:
 
