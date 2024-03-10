@@ -682,25 +682,25 @@ func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueLi
 		nmarker += 1
 		query += " LIMIT $" + strconv.Itoa(nmarker)
 		var limit string
-		if parts.limit != "" {
+		if options.HasRange {
+			limit = strconv.FormatInt(options.RangeMax-options.RangeMin+1, 10)
+		} else {
 			limit = parts.limit
 			options.RangeMax, _ = strconv.ParseInt(limit, 10, 64)
 			options.RangeMax -= 1
-		} else {
-			limit = strconv.FormatInt(options.RangeMax-options.RangeMin+1, 10)
 		}
 		valueList = append(valueList, limit)
 	}
-	if parts.offset != "" {
+	if parts.offset != "" || options.HasRange {
 		nmarker += 1
 		query += " OFFSET $" + strconv.Itoa(nmarker)
 		var offset string
-		if parts.offset != "" {
+		if options.HasRange {
+			offset = strconv.FormatInt(options.RangeMin, 10)
+		} else {
 			offset = parts.offset
 			options.RangeMin, _ = strconv.ParseInt(offset, 10, 64)
 			options.RangeMax += options.RangeMin
-		} else {
-			offset = strconv.FormatInt(options.RangeMin, 10)
 		}
 		valueList = append(valueList, offset)
 	}
