@@ -23,12 +23,14 @@ func TestMain(m *testing.M) {
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
 		"Logging.Level":       "info",
-		"Logging.FileLogging": false,
+		"Logging.FileLogging": true,
+		"Logging.FilePath":    "../../smoothdb.log",
 		"Logging.StdOut":      false,
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
-			SkipFlags: true,
+			ConfigFilePath: "../../config.jsonc",
+			SkipFlags:      true,
 		})
 	if err != nil {
 		log.Fatal(err)

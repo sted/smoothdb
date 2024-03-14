@@ -15,17 +15,21 @@ var testConfig test.Config
 func TestMain(m *testing.M) {
 	c := map[string]any{
 		"Address":                   "localhost:8082",
+		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 		"AllowAnon":                 false,
 		"EnableAdminRoute":          true,
 		"Logging.Level":             "info",
-		"Logging.FileLogging":       false,
+		"Logging.FileLogging":       true,
+		"Logging.FilePath":          "../../smoothdb.log",
 		"Logging.StdOut":            false,
+		"Database.URL":              "postgresql://postgres:@localhost:5432",
 		"Database.SchemaSearchPath": []string{"test"},
 		"Database.TransactionMode":  "rollback-allow-override",
-		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
+			ConfigFilePath: "../../config.jsonc",
+
 			SkipFlags: true,
 		})
 	if err != nil {
