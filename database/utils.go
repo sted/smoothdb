@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -94,6 +95,63 @@ func arrayEquals[T comparable](a1 []T, a2 []T) bool {
 	return true
 }
 
+func IsExist(err error) bool {
+	pgerr := err.(*pgconn.PgError)
+	if pgerr == nil {
+		return false
+	}
+	code := pgerr.Code
+	return code == "42P04" || // duplicate database
+		code == "42P06" || // duplicate schema
+		code == "42P07" || // duplicate table
+		code == "23505" || // unique constraint violation
+		code == "42710" // duplicate role
+}
+
+func QueryStructures[T any](ctx context.Context, query string, values ...any) ([]T, error) {
+	conn := GetConn(ctx)
+	rows, _ := conn.Query(ctx, query, values...)
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[T])
+}
+
+func QueryStructure[T any](ctx context.Context, query string, values ...any) (*T, error) {
+	conn := GetConn(ctx)
+	rows, _ := conn.Query(ctx, query, values...)
+	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByPos[T])
+}
+
+func rowsToStructs[T any](rows pgx.Rows) ([]T, error) {
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[T])
+}
+
+func QueryExec(ctx context.Context, query string, values ...any) error {
+	conn := GetConn(ctx)
+	_, err := conn.Exec(ctx, query, values...)
+	return err
+}
+
+type PostgresConfig struct {
+	Host     string // host (e.g. localhost) or absolute path to unix domain socket directory (e.g. /private/tmp)
+	Port     uint16
+	Database string
+	User     string
+	Password string
+}
+
+func ParsePostgresURL(url string) (*PostgresConfig, error) {
+	config, err := pgconn.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgresConfig{
+		Host:     config.Host,
+		Port:     config.Port,
+		Database: config.Database,
+		User:     config.User,
+		Password: config.Password,
+	}, nil
+}
+
 // compareStruct is used for testing
 func compareStruct[T any](dynamicStruct any, realStruct T) bool {
 	dynamicVal := reflect.ValueOf(dynamicStruct)
@@ -112,7 +170,6 @@ func compareStruct[T any](dynamicStruct any, realStruct T) bool {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -161,19 +218,6 @@ func (cr *CustomRows) Close() {
 	cr.CurrentRow = -1
 }
 
-func IsExist(err error) bool {
-	pgerr := err.(*pgconn.PgError)
-	if pgerr == nil {
-		return false
-	}
-	code := pgerr.Code
-	return code == "42P04" || // duplicate database
-		code == "42P06" || // duplicate schema
-		code == "42P07" || // duplicate table
-		code == "23505" || // unique constraint violation
-		code == "42710" // duplicate role
-}
-
 func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	// Get the column descriptions
 	columns := rows.FieldDescriptions()
@@ -207,26 +251,4 @@ func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	}
 
 	return customRows, nil
-}
-
-type PostgresConfig struct {
-	Host     string // host (e.g. localhost) or absolute path to unix domain socket directory (e.g. /private/tmp)
-	Port     uint16
-	Database string
-	User     string
-	Password string
-}
-
-func ParsePostgresURL(url string) (*PostgresConfig, error) {
-	config, err := pgconn.ParseConfig(url)
-	if err != nil {
-		return nil, err
-	}
-	return &PostgresConfig{
-		Host:     config.Host,
-		Port:     config.Port,
-		Database: config.Database,
-		User:     config.User,
-		Password: config.Password,
-	}, nil
 }
