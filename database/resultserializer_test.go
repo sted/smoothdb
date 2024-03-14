@@ -48,9 +48,9 @@ func BenchmarkSerializer(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer rows.Close()
-	serializer := gi.QueryBuilder.preferredSerializer()
 
 	b.Run("Serialize", func(b *testing.B) {
+		serializer := gi.QueryBuilder.preferredSerializer()
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
 			_, _, err := serializer.Serialize(copiedRows, false, false, info)
@@ -61,21 +61,10 @@ func BenchmarkSerializer(b *testing.B) {
 		}
 	})
 
-	b.Run("Serialize_2", func(b *testing.B) {
+	b.Run("DynStructs", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, _, err := serializer.Serialize(copiedRows, false, false, info)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-		}
-	})
-
-	b.Run("Structs", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			copiedRows.CurrentRow = -1
-			_, err := rowsToStructs(copiedRows)
+			_, err := rowsToDynStructs(copiedRows)
 			if err != nil {
 				log.Print(err)
 				return
@@ -84,15 +73,14 @@ func BenchmarkSerializer(b *testing.B) {
 		}
 	})
 
-	b.Run("Structs_2", func(b *testing.B) {
+	b.Run("DynStructPointers", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			copiedRows.CurrentRow = -1
-			_, err := rowsToStructsWithPointers(copiedRows)
+			_, err := rowsToDynStructsWithPointers(copiedRows)
 			if err != nil {
 				log.Print(err)
 				return
 			}
-			//fmt.Printf("%v", s)
 		}
 	})
 
@@ -104,7 +92,6 @@ func BenchmarkSerializer(b *testing.B) {
 				log.Print(err)
 				return
 			}
-			//fmt.Printf("%v", m)
 		}
 	})
 }

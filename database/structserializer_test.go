@@ -86,7 +86,7 @@ func TestStructSerializer(t *testing.T) {
 	}
 	defer rows.Close()
 
-	structs, err := rowsToStructs(rows)
+	structs, err := rowsToDynStructs(rows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestStructSerializer(t *testing.T) {
 	}
 	defer rows.Close()
 
-	structs, err = rowsToStructsWithPointers(rows)
+	structs, err = rowsToDynStructsWithPointers(rows)
 	if err != nil {
 		t.Fatal(err)
 	}

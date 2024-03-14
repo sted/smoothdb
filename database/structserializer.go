@@ -30,12 +30,12 @@ var typeMap = map[uint32]any{
 	pgtype.JSONBOID:       string(""),
 }
 
-// rowsToStructs converts each row to a struct with this format:
+// rowsToDynStructs converts each row to a struct with this format:
 // struct {fieldName1 fieldType1, fieldName1_IsNull bool, fieldName1 fieldType2, fieldName2_IsNull bool, ... }
 // If a field is null, the struct will have the correlated fieldName_IsNull as true.
 // It returns an array of these structures as []any.
 // This function is about twice as fast as rowsToStructsWithPointers, but it has some usage inconveniences.
-func rowsToStructs(rows pgx.Rows) ([]any, error) {
+func rowsToDynStructs(rows pgx.Rows) ([]any, error) {
 	fds := rows.FieldDescriptions()
 	var structFields []reflect.StructField
 	var newField reflect.StructField
@@ -106,19 +106,19 @@ func rowsToStructs(rows pgx.Rows) ([]any, error) {
 	return array, nil
 }
 
-// rowsToStructsWithPointers converts each row to a struct with this format:
+// rowsToDynStructsWithPointers converts each row to a struct with this format:
 // struct {fieldName1 *fieldType1, fieldName2 *fieldType2, ... }
 // If a field is null, the struct will have a nil pointer.
 // It returns an array of these structures as []any.
 // This function is two times slower than rowsToStructs, but it is more straightforward to use.
-func rowsToStructsWithPointers(rows pgx.Rows) ([]any, error) {
+func rowsToDynStructsWithPointers(rows pgx.Rows) ([]any, error) {
 	fds := rows.FieldDescriptions()
 	var structFields []reflect.StructField
 	var newField reflect.StructField
 	for i := range fds {
 		newField = reflect.StructField{
 			Name: strings.Title(fds[i].Name),
-			Type: reflect.PtrTo(reflect.TypeOf(typeMap[fds[i].DataTypeOID])),
+			Type: reflect.PointerTo(reflect.TypeOf(typeMap[fds[i].DataTypeOID])),
 		}
 		structFields = append(structFields, newField)
 	}
@@ -180,8 +180,7 @@ func rowsToStructsWithPointers(rows pgx.Rows) ([]any, error) {
 	return array, nil
 }
 
-// /table?filter
-func GetStructures(ctx context.Context, query string) ([]any, error) {
+func GetDynStructures(ctx context.Context, query string) ([]any, error) {
 	url, err := url.Parse(query)
 	if err != nil {
 		return nil, err
@@ -203,5 +202,5 @@ func GetStructures(ctx context.Context, query string) ([]any, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	return rowsToStructs(rows)
+	return rowsToDynStructs(rows)
 }

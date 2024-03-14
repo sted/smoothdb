@@ -119,7 +119,7 @@ func prepareView(s *smoothdb.Server) error {
 	m := s.MiddlewareWithDbName("example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		results, err := database.GetStructures(ctx, "products")
+		results, err := database.GetDynStructures(ctx, "products")
 		if err != nil {
 			return api.WriteError(w, err)
 		}
