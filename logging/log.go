@@ -22,7 +22,7 @@ type Logger struct {
 func InitLogger(config *Config) *Logger {
 	var writers []io.Writer
 
-	if config.FilePath != "" {
+	if config.FileLogging && config.FilePath != "" {
 		writers = append(writers, newRollingFile(config))
 	}
 	if config.StdOut {
