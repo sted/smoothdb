@@ -67,7 +67,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				}
 				fields = append(fields, pgtype.CompositeCodecField{Name: dt.Name, Type: dt})
 			}
-			conn.TypeMap().RegisterType(&pgtype.Type{Name: t.Name, OID: t.Id, Codec: &pgtype.CompositeCodec{fields}})
+			conn.TypeMap().RegisterType(&pgtype.Type{Name: t.Name, OID: t.Id, Codec: &pgtype.CompositeCodec{Fields: fields}})
 		}
 		return nil
 	}

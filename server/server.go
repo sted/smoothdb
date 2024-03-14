@@ -131,7 +131,7 @@ func (s *Server) GetDatabase(ctx context.Context, name string) (*database.Databa
 }
 
 func (s *Server) GetSystemDatabase(ctx context.Context) (*database.Database, error) {
-	return s.DBE.GetOrCreateActiveDatabase(ctx, database.SMOOTHDB)
+	return s.DBE.GetSystemDatabase(ctx)
 }
 
 func (s *Server) JWTSecret() string {

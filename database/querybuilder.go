@@ -594,9 +594,6 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
 		conflictFields := lo.Keys(parts.conflictFields)
 		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
-		if err != nil {
-			return "", nil, err
-		}
 		insert += onConflict
 	}
 	if options.ReturnRepresentation {
