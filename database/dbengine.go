@@ -21,54 +21,68 @@ var dbe *DbEngine
 // DbEngine represents the database engine (the PostgreSQL instance or "cluster")
 type DbEngine struct {
 	config           *Config
-	pool             *pgxpool.Pool
 	dbtracer         pgx.QueryTracer
 	activeDatabases  sync.Map
 	dbCreationLock   sync.Mutex
 	allowedDatabases map[string]struct{}
 	defaultSchema    string
 	authRole         string
+	mainDb           *Database
 }
 
 // InitDbEngine creates a connection pool, connects to the engine and initializes it
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
-	context := context.Background()
 
 	dbe = &DbEngine{config: dbConfig}
 
-	poolConfig, err := pgxpool.ParseConfig(dbConfig.URL)
+	config, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
 		return nil, err
 	}
-	// System db
-	configDbName := poolConfig.ConnConfig.Config.Database
+	// Main db name
+	configDbName := config.ConnConfig.Config.Database
 	if configDbName == "" {
 		configDbName = SMOOTHDB
 	}
 
 	// Authenticator role
-	dbe.authRole = poolConfig.ConnConfig.User
+	dbe.authRole = config.ConnConfig.User
 	// Db logging
 	if logger != nil {
 		dbe.dbtracer = &tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
 			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
 		}
-		poolConfig.ConnConfig.Tracer = dbe.dbtracer
 	}
 
-	// Create DBE connection pool
-	pool, err := pgxpool.NewWithConfig(context, poolConfig)
+	ctx := context.Background()
+	conn, err := pgx.ConnectConfig(ctx, config.ConnConfig)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create pool with %q (%w)", dbConfig.URL, err)
+		return nil, err
 	}
-	dbe.pool = pool
+	defer conn.Close(ctx)
 
 	// Test connection
-	err = pool.Ping(context)
+	err = conn.Ping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect with %q (%w)", dbConfig.URL, err)
 	}
+
+	// Activate main db
+	dbi, err := dbe.getDatabase(ctx, conn, configDbName)
+	if err != nil {
+		return nil, err
+	}
+	db := &Database{}
+	db.Name = dbi.Name
+	db.Owner = dbi.Owner
+	db.activation = make(chan struct{})
+	err = db.activate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dbe.activeDatabases.Store(configDbName, db)
+	dbe.mainDb = db
 
 	if len(dbConfig.AllowedDatabases) != 0 {
 		dbe.allowedDatabases = map[string]struct{}{}
@@ -87,7 +101,6 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 
 // Close closes the database engine and all of its active databases
 func (dbe *DbEngine) Close() {
-	dbe.pool.Close()
 	dbe.activeDatabases.Range(func(k, v any) bool {
 		v.(*Database).Close()
 		dbe.activeDatabases.Delete(k)
@@ -97,17 +110,8 @@ func (dbe *DbEngine) Close() {
 
 // AcquireConnection acquires a connection in the database engine
 func (dbe *DbEngine) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
-	return dbe.pool.Acquire(ctx)
+	return dbe.mainDb.AcquireConnection(ctx)
 }
-
-// func (dbe *DBEngine) GetActiveDatabases(ctx context.Context) []Database {
-// 	var databases []Database
-// 	dbe.activeDatabases.Range(func(k, v any) bool {
-// 		databases = append(databases, v.(Database))
-// 		return true
-// 	})
-// 	return databases
-// }
 
 // IsDatabaseAllowed checks if a database can be managed by smoothdb
 func (dbe *DbEngine) IsDatabaseAllowed(name string) bool {
@@ -149,20 +153,28 @@ func (dbe *DbEngine) GetDatabases(ctx context.Context) ([]DatabaseInfo, error) {
 	return databases, nil
 }
 
-// GetDatabase gets information about a database.
-// Use GetActiveDatabase to get an active instance of a database
-func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
+func (dbe *DbEngine) getDatabase(ctx context.Context, conn *pgx.Conn, name string) (*DatabaseInfo, error) {
 	if !dbe.IsDatabaseAllowed(name) {
 		return nil, fmt.Errorf("database %q not found or not allowed", name)
 	}
 	dbi := &DatabaseInfo{}
-	// dbe.pool instead GetConn so this func can be used inside others
-	err := dbe.pool.QueryRow(ctx, databaseQuery+
+	err := conn.QueryRow(ctx, databaseQuery+
 		" WHERE d.datname = $1", name).Scan(&dbi.Name, &dbi.Owner)
 	if err != nil {
 		return nil, fmt.Errorf("database %q not found (%w)", name, err)
 	}
 	return dbi, nil
+}
+
+// GetDatabase gets information about a database.
+// Use GetActiveDatabase to get an active instance of a database
+func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
+	conn, err := dbe.mainDb.pool.Acquire(ctx)
+	defer conn.Release()
+	if err != nil {
+		return nil, err
+	}
+	return dbe.getDatabase(ctx, conn.Conn(), name)
 }
 
 // CreateDatabase creates a new database
@@ -317,4 +329,9 @@ func (dbe *DbEngine) GetOrCreateActiveDatabase(ctx context.Context, name string)
 		return db, err
 	}
 	return dbe.createActiveDatabase(ctx, name)
+}
+
+// GetMainDatabase is used to get the main db
+func (dbe *DbEngine) GetMainDatabase(ctx context.Context) (*Database, error) {
+	return dbe.mainDb, nil
 }

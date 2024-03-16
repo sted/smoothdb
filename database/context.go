@@ -42,7 +42,7 @@ func GetSmoothContext(ctx context.Context) *SmoothContext {
 }
 
 // ContextWithDb creates a context and gets a connection to the requested database,
-// with a specific role. The db parameter can be nil, to indicate the system database.
+// with a specific role. The db parameter can be nil, to indicate the main database.
 // It is used to start a communication with a database, both internally and from code using
 // smoothdb as a library.
 func ContextWithDb(parent context.Context, db *Database, role string) (context.Context, *DbPoolConn, error) {
@@ -52,22 +52,33 @@ func ContextWithDb(parent context.Context, db *Database, role string) (context.C
 		conn, err = db.AcquireConnection(parent)
 	} else {
 		conn, err = dbe.AcquireConnection(parent)
+		if err != nil {
+			return nil, nil, err
+		}
+		db, err = dbe.GetMainDatabase(parent)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	PrepareConnection(parent, conn, role, "", true)
-	return ContextWithDbConn(parent, db, conn.Conn()), conn, nil
+	err = PrepareConnection(parent, conn, role, "", true)
+	if err != nil {
+		return nil, nil, err
+	}
+	return contextImpl(parent, db, conn.Conn(), role), conn, nil
 }
 
 // ContextWithDb creates a context using a specific connection
 func ContextWithDbConn(parent context.Context, db *Database, conn *DbConn) context.Context {
+	return contextImpl(parent, db, conn, "")
+}
+
+func contextImpl(parent context.Context, db *Database, conn *DbConn, role string) context.Context {
 	defaultParser := PostgRestParser{}
 	queryOptions := QueryOptions{}
 	defaultBuilder := DirectQueryBuilder{}
 
 	return context.WithValue(parent, smoothTag,
-		&SmoothContext{db, conn, "", defaultParser, defaultBuilder, &queryOptions})
+		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, &queryOptions})
 }
 
 // GetConn gets the database connection from the current context
@@ -80,6 +91,12 @@ func GetConn(ctx context.Context) *DbConn {
 func GetDb(ctx context.Context) *Database {
 	gi := GetSmoothContext(ctx)
 	return gi.Db
+}
+
+// GetDbRole gets the role from the current context
+func GetDbRole(ctx context.Context) string {
+	gi := GetSmoothContext(ctx)
+	return gi.Role
 }
 
 // SetRequestParser allows changing the request parser in the current context

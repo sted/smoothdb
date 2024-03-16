@@ -130,8 +130,8 @@ func (s *Server) GetDatabase(ctx context.Context, name string) (*database.Databa
 	return s.DBE.GetActiveDatabase(ctx, name)
 }
 
-func (s *Server) GetSystemDatabase(ctx context.Context) (*database.Database, error) {
-	return s.DBE.GetSystemDatabase(ctx)
+func (s *Server) GetMainDatabase(ctx context.Context) (*database.Database, error) {
+	return s.DBE.GetMainDatabase(ctx)
 }
 
 func (s *Server) JWTSecret() string {
