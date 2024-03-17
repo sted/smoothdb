@@ -4,9 +4,18 @@ import (
 	"context"
 )
 
+type RangeError struct {
+	msg string // description of error
+}
+
+func (e RangeError) Error() string { return e.msg }
+
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := gi.QueryOptions
+	if options.RangeMin > options.RangeMax {
+		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
+	}
 	info := gi.Db.info
 	rows, err := gi.Conn.Query(ctx, query, values...)
 	if err != nil {

@@ -55,12 +55,18 @@ func noRecordsForUpdate(ctx context.Context, w http.ResponseWriter, records []da
 }
 
 func WriteError(w http.ResponseWriter, err error) (int, error) {
+	var status int
 	switch err.(type) {
 	case *database.ParseError, *database.BuildError:
 		return WriteBadRequest(w, err)
 	case *database.SerializeError:
-		w.WriteHeader(http.StatusNotAcceptable)
-		return http.StatusNotAcceptable, err
+		status = http.StatusNotAcceptable
+		w.WriteHeader(status)
+		return status, err
+	case *database.RangeError:
+		status = http.StatusRequestedRangeNotSatisfiable
+		w.WriteHeader(status)
+		return status, err
 	default:
 		return WriteServerError(w, err)
 	}

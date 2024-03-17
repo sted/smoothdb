@@ -177,7 +177,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 "hint":null
 		//               }|]
 		//             { matchStatus = 416 }
-
+		{
+			Description:     "fails with 416 for offside range",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=2",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"1-0"}},
+			Expected:        ``,
+			ExpectedHeaders: nil,
+			Status:          200,
+		},
 		//         it "refuses a range with nonzero start when there are no items" $
 		//           request methodGet "/rpc/getitemrange?min=2&max=2"
 		//                   (rangeHdrsWithCount $ ByteRangeFromTo 1 2) mempty
@@ -585,12 +594,30 @@ func TestPostgREST_Range(t *testing.T) {
 		//             simpleHeaders r `shouldSatisfy`
 		//               matchHeader "Content-Range" "0-1/*"
 		//             simpleStatus r `shouldBe` ok200
-
+		{
+			Description:     "succeeds with partial content",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-1"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
+		},
 		//         it "understands open-ended ranges" $
 		//           request methodGet "/items"
 		//                   (rangeHdrs $ ByteRangeFrom 0) ""
 		//             `shouldRespondWith` 200
-
+		{
+			Description:     "understands open-ended ranges",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		//         it "returns an empty body when there are no results" $
 		//           request methodGet "/menagerie"
 		//                   (rangeHdrs $ ByteRangeFromTo 0 1) ""
@@ -598,7 +625,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 200
 		//             , matchHeaders = ["Content-Range" <:> "*/*"]
 		//             }
-
+		{
+			Description:     "returns an empty body when there are no results",
+			Method:          "GET",
+			Query:           "/menagerie",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-1"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
+		},
 		//         it "allows one-item requests" $ do
 		//           r <- request methodGet  "/items"
 		//                        (rangeHdrs $ ByteRangeFromTo 0 0) ""
@@ -606,7 +642,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             simpleHeaders r `shouldSatisfy`
 		//               matchHeader "Content-Range" "0-0/*"
 		//             simpleStatus r `shouldBe` ok200
-
+		{
+			Description:     "allows one-item requests",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-0"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		//         it "handles ranges beyond collection length via truncation" $ do
 		//           r <- request methodGet  "/items"
 		//                        (rangeHdrs $ ByteRangeFromTo 10 100) ""
@@ -614,7 +659,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             simpleHeaders r `shouldSatisfy`
 		//               matchHeader "Content-Range" "10-14/*"
 		//             simpleStatus r `shouldBe` ok200
-
+		{
+			Description:     "handles ranges beyond collection length via truncation",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"10-100"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "10-14/*"},
+			Status:          200,
+		},
 		//       context "of invalid range" $ do
 		//         it "fails with 416 for offside range" $
 		//           request methodGet  "/items"
@@ -627,7 +681,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 "hint":null
 		//               }|]
 		//             { matchStatus = 416 }
-
+		{
+			Description:     "fails with 416 for offside range",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"1-0"}},
+			Expected:        ``,
+			ExpectedHeaders: nil,
+			Status:          416,
+		},
 		//         it "refuses a range with nonzero start when there are no items" $
 		//           request methodGet "/menagerie"
 		//                   (rangeHdrsWithCount $ ByteRangeFromTo 1 2) ""

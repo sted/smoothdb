@@ -31,7 +31,7 @@ type BuildError struct {
 	msg string // description of error
 }
 
-func (e *BuildError) Error() string { return e.msg }
+func (e BuildError) Error() string { return e.msg }
 
 // BuildStack represents the context when navigating the AST produced by the parser
 type BuildStack struct {
@@ -689,6 +689,9 @@ func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueLi
 			limit = parts.limit
 			options.RangeMax, _ = strconv.ParseInt(limit, 10, 64)
 			options.RangeMax -= 1
+			if options.RangeMax == -1 { // limit = 0
+				options.RangeMin = -1
+			}
 		}
 		valueList = append(valueList, limit)
 	}
@@ -699,9 +702,11 @@ func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueLi
 		if options.HasRange {
 			offset = strconv.FormatInt(options.RangeMin, 10)
 		} else {
-			offset = parts.offset
-			options.RangeMin, _ = strconv.ParseInt(offset, 10, 64)
-			options.RangeMax += options.RangeMin
+			if options.RangeMax != -1 {
+				offset = parts.offset
+				options.RangeMin, _ = strconv.ParseInt(offset, 10, 64)
+				options.RangeMax += options.RangeMin
+			}
 		}
 		valueList = append(valueList, offset)
 	}

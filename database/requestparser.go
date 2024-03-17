@@ -114,7 +114,7 @@ type ParseError struct {
 	msg string // description of error
 }
 
-func (e *ParseError) Error() string { return e.msg }
+func (e ParseError) Error() string { return e.msg }
 
 var postgRestReservedWords = map[string]struct{}{
 	"select": {}, "column": {}, "order": {}, "limit": {}, "offset": {}, "not": {}, "and": {}, "or": {}, "on_conlict": {},
