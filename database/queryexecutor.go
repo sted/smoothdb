@@ -14,8 +14,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	}
 	defer rows.Close()
 	serializer := gi.QueryBuilder.preferredSerializer()
-	data, count, err := serializer.Serialize(rows, false, options.Singular, info)
-	return data, count, err
+	return serializer.Serialize(rows, false, options.Singular, info)
 }
 
 func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {

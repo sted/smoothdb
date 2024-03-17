@@ -427,6 +427,10 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 				node.field.jsonPath + ")"
 		}
 		where += fieldname
+		if node.operator == "IN" && len(node.values) == 0 {
+			where += " = ANY('{}')"
+			return where, valueList
+		}
 		where += " " + node.operator + " "
 		if node.operator == "IN" {
 			where += "("

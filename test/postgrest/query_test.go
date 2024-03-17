@@ -1115,7 +1115,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  get "/rpc/search?id=1&select=id,always_true" `shouldRespondWith`
 		// 		[json|[{"id":1,"always_true":true}]|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "computed column on rpc",
+			Query:       "/rpc/search?id=1&select=id,always_true",
+			Headers:     nil,
+			Expected:    `[{"id":1,"always_true":true}]`,
+			Status:      200,
+		},
 		// 	it "overloaded computed columns on both tables" $ do
 		// 	  get "/items?id=eq.1&select=id,computed_overload" `shouldRespondWith`
 		// 		[json|[{"id":1,"computed_overload":true}]|]
@@ -1141,7 +1147,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  get "/rpc/search?id=1&select=id,computed_overload" `shouldRespondWith`
 		// 		[json|[{"id":1,"computed_overload":true}]|]
 		// 		{ matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "overloaded computed column on rpc",
+			Query:       "/rpc/search?id=1&select=id,computed_overload",
+			Headers:     nil,
+			Expected:    `[{"id":1,"computed_overload":true}]`,
+			Status:      200,
+		},
 		//   when (actualPgVersion >= pgVersion110) $ do
 		// 	describe "partitioned tables embedding" $ do
 		// 	  it "can request a table as parent from a partitioned table" $
@@ -2190,8 +2202,6 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" `shouldRespondWith`
 		// 	  [json|[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
-		// @@ do not work
 		{
 			Description: "will select and filter a quoted column that has PostgREST reserved characters",
 			Query:       "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1",
@@ -2203,7 +2213,6 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/do$llar$s?select=a$num$&a$num$=eq.100" `shouldRespondWith`
 		// 	  [json|[{"a$num$":100}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
 		// @@ type not supported
 		// {
 		// 	Description: "will select and filter a column that has dollars in(without double quoting)",
@@ -2269,29 +2278,29 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" `shouldRespondWith`
 		// 	  [json| [{"name":"Hebdon, John"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "succeeds when only quoted values are present",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")",
+			Headers:     nil,
+			Expected:    `[{"name":"Hebdon, John"}]`,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")" `shouldRespondWith`
 		// 	  [json| [{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "succeeds when only quoted values are present",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")",
+			Headers:     nil,
+			Expected:    `[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" `shouldRespondWith`
 		// 	  [json| [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "succeeds when only quoted values are present",
-			Query:       "/w_or_wo_comma_names?name=in.(\"Hebdon,%20John\")",
-			Headers:     nil,
-			Expected:    `[{"name":"Hebdon, John"}]`,
-			Status:      200,
-		},
-		{
-			Description: "succeeds when only quoted values are present",
-			Query:       "/w_or_wo_comma_names?name=in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)",
-			Headers:     nil,
-			Expected:    `[{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}]`,
-			Status:      200,
-		},
-		{
-			Description: "succeeds when only quoted values are present",
-			Query:       "/w_or_wo_comma_names?name=not.in.(%22Hebdon,%20John%22,%22Williams,%20Mary%22,%22Smith,%20Joseph%22)&limit=3",
+			Query:       "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3",
 			Headers:     nil,
 			Expected:    `[{"name":"David White"},{"name":"Larry Thompson"},{"name":"Double O Seven(007)"}]`,
 			Status:      200,
@@ -2303,7 +2312,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "succeeds w/ and w/o quoted values",
-			Query:       "/w_or_wo_comma_names?name=in.(David%20White,\"Hebdon,%20John\")",
+			Query:       "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")",
 			Headers:     nil,
 			Expected:    `[{"name":"Hebdon, John"},{"name":"David White"}]`,
 			Status:      200,
@@ -2323,7 +2332,7 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "succeeds w/ and w/o quoted values",
-			Query:       "/w_or_wo_comma_names?name=in.(\"Double%20O%20Seven(007)\")",
+			Query:       "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")",
 			Headers:     nil,
 			Expected:    `[{"name":"Double O Seven(007)"}]`,
 			Status:      200,
@@ -2378,19 +2387,21 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  [json| [{ "name": "\"" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 
-		// @@ do not work
-		// {
-		// 	Description: "accepts single double quotes as values",
-		// 	Query:       "/w_or_wo_comma_names?name=in.(\")",
-		// 	Expected:    `[{"name":"\""}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
+		// @@ do not work as intended, pathological case
+		// works with \\\" instead of \"
+		{
+			Description: "accepts single double quotes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(\\\")",
+			Expected:    `[{"name":"\""}]`,
+			Headers:     nil,
+			Status:      200,
+		},
+		// @@ do not work as intended, pathological case
+
 		// 	get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" `shouldRespondWith`
 		// 	  [json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
-		// @@ do not work
+		// @@ do not work as intended, pathological case
 		// {
 		// 	Description: "accepts single double quotes as values",
 		// 	Query:       "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
@@ -2398,10 +2409,18 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	Headers:     nil,
 		// 	Status:      200,
 		// },
+		// @@ do not work as intended, pathological case
 		//   it "accepts backslashes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\\)" `shouldRespondWith`
 		// 	  [json| [{ "name": "\\" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "accepts backslashes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(\\\\)",
+			Expected:    `[{"name":"\\"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// 	get "/w_or_wo_comma_names?name=in.(/\\Slash/\\Beast/\\)" `shouldRespondWith`
 		// 	  [json| [ { "name": "/\\Slash/\\Beast/\\" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
@@ -2411,36 +2430,95 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	it "works for integer" $
 		// 	  get "/items_with_different_col_types?int_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?int_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for text" $
 		// 	  get "/items_with_different_col_types?text_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?text_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for bool" $
 		// 	  get "/items_with_different_col_types?bool_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?bool_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for bytea" $
 		// 	  get "/items_with_different_col_types?bin_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?bin_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for char" $
 		// 	  get "/items_with_different_col_types?char_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?char_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for date" $
 		// 	  get "/items_with_different_col_types?date_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?date_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for real" $
 		// 	  get "/items_with_different_col_types?real_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?real_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		// 	it "works for time" $
 		// 	  get "/items_with_different_col_types?time_data=in.()" `shouldRespondWith`
 		// 		[json| [] |] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns an empty result for IN when no value is present",
+			Query:       "/items_with_different_col_types?time_data=in.()",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//   it "returns all results for not.in when no value is present" $
 		// 	get "/items_with_different_col_types?int_data=not.in.()&select=int_data" `shouldRespondWith`
 		// 	  [json| [{int_data: 1}] |] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns all results for not.in when no value is present",
+			Query:       "/items_with_different_col_types?int_data=not.in.()&select=int_data",
+			Headers:     nil,
+			Expected:    `[{"int_data": 1}]`,
+			Status:      200,
+		},
 		//   it "returns an empty result ignoring spaces" $
 		// 	get "/items_with_different_col_types?int_data=in.(    )" `shouldRespondWith`
 		// 	  [json| [] |] { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "returns an empty result ignoring spaces",
+			Query:       "/items_with_different_col_types?int_data=in.(    )",
+			Headers:     nil,
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//   it "only returns an empty result set if the in value is empty" $
 		// 	get "/items_with_different_col_types?int_data=in.( ,3,4)"
 		// 	  `shouldRespondWith` (
@@ -2452,7 +2530,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus = 400
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
-
+		{
+			Description: "only returns an empty result set if the in value is empty",
+			Query:       "/items_with_different_col_types?int_data=in.( ,3,4)",
+			Headers:     nil,
+			Expected:    ``,
+			Status:      400,
+		},
 		// describe "Embedding when column name = table name" $ do
 		//   it "works with child embeds" $
 		// 	get "/being?select=*,descendant(*)&limit=1" `shouldRespondWith`
@@ -2480,7 +2564,15 @@ func TestPostgREST_Query(t *testing.T) {
 		//   it "can be queried by using regular filters" $
 		// 	get "/projects_dump?id=in.(1,2,3)" `shouldRespondWith`
 		// 	  [json| [{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
+		// 	  { matchHeaders = [matchContentTypeJson] }"
+		// @@ should configure external file
+		// {
+		// 	Description: "Foreign table can be queried by using regular filters",
+		// 	Query:       "/projects_dump?id=in.(1,2,3)",
+		// 	Headers:     nil,
+		// 	Expected:    `[{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]`,
+		// 	Status:      200,
+		// },
 		//   it "can be queried with select, order and limit" $
 		// 	get "/projects_dump?select=id,name&order=id.desc&limit=3" `shouldRespondWith`
 		// 	  [json| [{"id":5,"name":"Orphan"}, {"id":4,"name":"OSX"}, {"id":3,"name":"IOS"}] |]

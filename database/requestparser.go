@@ -184,7 +184,9 @@ func (p PostgRestParser) filterParameters(filters Filters) Filters {
 // sep is the set of single char separators.
 // longSep is the set of multi char separators (put longest first!)
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
-	state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+	//state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+	var quot bool
+	var esc bool
 	var normal []byte
 	var quoted []byte
 	var cur byte
@@ -192,8 +194,12 @@ func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
 outer:
 	for i := 0; i < len(s); i++ {
 		cur = s[i]
-		if state == 0 { // normal
+		if !quot && !esc { // normal
 			if wasSep && cur == ' ' {
+				continue
+			}
+			if cur == '\\' {
+				esc = true
 				continue
 			}
 			// Manage long separators
@@ -218,7 +224,7 @@ outer:
 					p.tokens = append(p.tokens, string(normal))
 					normal = nil
 				}
-				state = 1
+				quot = true
 				quoted = nil
 				wasSep = false
 			} else if strings.Contains(sep, string(cur)) {
@@ -232,19 +238,23 @@ outer:
 				normal = append(normal, cur)
 				wasSep = false
 			}
-		} else if state == 1 { // quoted
+		} else if quot && !esc { // quoted
 			if cur == '"' || cur == '\'' {
-				state = 0
+				quot = false
 				p.tokens = append(p.tokens, string(quoted))
 				wasSep = true
 			} else if cur == '\\' {
-				state = 2
+				esc = true
 			} else {
 				quoted = append(quoted, cur)
 			}
-		} else if state == 2 { // escaped
-			state = 1
-			quoted = append(quoted, cur)
+		} else if esc { // escaped
+			esc = false
+			if quot {
+				quoted = append(quoted, cur)
+			} else {
+				normal = append(normal, cur)
+			}
 		}
 	}
 	if len(normal) != 0 {
@@ -549,6 +559,10 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 	token := p.next()
 	if token == "" {
 		return &ParseError{"value expected"}
+	}
+	if token == ")" { // empty set for IN
+		p.back()
+		return nil
 	}
 	value := token
 	level := 0
