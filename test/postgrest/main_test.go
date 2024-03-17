@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 		"Logging.FileLogging":       true,
 		"Logging.FilePath":          "../../smoothdb.log",
 		"Logging.StdOut":            false,
-		"Database.URL":              "postgresql://postgres:@localhost:5432",
+		"Database.URL":              "postgresql://postgres:@localhost:5432/postgres",
 		"Database.SchemaSearchPath": []string{"test"},
 		"Database.TransactionMode":  "rollback-allow-override",
 	}
