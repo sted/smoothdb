@@ -360,7 +360,7 @@ func prepareView(s *smoothdb.Server) error {
 	m := s.MiddlewareWithDbName("example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		results, err := database.GetStructures(ctx, "products")
+		results, err := database.GetDynStructures(ctx, "products")
 		if err != nil {
 			return api.WriteError(w, err)
 		}
@@ -404,7 +404,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | BaseAdminURL | Base URL for the Admin API | "/admin" |
 | CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
 | CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
-| General transaction mode for operations | Enable debug access | false |
+| EnableDebugRoute | Enable debug access | false |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
