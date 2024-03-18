@@ -72,7 +72,7 @@ func TestEngine(t *testing.T) {
 		// create a connection to test_base, so we will need to force deleting sessions to clone it
 		nctx, nconn, _ := ContextWithDb(ctx, db, "test")
 
-		admin_ctx, admin_conn, _ := ContextWithDb(ctx, nil, "admin")
+		admin_ctx, admin_conn, _ := ContextWithDb(ctx, nil, "postgres")
 		defer ReleaseConn(admin_ctx, admin_conn)
 		_, err = dbe.CloneDatabase(admin_ctx, "test_base_2", "test_base", true)
 		if err != nil {
