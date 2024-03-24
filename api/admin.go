@@ -489,11 +489,9 @@ func InitAdminRouter(apiHelper Helper) {
 	// FUNCTIONS
 
 	databases.Handle("GET", "/:dbname/functions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
-
-		policies, err := db.GetFunctions(c)
+		functions, err := database.GetFunctions(c)
 		if err == nil {
-			return heligo.WriteJSON(w, http.StatusOK, policies)
+			return heligo.WriteJSON(w, http.StatusOK, functions)
 		} else {
 			return WriteServerError(w, err)
 		}

@@ -121,7 +121,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		}
 	}
 	// Functions
-	functions, err := db.GetFunctions(ctx)
+	functions, err := GetFunctions(ctx)
 	if err != nil {
 		return nil, err
 	}

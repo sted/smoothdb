@@ -39,7 +39,7 @@ const functionsQuery = `
 	WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
 	GROUP BY p.oid, n.nspname, l.lanname;`
 
-func (db *Database) GetFunctions(ctx context.Context) ([]Function, error) {
+func GetFunctions(ctx context.Context) ([]Function, error) {
 	conn := GetConn(ctx)
 	functions := []Function{}
 	query := functionsQuery
