@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.2.4] - 2024-02-19
+## 0.2.4 - 2024-03-19
 
 ### Added
 * Support for Range header
