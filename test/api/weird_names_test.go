@@ -78,6 +78,7 @@ func TestWeirdNames(t *testing.T) {
 			Method:      "GET",
 			Query:       "/databases/dbtest/tables/table1",
 			Body:        ``,
+			Expected:    `{"name":"public.table1","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a.a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"public.table1"}]}`,
 			Status:      200,
 		},
 		{
@@ -125,6 +126,44 @@ func TestWeirdNames(t *testing.T) {
 			Description: "delete a table",
 			Method:      "DELETE",
 			Query:       "/databases/dbtest/tables/table1",
+			Status:      204,
+		},
+		{
+			Description: "create a table with a column with a double quote",
+			Method:      "POST",
+			Query:       "/databases/dbtest/tables",
+			Body:        `{"name": "table2", "columns": [{"name": "a\"a", "type": "int"}]}`,
+			Status:      201,
+		},
+		{
+			Description: "get the table",
+			Method:      "GET",
+			Query:       "/databases/dbtest/tables/table2",
+			Body:        ``,
+			Expected:    `{"name":"public.table2","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a\"a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"public.table2"}]}`,
+			Status:      200,
+		},
+		{
+			Description: "insert in the table",
+			Method:      "POST",
+			Query:       "http://localhost:8082/api/dbtest/table2",
+			Body: `[
+				{"a\"a":1},{"a\"a":2},{"a\"a":3}
+			]`,
+			Status: 201,
+		},
+		{
+			Description: "select the table",
+			Method:      "GET",
+			Query:       "http://localhost:8082/api/dbtest/table2",
+			Body:        ``,
+			Expected:    `[{"a\"a":1},{"a\"a":2},{"a\"a":3}]`,
+			Status:      200,
+		},
+		{
+			Description: "delete a table",
+			Method:      "DELETE",
+			Query:       "/databases/dbtest/tables/table2",
 			Status:      204,
 		},
 	}
