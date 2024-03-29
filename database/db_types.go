@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
+const secFromUnixEpochToY2K int64 = 946684800
+
 func toInt16(buf []byte) int16 {
 	return int16(binary.BigEndian.Uint16(buf))
 }

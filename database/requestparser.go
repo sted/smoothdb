@@ -889,6 +889,8 @@ func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
 		options.ContentType = "json"
 	case "text/csv":
 		options.ContentType = "csv"
+	default:
+		options.ContentType = "json"
 	}
 
 	preferValues := header.Values("Prefer")

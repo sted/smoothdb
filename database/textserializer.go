@@ -6,20 +6,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
-const secFromUnixEpochToY2K int64 = 946684800
-
-type ResultSerializer interface {
+type TextSerializer interface {
 	Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error)
 }
 
-type DirectJSONSerializer struct {
+type TextBuilder struct {
 	strings.Builder
 	dateBuf [128]byte
 	date    []byte
@@ -29,7 +27,7 @@ type SerializeError struct {
 	msg string // description of error
 }
 
-func (e *SerializeError) Error() string { return e.msg }
+func (e SerializeError) Error() string { return e.msg }
 
 // appendString is adapted from the standard library
 
@@ -52,37 +50,36 @@ var safeSet = [utf8.RuneSelf]bool{' ': true, '!': true, '"': false, '#': true, '
 // tags ("<" and ">"), and the ampersand ("&").
 var htmlSafeSet = [utf8.RuneSelf]bool{' ': true, '!': true, '"': false, '#': true, '$': true, '%': true, '&': false, '\'': true, '(': true, ')': true, '*': true, '+': true, ',': true, '-': true, '.': true, '/': true, '0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true, ':': true, ';': true, '<': false, '=': true, '>': false, '?': true, '@': true, 'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true, 'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true, 'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true, '[': true, '\\': false, ']': true, '^': true, '_': true, '`': true, 'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true, 'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true, 'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true, '{': true, '|': true, '}': true, '~': true, '\u007f': true}
 
-func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
-	d.WriteByte('"')
+func (t *TextBuilder) appendString(s []byte, escapeHTML bool) {
 	start := 0
 	for i := 0; i < len(s); {
-		if b := s[i]; b < utf8.RuneSelf {
-			if htmlSafeSet[b] || (!escapeHTML && safeSet[b]) {
+		if byt := s[i]; byt < utf8.RuneSelf {
+			if htmlSafeSet[byt] || (!escapeHTML && safeSet[byt]) {
 				i++
 				continue
 			}
 			if start < i {
-				d.Write(s[start:i])
+				t.Write(s[start:i])
 			}
-			d.WriteByte('\\')
-			switch b {
+			t.WriteByte('\\')
+			switch byt {
 			case '\\', '"':
-				d.WriteByte(b)
+				t.WriteByte(byt)
 			case '\n':
-				d.WriteByte('n')
+				t.WriteByte('n')
 			case '\r':
-				d.WriteByte('r')
+				t.WriteByte('r')
 			case '\t':
-				d.WriteByte('t')
+				t.WriteByte('t')
 			default:
 				// This encodes bytes < 0x20 except for \t, \n and \r.
 				// If escapeHTML is set, it also escapes <, >, and &
 				// because they can lead to security holes when
 				// user-controlled strings are rendered into JSON
 				// and served to some browsers.
-				d.WriteString(`u00`)
-				d.WriteByte(hex[b>>4])
-				d.WriteByte(hex[b&0xF])
+				t.WriteString(`u00`)
+				t.WriteByte(hex[byt>>4])
+				t.WriteByte(hex[byt&0xF])
 			}
 			i++
 			start = i
@@ -91,9 +88,9 @@ func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
 		c, size := utf8.DecodeRune(s[i:])
 		if c == utf8.RuneError && size == 1 {
 			if start < i {
-				d.Write(s[start:i])
+				t.Write(s[start:i])
 			}
-			d.WriteString(`\ufffd`)
+			t.WriteString(`\ufffd`)
 			i += size
 			start = i
 			continue
@@ -107,10 +104,10 @@ func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
 		// See http://timelessrepo.com/json-isnt-a-javascript-subset for discussion.
 		if c == '\u2028' || c == '\u2029' {
 			if start < i {
-				d.Write(s[start:i])
+				t.Write(s[start:i])
 			}
-			d.WriteString(`\u202`)
-			d.WriteByte(hex[c&0xF])
+			t.WriteString(`\u202`)
+			t.WriteByte(hex[c&0xF])
 			i += size
 			start = i
 			continue
@@ -118,50 +115,49 @@ func (d *DirectJSONSerializer) appendString(s []byte, escapeHTML bool) {
 		i += size
 	}
 	if start < len(s) {
-		d.Write(s[start:])
+		t.Write(s[start:])
 	}
-	d.WriteByte('"')
 }
 
-func (d *DirectJSONSerializer) appendInt2(buf []byte) {
-	d.WriteString(strconv.FormatInt(int64(toInt16(buf)), 10))
+func (t *TextBuilder) appendInt2(buf []byte) {
+	t.WriteString(strconv.FormatInt(int64(toInt16(buf)), 10))
 }
 
-func (d *DirectJSONSerializer) appendInt4(buf []byte) {
-	d.WriteString(strconv.FormatInt(int64(toInt32(buf)), 10))
+func (t *TextBuilder) appendInt4(buf []byte) {
+	t.WriteString(strconv.FormatInt(int64(toInt32(buf)), 10))
 }
 
-func (d *DirectJSONSerializer) appendInt8(buf []byte) {
-	d.WriteString(strconv.FormatInt(toInt64(buf), 10))
+func (t *TextBuilder) appendInt8(buf []byte) {
+	t.WriteString(strconv.FormatInt(toInt64(buf), 10))
 }
 
-func (d *DirectJSONSerializer) appendFloat4(buf []byte) {
-	d.WriteString(strconv.FormatFloat(float64(toFloat32(buf)), 'g', -1, 32))
+func (t *TextBuilder) appendFloat4(buf []byte) {
+	t.WriteString(strconv.FormatFloat(float64(toFloat32(buf)), 'g', -1, 32))
 }
 
-func (d *DirectJSONSerializer) appendFloat8(buf []byte) {
-	d.WriteString(strconv.FormatFloat(toFloat64(buf), 'g', -1, 64))
+func (t *TextBuilder) appendFloat8(buf []byte) {
+	t.WriteString(strconv.FormatFloat(toFloat64(buf), 'g', -1, 64))
 }
 
-func (d *DirectJSONSerializer) appendBool(buf []byte) {
+func (t *TextBuilder) appendBool(buf []byte) {
 	if toBool(buf) {
-		d.WriteString("true")
+		t.WriteString("true")
 	} else {
-		d.WriteString("false")
+		t.WriteString("false")
 	}
 }
 
-func (d *DirectJSONSerializer) appendTime(buf []byte) {
-	d.WriteByte('"')
+func (t *TextBuilder) appendTime(buf []byte) {
+	t.WriteByte('"')
 	tim := toTime(buf)
-	d.date = d.dateBuf[:0]
-	d.date = tim.AppendFormat(d.date, time.RFC3339Nano)
-	d.Write(d.date)
-	d.WriteByte('"')
+	t.date = t.dateBuf[:0]
+	t.date = tim.AppendFormat(t.date, time.RFC3339Nano)
+	t.Write(t.date)
+	t.WriteByte('"')
 }
 
-func (d *DirectJSONSerializer) appendInterval(buf []byte) {
-	d.WriteByte('"')
+func (t *TextBuilder) appendInterval(buf []byte) {
+	t.WriteByte('"')
 	microseconds := int64(binary.BigEndian.Uint64(buf))
 	days := int32(binary.BigEndian.Uint32(buf[8:]))
 	months := int32(binary.BigEndian.Uint32(buf[12:]))
@@ -176,50 +172,54 @@ func (d *DirectJSONSerializer) appendInterval(buf []byte) {
 
 	started := false
 	if years > 0 {
-		d.WriteString(strconv.FormatInt(int64(years), 10))
-		d.WriteString(" year")
+		t.WriteString(strconv.FormatInt(int64(years), 10))
+		t.WriteString(" year")
 		if years > 1 {
-			d.WriteByte('s')
+			t.WriteByte('s')
 		}
 		started = true
 	}
 	if months > 0 {
 		if started {
-			d.WriteByte(' ')
+			t.WriteByte(' ')
 		}
-		d.WriteString(strconv.FormatInt(int64(months), 10))
-		d.WriteString(" mon")
+		t.WriteString(strconv.FormatInt(int64(months), 10))
+		t.WriteString(" mon")
 		if months > 1 {
-			d.WriteByte('s')
+			t.WriteByte('s')
 		}
 		started = true
 	}
 	if days > 0 {
 		if started {
-			d.WriteByte(' ')
+			t.WriteByte(' ')
 		}
-		d.WriteString(strconv.FormatInt(int64(days), 10))
-		d.WriteString(" day")
+		t.WriteString(strconv.FormatInt(int64(days), 10))
+		t.WriteString(" day")
 		if days > 1 {
-			d.WriteByte('s')
+			t.WriteByte('s')
 		}
 		started = true
 	}
 	if hours > 0 || minutes > 0 || seconds > 0 {
 		if started {
-			d.WriteByte(' ')
+			t.WriteByte(' ')
 		}
 		timeStr := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
-		d.WriteString(timeStr)
+		t.WriteString(timeStr)
 	}
-	d.WriteByte('"')
+	t.WriteByte('"')
 }
 
-func (d *DirectJSONSerializer) appendJSON(buf []byte) {
-	d.Write(buf)
+func (t *TextBuilder) appendJSON(buf []byte) {
+	t.Write(buf)
 }
 
-func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32, info *SchemaInfo) {
+type appendTyper interface {
+	appendType(buf []byte, typ uint32, info *SchemaInfo) error
+}
+
+func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) {
 	rp := 0
 	numDims := binary.BigEndian.Uint32(buf[rp:])
 	if numDims != 1 {
@@ -231,7 +231,7 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32, info *SchemaInf
 	// }
 	rp += 4
 	elemOID := binary.BigEndian.Uint32(buf[rp:])
-	if elemOID != t {
+	if elemOID != typ {
 
 	}
 	rp += 4
@@ -239,17 +239,17 @@ func (d *DirectJSONSerializer) appendArray(buf []byte, t uint32, info *SchemaInf
 	rp += 4
 	//elemLowerBound := int32(binary.BigEndian.Uint32(buf[rp:]))
 	rp += 4
-	d.WriteByte('[')
+	t.WriteByte('[')
 	for i := 0; i < elemCount; i++ {
 		if i > 0 {
-			d.WriteByte(',')
+			t.WriteByte(',')
 		}
 		elemLen := int((binary.BigEndian.Uint32(buf[rp:])))
 		rp += 4
-		d.appendType(buf[rp:], elemOID, info)
+		at.appendType(buf[rp:], elemOID, info)
 		rp += elemLen
 	}
-	d.WriteByte(']')
+	t.WriteByte(']')
 }
 
 // 0 = ()      = 00000
@@ -269,8 +269,8 @@ const upperInclusiveMask = 4
 const lowerUnboundedMask = 8
 const upperUnboundedMask = 16
 
-func (d *DirectJSONSerializer) appendRange(buf []byte, t uint32, info *SchemaInfo) {
-	d.WriteByte('"')
+func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) {
+	t.WriteByte('"')
 	rp := 0
 	rangeType := buf[rp]
 	switch {
@@ -278,43 +278,43 @@ func (d *DirectJSONSerializer) appendRange(buf []byte, t uint32, info *SchemaInf
 		rangeType&lowerUnboundedMask > 0:
 		// nothing to do
 	case rangeType&lowerInclusiveMask > 0:
-		d.WriteByte('[')
+		t.WriteByte('[')
 	default:
-		d.WriteByte('(')
+		t.WriteByte('(')
 	}
 	rp += 1
 	valuLen1 := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
-	d.appendType(buf[rp:], t, info)
+	at.appendType(buf[rp:], typ, info)
 	rp += int(valuLen1)
-	d.WriteByte(',')
+	t.WriteByte(',')
 	valuLen2 := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
-	d.appendType(buf[rp:], t, info)
+	at.appendType(buf[rp:], typ, info)
 	rp += int(valuLen2)
 	switch {
 	case rangeType&emptyMask > 0,
 		rangeType&upperUnboundedMask > 0:
 		// nothing to do
 	case rangeType&upperInclusiveMask > 0:
-		d.WriteByte(']')
+		t.WriteByte(']')
 	default:
-		d.WriteByte(')')
+		t.WriteByte(')')
 	}
-	d.WriteByte('"')
+	t.WriteByte('"')
 }
 
-func (d *DirectJSONSerializer) appendComposite(buf []byte, t *Type, info *SchemaInfo) {
+func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) {
 	rp := 0
 	// nfields := binary.BigEndian.Uint32(buf[rp:])
 	// if nfields := len(t.SubTypeIds) {
 
 	// }
 	rp += 4
-	d.WriteByte('{')
-	for i, tid := range t.SubTypeIds {
+	t.WriteByte('{')
+	for i, tid := range typ.SubTypeIds {
 		if i > 0 {
-			d.WriteByte(',')
+			t.WriteByte(',')
 		}
 		oid := binary.BigEndian.Uint32(buf[rp:])
 		if oid != tid {
@@ -324,113 +324,112 @@ func (d *DirectJSONSerializer) appendComposite(buf []byte, t *Type, info *Schema
 		len := int(binary.BigEndian.Uint32(buf[rp:]))
 		rp += 4
 
-		d.WriteByte('"')
-		d.WriteString(t.SubTypeNames[i])
-		d.WriteString("\":")
-		d.appendType(buf[rp:], tid, info)
+		t.WriteByte('"')
+		t.WriteString(typ.SubTypeNames[i])
+		t.WriteString("\":")
+		at.appendType(buf[rp:], tid, info)
 		rp += len
 	}
 
-	d.WriteByte('}')
+	t.WriteByte('}')
 }
 
-func (d *DirectJSONSerializer) appendEnum(buf []byte) {
-	d.WriteByte('"')
-	d.Write(buf)
-	d.WriteByte('"')
+func (t *TextBuilder) appendEnum(buf []byte) {
+	t.Write(buf)
 }
 
-func (d *DirectJSONSerializer) appendTextSearch(buf []byte) {
-	d.WriteByte('"')
-	d.Write(buf)
-	d.WriteByte('"')
+type JSONSerializer struct {
+	TextBuilder
 }
 
-func (d *DirectJSONSerializer) appendType(buf []byte, t uint32, info *SchemaInfo) error {
+func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) error {
 	if buf == nil {
-		d.WriteString("null")
+		j.WriteString("null")
 		return nil
 	}
-	switch t {
+	switch typ {
 	case pgtype.Int2OID:
-		d.appendInt2(buf)
+		j.appendInt2(buf)
 	case pgtype.Int4OID, pgtype.OIDOID:
-		d.appendInt4(buf)
+		j.appendInt4(buf)
 	case pgtype.Int8OID:
-		d.appendInt8(buf)
+		j.appendInt8(buf)
 	case pgtype.Float4OID:
-		d.appendFloat4(buf)
+		j.appendFloat4(buf)
 	case pgtype.Float8OID:
-		d.appendFloat8(buf)
+		j.appendFloat8(buf)
 	case pgtype.BoolOID:
-		d.appendBool(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID:
-		d.appendString(buf, true)
+		j.appendBool(buf)
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, 3614 /*text search*/ :
+		j.WriteByte('"')
+		j.appendString(buf, true)
+		j.WriteByte('"')
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
-		d.appendTime(buf)
+		j.appendTime(buf)
 	case pgtype.JSONOID, pgtype.JSONBOID:
-		d.appendJSON(buf)
+		j.appendJSON(buf)
 	case pgtype.IntervalOID:
-		d.appendInterval(buf)
-	case 3614: // text search
-		d.appendTextSearch(buf)
+		j.appendInterval(buf)
 	default:
-		ct := info.GetTypeById(t)
+		ct := info.GetTypeById(typ)
 		if ct != nil {
 			switch {
 			case ct.IsArray:
-				d.appendArray(buf, ct.ArraySubType, info)
+				j.appendArray(buf, ct.ArraySubType, info, j)
 			case ct.IsRange:
-				d.appendRange(buf, *ct.RangeSubType, info)
+				j.appendRange(buf, *ct.RangeSubType, info, j)
 			case ct.IsComposite:
-				d.appendComposite(buf, ct, info)
+				j.appendComposite(buf, ct, info, j)
 			case ct.IsEnum:
-				d.appendEnum(buf)
+				j.WriteByte('"')
+				j.appendEnum(buf)
+				j.WriteByte('"')
 			default:
-				return fmt.Errorf("cannot serialize, type not supported (%d)", t)
+				return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
 			}
 		} else {
-			return fmt.Errorf("cannot serialize, type not supported (%d)", t)
+			return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
 		}
 	}
 	return nil
 }
 
-func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	fds := rows.FieldDescriptions()
 	var count int64
 
 	if !single {
-		d.WriteByte('[')
+		j.WriteByte('[')
 	}
 
 	for rows.Next() {
 		count++
 		bufRaw := rows.RawValues()
 		if count > 1 {
-			d.WriteByte(',')
+			j.WriteByte(',')
 		}
 		if !scalar {
-			d.WriteByte('{')
+			j.WriteByte('{')
 		}
 		for i := range fds {
 			buf := bufRaw[i]
 			fd := fds[i]
 			if i > 0 {
-				d.WriteByte(',')
+				j.WriteByte(',')
 			}
 			if !scalar {
-				d.appendString([]byte(fds[i].Name), true)
-				d.WriteByte(':')
+				j.WriteByte('"')
+				j.WriteString(fd.Name)
+				j.WriteString("\":")
 			}
-			d.appendType(buf, fd.DataTypeOID, info)
+			j.appendType(buf, fd.DataTypeOID, info)
 		}
 		if !scalar {
-			d.WriteByte('}')
+			j.WriteByte('}')
 		}
 	}
 	if !single {
-		d.WriteByte(']')
+		j.WriteByte(']')
 	}
 
 	if err := rows.Err(); err != nil {
@@ -442,7 +441,150 @@ func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool
 			return nil, 0, &SerializeError{}
 		}
 	}
-	return []byte(d.String()), count, nil
+	return []byte(j.String()), count, nil
+}
+
+type CSVSerializer struct {
+	TextBuilder
+}
+
+func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) error {
+	if buf == nil {
+		csv.WriteString("null")
+		return nil
+	}
+	switch typ {
+	case pgtype.Int2OID:
+		csv.appendInt2(buf)
+	case pgtype.Int4OID, pgtype.OIDOID:
+		csv.appendInt4(buf)
+	case pgtype.Int8OID:
+		csv.appendInt8(buf)
+	case pgtype.Float4OID:
+		csv.appendFloat4(buf)
+	case pgtype.Float8OID:
+		csv.appendFloat8(buf)
+	case pgtype.BoolOID:
+		csv.appendBool(buf)
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, 3614 /*text search*/ :
+		csv.appendField(buf) //
+	case pgtype.TimestampOID, pgtype.TimestamptzOID:
+		csv.appendTime(buf)
+	case pgtype.JSONOID, pgtype.JSONBOID:
+		csv.appendField(buf) //
+	case pgtype.IntervalOID:
+		csv.appendInterval(buf)
+	default:
+		ct := info.GetTypeById(typ)
+		if ct != nil {
+			switch {
+			case ct.IsArray:
+				csv.appendArray(buf, ct.ArraySubType, info, csv)
+			case ct.IsRange:
+				csv.appendRange(buf, *ct.RangeSubType, info, csv)
+			case ct.IsComposite:
+				csv.appendComposite(buf, ct, info, csv)
+			case ct.IsEnum:
+				csv.WriteByte('"')
+				csv.appendEnum(buf)
+				csv.WriteByte('"')
+			default:
+				return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+			}
+		} else {
+			return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+		}
+	}
+	return nil
+}
+
+func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+	fds := rows.FieldDescriptions()
+	var count int64
+
+	for i := range fds {
+		if i > 0 {
+			csv.WriteByte(',')
+		}
+		csv.WriteByte('"')
+		csv.WriteString(fds[i].Name)
+	}
+	for rows.Next() {
+		count++
+		bufRaw := rows.RawValues()
+		if count > 1 {
+			csv.WriteByte('\n')
+		}
+		for i := range fds {
+			buf := bufRaw[i]
+			fd := fds[i]
+			if i > 0 {
+				csv.WriteByte(',')
+			}
+			csv.appendType(buf, fd.DataTypeOID, info)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if single {
+		// verify that we have at least one and one only row
+		if count != 1 {
+			return nil, 0, &SerializeError{}
+		}
+	}
+	return []byte(csv.String()), count, nil
+}
+
+// @@ adapted from encoding/csv:
+// https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/csv/writer.go
+func (csv *CSVSerializer) appendField(buf []byte) {
+	field := string(buf)
+	if !csv.fieldNeedsQuotes(field) {
+		csv.WriteString(field)
+		return
+	}
+	csv.WriteByte('"')
+	for len(field) > 0 {
+		// Search for special characters.
+		i := strings.IndexByte(field, '"')
+		if i < 0 {
+			i = len(field)
+		}
+		// Copy verbatim everything before the special character.
+		csv.WriteString(field[:i])
+		field = field[i:]
+		// Encode the special character.
+		if len(field) > 0 {
+			csv.WriteString(`""`)
+			field = field[1:]
+		}
+	}
+	csv.WriteByte('"')
+}
+
+// fieldNeedsQuotes reports whether our field must be enclosed in quotes.
+// @@ taken directly from encoding/csv:
+// https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/csv/writer.go
+func (csv CSVSerializer) fieldNeedsQuotes(field string) bool {
+	if field == "" {
+		return false
+	}
+
+	if field == `\.` {
+		return true
+	}
+
+	for i := 0; i < len(field); i++ {
+		c := field[i]
+		if c == '\n' || c == '\r' || c == '"' || c == ',' {
+			return true
+		}
+	}
+
+	r1, _ := utf8.DecodeRuneInString(field)
+	return unicode.IsSpace(r1)
 }
 
 type DatabaseJSONSerializer struct{}

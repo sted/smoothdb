@@ -13,7 +13,7 @@ type QueryBuilder interface {
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 
-	preferredSerializer() ResultSerializer
+	preferredSerializer() TextSerializer
 }
 
 // Join containts information to create a join relationship.
@@ -781,8 +781,8 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
 }
 
-func (DirectQueryBuilder) preferredSerializer() ResultSerializer {
-	return &DirectJSONSerializer{}
+func (DirectQueryBuilder) preferredSerializer() TextSerializer {
+	return &JSONSerializer{}
 }
 
 type QueryWithJSON struct {
@@ -807,6 +807,6 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
 }
 
-func (QueryWithJSON) preferredSerializer() ResultSerializer {
+func (QueryWithJSON) preferredSerializer() TextSerializer {
 	return DatabaseJSONSerializer{}
 }
