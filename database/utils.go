@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -15,7 +14,7 @@ func escapeIdent(identifier string) string {
 }
 
 func quote(s string) string {
-	return strconv.Quote(escapeIdent(s))
+	return "\"" + escapeIdent(s) + "\""
 }
 
 func escapeLiteral(identifier string) string {
