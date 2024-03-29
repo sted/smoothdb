@@ -420,9 +420,8 @@ func (d *DirectJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool
 				d.WriteByte(',')
 			}
 			if !scalar {
-				d.WriteByte('"')
-				d.WriteString(fds[i].Name)
-				d.WriteString("\":")
+				d.appendString([]byte(fds[i].Name), true)
+				d.WriteByte(':')
 			}
 			d.appendType(buf, fd.DataTypeOID, info)
 		}
