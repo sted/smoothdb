@@ -105,7 +105,7 @@ func GetTable(ctx context.Context, name string) (*Table, error) {
 }
 
 func composeColumnSQL(sql *string, column *Column) {
-	*sql += "\"" + column.Name + "\" " + column.Type
+	*sql += quote(column.Name) + " " + column.Type
 	if column.NotNull {
 		*sql += " NOT NULL"
 	}
