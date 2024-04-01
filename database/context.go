@@ -24,7 +24,7 @@ type SmoothContext struct {
 func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbConn, role string) context.Context {
 	defaultParser := PostgRestParser{}
 	defaultBuilder := DirectQueryBuilder{}
-	queryOptions := defaultParser.getRequestOptions(r)
+	queryOptions := defaultParser.getQueryOptions(r)
 	if queryOptions.Schema == "" {
 		queryOptions.Schema = dbe.defaultSchema
 	}
