@@ -29,15 +29,20 @@
 * [x] nested filters
 * [x] "singular" response
 * [x] Composite / Array Columns
-* [x] Range
-* [ ] Related orders
-* [ ] Related limit and ofset
 * [x] !inner joins
-* [ ] hints for rels
-* [ ] embeds with views
+* [x] CORS
+* [x] TLS
+* [x] Range
 * [x] Functions (rpc)
 * [x] function params with GET
-* [ ] variadic function and prefer single-object
+* [x] CSV
+* [x] application/x-www-form-urlencoded as input
+* [ ] Related orders
+* [ ] Related limit and offset
+* [ ] hints for rels
+* [ ] embeds with views
+* [ ] variadic function
+* [ ] prefer single-object
 * [ ] Generate OpenAPI
 * [ ] Projects
 * [ ] Admin
@@ -46,7 +51,6 @@
 * [ ] Computed relationships
 * [ ] More types: Multirange, Domain, Numeric
 * [ ] Check returned headers, count, range, location, etc
-* [ ] CSV
 * [ ] Support isdistinct,all,any
 * [ ] PUT for upsert
 * [ ] Triggers
@@ -57,10 +61,7 @@
 * [ ] Activity / stats
 * [ ] Indexes
 * [ ] application/octet-stream as output
-* [ ] application/x-www-form-urlencoded as input
 * [ ] HEAD, OPTIONS
-* [x] CORS
-* [x] TLS
 * [ ] Db Encryption
 * [ ] Open telemetry
 * [ ] Table inheritance
