@@ -1,7 +1,6 @@
 package database
 
 import (
-	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -87,6 +86,7 @@ type QueryOptions struct {
 	ReturnRepresentation bool
 	MergeDuplicates      bool
 	IgnoreDuplicates     bool
+	ParamsAsSingleObject bool
 	TxCommit             bool
 	TxRollback           bool
 	Singular             bool
@@ -101,7 +101,7 @@ type QueryOptions struct {
 // Initially we will support PostgREST mode and later perhaps others (Django?).
 type RequestParser interface {
 	parse(mainTable string, filters Filters) (*QueryParts, error)
-	getRequestOptions(req *Request) QueryOptions
+	getQueryOptions(req *Request) QueryOptions
 	filterParameters(filters Filters) Filters
 }
 
@@ -875,22 +875,23 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 
 var rangeRe = regexp.MustCompile(`^(\d+)?-(\d+)?$`)
 
-func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
+func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	header := req.Header
 	options := QueryOptions{}
 
-	accept := header.Get("Accept")
-	mediatype, _, _ := mime.ParseMediaType(accept)
+	acceptHeaders := header.Values("Accept")
+	mediatype := contentNegotiation(acceptHeaders)
+
 	switch mediatype {
 	case "application/vnd.pgrst.object+json":
-		options.ContentType = "json"
+		options.ContentType = mediatype
 		options.Singular = true
 	case "application/json":
-		options.ContentType = "json"
+		options.ContentType = mediatype
 	case "text/csv":
-		options.ContentType = "csv"
+		options.ContentType = mediatype
 	default:
-		options.ContentType = "json"
+		options.ContentType = "unknown/unknown"
 	}
 
 	preferValues := header.Values("Prefer")
@@ -902,6 +903,8 @@ func (p PostgRestParser) getRequestOptions(req *Request) QueryOptions {
 			options.MergeDuplicates = true
 		case "resolution=ignore-duplicates":
 			options.IgnoreDuplicates = true
+		case "params=single-object":
+			options.ParamsAsSingleObject = true
 		case "tx=commit":
 			options.TxCommit = true
 		case "tx=rollback":

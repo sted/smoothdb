@@ -2,10 +2,15 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"strconv"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -67,6 +72,10 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 		status = http.StatusRequestedRangeNotSatisfiable
 		w.WriteHeader(status)
 		return status, err
+	case *database.ContentTypeError:
+		status = http.StatusUnsupportedMediaType
+		w.WriteHeader(status)
+		return status, err
 	default:
 		return WriteServerError(w, err)
 	}
@@ -117,32 +126,136 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	return status, err
 }
 
-func ReadInputRecords(r heligo.Request) ([]database.Record, error) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	isArray := false
-	for _, c := range body {
-		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-			continue
+func jsonIsArray(content []byte) bool {
+	for len(content) > 0 {
+		r, size := utf8.DecodeRune(content)
+		if r == utf8.RuneError && size == 1 {
+			return false
 		}
-		isArray = c == '['
-		break
-	}
-	var records []database.Record
-	if isArray {
-		err = json.Unmarshal(body, &records)
-		if err != nil {
-			return nil, err
+		if !unicode.IsSpace(r) {
+			return r == '['
 		}
+		content = content[size:]
+	}
+	return false
+}
+
+// List of supported input content types
+var supportedContentTypes = []string{
+	"application/json",
+	"text/csv",
+	"application/x-www-form-urlencoded",
+	"application/octet-stream",
+}
+var defaultContentType = "application/json"
+
+// getContentType gets the (input) content type and check if it is among
+// the supported ones. Return "" otherwise or if we get an invalid header
+func getContentType(r heligo.Request) string {
+	var contentType string
+	var err error
+	header := r.Header.Get("Content-Type")
+	if header == "" {
+		contentType = defaultContentType
 	} else {
-		var record database.Record
-		err = json.Unmarshal(body, &record)
+		contentType, _, err = mime.ParseMediaType(header)
+		if err != nil {
+			return ""
+		}
+	}
+	for _, ct := range supportedContentTypes {
+		if contentType == ct {
+			return ct
+		}
+	}
+	return ""
+}
+
+func ReadInputRecords(r heligo.Request, contentType string) ([]database.Record, error) {
+	var records []database.Record
+
+	switch contentType {
+	case "application/json":
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			return nil, err
+		}
+		isArray := jsonIsArray(body)
+
+		if isArray {
+			err = json.Unmarshal(body, &records)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			var record database.Record
+			err = json.Unmarshal(body, &record)
+			if err != nil {
+				return nil, err
+			}
+			records = append(records, record)
+		}
+
+	case "text/csv":
+		reader := csv.NewReader(r.Body)
+		csvData, err := reader.ReadAll()
+		if err != nil {
+			return nil, err
+		}
+
+		// Assuming the first row contains headers
+		headers := csvData[0]
+		for _, row := range csvData[1:] {
+			record := database.Record{}
+			for i, value := range row {
+				header := headers[i]
+				if value != "NULL" {
+					record[header] = value
+				} else {
+					record[header] = nil
+				}
+			}
+			records = append(records, record)
+		}
+
+	case "application/x-www-form-urlencoded":
+		if err := r.ParseForm(); err != nil {
+			return nil, err
+		}
+		record := database.Record{}
+		for key, values := range r.Form { // r.Form contains both query params and form values
+			record[key] = values[0] // Taking the first value for each key
 		}
 		records = append(records, record)
 	}
+
 	return records, nil
+}
+
+func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r *http.Request, count int64) {
+	sc := database.GetSmoothContext(ctx)
+	options := sc.QueryOptions
+	// @@ must check if the table has a pk
+	w.Header().Set("Content-Location", r.RequestURI)
+	// Content-Range
+	var rangeString string
+	if count == 0 {
+		rangeString = "*/*"
+	} else {
+		rangeString = strconv.FormatInt(options.RangeMin, 10) + "-" +
+			strconv.FormatInt(options.RangeMin+count-1, 10) + "/*"
+	}
+	w.Header().Set("Content-Range", rangeString)
+}
+
+func WriteContent(ctx context.Context, w http.ResponseWriter, status int, content []byte) (int, error) {
+	sc := database.GetSmoothContext(ctx)
+	ct := sc.QueryOptions.ContentType
+	if ct == "application/json" || ct == "text/csv" {
+		ct += "; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.WriteHeader(status)
+	_, err := w.Write(content)
+	return status, err
 }

@@ -10,9 +10,18 @@ type RangeError struct {
 
 func (e RangeError) Error() string { return e.msg }
 
+type ContentTypeError struct {
+	msg string // description of error
+}
+
+func (e ContentTypeError) Error() string { return e.msg }
+
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := gi.QueryOptions
+	if options.ContentType == "unknown/unknown" {
+		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+	}
 	if options.RangeMin > options.RangeMax {
 		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
 	}
@@ -22,7 +31,12 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 		return nil, 0, err
 	}
 	defer rows.Close()
-	serializer := gi.QueryBuilder.preferredSerializer()
+	var serializer TextSerializer
+	if options.ContentType == "text/csv" {
+		serializer = &CSVSerializer{}
+	} else {
+		serializer = gi.QueryBuilder.preferredSerializer()
+	}
 	return serializer.Serialize(rows, false, options.Singular, info)
 }
 
@@ -147,5 +161,11 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		}
 	}
 	single := f != nil && !f.ReturnIsSet
-	return gi.QueryBuilder.preferredSerializer().Serialize(rows, scalar, single, info)
+	var serializer TextSerializer
+	if options.ContentType == "text/csv" {
+		serializer = &CSVSerializer{}
+	} else {
+		serializer = gi.QueryBuilder.preferredSerializer()
+	}
+	return serializer.Serialize(rows, scalar, single, info)
 }

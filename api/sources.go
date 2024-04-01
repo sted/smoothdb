@@ -22,8 +22,8 @@ func InitSourcesRouter(apiHelper Helper) {
 		sourcename := r.Param("sourcename")
 		json, count, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
-			database.SetResponseHeaders(c, w, r.Request, count)
-			return heligo.WriteJSONString(w, http.StatusOK, json)
+			SetResponseHeaders(c, w, r.Request, count)
+			return WriteContent(c, w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
 		}
@@ -31,7 +31,11 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		records, err := ReadInputRecords(r)
+		ctype := getContentType(r)
+		if ctype == "" {
+			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		}
+		records, err := ReadInputRecords(r, ctype)
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
@@ -44,7 +48,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			if data == nil {
 				return heligo.WriteJSON(w, http.StatusCreated, count)
 			} else {
-				return heligo.WriteJSONString(w, http.StatusCreated, data)
+				return WriteContent(c, w, http.StatusCreated, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -53,7 +57,11 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		records, err := ReadInputRecords(r)
+		ctype := getContentType(r)
+		if ctype == "" {
+			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		}
+		records, err := ReadInputRecords(r, ctype)
 		if err != nil || len(records) > 1 {
 			return WriteBadRequest(w, err)
 		}
@@ -66,7 +74,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			if data == nil {
 				return heligo.WriteEmpty(w, http.StatusNoContent)
 			} else {
-				return heligo.WriteJSONString(w, http.StatusOK, data)
+				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -80,7 +88,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			if data == nil {
 				return heligo.WriteEmpty(w, http.StatusNoContent)
 			} else {
-				return heligo.WriteJSONString(w, http.StatusOK, data)
+				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
 			return WriteError(w, err)
@@ -93,8 +101,8 @@ func InitSourcesRouter(apiHelper Helper) {
 		fname := r.Param("fname")
 		json, count, err := database.ExecFunction(c, fname, nil, r.URL.Query(), true)
 		if err == nil {
-			database.SetResponseHeaders(c, w, r.Request, count)
-			return heligo.WriteJSONString(w, http.StatusOK, json)
+			SetResponseHeaders(c, w, r.Request, count)
+			return WriteContent(c, w, http.StatusOK, json)
 		} else {
 			return WriteError(w, err)
 		}
@@ -102,7 +110,11 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		fname := r.Param("fname")
-		records, err := ReadInputRecords(r)
+		ctype := getContentType(r)
+		if ctype == "" {
+			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		}
+		records, err := ReadInputRecords(r, ctype)
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
@@ -115,8 +127,8 @@ func InitSourcesRouter(apiHelper Helper) {
 			if data == nil {
 				return heligo.WriteJSON(w, http.StatusOK, count)
 			} else {
-				database.SetResponseHeaders(c, w, r.Request, count)
-				return heligo.WriteJSONString(w, http.StatusOK, data)
+				SetResponseHeaders(c, w, r.Request, count)
+				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
 			return WriteError(w, err)
