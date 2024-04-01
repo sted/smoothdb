@@ -19,19 +19,21 @@ type Function struct {
 	ReturnIsSet  bool       `json:"retisset"`
 	HasUnnamed   bool       `json:"hasunnamed"` // has unnamed parameters
 	HasOut       bool       `json:"hasout"`     // has OUT, INOUT, TABLE parameters
+	IsVariadic   bool       `json:"isvariadic"`
 }
 
 const functionsQuery = `
 	SELECT
 		n.nspname||'.'||proname name,
-		ARRAY_AGG((COALESCE(_.name, ''), COALESCE(_.type::regtype::text, ''), COALESCE(_.mode, ''))) args,
+		ARRAY_AGG((COALESCE(_.name, ''), COALESCE(_.type::regtype::text, ''), COALESCE(_.mode, '')) ORDER BY _.idx) args,
 		prorettype::regtype rettype,
 		l.lanname language,
 		COALESCE(pg_catalog.pg_get_function_sqlbody(p.oid), p.prosrc) source,
 		prorettype rettypeid,
 		proretset retisset,
 		BOOL_OR(_.name is null) AND pronargs > 0 hasunnamed,
-		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout
+		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout,
+		p.provariadic != 0 isvariadic
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -61,7 +63,8 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 			&f.ReturnTypeId,
 			&f.ReturnIsSet,
 			&f.HasUnnamed,
-			&f.HasOut)
+			&f.HasOut,
+			&f.IsVariadic)
 		if err != nil {
 			return nil, err
 		}
