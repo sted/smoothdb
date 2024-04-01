@@ -225,7 +225,14 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			{ matchStatus = 201
 		// 			, matchHeaders = [ matchHeaderAbsent hContentType ]
 		// 			}
-
+		{
+			Description: "rom an html form accepts disparate json types",
+			Method:      "POST",
+			Query:       "/menagerie",
+			Body:        `integer=7&double=2.71828&varchar=forms+are+fun&boolean=false&date=1900-01-01&money=$3.99&enum=foo`,
+			Headers:     test.Headers{"Content-Type": {"application/x-www-form-urlencoded"}},
+			Status:      201,
+		},
 		// 	context "with no pk supplied" $ do
 		// 	  context "into a table with auto-incrementing pk" $
 		// 		it "succeeds with 201 and location header" $ do
@@ -710,7 +717,17 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		   , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		// 		   , matchBody = bodyEquals inserted
 		// 		   }
-
+		//@@ do not support money, we strippet them
+		{
+			Description:     "succeeds with multipart response",
+			Method:          "POST",
+			Query:           "/menagerie",
+			Body:            "integer,double,varchar,boolean,date,money,enum\n13,3.14159,testing!,false,1900-01-01,,foo\n12,0.1,a string,true,1929-10-01,,bar",
+			Headers:         test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Expected:        "integer,double,varchar,boolean,date,money,enum\n13,3.14159,testing!,false,1900-01-01,,foo\n12,0.1,a string,true,1929-10-01,,bar",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          201,
+		},
 		// 	context "requesting full representation" $ do
 		// 	  it "returns full details of inserted record" $
 		// 		request methodPost "/no_pk"
@@ -720,7 +737,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  { matchStatus  = 201
 		// 		  , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		// 		  }
-
+		{
+			Description:     "returns full details of inserted record",
+			Method:          "POST",
+			Query:           "/no_pk",
+			Body:            "a,b\nbar,baz",
+			Headers:         test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Expected:        "a,b\nbar,baz",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          201,
+		},
 		// 	  it "can post nulls" $
 		// 		request methodPost "/no_pk"
 		// 					 [("Content-Type", "text/csv"), ("Accept", "text/csv"), ("Prefer", "return=representation")]
@@ -729,7 +755,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  { matchStatus  = 201
 		// 		  , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		// 		  }
-
+		{
+			Description:     "can post nulls",
+			Method:          "POST",
+			Query:           "/no_pk",
+			Body:            "a,b\nNULL,foo",
+			Headers:         test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Expected:        "a,b\n,foo",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          201,
+		},
 		// 	  it "only returns the requested column header with its associated data" $
 		// 		request methodPost "/projects?select=id"
 		// 					 [("Content-Type", "text/csv"), ("Accept", "text/csv"), ("Prefer", "return=representation")]
@@ -739,7 +774,16 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8",
 		// 							"Content-Range" <:> "*/*"]
 		// 		  }
-
+		{
+			Description:     "only returns the requested column header with its associated data",
+			Method:          "POST",
+			Query:           "/projects?select=id",
+			Body:            "id,name,client_id\n8,Xenix,1\n9,Windows NT,1",
+			Headers:         test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Expected:        "id\n8\n9",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          201,
+		},
 		// 	context "with wrong number of columns" $
 		// 	  it "fails for too few" $
 		// 		request methodPost "/no_pk" [("Content-Type", "text/csv")] "a,b\nfoo,bar\nbaz"
@@ -748,7 +792,14 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		{ matchStatus  = 400
 		// 		, matchHeaders = [matchContentTypeJson]
 		// 		}
-
+		{
+			Description: "with wrong number of columns fails for too few",
+			Method:      "POST",
+			Query:       "/no_pk",
+			Body:        ",b\nfoo,bar\nbaz",
+			Headers:     test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Status:      400,
+		},
 		//   describe "Row level permission" $
 		// 	it "set user_id when inserting rows" $ do
 		// 	  request methodPost "/authors_only"

@@ -112,6 +112,7 @@ func Prepare(config Config, commands []Command) {
 }
 
 func Execute(t *testing.T, config Config, tests []Test) {
+	var s1, s2 string
 	client := InitClient()
 	for i, test := range tests {
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
@@ -119,16 +120,21 @@ func Execute(t *testing.T, config Config, tests []Test) {
 		if err != nil {
 			t.Errorf("Error: %v", err)
 		} else if test.Expected != "" {
-			var v1, v2 any
-			var j1, j2 []byte
-			_ = json.Unmarshal([]byte(test.Expected), &v1)
-			j1, _ = json.Marshal(v1)
-			_ = json.Unmarshal(body, &v2)
-			j2, _ = json.Marshal(v2)
-			json1, json2 := string(j1), string(j2)
-			if json1 != json2 {
+			if v, ok := test.Headers["Accept"]; ok && strings.Contains(v[0], "text/csv") {
+				s1 = test.Expected
+				s2 = string(body)
+			} else {
+				var v1, v2 any
+				var j1, j2 []byte
+				_ = json.Unmarshal([]byte(test.Expected), &v1)
+				j1, _ = json.Marshal(v1)
+				_ = json.Unmarshal(body, &v2)
+				j2, _ = json.Marshal(v2)
+				s1, s2 = string(j1), string(j2)
+			}
+			if s1 != s2 {
 				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i,
-					test.Description, json1, json2, test.Query)
+					test.Description, s1, s2, test.Query)
 			}
 		}
 		if test.ExpectedHeaders != nil {

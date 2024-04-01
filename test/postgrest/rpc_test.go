@@ -122,12 +122,32 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		//         }
+		{
+			Description:     "returns CSV",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange",
+			Body:            `{ "min": 2, "max": 4 }`,
+			Headers:         test.Headers{"Accept": []string{"text/csv"}},
+			Expected:        "id\n3\n4",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
 		//     request methodGet "/rpc/getitemrange?min=2&max=4"
 		//             (acceptHdrs "text/csv") ""
 		//        `shouldRespondWith` "id\n3\n4"
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		//         }
+		{
+			Description:     "returns CSV",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Body:            ``,
+			Headers:         test.Headers{"Accept": []string{"text/csv"}},
+			Expected:        "id\n3\n4",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
 		//     request methodHead "/rpc/getitemrange?min=2&max=4"
 		//             (acceptHdrs "text/csv") ""
 		//       `shouldRespondWith`
@@ -818,38 +838,37 @@ func TestPostgREST_RPC(t *testing.T) {
 		//             "jsonb": {"another key": [1, 2, "3"]}
 		//           } |]
 		//           { matchHeaders = [matchContentTypeJson] }
-		// @@ money not supported and date with wrong format
-		// {
-		// 	Description: "accepts a variety of arguments",
-		// 	Method:      "POST",
-		// 	Query:       "/rpc/varied_arguments",
-		// 	Body: `{
-		// 				"double": 3.1,
-		// 				"varchar": "hello",
-		// 				"boolean": true,
-		// 				"date": "20190101",
-		// 				"money": 0,
-		// 				"enum": "foo",
-		// 				"arr": ["a", "b", "c"],
-		// 				"integer": 43,
-		// 				"json": {"some key": "some value"},
-		// 				"jsonb": {"another key": [1, 2, "3"]}
-		// 				}`,
-		// 	Headers: nil,
-		// 	Expected: `{
-		// 		"double": 3.1,
-		// 		"varchar": "hello",
-		// 		"boolean": true,
-		// 		"date": "20190101",
-		// 		"money": 0,
-		// 		"enum": "foo",
-		// 		"arr": ["a", "b", "c"],
-		// 		"integer": 43,
-		// 		"json": {"some key": "some value"},
-		// 		"jsonb": {"another key": [1, 2, "3"]}
-		// 	  }`,
-		// 	Status: 200,
-		// },
+		{
+			Description: "accepts a variety of arguments",
+			Method:      "POST",
+			Query:       "/rpc/varied_arguments",
+			Body: `{
+						"double": 3.1,
+						"varchar": "hello",
+						"boolean": true,
+						"date": "20190101",
+						"money": 0,
+						"enum": "foo",
+						"arr": ["a", "b", "c"],
+						"integer": 43,
+						"json": {"some key": "some value"},
+						"jsonb": {"another key": [1, 2, "3"]}
+						}`,
+			Headers: nil,
+			Expected: `{
+				"double": 3.1,
+				"varchar": "hello",
+				"boolean": true,
+				"date": "2019-01-01",
+				"money": "$0.00",
+				"enum": "foo",
+				"arr": ["a", "b", "c"],
+				"integer": 43,
+				"json": {"some key": "some value"},
+				"jsonb": {"another key": [1, 2, "3"]}
+			  }`,
+			Status: 200,
+		},
 		//   it "accepts a variety of arguments with GET" $
 		//     -- without JSON / JSONB here, because passing those via query string is useless - they just become a "json string" all the time
 		//     get "/rpc/varied_arguments?double=3.1&varchar=hello&boolean=true&date=20190101&money=0&enum=foo&arr=%7Ba,b,c%7D&integer=43"
@@ -867,7 +886,26 @@ func TestPostgREST_RPC(t *testing.T) {
 		//             "jsonb": {}
 		//           } |]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "accepts a variety of arguments with GET",
+			Method:      "GET",
+			Query:       "/rpc/varied_arguments?double=3.1&varchar=hello&boolean=true&date=20190101&money=0&enum=foo&arr=%7Ba,b,c%7D&integer=43",
+			Body:        ``,
+			Headers:     nil,
+			Expected: `{
+				"double": 3.1,
+				"varchar": "hello",
+				"boolean": true,
+				"date": "2019-01-01",
+				"money": "$0.00",
+				"enum": "foo",
+				"arr": ["a", "b", "c"],
+				"integer": 43,
+				"json": {},
+				"jsonb": {}
+			  }`,
+			Status: 200,
+		},
 		//   it "accepts a variety of arguments from an html form" $
 		//     request methodPost "/rpc/varied_arguments"
 		//         [("Content-Type", "application/x-www-form-urlencoded")]
@@ -886,7 +924,26 @@ func TestPostgREST_RPC(t *testing.T) {
 		//             "jsonb": {}
 		//           } |]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "accepts a variety of arguments from an html form",
+			Method:      "POST",
+			Query:       "/rpc/varied_arguments",
+			Body:        `double=3.1&varchar=hello&boolean=true&date=20190101&money=0&enum=foo&arr=%7Ba,b,c%7D&integer=43`,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected: `{
+				"double": 3.1,
+				"varchar": "hello",
+				"boolean": true,
+				"date": "2019-01-01",
+				"money": "$0.00",
+				"enum": "foo",
+				"arr": ["a", "b", "c"],
+				"integer": 43,
+				"json": {},
+				"jsonb": {}
+			  }`,
+			Status: 200,
+		},
 		//   it "parses embedded JSON arguments as JSON" $
 		//     post "/rpc/json_argument"
 		//         [json| { "arg": { "key": 3 } } |]
@@ -1099,12 +1156,25 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         get "/rpc/variadic_param"
 		//           `shouldRespondWith`
 		//             [json|[]|]
-
+		{
+			Description: "works with GET and repeated params",
+			Method:      "GET",
+			Query:       "/rpc/variadic_param",
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//       it "n=1" $
 		//         get "/rpc/variadic_param?v=hi"
 		//           `shouldRespondWith`
 		//             [json|["hi"]|]
-
+		// @@ support for variadic is minimal (should not use the sintax "v := ...")
+		// {
+		// 	Description: "works with GET and repeated params",
+		// 	Method:      "GET",
+		// 	Query:       "/rpc/variadic_param?v=hi",
+		// 	Expected:    `["hi"]`,
+		// 	Status:      200,
+		// },
 		//       it "n>1" $
 		//         get "/rpc/variadic_param?v=hi&v=there"
 		//           `shouldRespondWith`
@@ -1136,7 +1206,13 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   get "/rpc/sayhello?name=ignored&name=world"
 		//     `shouldRespondWith`
 		//       [json|"Hello, world"|]
-
+		{
+			Description: "returns last value for repeated params without VARIADIC",
+			Method:      "GET",
+			Query:       "/rpc/sayhello?name=ignored&name=world",
+			Expected:    `"Hello, world"`,
+			Status:      200,
+		},
 		// when (actualPgVersion >= pgVersion100) $
 		//   it "returns last value for repeated non-variadic params in function with other VARIADIC arguments" $
 		//     get "/rpc/sayhello_variadic?name=ignored&name=world&v=unused"

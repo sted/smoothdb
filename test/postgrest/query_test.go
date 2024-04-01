@@ -2079,17 +2079,32 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 415
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
-
+		{
+			Description: "should respond an unknown accept type with 415",
+			Query:       "/simple_pk",
+			Headers:     test.Headers{"Accept": []string{"text/unknowntype"}},
+			Status:      415,
+		},
 		//   it "should respond correctly to */* in accept header" $
 		// 	request methodGet "/simple_pk"
 		// 			(acceptHdrs "*/*") ""
 		// 	  `shouldRespondWith` 200
-
+		{
+			Description: "should respond correctly to */* in accept header",
+			Query:       "/simple_pk",
+			Headers:     test.Headers{"Accept": []string{"*/*"}},
+			Status:      200,
+		},
 		//   it "*/* should rescue an unknown type" $
 		// 	request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/unknowntype, */*") ""
 		// 	  `shouldRespondWith` 200
-
+		{
+			Description: "*/* should rescue an unknown type",
+			Query:       "/simple_pk",
+			Headers:     test.Headers{"Accept": []string{"text/unknowntype", "*/*"}},
+			Status:      200,
+		},
 		//   it "specific available preference should override */*" $ do
 		// 	r <- request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/csv, */*") ""
@@ -2097,7 +2112,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  let respHeaders = simpleHeaders r
 		// 	  respHeaders `shouldSatisfy` matchHeader
 		// 		"Content-Type" "text/csv; charset=utf-8"
-
+		{
+			Description:     "specific available preference should override */*",
+			Query:           "/simple_pk",
+			Headers:         test.Headers{"Accept": []string{"text/csv", "*/*"}},
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
 		//   it "honors client preference even when opposite of server preference" $ do
 		// 	r <- request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/csv, application/json") ""
@@ -2105,12 +2126,23 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  let respHeaders = simpleHeaders r
 		// 	  respHeaders `shouldSatisfy` matchHeader
 		// 		"Content-Type" "text/csv; charset=utf-8"
-
+		{
+			Description:     "honors client preference even when opposite of server preference",
+			Query:           "/simple_pk",
+			Headers:         test.Headers{"Accept": []string{"text/csv, application/json"}},
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
 		//   it "should respond correctly to multiple types in accept header" $
 		// 	request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/unknowntype, text/csv") ""
 		// 	  `shouldRespondWith` 200
-
+		{
+			Description: "should respond correctly to multiple types in accept header",
+			Query:       "/simple_pk",
+			Headers:     test.Headers{"Accept": []string{"text/unknowntype", "text/csv"}},
+			Status:      200,
+		},
 		//   it "should respond with CSV to 'text/csv' request" $
 		// 	request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/csv; version=1") ""
@@ -2118,7 +2150,14 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		// 	  }
-
+		{
+			Description:     "should respond with CSV to 'text/csv' request",
+			Query:           "/simple_pk",
+			Headers:         test.Headers{"Accept": []string{"text/csv; version=1"}},
+			Expected:        "k,extra\nxyyx,u\nxYYx,v",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
 		// describe "Canonical location" $ do
 		//   it "Sets Content-Location with alphabetized params" $
 		// 	get "/no_pk?b=eq.1&a=eq.1"
