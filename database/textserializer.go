@@ -147,13 +147,18 @@ func (t *TextBuilder) appendBool(buf []byte) {
 	}
 }
 
-func (t *TextBuilder) appendTime(buf []byte) {
-	t.WriteByte('"')
-	tim := toTime(buf)
+func (t *TextBuilder) appendTimestamp(buf []byte) {
+	tim := toTimestamp(buf)
 	t.date = t.dateBuf[:0]
 	t.date = tim.AppendFormat(t.date, time.RFC3339Nano)
 	t.Write(t.date)
-	t.WriteByte('"')
+}
+
+func (t *TextBuilder) appendDate(buf []byte) {
+	pgDate := toDate(buf)
+	t.date = t.dateBuf[:0]
+	t.date = pgDate.AppendFormat(t.date, "2006-01-02")
+	t.Write(t.date)
 }
 
 func (t *TextBuilder) appendInterval(buf []byte) {
@@ -224,6 +229,10 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 	numDims := binary.BigEndian.Uint32(buf[rp:])
 	if numDims != 1 {
 
+	}
+	if numDims == 0 { // @@ this needs to be verified
+		t.WriteString("[]")
+		return
 	}
 	rp += 4
 	// containsNull := binary.BigEndian.Uint32(buf[rp:]) == 1
@@ -364,8 +373,14 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.WriteByte('"')
 		j.appendString(buf, true)
 		j.WriteByte('"')
+	case pgtype.DateOID:
+		j.WriteByte('"')
+		j.appendDate(buf)
+		j.WriteByte('"')
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
-		j.appendTime(buf)
+		j.WriteByte('"')
+		j.appendTimestamp(buf)
+		j.WriteByte('"')
 	case pgtype.JSONOID, pgtype.JSONBOID:
 		j.appendJSON(buf)
 	case pgtype.IntervalOID:
@@ -419,7 +434,7 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 			}
 			if !scalar {
 				j.WriteByte('"')
-				j.WriteString(fd.Name)
+				j.appendString([]byte(fd.Name), true)
 				j.WriteString("\":")
 			}
 			j.appendType(buf, fd.DataTypeOID, info)
@@ -450,7 +465,7 @@ type CSVSerializer struct {
 
 func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) error {
 	if buf == nil {
-		csv.WriteString("null")
+		csv.WriteString("")
 		return nil
 	}
 	switch typ {
@@ -468,8 +483,10 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendBool(buf)
 	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, 3614 /*text search*/ :
 		csv.appendField(buf) //
+	case pgtype.DateOID:
+		csv.appendDate(buf)
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
-		csv.appendTime(buf)
+		csv.appendTimestamp(buf)
 	case pgtype.JSONOID, pgtype.JSONBOID:
 		csv.appendField(buf) //
 	case pgtype.IntervalOID:
@@ -485,9 +502,7 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 			case ct.IsComposite:
 				csv.appendComposite(buf, ct, info, csv)
 			case ct.IsEnum:
-				csv.WriteByte('"')
 				csv.appendEnum(buf)
-				csv.WriteByte('"')
 			default:
 				return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
 			}
@@ -506,9 +521,9 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 		if i > 0 {
 			csv.WriteByte(',')
 		}
-		csv.WriteByte('"')
-		csv.WriteString(fds[i].Name)
+		csv.appendField([]byte(fds[i].Name))
 	}
+	csv.WriteByte('\n')
 	for rows.Next() {
 		count++
 		bufRaw := rows.RawValues()
@@ -565,24 +580,21 @@ func (csv *CSVSerializer) appendField(buf []byte) {
 }
 
 // fieldNeedsQuotes reports whether our field must be enclosed in quotes.
-// @@ taken directly from encoding/csv:
+// @@ taken directly and adapted from encoding/csv:
 // https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/csv/writer.go
 func (csv CSVSerializer) fieldNeedsQuotes(field string) bool {
 	if field == "" {
 		return false
 	}
-
 	if field == `\.` {
 		return true
 	}
-
 	for i := 0; i < len(field); i++ {
 		c := field[i]
 		if c == '\n' || c == '\r' || c == '"' || c == ',' {
 			return true
 		}
 	}
-
 	r1, _ := utf8.DecodeRuneInString(field)
 	return unicode.IsSpace(r1)
 }

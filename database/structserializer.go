@@ -89,7 +89,7 @@ func rowsToDynStructs(rows pgx.Rows) ([]any, error) {
 				v := string(buf)
 				f.SetString(v)
 			case pgtype.TimestampOID, pgtype.TimestamptzOID:
-				v := toTime(buf)
+				v := toTimestamp(buf)
 				fieldPtr := unsafe.Pointer(f.UnsafeAddr())
 				*(*time.Time)(fieldPtr) = v
 				//f.Set(reflect.ValueOf(v))
@@ -164,7 +164,7 @@ func rowsToDynStructsWithPointers(rows pgx.Rows) ([]any, error) {
 				fv := string(buf)
 				v = reflect.ValueOf(&fv)
 			case pgtype.TimestampOID, pgtype.TimestamptzOID:
-				fv := toTime(buf)
+				fv := toTimestamp(buf)
 				v = reflect.ValueOf(&fv)
 			default:
 				// Handle unsupported data types

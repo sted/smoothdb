@@ -35,7 +35,12 @@ func toBool(buf []byte) bool {
 	return buf[0] == 1
 }
 
-func toTime(buf []byte) time.Time {
+func toDate(buf []byte) time.Time {
+	daysSinceY2K := int32(binary.BigEndian.Uint32(buf))
+	return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, int(daysSinceY2K))
+}
+
+func toTimestamp(buf []byte) time.Time {
 	microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
 	return time.Unix(
 		secFromUnixEpochToY2K+microsecSinceY2K/1_000_000,
