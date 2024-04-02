@@ -135,6 +135,7 @@ func Execute(t *testing.T, config Config, tests []Test) {
 			if s1 != s2 {
 				t.Errorf("\n\n%d. %v\nExpected \n\t\"%v\", \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i,
 					test.Description, s1, s2, test.Query)
+				break
 			}
 		}
 		if test.ExpectedHeaders != nil {
