@@ -2071,19 +2071,19 @@ func TestPostgREST_Query(t *testing.T) {
 			Status:      400,
 		},
 		// describe "Accept headers" $ do
-		//   it "should respond an unknown accept type with 415" $
+		//   it "should respond an unknown accept type with 406" $
 		// 	request methodGet "/simple_pk"
 		// 			(acceptHdrs "text/unknowntype") ""
 		// 	  `shouldRespondWith`
 		// 	  [json|{"message":"None of these media types are available: text/unknowntype","code":"PGRST107","details":null,"hint":null}|]
-		// 	  { matchStatus  = 415
+		// 	  { matchStatus  = 406
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
 		{
-			Description: "should respond an unknown accept type with 415",
+			Description: "should respond an unknown accept type with 406",
 			Query:       "/simple_pk",
 			Headers:     test.Headers{"Accept": []string{"text/unknowntype"}},
-			Status:      415,
+			Status:      406,
 		},
 		//   it "should respond correctly to */* in accept header" $
 		// 	request methodGet "/simple_pk"
