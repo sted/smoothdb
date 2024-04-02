@@ -146,6 +146,7 @@ var postgRestParserOperators = map[string]string{
 	"plfts":  "@@",
 	"phfts":  "@@",
 	"wfts":   "@@",
+	"not":    "", // just to be recognizable in filterParameters
 }
 
 // filterParameters checks the map of filters and skip the keys with this rationale:
