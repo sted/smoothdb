@@ -950,7 +950,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       `shouldRespondWith`
 		//         [json|"object"|]
 		//         { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "parses embedded JSON arguments as JSON",
+			Method:      "POST",
+			Query:       "/rpc/json_argument",
+			Body:        `{ "arg": { "key": 3 } }`,
+			Headers:     nil,
+			Expected:    `"object"`,
+			Status:      200,
+		},
 		//   when (actualPgVersion < pgVersion100) $
 		//     it "parses quoted JSON arguments as JSON (Postgres < 10)" $
 		//       post "/rpc/json_argument"
@@ -967,21 +975,57 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         `shouldRespondWith`
 		//           [json|"string"|]
 		//           { matchHeaders = [matchContentTypeJson] }
-
+		//@@ returns "object"
+		// {
+		// 	Description: "parses quoted JSON arguments as JSON string (from Postgres 10.9, 11.4)",
+		// 	Method:      "POST",
+		// 	Query:       "/rpc/json_argument",
+		// 	Body:        `{ "arg": "{ \"key\": 3 }" }`,
+		// 	Headers:     nil,
+		// 	Expected:    `"string"`,
+		// 	Status:      200,
+		// },
 		// context "improper input" $ do
 		//   it "rejects unknown content type even if payload is good" $ do
 		//     request methodPost "/rpc/sayhello"
 		//       (acceptHdrs "audio/mpeg3") [json| { "name": "world" } |]
-		//         `shouldRespondWith` 415
+		//         `shouldRespondWith` 4o6
+		{
+			Description: "rejects unknown content type even if payload is good",
+			Method:      "POST",
+			Query:       "/rpc/sayhello",
+			Body:        `{ "name": "world" }`,
+			Headers:     test.Headers{"Accept": []string{"audio/mpeg3"}},
+			Expected:    ``,
+			Status:      406,
+		},
 		//     request methodGet "/rpc/sayhello?name=world"
 		//       (acceptHdrs "audio/mpeg3") ""
-		//         `shouldRespondWith` 415
+		//         `shouldRespondWith` 406
+		{
+			Description: "rejects unknown content type even if payload is good",
+			Method:      "GET",
+			Query:       "/rpc/sayhello?name=world",
+			Body:        ``,
+			Headers:     test.Headers{"Accept": []string{"audio/mpeg3"}},
+			Expected:    ``,
+			Status:      406,
+		},
 		//   it "rejects malformed json payload" $ do
 		//     p <- request methodPost "/rpc/sayhello"
 		//       (acceptHdrs "application/json") "sdfsdf"
 		//     liftIO $ do
 		//       simpleStatus p `shouldBe` badRequest400
 		//       isErrorFormat (simpleBody p) `shouldBe` True
+		{
+			Description: "rejects malformed json payload",
+			Method:      "POST",
+			Query:       "/rpc/sayhello",
+			Body:        `sdfsdf`,
+			Headers:     test.Headers{"Accept": []string{"application/json"}},
+			Expected:    ``,
+			Status:      400,
+		},
 		//   it "treats simple plpgsql raise as invalid input" $ do
 		//     p <- post "/rpc/problem" "{}"
 		//     liftIO $ do
@@ -1223,10 +1267,23 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   get "/rpc/many_inout_params?num=1&str=two"
 		//     `shouldRespondWith`
 		//       [json| {"num":1,"str":"two","b":true}|]
+		{
+			Description: "can handle procs with args that have a DEFAULT value",
+			Method:      "GET",
+			Query:       "/rpc/many_inout_params?num=1&str=two",
+			Expected:    `{"num":1,"str":"two","b":true}`,
+			Status:      200,
+		},
 		//   get "/rpc/three_defaults?b=4"
 		//     `shouldRespondWith`
 		//       [json|8|]
-
+		{
+			Description: "can handle procs with args that have a DEFAULT value",
+			Method:      "GET",
+			Query:       "/rpc/three_defaults?b=4",
+			Expected:    `8`,
+			Status:      200,
+		},
 		// it "can map a RAISE error code and message to a http status" $
 		//   get "/rpc/raise_pt402"
 		//     `shouldRespondWith` [json|{ "hint": "Upgrade your plan", "details": "Quota exceeded", "code": "PT402", "message": "Payment Required" }|]
@@ -1350,7 +1407,14 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       `shouldRespondWith`
 		//       [json|"Hello, John"|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "ignores json keys not included in ?columns",
+			Method:      "POST",
+			Query:       "/rpc/sayhello?columns=name",
+			Body:        `{"name": "John", "smth": "here", "other": "stuff", "fake_id": 13}`,
+			Expected:    `"Hello, John"`,
+			Status:      200,
+		},
 		//   it "only takes the first object in case of array of objects payload" $
 		//     post "/rpc/add_them"
 		//       [json|[
@@ -1359,7 +1423,17 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         {"a": 100, "b": 200} ]|]
 		//       `shouldRespondWith` "3"
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "only takes the first object in case of array of objects payload",
+			Method:      "POST",
+			Query:       "/rpc/add_them",
+			Body: `[
+				        {"a": 1, "b": 2},
+				        {"a": 4, "b": 6},
+				        {"a": 100, "b": 200} ]`,
+			Expected: `3`,
+			Status:   200,
+		},
 		// context "bulk RPC with params=multiple-objects" $ do
 		//   it "works with a scalar function an returns a json array" $
 		//     request methodPost "/rpc/add_them" [("Prefer", "params=multiple-objects")]
@@ -1593,15 +1667,34 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/get_projects_below?id=5&id=gt.2&select=id" `shouldRespondWith`
 		//       [json|[{ "id": 3 }, { "id": 4 }]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "should filter a proc that has arg name = filter name",
+			Method:      "GET",
+			Query:       "/rpc/get_projects_below?id=5&id=gt.2&select=id",
+			Expected:    `[{ "id": 3 }, { "id": 4 }]`,
+			Status:      200,
+		},
 		//   it "should work with filters that have the not operator" $ do
 		//     get "/rpc/get_projects_below?id=5&id=not.gt.2&select=id" `shouldRespondWith`
 		//       [json|[{ "id": 1 }, { "id": 2 }]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "should work with filters that have the not operator",
+			Method:      "GET",
+			Query:       "/rpc/get_projects_below?id=5&id=not.gt.2&select=id",
+			Expected:    `[{ "id": 1 }, { "id": 2 }]`,
+			Status:      200,
+		},
 		//     get "/rpc/get_projects_below?id=5&id=not.in.(1,3)&select=id" `shouldRespondWith`
 		//       [json|[{ "id": 2 }, { "id": 4 }]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "should work with filters that have the not operator",
+			Method:      "GET",
+			Query:       "/rpc/get_projects_below?id=5&id=not.in.(1,3)&select=id",
+			Expected:    `[{ "id": 2 }, { "id": 4 }]`,
+			Status:      200,
+		},
 		//   it "should work with filters that use the plain with language fts operator" $ do
 		//     get "/rpc/get_tsearch?text_search_vector=fts(english).impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
