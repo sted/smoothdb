@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -64,16 +65,12 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 	switch err.(type) {
 	case *database.ParseError, *database.BuildError:
 		return WriteBadRequest(w, err)
-	case *database.SerializeError:
+	case *database.SerializeError, *database.ContentTypeError:
 		status = http.StatusNotAcceptable
 		w.WriteHeader(status)
 		return status, err
 	case *database.RangeError:
 		status = http.StatusRequestedRangeNotSatisfiable
-		w.WriteHeader(status)
-		return status, err
-	case *database.ContentTypeError:
-		status = http.StatusUnsupportedMediaType
 		w.WriteHeader(status)
 		return status, err
 	default:
@@ -82,14 +79,21 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 }
 
 func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
-	heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Message: err.Error()})
-	return http.StatusBadRequest, err
+	var status int
+	smootherr := SmoothError{Message: err.Error(), Subsystem: "network"}
+	if maxbyteserr, ok := err.(*http.MaxBytesError); ok {
+		status = http.StatusRequestEntityTooLarge
+		smootherr.Details = fmt.Sprintf("ResponseMaxBytes is configured as %d", maxbyteserr.Limit)
+	} else {
+		status = http.StatusBadRequest
+	}
+	heligo.WriteJSON(w, status, smootherr)
+	return status, err
 }
 
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
-	if _, ok := err.(*pgconn.PgError); ok {
-		dberr := err.(*pgconn.PgError)
+	if dberr, ok := err.(*pgconn.PgError); ok {
 		var status int
 		switch dberr.Code {
 		case "42501":
