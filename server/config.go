@@ -35,6 +35,9 @@ type Config struct {
 	CORSAllowedOrigins   []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
 	CORSAllowCredentials bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
 	EnableDebugRoute     bool            `comment:"Enable debug access (default: false)"`
+	ReadTimeout          int64           `comment:"The maximum duration (seconds) for reading the entire request, including the body (default: 60)"`
+	WriteTimeout         int64           `comment:"The maximum duration before timing out writes of the response (default: 60)"`
+	RequestMaxBytes      int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
 	Database             database.Config `comment:"Database configuration"`
 	Logging              logging.Config  `comment:"Logging configuration"`
 }
@@ -55,6 +58,9 @@ func defaultConfig() *Config {
 		CORSAllowedOrigins:   []string{"*"},
 		CORSAllowCredentials: false,
 		EnableDebugRoute:     false,
+		ReadTimeout:          60,
+		WriteTimeout:         60,
+		RequestMaxBytes:      1024 * 1024,
 		Database:             *database.DefaultConfig(),
 		Logging:              *logging.DefaultConfig(),
 	}

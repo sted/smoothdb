@@ -15,7 +15,7 @@ func HasTX(c *DbPoolConn) bool {
 }
 
 // AcquireConnection takes a connection from a database pool.
-// If the db parameter is nil, it uses the global engine pool.
+// If the db parameter is nil, it uses the main db pool.
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
 	if db != nil {
 		conn, err = db.AcquireConnection(ctx)

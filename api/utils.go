@@ -83,7 +83,7 @@ func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 	smootherr := SmoothError{Message: err.Error(), Subsystem: "network"}
 	if maxbyteserr, ok := err.(*http.MaxBytesError); ok {
 		status = http.StatusRequestEntityTooLarge
-		smootherr.Details = fmt.Sprintf("ResponseMaxBytes is configured as %d", maxbyteserr.Limit)
+		smootherr.Details = fmt.Sprintf("RequestMaxBytes is configured as %d", maxbyteserr.Limit)
 	} else {
 		status = http.StatusBadRequest
 	}

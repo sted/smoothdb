@@ -41,8 +41,8 @@ func (s *Server) initHTTPServer() {
 	s.HTTP = &http.Server{
 		Addr:         cfg.Address,
 		Handler:      s.router,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
 	}
 }
 

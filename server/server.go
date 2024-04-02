@@ -158,6 +158,10 @@ func (s *Server) HasShortAPIURL() bool {
 	return s.Config.ShortAPIURL
 }
 
+func (s *Server) RequestMaxBytes() int64 {
+	return s.Config.RequestMaxBytes
+}
+
 func (s *Server) SessionManager() *authn.SessionManager {
 	return s.sessionManager
 }

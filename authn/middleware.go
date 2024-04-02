@@ -16,6 +16,7 @@ type MiddlewareConfig interface {
 	JWTSecret() string
 	AllowAnon() bool
 	AnonRole() string
+	RequestMaxBytes() int64
 	SessionManager() *SessionManager
 	Logger() *logging.Logger
 }
@@ -112,6 +113,8 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 	m := middleware{cfg}
 	return func(next heligo.Handler) heligo.Handler {
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+			r.Body = http.MaxBytesReader(w, r.Body, cfg.RequestMaxBytes())
+			defer r.Body.Close()
 			w.Header().Set("Server", "smoothdb")
 			ctx, session, status, err := m.acquireSession(c, r, forceDBE, getDBName)
 			if err != nil {
