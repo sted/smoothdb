@@ -122,6 +122,10 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 
 func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
+	options := gi.QueryOptions
+	if options.ContentType == "unknown/unknown" {
+		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+	}
 	var params Filters
 	if readonly {
 		params = gi.RequestParser.filterParameters(filters)
@@ -141,7 +145,6 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 			}
 		}
 	}
-	options := gi.QueryOptions
 	info := gi.Db.info
 	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
 	if err != nil {
