@@ -8,7 +8,7 @@ It is mostly compatible with [PostgREST](https://postgrest.org/en/stable/), with
 
 The main differences are:
 
-* SmoothDB is in development and alpha quality. Prefer PostgREST for now, which is rock solid
+* SmoothDB is in development and beta quality. Prefer PostgREST for now, which is rock solid
 * SmoothDB is faster and has a lower CPU load 
 * It is written in Go
 * Can be used both stand-alone and as a library (the main motivation for writing this)
@@ -221,6 +221,27 @@ GET /api/testdb/orders?select=id,amount,companies(name,category) HTTP/1.1
 ]
 ```
 
+You can use the **spread** operator to flatten the results:
+
+```http
+GET /projects?select=id,...clients(client_name:name) HTTP/1.1
+```
+```json
+[
+	{"id":1,"client_name":"Microsoft"},
+	{"id":2,"client_name":"Microsoft"},
+	{"id":3,"client_name":"Apple"},
+	{"id":4,"client_name":"Apple"},
+	{"id":5,"client_name":null}
+]
+```
+
+You can nest relationships on multiple levels.
+
+```http
+GET /api/testdb/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design* HTTP/1.1
+```
+
 ## Example for using smoothdb in your application
 
 You can embed smoothdb functionalities in your backend app with relative ease.
@@ -405,6 +426,9 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
 | CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
 | EnableDebugRoute | Enable debug access | false |
+| ReadTimeout | The maximum duration for reading the entire request, including the body (seconds) | 60 |
+| WriteTimeout | The maximum duration before timing out writes of the response (seconds) | 60 |
+| RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |

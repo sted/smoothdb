@@ -93,11 +93,11 @@ const usageStr = `
 Usage: smoothdb [options]
 
 Server Options:
-	-a, --addr <host>		Bind to host address (default: '0.0.0.0:4000')
-	-d, --dburl <dburl>		Database URL			
-	-c, --config <path>		Configuration file (default: './config.jsonc')
-	--initdb				Initialize db interactively and exit
-	-h, --help				Show this message
+	-a, --addr <host>    Bind to host address (default: '0.0.0.0:4000')
+	-d, --dburl <dburl>  Database URL			
+	-c, --config <path>  Configuration file (default: './config.jsonc')
+	--initdb             Initialize db interactively and exit
+	-h, --help           Show this message
 `
 
 func getFlags(defaultConfigPath string) (map[string]any, string, bool) {

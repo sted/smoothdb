@@ -297,9 +297,7 @@ func InitAdminRouter(apiHelper Helper) {
 	// VIEWS
 
 	databases.Handle("GET", "/:dbname/views", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
-
-		views, err := db.GetViews(c)
+		views, err := database.GetViews(c)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusOK, views)
 		} else {
@@ -308,10 +306,9 @@ func InitAdminRouter(apiHelper Helper) {
 	})
 
 	databases.Handle("GET", "/:dbname/views/:view", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		name := r.Param("view")
 
-		view, err := db.GetView(c, name)
+		view, err := database.GetView(c, name)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusOK, view)
 		} else {
@@ -320,13 +317,12 @@ func InitAdminRouter(apiHelper Helper) {
 	})
 
 	databases.Handle("POST", "/:dbname/views", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		var viewInput database.View
 		err := r.ReadJSON(&viewInput)
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
-		view, err := db.CreateView(c, &viewInput)
+		view, err := database.CreateView(c, &viewInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, view)
 		} else {
@@ -335,10 +331,9 @@ func InitAdminRouter(apiHelper Helper) {
 	})
 
 	databases.Handle("DELETE", "/:dbname/views/:view", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		db := database.GetDb(c)
 		name := r.Param("view")
 
-		err := db.DeleteView(c, name)
+		err := database.DeleteView(c, name)
 		if err == nil {
 			return heligo.WriteEmpty(w, http.StatusOK)
 		} else {

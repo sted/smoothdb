@@ -18,7 +18,7 @@ const viewsQuery = `
 		LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
 	WHERE (c.relkind = ANY (ARRAY['v'::"char", 'm'::"char"]))`
 
-func (db *Database) GetViews(ctx context.Context) ([]View, error) {
+func GetViews(ctx context.Context) ([]View, error) {
 	conn := GetConn(ctx)
 	views := []View{}
 	rows, err := conn.Query(ctx, viewsQuery+
@@ -48,7 +48,7 @@ func (db *Database) GetViews(ctx context.Context) ([]View, error) {
 	return views, nil
 }
 
-func (db *Database) GetView(ctx context.Context, name string) (*View, error) {
+func GetView(ctx context.Context, name string) (*View, error) {
 	conn := GetConn(ctx)
 
 	schemaname, viewname := splitTableName(name)
@@ -68,7 +68,7 @@ func (db *Database) GetView(ctx context.Context, name string) (*View, error) {
 	return &view, nil
 }
 
-func (db *Database) CreateView(ctx context.Context, view *View) (*View, error) {
+func CreateView(ctx context.Context, view *View) (*View, error) {
 	conn := GetConn(ctx)
 	create := "CREATE "
 	if view.Materialized {
@@ -82,7 +82,7 @@ func (db *Database) CreateView(ctx context.Context, view *View) (*View, error) {
 	return view, nil
 }
 
-func (db *Database) DeleteView(ctx context.Context, name string) error {
+func DeleteView(ctx context.Context, name string) error {
 	conn := GetConn(ctx)
 	_, err := conn.Exec(ctx, "DROP VIEW "+quoteParts(name))
 	if err != nil {

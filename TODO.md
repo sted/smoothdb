@@ -37,21 +37,23 @@
 * [x] function params with GET
 * [x] CSV
 * [x] application/x-www-form-urlencoded as input
+* [ ] application/octet-stream as output
+* [ ] Admin
+* [ ] Projects
 * [ ] Related orders
 * [ ] Related limit and offset
 * [ ] hints for rels
-* [ ] embeds with views
+* [ ] embeds with views (this is not easy)
 * [ ] variadic function
-* [ ] prefer single-object
+* [ ] prefer single-object (now just unnamed functions)
 * [ ] Generate OpenAPI
-* [ ] Projects
-* [ ] Admin
 * [ ] Plugins
 * [ ] SQL injection mitigation and related tests
-* [ ] Computed relationships
+* [ ] Computed table relationships
 * [ ] More types: Multirange, Domain, Numeric
 * [ ] Check returned headers, count, range, location, etc
 * [ ] Support isdistinct,all,any
+* [ ] Aggregate functions: avg(), count(), max(), min(), and sum()
 * [ ] PUT for upsert
 * [ ] Triggers
 * [ ] Events
@@ -60,7 +62,6 @@
 * [ ] return=headers-only
 * [ ] Activity / stats
 * [ ] Indexes
-* [ ] application/octet-stream as output
 * [ ] HEAD, OPTIONS
 * [ ] Db Encryption
 * [ ] Open telemetry

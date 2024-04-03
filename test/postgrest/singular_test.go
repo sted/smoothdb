@@ -231,7 +231,16 @@ func TestPostgREST_Singular(t *testing.T) {
 		//         , matchHeaders = [ matchContentTypeSingular
 		//                          , "Preference-Applied" <:> "tx=commit" ]
 		//         }
-
+		//@@ is this right? even with no return=rep ?
+		// {
+		// 	Description: "raises an error when attempting to create multiple entities",
+		// 	Method:      "POST",
+		// 	Query:       "/addresses",
+		// 	Headers: test.Headers{"Accept": {"application/vnd.pgrst.object+json"},
+		// 		"Prefer": {"tx=commit"}},
+		// 	Body:   `[ { "id": 200, "address": "xxx" }, { "id": 201, "address": "yyy" } ] `,
+		// 	Status: 406,
+		// },
 		//     -- the rows should not exist, either
 		//     get "/addresses?id=eq.200"
 		//       `shouldRespondWith`
