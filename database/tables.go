@@ -110,7 +110,7 @@ func composeColumnSQL(sql *string, column *Column) {
 		*sql += " NOT NULL"
 	}
 	if column.Default != nil {
-		*sql += " DEFAULT " + *column.Default + ""
+		*sql += " DEFAULT " + *column.Default
 	}
 	for _, constraint := range column.Constraints {
 		*sql += " " + constraint
@@ -130,8 +130,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 		composeColumnSQL(&columnList, &col)
 	}
 
-	create := "CREATE "
-	create += "TABLE "
+	create := "CREATE TABLE "
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
 	}
@@ -228,7 +227,7 @@ func DeleteTable(ctx context.Context, name string, ifExists bool) error {
 	conn := GetConn(ctx)
 	delete := "DROP TABLE"
 	if ifExists {
-		delete += " IF EXISTS"
+		delete += " IF EXISTS "
 	}
 	delete += quote(name)
 	_, err := conn.Exec(ctx, delete)
