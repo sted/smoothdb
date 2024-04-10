@@ -55,7 +55,10 @@ func formatPrepare(evt map[string]any) error {
 	f, _ := strconv.ParseFloat(fmt.Sprint(evt["elapsed"]), 32)
 	evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
 	evt["role"] = fmt.Sprintf("%-12s", evt["role"])
-	s := evt["method"].(string)
+	var s string
+	if v, ok := evt["method"]; ok {
+		s = v.(string)
+	}
 	if len(s) != 0 {
 		evt["method"] = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
 	}
