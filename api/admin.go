@@ -57,7 +57,6 @@ func InitAdminRouter(apiHelper Helper) {
 
 	roles.Handle("DELETE", "/:rolename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("rolename")
-
 		err := database.DeleteRole(c, name)
 		if err == nil {
 			return heligo.WriteEmpty(w, http.StatusNoContent)

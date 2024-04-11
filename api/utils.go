@@ -19,6 +19,7 @@ import (
 	"github.com/sted/smoothdb/database"
 )
 
+// SmoothError is the generic struct for error reporting
 type SmoothError struct {
 	Subsystem string
 	Message   string
@@ -28,56 +29,7 @@ type SmoothError struct {
 	Position  int32
 }
 
-func noRecordsForInsert(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
-	if len(records) == 0 {
-		gi := database.GetSmoothContext(ctx)
-		var status int
-		if gi.QueryOptions.ReturnRepresentation {
-			status = http.StatusCreated
-			heligo.WriteJSONString(w, status, []byte("[]"))
-		} else {
-			status = http.StatusNoContent
-			heligo.WriteEmpty(w, status)
-		}
-		return true, status
-	}
-	return false, 0
-}
-
-func noRecordsForUpdate(ctx context.Context, w http.ResponseWriter, records []database.Record) (bool, int) {
-	if len(records) == 0 || len(records[0]) == 0 {
-		gi := database.GetSmoothContext(ctx)
-		var status int
-		if gi.QueryOptions.ReturnRepresentation {
-			status = http.StatusOK
-			heligo.WriteJSONString(w, status, []byte("[]"))
-		} else {
-			status = http.StatusNoContent
-			heligo.WriteEmpty(w, status)
-		}
-		return true, status
-	}
-	return false, 0
-}
-
-func WriteError(w http.ResponseWriter, err error) (int, error) {
-	var status int
-	switch err.(type) {
-	case *database.ParseError, *database.BuildError:
-		return WriteBadRequest(w, err)
-	case *database.SerializeError, *database.ContentTypeError:
-		status = http.StatusNotAcceptable
-		w.WriteHeader(status)
-		return status, err
-	case *database.RangeError:
-		status = http.StatusRequestedRangeNotSatisfiable
-		w.WriteHeader(status)
-		return status, err
-	default:
-		return WriteServerError(w, err)
-	}
-}
-
+// WriteBadRequest writes a BadRequest or StatusRequestEntityTooLarge status
 func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	smootherr := SmoothError{Message: err.Error(), Subsystem: "network"}
@@ -91,6 +43,7 @@ func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 	return status, err
 }
 
+// WriteServerError write a status related to a database error
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	if dberr, ok := err.(*pgconn.PgError); ok {
@@ -130,18 +83,23 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	return status, err
 }
 
-func jsonIsArray(content []byte) bool {
-	for len(content) > 0 {
-		r, size := utf8.DecodeRune(content)
-		if r == utf8.RuneError && size == 1 {
-			return false
-		}
-		if !unicode.IsSpace(r) {
-			return r == '['
-		}
-		content = content[size:]
+// WriteError is the more general error function, combining the previous two.
+func WriteError(w http.ResponseWriter, err error) (int, error) {
+	var status int
+	switch err.(type) {
+	case *database.ParseError, *database.BuildError:
+		return WriteBadRequest(w, err)
+	case *database.SerializeError, *database.ContentTypeError:
+		status = http.StatusNotAcceptable
+		w.WriteHeader(status)
+		return status, err
+	case *database.RangeError:
+		status = http.StatusRequestedRangeNotSatisfiable
+		w.WriteHeader(status)
+		return status, err
+	default:
+		return WriteServerError(w, err)
 	}
-	return false
 }
 
 // List of supported input content types
@@ -175,7 +133,68 @@ func getContentType(r heligo.Request) string {
 	return ""
 }
 
-func ReadInputRecords(r heligo.Request, contentType string) ([]database.Record, error) {
+// writeEmptyContent writes an empty record or sequence of records, respecting the accepted content type
+func writeEmptyContent(w http.ResponseWriter, status int, options *database.QueryOptions) {
+	var content []byte
+	switch options.ContentType {
+	case "application/json":
+		content = []byte("[]")
+	case "text/csv":
+		content = []byte("")
+	}
+	w.WriteHeader(status)
+	w.Write(content)
+}
+
+// hasRecordsToInsert checks if there is data to insert and writes the appropriated status
+func hasRecordsToInsert(w http.ResponseWriter, records []database.Record, options *database.QueryOptions) (bool, int) {
+	if len(records) == 0 {
+		var status int
+		if options.ReturnRepresentation {
+			status = http.StatusCreated
+			writeEmptyContent(w, status, options)
+		} else {
+			status = http.StatusNoContent
+			heligo.WriteEmpty(w, status)
+		}
+		return false, status
+	}
+	return true, 0
+}
+
+// hasRecordsToUpdate checks if there is data to update and writes the appropriated status
+func hasRecordsToUpdate(w http.ResponseWriter, records []database.Record, options *database.QueryOptions) (bool, int) {
+	if len(records) == 0 || len(records[0]) == 0 {
+		var status int
+		if options.ReturnRepresentation {
+			status = http.StatusOK
+			writeEmptyContent(w, status, options)
+		} else {
+			status = http.StatusNoContent
+			heligo.WriteEmpty(w, status)
+		}
+		return false, status
+	}
+	return true, 0
+}
+
+// jsonIsArray checks if a stringified json is an array
+func jsonIsArray(content []byte) bool {
+	for len(content) > 0 {
+		r, size := utf8.DecodeRune(content)
+		if r == utf8.RuneError && size == 1 {
+			return false
+		}
+		if !unicode.IsSpace(r) {
+			return r == '['
+		}
+		content = content[size:]
+	}
+	return false
+}
+
+// readInputRecords is the low-level function to read and convert the data in the response body
+func readInputRecords(r heligo.Request, contentType string) ([]database.Record, error) {
 	var records []database.Record
 
 	switch contentType {
@@ -227,8 +246,8 @@ func ReadInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 			return nil, err
 		}
 		record := database.Record{}
-		for key, values := range r.Form { // r.Form contains both query params and form values
-			record[key] = values[0] // Taking the first value for each key
+		for key, values := range r.Form {
+			record[key] = values[0] // taking the first value for each key
 		}
 		records = append(records, record)
 	}
@@ -236,6 +255,47 @@ func ReadInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 	return records, nil
 }
 
+// ReadRequest reads the input data from a request and manage the preconditions.
+// It will emit BadRequest (400), RequestEntityTooLarge (413) or UnsupportedMediaType (415)
+// status when appropriate.
+// Supports JSON, CSV and x-www-form-urlencoded input data.
+func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (records []database.Record, status int, err error) {
+	ctype := getContentType(r)
+	if ctype == "" {
+		// "accepted" content-type not supported
+		status, err = heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		return
+	} else {
+		// read input records
+		records, err = readInputRecords(r, ctype)
+		if err != nil {
+			status, err = WriteBadRequest(w, err)
+			return
+		}
+	}
+	// check preconditions
+	var yes bool
+	sc := database.GetSmoothContext(c)
+	options := sc.QueryOptions
+	if r.Method == "POST" {
+		// [] as input cause no inserts
+		if yes, status = hasRecordsToInsert(w, records, options); !yes {
+			return
+		}
+	} else if r.Method == "PATCH" {
+		if len(records) > 1 {
+			status, err = WriteBadRequest(w, err)
+			return
+		}
+		// {}, [] and [{}] as input cause no updates
+		if yes, status = hasRecordsToUpdate(w, records, options); !yes {
+			return
+		}
+	}
+	return records, status, err
+}
+
+// SetResponseHeaders sets the response headers (for now Content-Range and Content-Location)
 func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r *http.Request, count int64) {
 	sc := database.GetSmoothContext(ctx)
 	options := sc.QueryOptions
@@ -252,6 +312,7 @@ func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Range", rangeString)
 }
 
+// WriteContent writes the response and its content type
 func WriteContent(ctx context.Context, w http.ResponseWriter, status int, content []byte) (int, error) {
 	sc := database.GetSmoothContext(ctx)
 	ct := sc.QueryOptions.ContentType

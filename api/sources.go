@@ -31,17 +31,9 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		ctype := getContentType(r)
-		if ctype == "" {
-			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
-		}
-		records, err := ReadInputRecords(r, ctype)
-		if err != nil {
-			return WriteBadRequest(w, err)
-		}
-		// [] as input cause no inserts
-		if ok, status := noRecordsForInsert(c, w, records); ok {
-			return status, nil
+		records, status, err := ReadRequest(c, w, r)
+		if err != nil || status != 0 {
+			return status, err
 		}
 		data, count, err := database.CreateRecords(c, sourcename, records, r.URL.Query())
 		if err == nil {
@@ -57,23 +49,16 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		ctype := getContentType(r)
-		if ctype == "" {
-			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		records, status, err := ReadRequest(c, w, r)
+		if err != nil || status != 0 {
+			return status, err
 		}
-		records, err := ReadInputRecords(r, ctype)
-		if err != nil || len(records) > 1 {
-			return WriteBadRequest(w, err)
-		}
-		// {}, [] and [{}] as input cause no updates
-		if ok, status := noRecordsForUpdate(c, w, records); ok {
-			return status, nil
-		}
-		data, _, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
+		data, count, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
 				return heligo.WriteEmpty(w, http.StatusNoContent)
 			} else {
+				SetResponseHeaders(c, w, r.Request, count)
 				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
@@ -110,17 +95,9 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		fname := r.Param("fname")
-		ctype := getContentType(r)
-		if ctype == "" {
-			return heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
-		}
-		records, err := ReadInputRecords(r, ctype)
-		if err != nil {
-			return WriteBadRequest(w, err)
-		}
-		// [] as input cause no inserts
-		if ok, status := noRecordsForInsert(c, w, records); ok {
-			return status, nil
+		records, status, err := ReadRequest(c, w, r)
+		if err != nil || status != 0 {
+			return status, err
 		}
 		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query(), false)
 		if err == nil {
