@@ -116,7 +116,7 @@ func Execute(t *testing.T, config Config, tests []Test) {
 	client := InitClient()
 	for i, test := range tests {
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
-		body, header, status, err := Exec(client, config, command)
+		body, headers, status, err := Exec(client, config, command)
 		if err != nil {
 			t.Errorf("Error: %v", err)
 		} else if test.Expected != "" {
@@ -140,9 +140,14 @@ func Execute(t *testing.T, config Config, tests []Test) {
 		}
 		if test.ExpectedHeaders != nil {
 			for k, v := range test.ExpectedHeaders {
-				if (*header)[k] == nil || v != (*header)[k][0] {
-					t.Errorf("\n%d. %v\nExpected header \n\t\"%v\", \ngot \n\t\"%v\"", i,
-						test.Description, v, (*header)[k][0])
+				header := (*headers)[k]
+				var first string
+				if header != nil {
+					first = header[0]
+				}
+				if v != first {
+					t.Errorf("\n%d. %v\nExpected header %v\n\t\"%v\", \ngot \n\t\"%v\"",
+						i, test.Description, k, v, first)
 				}
 			}
 
