@@ -539,13 +539,18 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	get "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1" `shouldRespondWith`
 		// 	  [json| [{"id":1,"clients":{"id":1}}, {"id":2,"clients":{"id":1}}] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works with rpc",
+			Query:       "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1",
+			Expected:    `[{"id":1,"clients":{"id":1}}, {"id":2,"clients":{"id":1}}]`,
+			Headers:     nil,
+		},
 		// 	request methodHead "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-1/2" ]
 		// 	  }
-
 		//   it "works when using hints" $ do
 		// 	get "/projects?select=id,clients!client!inner(id)&clients.id=eq.2" `shouldRespondWith`
 		// 	  [json| [{"id":3,"clients":{"id":2}}, {"id":4,"clients":{"id":2}}] |]

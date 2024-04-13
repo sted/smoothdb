@@ -75,7 +75,7 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		})
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
-		heligo.WriteEmpty(w, status)
+		heligo.WriteHeader(w, status)
 	} else {
 		status = http.StatusInternalServerError
 		heligo.WriteJSON(w, status, SmoothError{Message: err.Error()})
@@ -133,49 +133,70 @@ func getContentType(r heligo.Request) string {
 	return ""
 }
 
-// writeEmptyContent writes an empty record or sequence of records, respecting the accepted content type
-func writeEmptyContent(w http.ResponseWriter, status int, options *database.QueryOptions) {
-	var content []byte
-	switch options.ContentType {
-	case "application/json":
-		content = []byte("[]")
-	case "text/csv":
-		content = []byte("")
-	}
+// writeString writes a string with the requested content type
+func writeString(w http.ResponseWriter, contentType string, content string, status int) (int, error) {
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(status)
-	w.Write(content)
+	_, err := w.Write([]byte(content))
+	return status, err
 }
 
-// hasRecordsToInsert checks if there is data to insert and writes the appropriated status
-func hasRecordsToInsert(w http.ResponseWriter, records []database.Record, options *database.QueryOptions) (bool, int) {
+// writeZeroRecords writes an empty record or sequence of records, respecting the accepted content type
+func writeZeroRecords(w http.ResponseWriter, contentType string, status int) (int, error) {
+	var content string
+	switch contentType {
+	case "application/json":
+		content = "[]"
+	case "text/csv":
+		content = ""
+	}
+	return writeString(w, contentType, content, status)
+}
+
+// writeIfZeroRecordsToInsert manages the case when there are 0 records on input for
+// an insert operation.
+// In that case it will:
+// - write a response with content and status
+// - return an error if the write operation fails
+// - return true to mean "zero records on input"
+func writeIfZeroRecordsToInsert(w http.ResponseWriter, records []database.Record,
+	options *database.QueryOptions) (bool, int, error) {
+	var err error
+	var status int
 	if len(records) == 0 {
-		var status int
 		if options.ReturnRepresentation {
 			status = http.StatusCreated
-			writeEmptyContent(w, status, options)
+			_, err = writeZeroRecords(w, options.ContentType, status)
 		} else {
 			status = http.StatusNoContent
-			heligo.WriteEmpty(w, status)
+			heligo.WriteHeader(w, status)
 		}
-		return false, status
+		return true, status, err
 	}
-	return true, 0
+	return false, 0, err
 }
 
-// hasRecordsToUpdate checks if there is data to update and writes the appropriated status
-func hasRecordsToUpdate(w http.ResponseWriter, records []database.Record, options *database.QueryOptions) (bool, int) {
+// writeIfZeroRecordsToUpdate manages the case when there are 0 records on input for
+// an update operation.
+// In that case it will:
+// - write a response with content and status
+// - return an error if the write operation fails
+// - return true to mean "zero records on input"
+func writeIfZeroRecordsToUpdate(w http.ResponseWriter, records []database.Record,
+	options *database.QueryOptions) (bool, int, error) {
+	var err error
+	var status int
 	if len(records) == 0 || len(records[0]) == 0 {
-		var status int
 		if options.ReturnRepresentation {
 			status = http.StatusOK
-			writeEmptyContent(w, status, options)
+			_, err = writeZeroRecords(w, options.ContentType, status)
 		} else {
 			status = http.StatusNoContent
-			heligo.WriteEmpty(w, status)
+			heligo.WriteHeader(w, status)
 		}
-		return false, status
+		return false, status, err
 	}
-	return true, 0
+	return true, 0, err
 }
 
 // jsonIsArray checks if a stringified json is an array
@@ -263,7 +284,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	ctype := getContentType(r)
 	if ctype == "" {
 		// "accepted" content-type not supported
-		status, err = heligo.WriteEmpty(w, http.StatusUnsupportedMediaType)
+		status, err = heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
 		return
 	} else {
 		// read input records
@@ -274,12 +295,12 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 		}
 	}
 	// check preconditions
-	var yes bool
+	var zero bool
 	sc := database.GetSmoothContext(c)
 	options := sc.QueryOptions
 	if r.Method == "POST" {
 		// [] as input cause no inserts
-		if yes, status = hasRecordsToInsert(w, records, options); !yes {
+		if zero, status, err = writeIfZeroRecordsToInsert(w, records, options); zero {
 			return
 		}
 	} else if r.Method == "PATCH" {
@@ -288,7 +309,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 			return
 		}
 		// {}, [] and [{}] as input cause no updates
-		if yes, status = hasRecordsToUpdate(w, records, options); !yes {
+		if zero, status, err = writeIfZeroRecordsToUpdate(w, records, options); zero {
 			return
 		}
 	}

@@ -662,6 +662,13 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 		//          "code": "PGRST100",
 		//          "hint": null} |]
 		//       { matchStatus = 400, matchHeaders = [matchContentTypeJson] }
+		// {
+		// 	Description: "gives a meaningful error on bad syntax",
+		// 	Query:       "/json_arr?select=data->>--34",
+		// 	Headers:     nil,
+		// 	Expected:    ``,
+		// 	Status:      400,
+		// },
 	}
 
 	test.Execute(t, testConfig, tests)

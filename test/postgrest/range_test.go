@@ -381,7 +381,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             , matchHeaders = [ matchContentTypeJson
 		//                              , "Content-Range" <:> "2-4/*" ]
 		//             }
-
+		{
+			Description:     "limit and offset works on first level",
+			Method:          "HEAD",
+			Query:           "/items?select=id&order=id.asc&limit=3&offset=2",
+			Body:            ``,
+			Headers:         nil,
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "2-4/*"},
+			Status:          200,
+		},
 		//       context "succeeds if offset equals 0 as a no-op" $ do
 		//         it  "no items" $ do
 		//           get "/items?offset=0&id=eq.0"

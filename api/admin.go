@@ -59,7 +59,7 @@ func InitAdminRouter(apiHelper Helper) {
 		name := r.Param("rolename")
 		err := database.DeleteRole(c, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteHeader(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -106,7 +106,7 @@ func InitAdminRouter(apiHelper Helper) {
 		name := r.Param("username")
 		err := database.DeleteUser(c, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteHeader(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -190,7 +190,7 @@ func InitAdminRouter(apiHelper Helper) {
 		}
 		err = database.DeletePrivilege(c, &privilegeInput)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -241,7 +241,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := dbe.DeleteDatabase(c, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -279,7 +279,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeleteSchema(c, name, true)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusNoContent)
+			return heligo.WriteHeader(w, http.StatusNoContent)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -334,7 +334,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeleteView(c, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -394,7 +394,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeleteColumn(c, table, column, false)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -434,7 +434,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeleteConstraint(c, table, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -474,7 +474,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeletePolicy(c, table, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}
@@ -510,7 +510,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 		err := database.DeleteFunction(c, name)
 		if err == nil {
-			return heligo.WriteEmpty(w, http.StatusOK)
+			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
 			return WriteServerError(w, err)
 		}

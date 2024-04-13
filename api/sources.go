@@ -56,7 +56,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		data, count, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return heligo.WriteEmpty(w, http.StatusNoContent)
+				return heligo.WriteHeader(w, http.StatusNoContent)
 			} else {
 				SetResponseHeaders(c, w, r.Request, count)
 				return WriteContent(c, w, http.StatusOK, data)
@@ -71,7 +71,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		data, _, err := database.DeleteRecords(c, sourcename, r.URL.Query())
 		if err == nil {
 			if data == nil {
-				return heligo.WriteEmpty(w, http.StatusNoContent)
+				return heligo.WriteHeader(w, http.StatusNoContent)
 			} else {
 				return WriteContent(c, w, http.StatusOK, data)
 			}

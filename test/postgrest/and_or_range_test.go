@@ -204,13 +204,17 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
 		// 		  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
-		// {
-		// 	"can handle fts",
-		// 	"/entities?and=(name.is.null,arr.is.null)&select=id",
-		// 	`[{"id":4}]`,
-		// 	nil,
-		// 	200,
-		// },
+		{
+			Description: "can handle fts",
+			Query:       "/tsearch?or=(text_search_vector.plfts(german).Art%20Spass, text_search_vector.plfts(french).amusant%20impossible, text_search_vector.fts(english).impossible)",
+			Expected: `[
+						  {"text_search_vector": "'fun':5 'imposs':9 'kind':3" },
+						  {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
+						  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}
+						]`,
+			Headers: nil,
+			Status:  200,
+		},
 		// 	when (actualPgVersion >= pgVersion112) $
 		// 	  it "can handle wfts (websearch_to_tsquery)" $
 		// 		get "/tsearch?or=(text_search_vector.plfts(german).Art,text_search_vector.plfts(french).amusant,text_search_vector.not.wfts(english).impossible)"
@@ -222,7 +226,18 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 				 {"text_search_vector": "'art':4 'spass':5 'unmog':7" }
 		// 		  ]|]
 		// 		  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "can handle wfts (websearch_to_tsquery)",
+			Query:       "/tsearch?or=(text_search_vector.plfts(german).Art,text_search_vector.plfts(french).amusant,text_search_vector.not.wfts(english).impossible)",
+			Expected: `[
+							{"text_search_vector": "'also':2 'fun':3 'possibl':8" },
+							{"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" },
+							{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
+							{"text_search_vector": "'art':4 'spass':5 'unmog':7" }
+						  ]`,
+			Headers: nil,
+			Status:  200,
+		},
 		// 	it "can handle cs and cd" $
 		// 	  get "/entities?or=(arr.cs.{1,2,3},arr.cd.{1})&select=id" `shouldRespondWith`
 		// 		[json|[{ "id": 1 },{ "id": 3 }]|] { matchHeaders = [matchContentTypeJson] }
@@ -582,7 +597,6 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
-
 		//   context "multiple and/or conditions" $ do
 		// 	it "cannot have zero conditions" $
 		// 	  get "/entities?or=()" `shouldRespondWith`
@@ -592,6 +606,13 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		  "code": "PGRST100",
 		// 		  "hint": null
 		// 		}|] { matchStatus = 400, matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "cannot have zero conditions",
+			Query:       "/entities?or=()",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      400,
+		},
 		// {
 		// 	"gt, lte, ilike can be negated",
 		// 	"/entities?and=(name.not.ilike.*ITY2,or(id.not.gt.4,id.not.lte.1))&select=id",

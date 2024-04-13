@@ -15,7 +15,7 @@ func InitTestRouter(api Helper) {
 	router := api.Router()
 
 	router.Handle("GET", "/test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		return heligo.WriteHTMLString(w, http.StatusOK, "smoothdb at your service")
+		return writeString(w, "text/html; charset=utf-8", "smoothdb at your service", http.StatusOK)
 	})
 
 	router.Handle("GET", "/test/prepare/:test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {

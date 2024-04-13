@@ -51,7 +51,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         , matchHeaders = [ matchContentTypeJson
 		//                          , "Content-Range" <:> "0-0/*" ]
 		//         }
-
+		{
+			Description:     "a proc that returns a set returns paginated results",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"0-0"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		//   it "includes total count if requested" $ do
 		//     request methodPost "/rpc/getitemrange"
 		//             (rangeHdrsWithCount (ByteRangeFromTo 0 0))

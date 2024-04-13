@@ -28,7 +28,7 @@ func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 		if table != nil {
 			return heligo.WriteJSON(w, http.StatusCreated, table)
 		} else {
-			return heligo.WriteEmpty(w, http.StatusCreated)
+			return heligo.WriteHeader(w, http.StatusCreated)
 		}
 	} else {
 		return WriteServerError(w, err)
@@ -57,7 +57,7 @@ func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 		if table != nil {
 			return heligo.WriteJSON(w, http.StatusCreated, table)
 		} else {
-			return heligo.WriteEmpty(w, http.StatusCreated)
+			return heligo.WriteHeader(w, http.StatusCreated)
 		}
 	} else {
 		return WriteServerError(w, err)
@@ -68,7 +68,7 @@ func TableDeleteHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	name := r.Param("table")
 	err := database.DeleteTable(c, name, false)
 	if err == nil {
-		return heligo.WriteEmpty(w, http.StatusNoContent)
+		return heligo.WriteHeader(w, http.StatusNoContent)
 	} else {
 		return WriteServerError(w, err)
 	}

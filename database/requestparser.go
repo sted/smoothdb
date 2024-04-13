@@ -673,12 +673,17 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		table := boolOpTable[len(boolOpTable)-1]
 		node.field.tablename = table
 		node.field.relPath = boolOpTable
-		p.booleanOp(table, node)
+		err = p.booleanOp(table, node)
+		if err != nil {
+			return err
+		}
 
 	} else if isBooleanOpStrict(token) {
 		node.field.tablename = mainTable
-		p.booleanOp(mainTable, node)
-
+		err = p.booleanOp(mainTable, node)
+		if err != nil {
+			return err
+		}
 	} else {
 		var mayHaveTable bool
 		var nextSep string
