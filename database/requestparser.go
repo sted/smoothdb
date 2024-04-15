@@ -892,9 +892,9 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	case "application/vnd.pgrst.object+json":
 		options.ContentType = mediatype
 		options.Singular = true
-	case "application/json":
-		options.ContentType = mediatype
-	case "text/csv":
+	case "application/json",
+		"text/csv",
+		"application/octet-stream":
 		options.ContentType = mediatype
 	default:
 		options.ContentType = "unknown/unknown"

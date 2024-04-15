@@ -32,9 +32,12 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	}
 	defer rows.Close()
 	var serializer TextSerializer
-	if options.ContentType == "text/csv" {
+	switch options.ContentType {
+	case "text/csv":
 		serializer = &CSVSerializer{}
-	} else {
+	case "application/octet-stream":
+		serializer = &BinarySerializer{}
+	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
 	return serializer.Serialize(rows, false, options.Singular, info)
@@ -165,9 +168,12 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	}
 	single := f != nil && !f.ReturnIsSet
 	var serializer TextSerializer
-	if options.ContentType == "text/csv" {
+	switch options.ContentType {
+	case "text/csv":
 		serializer = &CSVSerializer{}
-	} else {
+	case "application/octet-stream":
+		serializer = &BinarySerializer{}
+	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
 	return serializer.Serialize(rows, scalar, single, info)

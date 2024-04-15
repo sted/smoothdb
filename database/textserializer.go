@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -597,6 +598,21 @@ func (csv CSVSerializer) fieldNeedsQuotes(field string) bool {
 	}
 	r1, _ := utf8.DecodeRuneInString(field)
 	return unicode.IsSpace(r1)
+}
+
+type BinarySerializer struct {
+	bytes.Buffer
+}
+
+func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+	fds := rows.FieldDescriptions()
+	if len(fds) != 1 {
+		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
+	}
+	for rows.Next() {
+		b.Write(rows.RawValues()[0])
+	}
+	return b.Bytes(), int64(b.Len()), nil
 }
 
 type DatabaseJSONSerializer struct{}

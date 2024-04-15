@@ -729,9 +729,12 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 		if pairs != "" {
 			pairs += ", "
 		}
-		pairs += quote(key)
 		i++
-		pairs += " := $" + strconv.Itoa(i)
+		if key != "" { // unnamed parameter @@ to be continued
+			pairs += quote(key)
+			pairs += " := "
+		}
+		pairs += "$" + strconv.Itoa(i)
 		valueList = append(valueList, record[key])
 	}
 

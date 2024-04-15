@@ -14,25 +14,25 @@ type mediaType struct {
 }
 
 // List of supported content type for output (Accept header)
-var supportedContentTypes = []string{
+var supportedOutputContentTypes = []string{
 	"application/json",
 	"application/vnd.pgrst.object+json",
 	"text/csv",
 	"application/octet-stream",
 }
-var defaultContentType = "application/json"
+var defaultOutputContentType = "application/json"
 
 // contentNegotiation to choose the output content type.
 // It Supports also q (quality) parameters
 func contentNegotiation(acceptHeaders []string) string {
 	if len(acceptHeaders) == 0 {
-		return defaultContentType
+		return defaultOutputContentType
 	}
 
 	parsedTypes := parseMediaTypes(acceptHeaders)
 
 	for _, parsedType := range parsedTypes {
-		for _, supportedType := range supportedContentTypes {
+		for _, supportedType := range supportedOutputContentTypes {
 			if parsedType.Type == supportedType {
 				return supportedType
 			}

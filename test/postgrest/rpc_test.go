@@ -810,7 +810,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{"x": 1, "y": 2}|]
 		//         `shouldRespondWith`
 		//           [json|{"x": 1, "y": 2}|]
-
+		// {
+		// 	Description: "different types when overloaded",
+		// 	Method:      "POST",
+		// 	Query:       "/rpc/ret_point_overloaded",
+		// 	Body:        `{"x": 1, "y": 2}`,
+		// 	Headers:     nil,
+		// 	Expected:    `{"x": 1, "y": 2}`,
+		// 	Status:      200,
+		// },
 		//     it "returns json scalar with prefer single object" $
 		//       request methodPost "/rpc/ret_point_overloaded" [("Prefer","params=single-object")]
 		//         [json|{"x": 1, "y": 2}|]
@@ -1602,7 +1610,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Type" <:> "application/octet-stream"]
 		//         }
-
+		{
+			Description:     "binary output: Proc that returns scalar can query without selecting column",
+			Method:          "GET", // @@ POST -> GET
+			Query:           "/rpc/ret_base64_bin",
+			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
+			Status:          200,
+		},
 		//     it "can get raw output with Accept: text/plain" $
 		//       request methodGet "/rpc/welcome" (acceptHdrs "text/plain") ""
 		//         `shouldRespondWith` "Welcome to PostgREST"
@@ -1659,14 +1675,30 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Type" <:> "application/octet-stream"]
 		//         }
-
+		{
+			Description:     "binary output: Proc that returns scalar can query if a single column is selected",
+			Method:          "GET", // @@ POST -> GET
+			Query:           "/rpc/ret_rows_with_base64_bin?select=img",
+			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCCiVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEX///8AAP94wDzzAAAAL0lEQVQIW2NgwAb+HwARH0DEDyDxwAZEyGAhLODqHmBRzAcn5GAS///A1IF14AAA5/Adbiiz/0gAAAAASUVORK5CYII=`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
+			Status:          200,
+		},
 		//     it "fails if a single column is not selected" $
 		//       request methodPost "/rpc/ret_rows_with_base64_bin"
 		//           (acceptHdrs "application/octet-stream") ""
 		//         `shouldRespondWith`
 		//           [json| {"message":"application/octet-stream requested but more than one column was selected","code":"PGRST113","details":null,"hint":null} |]
 		//           { matchStatus = 406 }
-
+		{
+			Description:     "binary output: Proc that returns scalar fails if a single column is not selected",
+			Method:          "GET", // @@ POST -> GET
+			Query:           "/rpc/ret_rows_with_base64_bin",
+			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:        ``,
+			ExpectedHeaders: nil,
+			Status:          406,
+		},
 		// context "only for GET rpc" $ do
 		//   it "should fail on mutating procs" $ do
 		//     get "/rpc/callcounter" `shouldRespondWith` 405
@@ -1708,6 +1740,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/get_tsearch?text_search_vector=fts(english).impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		// @@
+		// No function matches the given name and argument types. You might need to add explicit type casts.",
+		// "Message":"function test.get_tsearch(text_search_vector =\u003e unknown) does not exist
+		// {
+		// 	Description: "should work with filters that use the plain with language fts operator",
+		// 	Method:      "GET",
+		// 	Query:       "/rpc/get_tsearch?text_search_vector=fts(english).impossible",
+		// 	Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+		// 	Status:      200,
+		// },
 		//     get "/rpc/get_tsearch?text_search_vector=plfts.impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
@@ -1876,7 +1918,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       liftIO $ do
 		//         let respBody = simpleBody r
 		//         respBody `shouldBe` file
-
+		{
+			Description:     "can insert bytea directly",
+			Method:          "POST",
+			Query:           "/rpc/unnamed_bytea_param",
+			Body:            `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}, "Content-Type": []string{"application/octet-stream"}},
+			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
+			Status:          200,
+		},
 		//     it "will err when no function with single unnamed json parameter exists and application/json is specified" $
 		//       request methodPost "/rpc/unnamed_int_param" [("Content-Type", "application/json")]
 		//           [json|{"x": 1, "y": 2}|]

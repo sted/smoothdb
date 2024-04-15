@@ -37,7 +37,9 @@
 * [x] function params with GET
 * [x] CSV
 * [x] application/x-www-form-urlencoded as input
-* [ ] application/octet-stream as output
+* [x] application/octet-stream as output
+* [x] HEAD support
+* [x] range headers
 * [ ] Admin
 * [ ] Projects
 * [ ] Related orders
@@ -51,24 +53,25 @@
 * [ ] SQL injection mitigation and related tests
 * [ ] Computed table relationships
 * [ ] More types: Multirange, Domain, Numeric
-* [ ] Check returned headers, count, range, location, etc
+* [ ] location header
+* [ ] return=headers-only
+* [ ] count=exact
+* [ ] count=planned
 * [ ] Support isdistinct,all,any
 * [ ] Aggregate functions: avg(), count(), max(), min(), and sum()
 * [ ] PUT for upsert
+* [ ] Computed fields
 * [ ] Triggers
-* [ ] Events
+* [ ] Events / websockets
 * [ ] Reload config
 * [ ] Change log level at runtime
-* [ ] return=headers-only
 * [ ] Activity / stats
 * [ ] Indexes
-* [ ] HEAD, OPTIONS
+* [ ] OPTIONS support
 * [ ] Db Encryption
 * [ ] Open telemetry
 * [ ] Table inheritance
 * [ ] pg_vector
-
-Upper layer:
 * [ ] Migrations (Tern?)
 * [ ] Versioning
 * [ ] Localizations

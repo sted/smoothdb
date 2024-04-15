@@ -103,13 +103,13 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 }
 
 // List of supported input content types
-var supportedContentTypes = []string{
+var supportedInputContentTypes = []string{
 	"application/json",
 	"text/csv",
 	"application/x-www-form-urlencoded",
 	"application/octet-stream",
 }
-var defaultContentType = "application/json"
+var defaultInputContentType = "application/json"
 
 // getContentType gets the (input) content type and check if it is among
 // the supported ones. Return "" otherwise or if we get an invalid header
@@ -118,14 +118,14 @@ func getContentType(r heligo.Request) string {
 	var err error
 	header := r.Header.Get("Content-Type")
 	if header == "" {
-		contentType = defaultContentType
+		contentType = defaultInputContentType
 	} else {
 		contentType, _, err = mime.ParseMediaType(header)
 		if err != nil {
 			return ""
 		}
 	}
-	for _, ct := range supportedContentTypes {
+	for _, ct := range supportedInputContentTypes {
 		if contentType == ct {
 			return ct
 		}
@@ -270,6 +270,13 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 		for key, values := range r.Form {
 			record[key] = values[0] // taking the first value for each key
 		}
+		records = append(records, record)
+	case "application/octet-stream":
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		record := database.Record{"": body}
 		records = append(records, record)
 	}
 
