@@ -1,5 +1,15 @@
 # Change Log
 
+## 0.2.6 - 2024-04-15
+
+### Added
+* Support for application/octet-stream in input and output
+* Support for HEAD calls
+* Configuration for ReadTimeout, WriteTimeout and RequestMaxBytes
+
+### Fixed
+* Possible panic on logging
+
 ## 0.2.5 - 2024-04-01
 
 ### Added

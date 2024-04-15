@@ -526,3 +526,10 @@ To initialize and reset PostgREST fixtures:
 ```
 make prepare-postgrest-tests
 ```
+
+## Acknowledgments
+
+This project owes a debt of gratitude to:
+
+* [pgx](https://github.com/jackc/pgx), upon whose solid foundations it is built
+* [PostgREST](https://github.com/PostgREST/postgrest), which served as an inspiration, particularly for its excellent APIs, documentation, and robust testing.
