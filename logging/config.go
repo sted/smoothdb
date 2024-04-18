@@ -9,7 +9,8 @@ type Config struct {
 	MaxAge        int    `comment:"MaxAge is the maximum number of days to retain old log files"`
 	Compress      bool   `comment:"True to compress old log files (default false)"`
 	StdOut        bool   `comment:"Enable logging to stdout (default false)"`
-	PrettyConsole bool   `comment:"Enable pretty and colorful output for stdout (default false)"`
+	PrettyConsole bool   `comment:"Enable pretty output for stdout (default false)"`
+	ColorConsole  bool   `comment:"Enable colorful output for stdout (default false)"`
 }
 
 func DefaultConfig() *Config {
@@ -20,6 +21,7 @@ func DefaultConfig() *Config {
 		25,
 		2,
 		5,
+		false,
 		false,
 		false,
 		false,

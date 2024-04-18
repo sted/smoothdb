@@ -31,8 +31,9 @@ func InitLogger(config *Config) *Logger {
 				Out:           os.Stdout,
 				TimeFormat:    time.DateTime,
 				PartsOrder:    []string{"level", "time", "domain", "elapsed", "role", "method", "status", "message"},
-				FormatPrepare: formatPrepare,
+				FormatPrepare: createFormatPrepare(config.ColorConsole),
 				FieldsExclude: []string{"domain", "elapsed", "role", "method", "status"},
+				NoColor:       !config.ColorConsole,
 			})
 		} else {
 			writers = append(writers, os.Stdout)
@@ -50,25 +51,41 @@ func InitLogger(config *Config) *Logger {
 	return &Logger{&zlogger}
 }
 
-func formatPrepare(evt map[string]any) error {
-	evt["domain"] = fmt.Sprintf("%-4s", evt["domain"])
-	f, _ := strconv.ParseFloat(fmt.Sprint(evt["elapsed"]), 32)
-	evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
-	evt["role"] = fmt.Sprintf("%-12s", evt["role"])
-	var s string
-	if v, ok := evt["method"]; ok {
-		s = v.(string)
-	}
-	if len(s) != 0 {
-		evt["method"] = fmt.Sprintf("%s%-7s%s", methodColor(s), s, reset)
-	}
-	s = fmt.Sprint(evt["status"]) // can be a number
-	if len(s) != 0 {
-		i, _ := strconv.ParseUint(s, 10, 32)
-		evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), s, reset)
-	}
+func createFormatPrepare(withColor bool) func(map[string]any) error {
+	return func(evt map[string]any) error {
+		domain, _ := evt["domain"].(string)
+		evt["domain"] = fmt.Sprintf("%-4s", domain)
 
-	return nil
+		if elapsed, ok := evt["elapsed"].(string); ok {
+			if f, err := strconv.ParseFloat(elapsed, 32); err == nil {
+				evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
+			} else {
+				evt["elapsed"] = fmt.Sprintf("%8s", "")
+			}
+		} else {
+			evt["elapsed"] = fmt.Sprintf("%8s", "")
+		}
+
+		role, _ := evt["role"].(string)
+		evt["role"] = fmt.Sprintf("%-12s", role)
+
+		if method, ok := evt["method"].(string); ok && withColor {
+			evt["method"] = fmt.Sprintf("%s%-7s%s", methodColor(method), method, reset)
+		} else {
+			evt["method"] = fmt.Sprintf("%-7s", method)
+		}
+
+		if status, ok := evt["status"].(string); ok && withColor {
+			if i, err := strconv.ParseUint(status, 10, 32); err == nil {
+				evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), status, reset)
+			} else {
+				evt["status"] = fmt.Sprintf("%3s", "")
+			}
+		} else {
+			evt["status"] = fmt.Sprintf("%3s", status)
+		}
+		return nil
+	}
 }
 
 const (

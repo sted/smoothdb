@@ -444,7 +444,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Logging.MaxAge | MaxAge is the maximum number of days to retain old log files | 5 |
 | Logging.Compress | True to compress old log files | false |
 | Logging.StdOut | Enable logging to stdout | false |
-| Logging.PrettyConsole | Enable pretty and colorful output for stdout | false |
+| Logging.PrettyConsole | Enable pretty output for stdout | false |
+| Logging.ColorConsole | Enable colorful output for stdout | false |
 
 ### Environment variables
 
