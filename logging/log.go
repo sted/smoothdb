@@ -79,7 +79,7 @@ func createFormatPrepare(withColor bool) func(map[string]any) error {
 		v = evt["status"]
 		if v != nil {
 			status := fmt.Sprint(v)
-			if i, err := strconv.ParseInt(status, 10, 32); err == nil {
+			if i, err := strconv.ParseInt(status, 10, 32); err == nil && withColor {
 				evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), status, reset)
 			} else {
 				evt["status"] = fmt.Sprintf("%3s", status)
