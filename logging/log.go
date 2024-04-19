@@ -56,7 +56,9 @@ func createFormatPrepare(withColor bool) func(map[string]any) error {
 		domain, _ := evt["domain"].(string)
 		evt["domain"] = fmt.Sprintf("%-4s", domain)
 
-		if elapsed, ok := evt["elapsed"].(string); ok {
+		v := evt["elapsed"]
+		if v != nil {
+			elapsed := fmt.Sprint(v)
 			if f, err := strconv.ParseFloat(elapsed, 32); err == nil {
 				evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
 			} else {
@@ -65,7 +67,6 @@ func createFormatPrepare(withColor bool) func(map[string]any) error {
 		} else {
 			evt["elapsed"] = fmt.Sprintf("%8s", "")
 		}
-
 		role, _ := evt["role"].(string)
 		evt["role"] = fmt.Sprintf("%-12s", role)
 
@@ -75,15 +76,18 @@ func createFormatPrepare(withColor bool) func(map[string]any) error {
 			evt["method"] = fmt.Sprintf("%-7s", method)
 		}
 
-		if status, ok := evt["status"].(string); ok && withColor {
-			if i, err := strconv.ParseUint(status, 10, 32); err == nil {
+		v = evt["status"]
+		if v != nil {
+			status := fmt.Sprint(v)
+			if i, err := strconv.ParseInt(status, 10, 32); err == nil {
 				evt["status"] = fmt.Sprintf("%s%3s%s", statusCodeColor(i), status, reset)
 			} else {
-				evt["status"] = fmt.Sprintf("%3s", "")
+				evt["status"] = fmt.Sprintf("%3s", status)
 			}
 		} else {
-			evt["status"] = fmt.Sprintf("%3s", status)
+			evt["status"] = fmt.Sprintf("%3s", "")
 		}
+
 		return nil
 	}
 }
@@ -99,7 +103,7 @@ const (
 	reset   = "\033[0m"
 )
 
-func statusCodeColor(code uint64) string {
+func statusCodeColor(code int64) string {
 	switch {
 	case code >= http.StatusOK && code < http.StatusMultipleChoices:
 		return green
