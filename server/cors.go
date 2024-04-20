@@ -10,7 +10,7 @@ import (
 
 func (s *Server) initCORS() {
 
-	router := s.Router()
+	router := s.GetRouter()
 
 	cors := cors.New(cors.Options{
 		AllowedOrigins: s.Config.CORSAllowedOrigins,

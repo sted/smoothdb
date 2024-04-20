@@ -15,6 +15,7 @@ import (
 	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/logging"
+	"github.com/sted/smoothdb/plugins"
 )
 
 type Server struct {
@@ -68,6 +69,13 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 
 	// Initialize HTTP Server
 	s.initHTTPServer()
+
+	// Initializes plugin manager
+	pm := plugins.InitPluginManager(s, s.Config.PluginDir, s.Config.Plugins)
+	err = pm.Load()
+	if err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
@@ -166,6 +174,6 @@ func (s *Server) SessionManager() *authn.SessionManager {
 	return s.sessionManager
 }
 
-func (s *Server) Logger() *logging.Logger {
+func (s *Server) GetLogger() *logging.Logger {
 	return s.logger
 }

@@ -18,7 +18,7 @@ type MiddlewareConfig interface {
 	AnonRole() string
 	RequestMaxBytes() int64
 	SessionManager() *SessionManager
-	Logger() *logging.Logger
+	GetLogger() *logging.Logger
 }
 
 type GetDatabaseNameFn func(ctx context.Context, r heligo.Request) string
@@ -104,7 +104,7 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 		session.DbConn = nil
 	}
 	if err != nil {
-		m.Logger().Err(err).Msg("error releasing database connection")
+		m.GetLogger().Err(err).Msg("error releasing database connection")
 	}
 	m.SessionManager().leaveSession(session)
 }

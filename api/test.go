@@ -12,7 +12,7 @@ import (
 func InitTestRouter(api Helper) {
 
 	dbe := api.GetDBE()
-	router := api.Router()
+	router := api.GetRouter()
 
 	router.Handle("GET", "/test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return writeString(w, "text/html; charset=utf-8", "smoothdb at your service", http.StatusOK)

@@ -6,7 +6,8 @@ TEST_FLAGS=-v -count=1 -race
 all: build
 
 build:
-	$(GO) build -ldflags "-X main.Version=$(VERSION)"
+	$(GO) build -trimpath -ldflags "-X main.Version=$(VERSION)"
+	$(MAKE) -C plugins
 
 test:
 	$(GO) test $(TEST_FLAGS) ./database
@@ -19,4 +20,9 @@ prepare-postgrest-tests:
 		psql -U postgres -c "create database pgrest" && \
 		psql -U postgres -f ./test/postgrest/fixtures/load.sql pgrest
 
-.PHONY: all build test
+clean:
+	go clean
+	$(MAKE) -C plugins clean
+
+
+.PHONY: all build clean test

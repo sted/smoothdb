@@ -115,7 +115,7 @@ func prepareView(s *smoothdb.Server) error {
 		return err
 	}
 	// register a route
-	r := s.Router()
+	r := s.GetRouter()
 	m := s.MiddlewareWithDbName("example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {

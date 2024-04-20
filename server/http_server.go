@@ -55,6 +55,6 @@ func (s *Server) startHTTPServer() error {
 	}
 }
 
-func (s *Server) Router() *heligo.Router {
+func (s *Server) GetRouter() *heligo.Router {
 	return s.router
 }

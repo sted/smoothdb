@@ -377,7 +377,7 @@ func prepareView(s *smoothdb.Server) error {
 		</body>`)
 	
 	// register a route
-	r := s.Router()
+	r := s.GetRouter()
 	m := s.MiddlewareWithDbName("example")
 	g := r.Group("/view", m)
 	g.Handle("GET", "", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -401,6 +401,44 @@ To try the example
 	go run server.go
 
 in the examples directory and browse to *localhost:8085/products* and *localhost:8085/view*.
+
+## Plugins
+
+Another way to extend the capabilities of PPP is through the plugin mechanism: the plugins are Go libraries that comply with the `plugins.Plugin` interface and are loaded when the server starts.
+
+In the directory `plugins/plugins/example` there is a sample plugin:
+
+```go
+type examplePlugin struct {
+	logger *logging.Logger
+	router *heligo.Router
+}
+
+func (p *examplePlugin) Prepare(h plugins.Host) error {
+	p.logger = h.GetLogger()
+	p.logger.Info().Msg("examplePlugin: Preparing")
+	p.router = h.GetRouter()
+	p.router.Handle("GET", "/example", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		w.Write([]byte("Here we are"))
+		return http.StatusOK, nil
+	})
+	return nil
+}
+
+func (p *examplePlugin) Run() error {
+	p.logger.Info().Msg("examplePlugin: Started")
+	return nil
+}
+```
+
+To build it use the following command:
+
+```
+	go build -trimpath -buildmode=plugin -o example.plugin main.go
+```
+
+> [!WARNING]
+> It is inherently complicated to build plugins in Go, and it is normally advisable to compile them together with the host program code.
 
 ## Configuration
 
@@ -426,6 +464,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | CORSAllowedOrigins | CORS Access-Control-Allow-Origin | ["*"] |
 | CORSAllowCredentials | CORS Access-Control-Allow-Credentials | false |
 | EnableDebugRoute | Enable debug access | false |
+| PluginDir | Plugins' directory | "./_plugins" |
+| Plugins | Ordered list of plugins | [] |
 | ReadTimeout | The maximum duration for reading the entire request, including the body (seconds) | 60 |
 | WriteTimeout | The maximum duration before timing out writes of the response (seconds) | 60 |
 | RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |

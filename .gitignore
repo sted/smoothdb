@@ -7,4 +7,6 @@ misc/scratch.sql
 .vscode/*
 .DS_Store
 *.pem
+*.plugin
+_plugins
 

@@ -11,7 +11,7 @@ import (
 func InitAdminRouter(apiHelper Helper) {
 
 	dbe := apiHelper.GetDBE()
-	router := apiHelper.Router()
+	router := apiHelper.GetRouter()
 
 	adminURL := apiHelper.BaseAdminURL()
 	admin_db := router.Group(adminURL, apiHelper.MiddlewareStd())

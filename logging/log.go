@@ -62,10 +62,10 @@ func createFormatPrepare(withColor bool) func(map[string]any) error {
 			if f, err := strconv.ParseFloat(elapsed, 32); err == nil {
 				evt["elapsed"] = fmt.Sprintf("%8.3fms", f)
 			} else {
-				evt["elapsed"] = fmt.Sprintf("%8s", "")
+				evt["elapsed"] = fmt.Sprintf("%10s", "")
 			}
 		} else {
-			evt["elapsed"] = fmt.Sprintf("%8s", "")
+			evt["elapsed"] = fmt.Sprintf("%10s", "")
 		}
 		role, _ := evt["role"].(string)
 		evt["role"] = fmt.Sprintf("%-12s", role)

@@ -16,7 +16,7 @@ func BenchmarkBase(b *testing.B) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	router := srv.Router()
+	router := srv.GetRouter()
 	group := router.Group("/bench")
 	group.Handle("GET", "/empty", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		return 200, nil

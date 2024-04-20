@@ -14,7 +14,7 @@ func InitSourcesRouter(apiHelper Helper) {
 	if !apiHelper.HasShortAPIURL() {
 		baseURL += "/:dbname"
 	}
-	api := apiHelper.Router().Group(baseURL, apiHelper.MiddlewareStd())
+	api := apiHelper.GetRouter().Group(baseURL, apiHelper.MiddlewareStd())
 
 	// RECORDS
 

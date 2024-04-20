@@ -13,7 +13,7 @@ type Helper interface {
 	GetDatabase(context.Context, string) (*database.Database, error)
 	GetMainDatabase(context.Context) (*database.Database, error)
 
-	Router() *heligo.Router
+	GetRouter() *heligo.Router
 	MiddlewareStd() heligo.Middleware
 	MiddlewareDBE() heligo.Middleware
 	MiddlewareWithDbName(string) heligo.Middleware
