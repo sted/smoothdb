@@ -242,9 +242,9 @@ You can nest relationships on multiple levels.
 GET /api/testdb/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design* HTTP/1.1
 ```
 
-## Example for using smoothdb in your application
+## Example for using SmoothDB in your application
 
-You can embed smoothdb functionalities in your backend app with relative ease.
+You can embed SmoothDB functionalities in your backend app with relative ease.
 
 This short example is a minimal app that exposes a **/products** GET route to obtain the JSON array of the products and a **/view** route to view them in a formatted HTML table.
 
@@ -404,7 +404,9 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 
 ## Plugins
 
-Another way to extend the capabilities of PPP is through the plugin mechanism: the plugins are Go libraries that comply with the `plugins.Plugin` interface and are loaded when the server starts.
+Another way to extend the capabilities of SmoothDB is through the plugin mechanism: the plugins are Go libraries that comply with the `plugins.Plugin` interface and are loaded when the server starts.
+
+Currently, the plugins have access to the logger, the router, and the database. More granular interfaces between plugins and host will be created if deemed appropriate.
 
 In the directory `plugins/plugins/example` there is a sample plugin:
 
