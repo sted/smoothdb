@@ -21,13 +21,14 @@ func TestPostgREST_Delete(t *testing.T) {
 		//  , "Content-Range" <:> "*/*" ]
 		//	  }
 		{
-			Description: "succeeds with 204 and deletion count",
-			Method:      "DELETE",
-			Query:       "/items?id=eq.1",
-			Body:        ``,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "succeeds with 204 and deletion count",
+			Method:          "DELETE",
+			Query:           "/items?id=eq.1",
+			Body:            ``,
+			Headers:         nil,
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          204,
 		},
 		// 	it "returns the deleted item and count if requested" $
 		// 	  request methodDelete "/items?id=eq.2" [("Prefer", "return=representation"), ("Prefer", "count=exact")] ""
@@ -36,13 +37,14 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		, matchHeaders = ["Content-Range" <:> "*/1"]
 		// 		}
 		{
-			Description: "returns the deleted item and count if requested",
-			Method:      "DELETE",
-			Query:       "/items?id=eq.2",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":2}]`,
-			Status:      200,
+			Description:     "returns the deleted item and count if requested",
+			Method:          "DELETE",
+			Query:           "/items?id=eq.2",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
+			Expected:        `[{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/1"},
+			Status:          200,
 		},
 		// 	it "ignores ?select= when return not set or return=minimal" $ do
 		// 	  request methodDelete "/items?id=eq.3&select=id"

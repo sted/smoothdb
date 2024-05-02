@@ -323,21 +323,47 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	return records, status, err
 }
 
-// SetResponseHeaders sets the response headers (for now Content-Range and Content-Location)
-func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r *http.Request, count int64) {
+// SetResponseHeaders sets the response headers (for now Content-Range and Content-Location).
+// It returns a status != 0 if some contraints are not satisfied and we need to include an error status
+// in the response (eg 416 for RequestedRangeNotSatisfiable)
+func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Request, count int64) int {
 	sc := database.GetSmoothContext(ctx)
 	options := sc.QueryOptions
 	// @@ must check if the table has a pk
 	w.Header().Set("Content-Location", r.RequestURI)
 	// Content-Range
 	var rangeString string
-	if count == 0 {
-		rangeString = "*/*"
-	} else {
+	if count > 0 &&
+		(options.RangeMin <= count || options.Count == "") &&
+		((r.Method == "GET" || r.Method == "HEAD") ||
+			(options.RangeMin > -1 && options.RangeMax > -1)) {
+
+		if options.RangeMin == -1 {
+			options.RangeMin = 0
+		}
+		if options.RangeMax == -1 || options.Count == "" {
+			options.RangeMax = options.RangeMin + count - 1
+		}
 		rangeString = strconv.FormatInt(options.RangeMin, 10) + "-" +
-			strconv.FormatInt(options.RangeMin+count-1, 10) + "/*"
+			strconv.FormatInt(options.RangeMax, 10)
+	} else {
+		rangeString = "*"
+	}
+	if options.Count == "" {
+		rangeString += "/*"
+	} else {
+		rangeString += "/" + strconv.FormatInt(count, 10)
 	}
 	w.Header().Set("Content-Range", rangeString)
+	if options.RangeMin > count && options.Count != "" ||
+		options.RangeMin > -1 && options.RangeMax > -1 && options.RangeMin > options.RangeMax {
+		return http.StatusRequestedRangeNotSatisfiable
+	}
+	if options.Count != "" && options.HasRange &&
+		options.RangeMax-options.RangeMin+1 < count {
+		return http.StatusPartialContent
+	}
+	return 0
 }
 
 // WriteContent writes the response and its content type

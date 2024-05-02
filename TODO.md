@@ -49,13 +49,14 @@
 * [ ] variadic function
 * [ ] prefer single-object (now just unnamed functions)
 * [ ] Generate OpenAPI
-* [ ] Plugins
+* [x] Plugins
 * [ ] SQL injection mitigation and related tests
 * [ ] Computed table relationships
 * [ ] More types: Multirange, Domain, Numeric
 * [ ] location header
 * [ ] return=headers-only
-* [ ] count=exact
+* [x] count=exact
+* [ ] count=estimated
 * [ ] count=planned
 * [ ] Support isdistinct,all,any
 * [ ] Aggregate functions: avg(), count(), max(), min(), and sum()

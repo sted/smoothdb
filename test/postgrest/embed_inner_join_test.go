@@ -47,7 +47,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-3/4" ]
 		// 		}
-
+		{
+			Description:     "ignores null embeddings while the default left join doesn't",
+			Method:          "HEAD",
+			Query:           "/projects?select=id,clients!inner(id)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4"},
+			Status:          200,
+		},
 		// 	it "filters source tables when the embedded table is filtered" $ do
 		// 	  get "/projects?select=id,clients!inner(id)&clients.id=eq.1" `shouldRespondWith`
 		// 		[json|[
@@ -93,7 +101,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-1/2" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when the embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/projects?select=id,clients!inner(id)&clients.id=eq.1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		// 	it "filters source tables when a two levels below embedded table is filtered" $ do
 		// 	  get "/tasks?select=id,projects!inner(id,clients!inner(id))&projects.clients.id=eq.1" `shouldRespondWith`
 		// 		[json|[
@@ -137,7 +153,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-3/4" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when a two levels below embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/tasks?select=id,projects!inner(id,clients!inner(id))&projects.clients.id=eq.1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4"},
+			Status:          200,
+		},
 		// 	it "only affects the source table rows if his direct embedding is an inner join" $ do
 		// 	  get "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2" `shouldRespondWith`
 		// 		[json|[
@@ -171,7 +195,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-7/8" ]
 		// 		}
-
+		{
+			Description:     "only affects the source table rows if his direct embedding is an inner join",
+			Method:          "HEAD",
+			Query:           "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-7/8"},
+			Status:          200,
+		},
 		// 	it "works with views" $ do
 		// 	  get "/books?select=title,authors!inner(name)&authors.name=eq.George%20Orwell" `shouldRespondWith`
 		// 		[json| [{"title":"1984","authors":{"name":"George Orwell"}}] |]
@@ -223,7 +255,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-1/2" ]
 		// 		}
-
+		{
+			Description:     "ignores empty array embeddings while the default left join doesn't",
+			Method:          "HEAD",
+			Query:           "/entities?select=id,child_entities!inner(id)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		// 	it "filters source tables when the embedded table is filtered" $ do
 		// 	  get "/entities?select=id,child_entities!inner(id)&child_entities.id=eq.1" `shouldRespondWith`
 		// 		[json|[{"id":1,"child_entities":[{"id":1}]}]|]
@@ -261,7 +301,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-0/1" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when the embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/entities?select=id,child_entities!inner(id)&child_entities.id=eq.1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
 		// 	it "filters source tables when a two levels below embedded table is filtered" $ do
 		// 	  get "/entities?select=id,child_entities!inner(id,grandchild_entities!inner(id))&child_entities.grandchild_entities.id=in.(1,5)"
 		// 		`shouldRespondWith`
@@ -316,7 +364,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-0/1" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when a two levels below embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/entities?select=id,child_entities!inner(id,grandchild_entities!inner(id))&child_entities.grandchild_entities.id=in.(1,5)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
 		// 	it "only affects the source table rows if his direct embedding is an inner join" $ do
 		// 	  get "/entities?select=id,child_entities!inner(id,grandchild_entities(id))&child_entities.grandchild_entities.id=eq.2" `shouldRespondWith`
 		// 		[json|[
@@ -363,7 +419,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-1/2" ]
 		// 		}
-
+		{
+			Description:     "only affects the source table rows if his direct embedding is an inner join",
+			Method:          "HEAD",
+			Query:           "/entities?select=id,child_entities!inner(id,grandchild_entities(id))&child_entities.grandchild_entities.id=eq.2",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		// 	it "works with views" $ do
 		// 	  get "/authors?select=*,books!inner(*)&books.title=eq.1984" `shouldRespondWith`
 		// 		[json| [{"id":1,"name":"George Orwell","books":[{"id":1,"title":"1984","publication_year":1949,"author_id":1,"first_publisher_id":1}]}] |]
@@ -411,7 +475,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-1/2" ]
 		// 		}
-
+		{
+			Description:     "ignores empty array embeddings while the default left join doesn't",
+			Method:          "HEAD",
+			Query:           "/products?select=id,suppliers!inner(id)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		// 	it "filters source tables when the embedded table is filtered" $ do
 		// 	  get "/products?select=id,suppliers!inner(id)&suppliers.id=eq.2" `shouldRespondWith`
 		// 		[json| [{"id":1,"suppliers":[{"id":2}]}] |]
@@ -446,7 +518,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-0/1" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when the embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/products?select=id,suppliers!inner(id)&suppliers.id=eq.2",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
 		// 	it "filters source tables when a two levels below embedded table is filtered" $ do
 		// 	  get "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.3"
 		// 		`shouldRespondWith`
@@ -474,7 +554,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-0/1" ]
 		// 		}
-
+		{
+			Description:     "filters source tables when a two levels below embedded table is filtered",
+			Method:          "HEAD",
+			Query:           "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.3",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
 		// 	it "only affects the source table rows if his direct embedding is an inner join" $ do
 		// 	  get "/products?select=id,suppliers!inner(id,trade_unions(id))&suppliers.trade_unions.id=eq.3" `shouldRespondWith`
 		// 		[json|[
@@ -495,7 +583,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		, matchHeaders = [ matchContentTypeJson
 		// 						 , "Content-Range" <:> "0-1/2" ]
 		// 		}
-
+		{
+			Description:     "only affects the source table rows if his direct embedding is an inner join",
+			Method:          "HEAD",
+			Query:           "/products?select=id,suppliers!inner(id,trade_unions(id))&suppliers.trade_unions.id=eq.3",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		// 	it "works with views" $ do
 		// 	  get "/actors?select=*,films!inner(*)&films.title=eq.douze%20commandements" `shouldRespondWith`
 		// 		[json| [{"id":1,"name":"john","films":[{"id":12,"title":"douze commandements"}]}] |]
@@ -534,7 +630,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-3/4" ]
 		// 	  }
-
+		{
+			Description:     "works with m2o and m2m relationships combined",
+			Method:          "HEAD",
+			Query:           "/projects?select=name,clients!inner(name),users!inner(name)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4"},
+			Status:          200,
+		},
 		//   it "works with rpc" $ do
 		// 	get "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1" `shouldRespondWith`
 		// 	  [json| [{"id":1,"clients":{"id":1}}, {"id":2,"clients":{"id":1}}] |]
@@ -551,6 +655,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-1/2" ]
 		// 	  }
+		{
+			Description:     "works with rpc",
+			Method:          "HEAD",
+			Query:           "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 		//   it "works when using hints" $ do
 		// 	get "/projects?select=id,clients!client!inner(id)&clients.id=eq.2" `shouldRespondWith`
 		// 	  [json| [{"id":3,"clients":{"id":2}}, {"id":4,"clients":{"id":2}}] |]
@@ -616,7 +729,15 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-2/3" ]
 		// 	  }
-
+		{
+			Description:     "works with many one-to-many relationships",
+			Method:          "HEAD",
+			Query:           "/client?select=id,name,contact!inner(name),clientinfo!inner(other)",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/3"},
+			Status:          200,
+		},
 		//   it "works alongside another embedding" $ do
 		// 	-- https://github.com/PostgREST/postgrest/issues/2342
 		// 	get "/books?select=id,authors(name),publishers!inner(name)&id=gte.7"

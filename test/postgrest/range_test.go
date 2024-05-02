@@ -15,7 +15,7 @@ func TestPostgREST_Range(t *testing.T) {
 		//         it "returns whole range with status 200" $
 		//            get "/rpc/getitemrange?min=0&max=15" `shouldRespondWith` 200
 		{
-			Description: "requesting full representation includes related data after insert",
+			Description: "with response under server size limit returns whole range with status 200",
 			Method:      "GET",
 			Query:       "/rpc/getitemrange?min=0&max=15",
 			Body:        ``,
@@ -66,7 +66,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/0"]
 		//             }
-
+		{
+			Description:     "refuses a range with nonzero start when there are no items",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?offset=1&min=2&max=2",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          416,
+		},
 		//         it "refuses a range requesting start past last item" $
 		//           request methodGet "/rpc/getitemrange?offset=100&min=0&max=15"
 		//                   [("Prefer", "count=exact")] mempty
@@ -80,7 +89,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/15"]
 		//             }
-
+		{
+			Description:     "refuses a range requesting start past last item",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?offset=100&min=0&max=15",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
+			Status:          416,
+		},
 		//     context "with range headers" $ do
 		//       context "of acceptable range" $ do
 		//         it "succeeds with partial content" $ do
@@ -185,7 +203,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Headers:         test.Headers{"Range": []string{"1-0"}},
 			Expected:        ``,
 			ExpectedHeaders: nil,
-			Status:          200,
+			Status:          416,
 		},
 		//         it "refuses a range with nonzero start when there are no items" $
 		//           request methodGet "/rpc/getitemrange?min=2&max=2"
@@ -200,7 +218,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/0"]
 		//             }
-
+		{
+			Description:     "refuses a range with nonzero start when there are no items",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=2",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          416,
+		},
 		//         it "refuses a range requesting start past last item" $
 		//           request methodGet "/rpc/getitemrange?min=0&max=15"
 		//                   (rangeHdrsWithCount $ ByteRangeFromTo 100 199) mempty
@@ -214,7 +241,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/15"]
 		//             }/items
-
+		{
+			Description:     "refuses a range requesting start past last item",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=0&max=15",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"100-199"}, "Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
+			Status:          416,
+		},
 		//   describe "GET /items" $ do
 		//     context "without range headers" $ do
 		//       context "with response under server size limit" $
@@ -237,7 +273,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             `shouldRespondWith`
 		//               [json|[]|]
 		//               { matchHeaders = ["Content-Range" <:> "*/0"] }
-
+		{
+			Description:     "count with an empty body returns empty body with Content-Range */0",
+			Method:          "GET",
+			Query:           "/items?id=eq.0",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          200,
+		},
 		//       context "when I don't want the count" $ do
 		//         it "returns range Content-Range with /*" $
 		//           request methodGet "/menagerie"
@@ -412,7 +457,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             `shouldRespondWith`
 		//               [json|[]|]
 		//               { matchHeaders = ["Content-Range" <:> "*/0"] }
-
+		{
+			Description:     "succeeds if offset equals 0 as a no-op",
+			Method:          "GET",
+			Query:           "/items?offset=0&id=eq.0",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          200,
+		},
 		//         it  "one or more items" $
 		//           get "/items?select=id&offset=0&order=id"
 		//             `shouldRespondWith`
@@ -477,7 +531,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/0"]
 		//             }
-
+		{
+			Description:     "refuses a range with nonzero start when there are no items",
+			Method:          "GET",
+			Query:           "/menagerie?offset=1",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          416,
+		},
 		//         it "refuses a range requesting start past last item" $
 		//           request methodGet "/items?offset=100"
 		//                   [("Prefer", "count=exact")] ""
@@ -491,7 +554,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/15"]
 		//             }
-
+		{
+			Description:     "refuses a range requesting start past last item",
+			Method:          "GET",
+			Query:           "/items?offset=100",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
+			Status:          416,
+		},
 		//     context "when count=planned" $ do
 		//       it "obtains a filtered range" $ do
 		//         request methodGet "/items?select=id&id=gt.8"
@@ -624,7 +696,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"0-"}},
 			Expected:        ``,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-14/*"},
 			Status:          200,
 		},
 		//         it "returns an empty body when there are no results" $
@@ -713,7 +785,16 @@ func TestPostgREST_Range(t *testing.T) {
 		//             { matchStatus  = 416
 		//             , matchHeaders = ["Content-Range" <:> "*/0"]
 		//             }
-
+		{
+			Description:     "refuses a range with nonzero start when there are no items",
+			Method:          "GET",
+			Query:           "/menagerie",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          416,
+		},
 		// it "refuses a range requesting start past last item" $
 		//
 		//	request methodGet "/items"
@@ -728,6 +809,50 @@ func TestPostgREST_Range(t *testing.T) {
 		//	  { matchStatus  = 416
 		//	  , matchHeaders = ["Content-Range" <:> "*/15"]
 		//	  }
+		{
+			Description:     "refuses a range requesting start past last item",
+			Method:          "GET",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"100-199"}, "Prefer": []string{"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: nil,
+			Status:          416,
+		},
+
+		//@@ mine
+		{
+			Description:     "limit and offset with count",
+			Method:          "GET",
+			Query:           "/items?select=id&order=id.asc&limit=3&offset=2",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
+			Expected:        `[{"id":3},{"id":4},{"id":5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "2-4/15"},
+			Status:          200,
+		},
+		{
+			Description: "range with count",
+			Method:      "GET",
+			Query:       "/items?select=id&order=id.asc",
+			Body:        ``,
+			Headers:     test.Headers{"Range": []string{"0-"}, "Prefer": []string{"count=exact"}},
+			Expected: `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},
+				{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},
+				{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-14/15"},
+			Status:          200,
+		},
+		{
+			Description:     "partial range with count",
+			Method:          "GET",
+			Query:           "/items?select=id&order=id.asc",
+			Body:            ``,
+			Headers:         test.Headers{"Range": []string{"1-3"}, "Prefer": []string{"count=exact"}},
+			Expected:        `[{"id":2},{"id":3},{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-3/15"},
+			Status:          206,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

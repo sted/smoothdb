@@ -413,6 +413,7 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	fds := rows.FieldDescriptions()
 	var count int64
+	var _count int64 = -1
 
 	if !single {
 		j.WriteByte('[')
@@ -430,8 +431,13 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 		for i := range fds {
 			buf := bufRaw[i]
 			fd := fds[i]
-			if i > 0 {
+			if i > 1 || i == 1 && _count == -1 {
 				j.WriteByte(',')
+			} else if fd.Name == "__count" {
+				if count == 1 {
+					_count = toInt64(buf)
+				}
+				continue
 			}
 			if !scalar {
 				j.WriteByte('"')
@@ -456,6 +462,10 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 		if count != 1 {
 			return nil, 0, &SerializeError{}
 		}
+	}
+	if _count != -1 {
+		// we have a count in the query
+		count = _count
 	}
 	return []byte(j.String()), count, nil
 }
@@ -517,6 +527,7 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	fds := rows.FieldDescriptions()
 	var count int64
+	var _count int64 = -1
 
 	for i := range fds {
 		if i > 0 {
@@ -534,8 +545,13 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 		for i := range fds {
 			buf := bufRaw[i]
 			fd := fds[i]
-			if i > 0 {
+			if i > 1 || i == 1 && _count == -1 {
 				csv.WriteByte(',')
+			} else if fd.Name == "__count" {
+				if count == 1 {
+					_count = toInt64(buf)
+				}
+				continue
 			}
 			csv.appendType(buf, fd.DataTypeOID, info)
 		}
@@ -549,6 +565,10 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 		if count != 1 {
 			return nil, 0, &SerializeError{}
 		}
+	}
+	if _count != -1 {
+		// we have a count in the query
+		count = _count
 	}
 	return []byte(csv.String()), count, nil
 }

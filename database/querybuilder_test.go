@@ -69,7 +69,7 @@ func TestQueryBuilder(t *testing.T) {
 			// limit and offest
 			"?order=a,b&limit=20&offset=100",
 			`SELECT * FROM "table" ORDER BY "table"."a", "table"."b" LIMIT $1 OFFSET $2`,
-			[]any{"20", "100"},
+			[]any{int64(20), int64(100)},
 		},
 		{
 			// simple where

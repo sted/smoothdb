@@ -61,6 +61,55 @@ func TestPostgREST_RPC(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
 			Status:          200,
 		},
+
+		// it "using limit and offset" $ do
+		// post "/rpc/getitemrange?limit=1&offset=1" [json| { "min": 2, "max": 4 } |]
+		//    `shouldRespondWith` [json| [{"id":4}] |]
+		// 	{ matchStatus = 200
+		// 	, matchHeaders = ["Content-Range" <:> "1-1/*"]
+		// 	}
+		{
+			Description:     "using limit and offset",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange?limit=1&offset=1",
+			Body:            `{ "min": 2, "max": 4 } `,
+			Headers:         nil,
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			Status:          200,
+		},
+		// get "/rpc/getitemrange?min=2&max=4&limit=1&offset=1"
+		//    `shouldRespondWith` [json| [{"id":4}] |]
+		// 	{ matchStatus = 200
+		// 	, matchHeaders = ["Content-Range" <:> "1-1/*"]
+		// 	}
+		{
+			Description:     "using limit and offset",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
+			Body:            ``,
+			Headers:         nil,
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			Status:          200,
+		},
+		// request methodHead "/rpc/getitemrange?min=2&max=4&limit=1&offset=1" mempty mempty
+		//   `shouldRespondWith`
+		// 	""
+		// 	{ matchStatus = 200
+		// 	, matchHeaders = [ matchContentTypeJson
+		// 					 , "Content-Range" <:> "1-1/*" ]
+		// 	}
+		{
+			Description:     "using limit and offset",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
+			Body:            ``,
+			Headers:         nil,
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			Status:          200,
+		},
 		//   it "includes total count if requested" $ do
 		//     request methodPost "/rpc/getitemrange"
 		//             (rangeHdrsWithCount (ByteRangeFromTo 0 0))
@@ -69,12 +118,33 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 206 -- it now knows the response is partial
 		//         , matchHeaders = ["Content-Range" <:> "0-0/2"]
 		//         }
+		// @@ we will not support this (count with POST)
+		// {
+		// 	Description:     "includes total count if requested",
+		// 	Method:          "POST",
+		// 	Query:           "/rpc/getitemrange",
+		// 	Body:            `{ "min": 2, "max": 4 }`,
+		// 	Headers:         test.Headers{"Range": []string{"0-0"}, "Prefer": {"count=exact"}},
+		// 	Expected:        ``,
+		// 	ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
+		// 	Status:          206,
+		// },
 		//     request methodGet "/rpc/getitemrange?min=2&max=4"
 		//             (rangeHdrsWithCount (ByteRangeFromTo 0 0)) ""
 		//        `shouldRespondWith` [json| [{"id":3}] |]
 		//         { matchStatus = 206
 		//         , matchHeaders = ["Content-Range" <:> "0-0/2"]
 		//         }
+		{
+			Description:     "includes total count if requested",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Body:            ``,
+			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
+			Expected:        `[{"id":3}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
+			Status:          206,
+		},
 		//     request methodHead "/rpc/getitemrange?min=2&max=4"
 		//         (rangeHdrsWithCount (ByteRangeFromTo 0 0)) ""
 		//       `shouldRespondWith`
@@ -83,7 +153,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         , matchHeaders = [ matchContentTypeJson
 		//                          , "Content-Range" <:> "0-0/2" ]
 		//         }
-
+		{
+			Description:     "includes total count if requested",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Body:            ``,
+			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
+			Status:          206,
+		},
 		//   it "includes exact count if requested" $ do
 		//     request methodHead "/rpc/getallprojects"
 		//             [("Prefer", "count=exact")] ""
@@ -91,13 +170,82 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Range" <:> "0-4/5"]
 		//         }
+		{
+			Description:     "includes exact count if requested",
+			Method:          "HEAD",
+			Query:           "/rpc/getallprojects",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-4/5"},
+			Status:          200,
+		},
 		//     request methodHead "/rpc/getallprojects?select=*,clients!inner(*)&clients.id=eq.1"
 		//             [("Prefer", "count=exact")] ""
 		//        `shouldRespondWith` ""
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Range" <:> "0-1/2"]
 		//         }
-
+		{
+			Description:     "includes exact count if requested",
+			Method:          "HEAD",
+			Query:           "/rpc/getallprojects?select=*,clients!inner(*)&clients.id=eq.1",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
+		// it "includes exact count of 1 for functions that return a single scalar, domain or composite" $ do
+		// request methodGet "/rpc/add_them?a=3&b=4"
+		//         [("Prefer", "count=exact")] ""
+		//    `shouldRespondWith` "7"
+		//     { matchStatus = 200
+		//     , matchHeaders = ["Content-Range" <:> "0-0/1"]
+		//     }
+		{
+			Description:     "includes exact count of 1 for functions that return a single scalar, domain or composite",
+			Method:          "GET",
+			Query:           "/rpc/add_them?a=3&b=4",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `7`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
+		// request methodGet "/rpc/ret_domain?val=8"
+		//         [("Prefer", "count=exact")] ""
+		//    `shouldRespondWith` "8"
+		//     { matchStatus = 200
+		//     , matchHeaders = ["Content-Range" <:> "0-0/1"]
+		//     }
+		{
+			Description:     "includes exact count of 1 for functions that return a single scalar, domain or composite",
+			Method:          "GET",
+			Query:           "/rpc/ret_domain?val=8",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `8`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
+		// request methodGet "/rpc/ret_point_2d"
+		//         [("Prefer", "count=exact")] ""
+		//    `shouldRespondWith`
+		//     [json|{"x": 10, "y": 5}|]
+		//     { matchStatus = 200
+		//     , matchHeaders = ["Content-Range" <:> "0-0/1"]
+		//     }
+		{
+			Description:     "includes exact count of 1 for functions that return a single scalar, domain or composite",
+			Method:          "GET",
+			Query:           "/rpc/ret_point_2d",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `{"x": 10, "y": 5}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
 		//   it "returns proper json" $ do
 		//     post "/rpc/getitemrange" [json| { "min": 2, "max": 4 } |] `shouldRespondWith`
 		//       [json| [ {"id": 3}, {"id":4} ] |]

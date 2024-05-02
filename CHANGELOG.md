@@ -1,5 +1,10 @@
 # Change Log
 
+## unrelesed
+
+### Added
+* count=exact and tests
+
 ## 0.2.6 - 2024-04-15
 
 ### Added

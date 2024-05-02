@@ -22,7 +22,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	if options.ContentType == "unknown/unknown" {
 		return nil, 0, &ContentTypeError{msg: "Content type not available"}
 	}
-	if options.RangeMin > options.RangeMax {
+	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
 		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
 	}
 	info := gi.Db.info

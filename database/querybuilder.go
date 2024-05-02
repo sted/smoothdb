@@ -668,8 +668,9 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 	return delete, valueList, nil
 }
 
-func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+func buildAfterSelect(query, from, joins, whereClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	nmarker := len(valueList)
+	query += " " + from
 	if joins != "" {
 		query += " " + joins
 	}
@@ -679,36 +680,51 @@ func buildAfterSelectFrom(query, joins, whereClause, orderClause string, valueLi
 	if orderClause != "" {
 		query += " ORDER BY " + orderClause
 	}
-	if parts.limit != "" || options.HasRange {
+	var limit int64 = -1
+	if parts.limit != "" || options.HasRange && options.RangeMax != -1 {
 		nmarker += 1
 		query += " LIMIT $" + strconv.Itoa(nmarker)
-		var limit string
 		if options.HasRange {
-			limit = strconv.FormatInt(options.RangeMax-options.RangeMin+1, 10)
+			limit = options.RangeMax - options.RangeMin + 1
 		} else {
-			limit = parts.limit
-			options.RangeMax, _ = strconv.ParseInt(limit, 10, 64)
-			options.RangeMax -= 1
-			if options.RangeMax == -1 { // limit = 0
-				options.RangeMin = -1
-			}
+			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
+			options.RangeMax = limit - 1
 		}
 		valueList = append(valueList, limit)
 	}
+	var offset int64 = -1
 	if parts.offset != "" || options.HasRange {
 		nmarker += 1
 		query += " OFFSET $" + strconv.Itoa(nmarker)
-		var offset string
 		if options.HasRange {
-			offset = strconv.FormatInt(options.RangeMin, 10)
+			offset = options.RangeMin
 		} else {
-			if options.RangeMax != -1 {
-				offset = parts.offset
-				options.RangeMin, _ = strconv.ParseInt(offset, 10, 64)
-				options.RangeMax += options.RangeMin
+			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
+			options.RangeMin = offset
+			if options.RangeMax == -1 {
+				options.RangeMax = 0
 			}
+			options.RangeMax += options.RangeMin
 		}
 		valueList = append(valueList, offset)
+	}
+	if options.Count != "" && (limit != -1 || offset > 0) {
+		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
+		if whereClause != "" {
+			countQuery += " WHERE " + whereClause
+		}
+		query = countQuery +
+			"), Data AS (" + query +
+			`),
+			PseudoRow AS (
+				SELECT 1 AS Dummy
+			)
+			SELECT 
+				__t.__count,
+				d.*
+			FROM PseudoRow
+			CROSS JOIN Total __t
+			LEFT JOIN Data d ON true;`
 	}
 	return query, valueList, nil
 }
@@ -761,9 +777,10 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
 	orderClause := orderClause("t", "", "", parts.orderFields, info)
-	query = "SELECT " + selectClause + " FROM " + _sq(name, schema) + "(" + pairs + ") t "
+	query = "SELECT " + selectClause
+	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
@@ -779,9 +796,10 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
-	query := "SELECT " + selectClause + " FROM " + _sq(table, schema)
+	query := "SELECT " + selectClause
+	from := "FROM " + _sq(table, schema)
 
-	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 func (DirectQueryBuilder) preferredSerializer() TextSerializer {
@@ -803,11 +821,12 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
 	query := "SELECT "
 	if selectClause == "*" {
-		query += "json_agg(" + table + ")" + " FROM " + table
+		query += "json_agg(" + table + ")"
 	} else {
-		query += "SELECT " + selectClause + " FROM " + table
+		query += "SELECT " + selectClause
 	}
-	return buildAfterSelectFrom(query, joins, whereClause, orderClause, valueList, parts, options)
+	from := "FROM " + table
+	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
 }
 
 func (QueryWithJSON) preferredSerializer() TextSerializer {

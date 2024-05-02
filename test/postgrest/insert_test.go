@@ -156,13 +156,14 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 						   , "Content-Range" <:> "*/1" ]
 		// 		  }
 		{
-			Description: "requesting full representation includes related data after insert",
-			Method:      "POST",
-			Query:       "/projects?select=id,name,clients(id,name)",
-			Body:        `{"id":6,"name":"New Project","client_id":2}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]`,
-			Status:      201,
+			Description:     "requesting full representation includes related data after insert",
+			Method:          "POST",
+			Query:           "/projects?select=id,name,clients(id,name)",
+			Body:            `{"id":6,"name":"New Project","client_id":2}`,
+			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
+			Expected:        `[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/1"},
+			Status:          201,
 		},
 		// 	  it "can rename and cast the selected columns" $
 		// 		request methodPost "/projects?select=pId:id::text,pName:name,cId:client_id::text"

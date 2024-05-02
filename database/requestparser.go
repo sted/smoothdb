@@ -915,17 +915,28 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 			options.TxCommit = true
 		case "tx=rollback":
 			options.TxRollback = true
+		case "count=exact":
+			options.Count = "exact"
 		}
 	}
 
+	options.RangeMin = -1
+	options.RangeMax = -1
 	rangeValues := header.Values("Range")
 	if l := len(rangeValues); l != 0 {
 		r := rangeValues[l-1]
 		matches := rangeRe.FindStringSubmatch(r)
 		if matches != nil {
+			var err error
 			options.HasRange = true
-			options.RangeMin, _ = strconv.ParseInt(matches[1], 10, 64)
-			options.RangeMax, _ = strconv.ParseInt(matches[2], 10, 64)
+			options.RangeMin, err = strconv.ParseInt(matches[1], 10, 64)
+			if err != nil {
+				options.RangeMin = -1
+			}
+			options.RangeMax, err = strconv.ParseInt(matches[2], 10, 64)
+			if err != nil {
+				options.RangeMax = -1
+			}
 		}
 	}
 
