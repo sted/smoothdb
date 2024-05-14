@@ -13,6 +13,11 @@ type DatabaseInfo struct {
 	Owner string `json:"owner"`
 }
 
+type DatabaseUpdate struct {
+	Name  *string `json:"name"`
+	Owner *string `json:"owner"`
+}
+
 type Database struct {
 	DatabaseInfo
 	activation    chan struct{}

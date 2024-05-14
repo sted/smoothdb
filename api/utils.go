@@ -9,7 +9,9 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -47,7 +49,6 @@ func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	if dberr, ok := err.(*pgconn.PgError); ok {
-		var status int
 		switch dberr.Code {
 		case "42501":
 			status = http.StatusUnauthorized
@@ -377,4 +378,22 @@ func WriteContent(ctx context.Context, w http.ResponseWriter, status int, conten
 	w.WriteHeader(status)
 	_, err := w.Write(content)
 	return status, err
+}
+
+// StripPrefix returns a new request with the URL path stripped from a prefix.
+// It returns nil if the URL path has nbot been stripped.
+// Taken from the handler version in the standard lib: http.StripPrefix.
+func StripPrefix(r *http.Request, prefix string) *http.Request {
+	p := strings.TrimPrefix(r.URL.Path, prefix)
+	rp := strings.TrimPrefix(r.URL.RawPath, prefix)
+	if len(p) < len(r.URL.Path) && (r.URL.RawPath == "" || len(rp) < len(r.URL.RawPath)) {
+		r2 := new(http.Request)
+		*r2 = *r
+		r2.URL = new(url.URL)
+		*r2.URL = *r.URL
+		r2.URL.Path = p
+		r2.URL.RawPath = rp
+		return r2
+	}
+	return nil
 }

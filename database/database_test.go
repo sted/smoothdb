@@ -230,14 +230,13 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = UpdateColumn(ctx, &ColumnUpdate{
-			Name:    "c1",
-			NewName: lo.ToPtr("ccc"),
+		err = UpdateColumn(ctx, "b4", "c1", &ColumnUpdate{
+			Name:    lo.ToPtr("ccc"),
 			Type:    lo.ToPtr("text"),
 			NotNull: lo.ToPtr(true),
 			Default: lo.ToPtr("'pippo'"),
-			//Constraints: []string{"CHECK c1 <> 'pluto'", "UNIQUE"},
-			Table: "b4"})
+		})
+		//Constraints: []string{"CHECK c1 <> 'pluto'", "UNIQUE"},
 		if err != nil {
 			t.Fatal(err)
 		}

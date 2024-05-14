@@ -13,6 +13,16 @@ type Role struct {
 	MemberOf            []string `json:"memberof"` // readonly for now
 }
 
+type RoleUpdate struct {
+	Name                *string `json:"name"`
+	IsSuperUser         *bool   `json:"issuperuser"`
+	CanLogin            *bool   `json:"canlogin"`
+	NoInheritPrivileges *bool   `json:"noinherit"`
+	CanCreateRoles      *bool   `json:"cancreateroles"`
+	CanCreateDatabases  *bool   `json:"cancreatedatabases"`
+	CanBypassRLS        *bool   `json:"canbypassrls"`
+}
+
 const rolesQuery = `
 	SELECT r.rolname, r.rolsuper, r.rolcanlogin, NOT r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls,
 		ARRAY(SELECT b.rolname
@@ -85,6 +95,75 @@ func CreateRole(ctx context.Context, role *Role) (*Role, error) {
 		return nil, err
 	}
 	return GetRole(ctx, role.Name)
+}
+
+func UpdateRole(ctx context.Context, name string, role *RoleUpdate) error {
+	conn := GetConn(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	prefix := "ALTER ROLE " + quote(name)
+	alter := prefix
+
+	if role.IsSuperUser != nil {
+		if *role.IsSuperUser {
+			alter += " SUPERUSER"
+		} else {
+			alter += " NOSUPERUSER"
+		}
+	}
+	if role.CanLogin != nil {
+		if *role.CanLogin {
+			alter += " LOGIN"
+		} else {
+			alter += " NOLOGIN"
+		}
+	}
+	if role.NoInheritPrivileges != nil {
+		if *role.NoInheritPrivileges {
+			alter += " NOINHERIT"
+		} else {
+			alter += " INHERIT"
+		}
+	}
+	if role.CanCreateRoles != nil {
+		if *role.CanCreateRoles {
+			alter += " CREATEROLE"
+		} else {
+			alter += " NOCREATEROLE"
+		}
+	}
+	if role.CanCreateDatabases != nil {
+		if *role.CanCreateDatabases {
+			alter += " CREATEDB"
+		} else {
+			alter += " NOCREATEDB"
+		}
+	}
+	if role.CanBypassRLS != nil {
+		if *role.CanBypassRLS {
+			alter += " BYPASSRLS"
+		} else {
+			alter += " NOBYPASSRLS"
+		}
+	}
+	_, err = conn.Exec(ctx, alter)
+	if err != nil {
+		return err
+	}
+
+	// NAME as the last update
+	if role.Name != nil && *role.Name != name {
+		_, err = conn.Exec(ctx, prefix+" RENAME TO "+*role.Name)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+
 }
 
 func DeleteRole(ctx context.Context, name string) error {

@@ -250,6 +250,31 @@ func (dbe *DbEngine) CloneDatabase(ctx context.Context, name string, source stri
 	return dbe.GetDatabase(ctx, name)
 }
 
+// UpdateDatabase updates a database.
+func (dbe *DbEngine) UpdateDatabase(ctx context.Context, name string, update *DatabaseUpdate) error {
+	conn := GetConn(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if update.Owner != nil {
+		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" OWNER to "+*update.Owner)
+		if err != nil {
+			return err
+		}
+	}
+	// NAME as the last update
+	if update.Name != nil && *update.Name != name {
+		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" RENAME TO "+*update.Name)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // DeleteDatabase deletes a database.
 // It blocks until all connections are returned to pool.
 func (dbe *DbEngine) DeleteDatabase(ctx context.Context, name string) error {

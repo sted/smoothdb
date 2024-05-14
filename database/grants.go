@@ -131,10 +131,11 @@ func GetPrivileges(ctx context.Context, targetType string, targetName string) ([
 	privileges := []Privilege{}
 	var query string
 
-	if targetType == "table" {
+	if targetType == "table" { // @@ table includes views etc for now
 		query = privilegesRelationQuery
 		if targetName != "" {
-			query += " AND c.relname = '" + targetName + "'"
+			schemaname, tablename := splitTableName(targetName)
+			query += " AND c.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
 		}
 	}
 

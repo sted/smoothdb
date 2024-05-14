@@ -12,12 +12,10 @@ type Column struct {
 }
 
 type ColumnUpdate struct {
-	Name    string  `json:"name"`
-	NewName *string `json:"newname"`
+	Name    *string `json:"name"`
 	Type    *string `json:"type"`
 	NotNull *bool   `json:"notnull"`
 	Default *string `json:"default"`
-	Table   string  `json:"-"`
 }
 
 const columnsQuery = `
@@ -87,23 +85,23 @@ func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	return column, nil
 }
 
-func UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Column, error) {
+func UpdateColumn(ctx context.Context, ftablename string, name string, column *ColumnUpdate) error {
 	conn := GetConn(ctx)
 	tx, err := conn.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer tx.Rollback(ctx)
 
 	var alter string
 
-	prefix := "ALTER TABLE " + column.Table + " ALTER COLUMN "
+	prefix := "ALTER TABLE " + ftablename + " ALTER COLUMN "
 	// TYPE
 	if column.Type != nil {
-		alter = prefix + column.Name + " TYPE " + *column.Type
+		alter = prefix + name + " TYPE " + *column.Type
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	// NOT NULL
@@ -114,39 +112,35 @@ func UpdateColumn(ctx context.Context, column *ColumnUpdate) (*Column, error) {
 		} else {
 			set_drop = "DROP"
 		}
-		alter = prefix + column.Name + " " + set_drop + " NOT NULL"
+		alter = prefix + name + " " + set_drop + " NOT NULL"
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	// DEFAULT
 	if column.Default != nil {
 		if *column.Default != "" {
-			alter = prefix + column.Name + " SET DEFAULT " + *column.Default
+			alter = prefix + name + " SET DEFAULT " + *column.Default
 		} else {
-			alter = prefix + column.Name + " DROP DEFAULT"
+			alter = prefix + name + " DROP DEFAULT"
 		}
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	// NAME
-	if column.NewName != nil {
-		alter = "ALTER TABLE " + column.Table + " RENAME " + column.Name + " TO " + *column.NewName
+	// NAME as the last update
+	if column.Name != nil && *column.Name != name {
+		alter = "ALTER TABLE " + ftablename + " RENAME " + name + " TO " + *column.Name
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	//db.refreshTable(ctx, column.Table)
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &Column{}, nil
+	//db.refreshTable(ctx, ftablename)
+	return tx.Commit(ctx)
 }
 
 func DeleteColumn(ctx context.Context, table string, name string, cascade bool) error {

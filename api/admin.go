@@ -55,6 +55,21 @@ func InitAdminRouter(apiHelper Helper) {
 		}
 	})
 
+	roles.Handle("PATCH", "/:rolename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		var roleUpdate database.RoleUpdate
+		name := r.Param("rolename")
+		err := r.ReadJSON(&roleUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = database.UpdateRole(c, name, &roleUpdate)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, "")
+		} else {
+			return WriteServerError(w, err)
+		}
+	})
+
 	roles.Handle("DELETE", "/:rolename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("rolename")
 		err := database.DeleteRole(c, name)
@@ -127,6 +142,9 @@ func InitAdminRouter(apiHelper Helper) {
 		if targetType == "" {
 			privileges, err = database.GetDatabasePrivileges(c, dbname)
 		} else {
+			if targetType == "tables" {
+				targetType = "table"
+			}
 			privileges, err = database.GetPrivileges(c, targetType, targetName)
 		}
 
@@ -236,6 +254,21 @@ func InitAdminRouter(apiHelper Helper) {
 		}
 	})
 
+	dbegroup.Handle("PATCH", "/:dbname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		var databaseUpdate database.DatabaseUpdate
+		name := r.Param("dbname")
+		err := r.ReadJSON(&databaseUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = dbe.UpdateDatabase(c, name, &databaseUpdate)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, "")
+		} else {
+			return WriteServerError(w, err)
+		}
+	})
+
 	dbegroup.Handle("DELETE", "/:dbname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("dbname")
 
@@ -248,6 +281,12 @@ func InitAdminRouter(apiHelper Helper) {
 	})
 
 	databases := admin_db.Group("/databases")
+
+	// Alternatives routes for grants
+
+	databases.Handle("GET", "/:dbname/grants", grantsGetHandler)
+	// here :targettypes will be "tables"
+	databases.Handle("GET", "/:dbname/:targettype/:targetname/grants", grantsGetHandler)
 
 	// SCHEMAS
 
@@ -374,15 +413,15 @@ func InitAdminRouter(apiHelper Helper) {
 
 	databases.Handle("PATCH", "/:dbname/tables/:table/columns/:column", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var columnUpdate database.ColumnUpdate
-		columnUpdate.Table = r.Param("table")
-		columnUpdate.Name = r.Param("column")
+		table := r.Param("table")
+		name := r.Param("column")
 		err := r.ReadJSON(&columnUpdate)
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
-		column, err := database.UpdateColumn(c, &columnUpdate)
+		err = database.UpdateColumn(c, table, name, &columnUpdate)
 		if err == nil {
-			return heligo.WriteJSON(w, http.StatusOK, column)
+			return heligo.WriteJSON(w, http.StatusOK, nil)
 		} else {
 			return WriteServerError(w, err)
 		}
