@@ -179,12 +179,15 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 
 // CreateDatabase creates a new database
 // Use CreateActiveDatabase to create an active instance of a database
-func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, getIfExists bool) (*DatabaseInfo, error) {
+func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, owner string, getIfExists bool) (*DatabaseInfo, error) {
 	if !dbe.IsDatabaseAllowed(name) {
 		return nil, fmt.Errorf("database %q not allowed", name)
 	}
 	conn := GetConn(ctx)
 	create := "CREATE DATABASE \"" + name + "\""
+	if owner != "" {
+		create += " OWNER " + owner
+	}
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); !ok || !getIfExists || e.Code != "42P04" {
@@ -301,8 +304,8 @@ func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (db *Da
 	return db, nil
 }
 
-func (dbe *DbEngine) createActiveDatabase(ctx context.Context, name string) (*Database, error) {
-	_, err := dbe.CreateDatabase(ctx, name, false)
+func (dbe *DbEngine) createActiveDatabase(ctx context.Context, name string, owner string) (*Database, error) {
+	_, err := dbe.CreateDatabase(ctx, name, owner, false)
 	if err != nil {
 		return nil, err
 	}
@@ -310,10 +313,10 @@ func (dbe *DbEngine) createActiveDatabase(ctx context.Context, name string) (*Da
 }
 
 // CreateActiveDatabase allows to create a database and ensures it is activated
-func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string) (*Database, error) {
+func (dbe *DbEngine) CreateActiveDatabase(ctx context.Context, name string, owner string) (*Database, error) {
 	dbe.dbCreationLock.Lock()
 	defer dbe.dbCreationLock.Unlock()
-	return dbe.createActiveDatabase(ctx, name)
+	return dbe.createActiveDatabase(ctx, name, owner)
 }
 
 // GetOrCreateActiveDatabase allows to get or create a database and ensures it is activated
@@ -328,7 +331,7 @@ func (dbe *DbEngine) GetOrCreateActiveDatabase(ctx context.Context, name string)
 	if err == nil {
 		return db, err
 	}
-	return dbe.createActiveDatabase(ctx, name)
+	return dbe.createActiveDatabase(ctx, name, "")
 }
 
 // GetMainDatabase is used to get the main db

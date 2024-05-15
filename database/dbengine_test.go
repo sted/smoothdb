@@ -41,7 +41,7 @@ func TestEngine(t *testing.T) {
 	})
 
 	t.Run("CreateDatabase", func(t *testing.T) {
-		_, err = dbe.CreateDatabase(ctx, "test_base", true)
+		_, err = dbe.CreateDatabase(ctx, "test_base", "", true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +52,7 @@ func TestEngine(t *testing.T) {
 	})
 
 	t.Run("CloneDatabase", func(t *testing.T) {
-		_, err = dbe.CreateDatabase(ctx, "test_base", true)
+		_, err = dbe.CreateDatabase(ctx, "test_base", "", true)
 		if err != nil {
 			t.Fatal(err)
 		}

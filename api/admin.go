@@ -228,7 +228,7 @@ func InitAdminRouter(apiHelper Helper) {
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
-		database, err := dbe.CreateDatabase(c, databaseInput.Name, false)
+		database, err := dbe.CreateDatabase(c, databaseInput.Name, databaseInput.Owner, false)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, database)
 		} else {
