@@ -20,6 +20,10 @@ func (s *Server) initHTTPServer() {
 	}
 	if cfg.EnableAdminRoute {
 		api.InitAdminRouter(s)
+
+		if cfg.EnableAdminUI {
+			api.InitAdminUI(s)
+		}
 	}
 	if cfg.EnableAPIRoute {
 		api.InitSourcesRouter(s)

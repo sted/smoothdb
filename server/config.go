@@ -28,6 +28,7 @@ type Config struct {
 	JWTSecret            string          `comment:"Secret for JWT tokens"`
 	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
 	EnableAdminRoute     bool            `comment:"Enable administration of databases and tables (default: false)"`
+	EnableAdminUI        bool            `comment:"Enable Admin dashboard (default: false)"`
 	EnableAPIRoute       bool            `comment:"Enable API access (default: true)"`
 	BaseAPIURL           string          `comment:"Base URL for the API (default: /api)"`
 	ShortAPIURL          bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
@@ -53,6 +54,7 @@ func defaultConfig() *Config {
 		JWTSecret:            "",
 		SessionMode:          "role",
 		EnableAdminRoute:     false,
+		EnableAdminUI:        false,
 		EnableAPIRoute:       true,
 		BaseAPIURL:           "/api",
 		ShortAPIURL:          false,
@@ -79,6 +81,7 @@ func getEnvironment(c *Config) {
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
 		c.EnableAdminRoute = true
+		c.EnableAdminUI = true
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 		c.EnableDebugRoute = true
