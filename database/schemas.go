@@ -16,7 +16,8 @@ const schemaQuery = `
 func GetSchemas(ctx context.Context) ([]Schema, error) {
 	conn := GetConn(ctx)
 	schemas := []Schema{}
-	rows, err := conn.Query(ctx, schemaQuery+" WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1;")
+	rows, err := conn.Query(ctx, schemaQuery+
+		" WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1;")
 	if err != nil {
 		return schemas, err
 	}

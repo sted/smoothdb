@@ -15,14 +15,14 @@ const viewsQuery = `
 		pg_get_viewdef(c.oid) AS definition,
 		c.relkind                  
 	FROM (pg_class c                                         
-		LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
+	LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
 	WHERE (c.relkind = ANY (ARRAY['v'::"char", 'm'::"char"]))`
 
 func GetViews(ctx context.Context) ([]View, error) {
 	conn := GetConn(ctx)
 	views := []View{}
 	rows, err := conn.Query(ctx, viewsQuery+
-		" AND n.nspname <> 'pg_catalog' AND n.nspname <> 'information_schema' ORDER BY 1")
+		" AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1")
 	if err != nil {
 		return views, err
 	}

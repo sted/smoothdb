@@ -38,7 +38,7 @@ const functionsQuery = `
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
 	LEFT JOIN UNNEST(proargnames, proargtypes, proargmodes) WITH ORDINALITY AS _(name, type, mode, idx) ON true
-	WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
 	GROUP BY p.oid, n.nspname, l.lanname;`
 
 func GetFunctions(ctx context.Context) ([]Function, error) {
