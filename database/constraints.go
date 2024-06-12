@@ -8,8 +8,10 @@ type Constraint struct {
 	Name           string   `json:"name"`
 	Type           byte     `json:"type"` // c: check, u: unique, p: primary, f: foreign
 	Table          string   `json:"table"`
+	Schema         string   `json:"schema"`
 	Columns        []string `json:"columns"`
 	RelatedTable   *string  `json:"reltable"`
+	RelatedSchema  *string  `json:"relschema"`
 	RelatedColumns []string `json:"relcolumns"`
 	Definition     string   `json:"definition"`
 }
@@ -17,8 +19,10 @@ type Constraint struct {
 type ForeignKey struct {
 	Name           string
 	Table          string
+	Schema         string
 	Columns        []string
 	RelatedTable   string
+	RelatedSchema  string
 	RelatedColumns []string
 }
 
@@ -27,9 +31,11 @@ const constraintsQuery = `
 SELECT
     c.conname name,
     c.contype type, 
-    ns1.nspname||'.'||cls1.relname table,
+    cls1.relname table,
+	ns1.nspname schema,
     columns.cols,
-    ns2.nspname||'.'||cls2.relname ftable,
+    cls2.relname ftable,
+	ns2.nspname fschema,
     columns.fcols,
     pg_get_constraintdef(c.oid, true) def
 FROM pg_constraint c
@@ -49,7 +55,7 @@ LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace`
 func fillTableConstraints(table *Table, constraints []Constraint) {
 	table.Constraints = nil
 	for _, c := range constraints {
-		if c.Table == table.Name && (len(c.Columns) > 1 || c.Type == 'p') {
+		if c.Table == table.Name && c.Schema == table.Schema && (len(c.Columns) > 1 || c.Type == 'p') {
 			table.Constraints = append(table.Constraints, c.Definition)
 		}
 	}
@@ -58,19 +64,19 @@ func fillTableConstraints(table *Table, constraints []Constraint) {
 func fillColumnConstraints(column *Column, constraints []Constraint) {
 	column.Constraints = nil
 	for _, c := range constraints {
-		if c.Table == column.Table && len(c.Columns) == 1 && c.Columns[0] == column.Name {
+		if c.Table == column.Table && c.Schema == column.Schema && len(c.Columns) == 1 && c.Columns[0] == column.Name {
 			column.Constraints = append(column.Constraints, c.Definition)
 		}
 	}
 }
 
-func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
+func GetConstraints(ctx context.Context, ftablename string) ([]Constraint, error) {
 	conn := GetConn(ctx)
 	constraints := []Constraint{}
 	query := constraintsQuery
 	var args []any
-	if tablename != "" {
-		schemaname, tablename := splitTableName(tablename)
+	if ftablename != "" {
+		schemaname, tablename := splitTableName(ftablename)
 		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
@@ -87,8 +93,8 @@ func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error)
 	constraint := Constraint{}
 	for rows.Next() {
 		err := rows.Scan(&constraint.Name, &constraint.Type,
-			&constraint.Table, &constraint.Columns,
-			&constraint.RelatedTable, &constraint.RelatedColumns,
+			&constraint.Table, &constraint.Schema, &constraint.Columns,
+			&constraint.RelatedTable, &constraint.RelatedSchema, &constraint.RelatedColumns,
 			&constraint.Definition)
 		if err != nil {
 			return nil, err
@@ -115,9 +121,9 @@ func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint,
 	return constraint, nil
 }
 
-func DeleteConstraint(ctx context.Context, table string, name string) error {
+func DeleteConstraint(ctx context.Context, ftablename string, name string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "ALTER TABLE "+quoteParts(table)+" DROP CONSTRAINT "+quote(name))
+	_, err := conn.Exec(ctx, "ALTER TABLE "+quoteParts(ftablename)+" DROP CONSTRAINT "+quote(name))
 	if err != nil {
 		return err
 	}
@@ -129,8 +135,10 @@ func constraintToForeignKey(c *Constraint) *ForeignKey {
 	return &ForeignKey{
 		Name:           c.Name,
 		Table:          c.Table,
+		Schema:         c.Schema,
 		Columns:        c.Columns,
 		RelatedTable:   *c.RelatedTable,
+		RelatedSchema:  *c.RelatedSchema,
 		RelatedColumns: c.RelatedColumns,
 	}
 }

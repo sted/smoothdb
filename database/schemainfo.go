@@ -68,8 +68,9 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, t := range tables {
-		t.Columns, err = GetColumns(ctx, t.Name)
-		dbi.cachedTables[t.Name] = t
+		ftable := _s(t.Name, t.Schema)
+		t.Columns, _ = GetColumns(ctx, ftable)
+		dbi.cachedTables[ftable] = t
 	}
 	// Column types
 	colTypes, err := GetColumnTypes(ctx)
@@ -77,10 +78,11 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, t := range colTypes {
-		if _, ok := dbi.cachedColumnTypes[t.Table]; !ok {
-			dbi.cachedColumnTypes[t.Table] = map[string]ColumnType{}
+		ftable := _s(t.Table, t.Schema)
+		if _, ok := dbi.cachedColumnTypes[ftable]; !ok {
+			dbi.cachedColumnTypes[ftable] = map[string]ColumnType{}
 		}
-		dbi.cachedColumnTypes[t.Table][t.Name] = t
+		dbi.cachedColumnTypes[ftable][t.Name] = t
 	}
 	// Constraints
 	constraints, err := GetConstraints(ctx, "")
@@ -88,18 +90,20 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, c := range constraints {
+		ftable := _s(c.Table, c.Schema)
 		switch c.Type {
 		case 'p':
-			dbi.cachedPrimaryKeys[c.Table] = c
+			dbi.cachedPrimaryKeys[ftable] = c
 		case 'f':
+			freltable := _s(*c.RelatedTable, *c.RelatedSchema)
 			// Here we skip foreign keys from or to partitions
-			if !dbi.cachedTables[c.Table].IsPartition && !dbi.cachedTables[*c.RelatedTable].IsPartition {
-				dbi.cachedForeignKeys[c.Table] = append(dbi.cachedForeignKeys[c.Table], *constraintToForeignKey(&c))
+			if !dbi.cachedTables[ftable].IsPartition && !dbi.cachedTables[freltable].IsPartition {
+				dbi.cachedForeignKeys[ftable] = append(dbi.cachedForeignKeys[ftable], *constraintToForeignKey(&c))
 			}
 		case 'u':
-			dbi.cachedUniqueConstraints[c.Table] = append(dbi.cachedUniqueConstraints[c.Table], c)
+			dbi.cachedUniqueConstraints[ftable] = append(dbi.cachedUniqueConstraints[ftable], c)
 		case 'c':
-			dbi.cachedCheckConstraints[c.Table] = append(dbi.cachedCheckConstraints[c.Table], c)
+			dbi.cachedCheckConstraints[ftable] = append(dbi.cachedCheckConstraints[ftable], c)
 		}
 	}
 	var pk *Constraint
@@ -126,10 +130,11 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	for _, f := range functions {
+		fname := _s(f.Name, f.Schema)
 		if f.HasUnnamed {
 			continue
 		}
-		dbi.cachedFunctions[f.Name] = f
+		dbi.cachedFunctions[fname] = f
 	}
 	return dbi, nil
 }
@@ -189,7 +194,8 @@ func (si *SchemaInfo) FindRelationshipByCol(table, col string) *Relationship {
 }
 
 func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
-	table := fk.Table
+	ftable := _s(fk.Table, fk.Schema)
+	freltable := _s(fk.RelatedTable, fk.RelatedSchema)
 
 	var uniqueSource bool
 	if pk != nil {
@@ -197,7 +203,7 @@ func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
 			uniqueSource = true
 		}
 	}
-	uc := si.cachedUniqueConstraints[table]
+	uc := si.cachedUniqueConstraints[ftable]
 	for _, u := range uc {
 		if arrayEquals(fk.Columns, u.Columns) {
 			uniqueSource = true
@@ -213,51 +219,53 @@ func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
 	rels := [2]Relationship{
 		{
 			Type:           type1,
-			Table:          fk.Table,
+			Table:          ftable,
 			Columns:        fk.Columns,
-			RelatedTable:   fk.RelatedTable,
+			RelatedTable:   freltable,
 			RelatedColumns: fk.RelatedColumns,
 		},
 		{
 			Type:           type2,
-			Table:          fk.RelatedTable,
+			Table:          freltable,
 			Columns:        fk.RelatedColumns,
-			RelatedTable:   fk.Table,
+			RelatedTable:   ftable,
 			RelatedColumns: fk.Columns,
 		},
 	}
-	si.cachedRelationships[table] = append(si.cachedRelationships[table], rels[0])
-	si.cachedRelationships[fk.RelatedTable] = append(si.cachedRelationships[fk.RelatedTable], rels[1])
+	si.cachedRelationships[ftable] = append(si.cachedRelationships[ftable], rels[0])
+	si.cachedRelationships[freltable] = append(si.cachedRelationships[freltable], rels[1])
 }
 
 func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
-	table := fkeys[0].RelatedTable
-	relTable := fkeys[1].RelatedTable
+	ftable := _s(fkeys[0].RelatedTable, fkeys[0].RelatedSchema)
+	freltable := _s(fkeys[1].RelatedTable, fkeys[1].RelatedSchema)
+	fjtable := _s(fkeys[0].Table, fkeys[0].Schema)
 
 	rels := [2]Relationship{
 		{
 			Type:            M2M,
-			Table:           table,
+			Table:           ftable,
 			Columns:         fkeys[0].RelatedColumns,
-			RelatedTable:    relTable,
+			RelatedTable:    freltable,
 			RelatedColumns:  fkeys[1].RelatedColumns,
-			JunctionTable:   fkeys[0].Table,
+			JunctionTable:   fjtable,
 			JColumns:        fkeys[0].Columns,
 			JRelatedColumns: fkeys[1].Columns,
 		},
 		{
 			Type:            M2M,
-			Table:           relTable,
+			Table:           freltable,
 			Columns:         fkeys[1].RelatedColumns,
-			RelatedTable:    table,
+			RelatedTable:    ftable,
 			RelatedColumns:  fkeys[0].RelatedColumns,
-			JunctionTable:   fkeys[0].Table,
+			JunctionTable:   fjtable,
 			JColumns:        fkeys[1].Columns,
 			JRelatedColumns: fkeys[0].Columns,
 		},
 	}
-	si.cachedRelationships[table] = append(si.cachedRelationships[table], rels[0])
-	si.cachedRelationships[relTable] = append(si.cachedRelationships[relTable], rels[1])
+
+	si.cachedRelationships[ftable] = append(si.cachedRelationships[ftable], rels[0])
+	si.cachedRelationships[freltable] = append(si.cachedRelationships[freltable], rels[1])
 }
 
 func filterRelationships(rels []Relationship, relatedTable string) []Relationship {

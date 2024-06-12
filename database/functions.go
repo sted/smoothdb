@@ -11,6 +11,7 @@ type Argument struct {
 
 type Function struct {
 	Name         string     `json:"name"`
+	Schema       string     `json:"schema"`
 	Arguments    []Argument `json:"arguments"`
 	Returns      string     `json:"returns"`
 	Language     string     `json:"language"`
@@ -24,7 +25,8 @@ type Function struct {
 
 const functionsQuery = `
 	SELECT
-		n.nspname||'.'||proname name,
+		proname name,
+		n.nspname schema,
 		ARRAY_AGG((COALESCE(_.name, ''), COALESCE(_.type::regtype::text, ''), COALESCE(_.mode, '')) ORDER BY _.idx) args,
 		prorettype::regtype rettype,
 		l.lanname language,
@@ -56,6 +58,7 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 	for rows.Next() {
 		err := rows.Scan(
 			&f.Name,
+			&f.Schema,
 			&f.Arguments,
 			&f.Returns,
 			&f.Language,
@@ -76,8 +79,8 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 	return functions, nil
 }
 
-func composeSignature(name string, args []Argument) string {
-	sig := quoteParts(name) + "("
+func composeSignature(fname string, args []Argument) string {
+	sig := quoteParts(fname) + "("
 	for i, a := range args {
 		if i != 0 {
 			sig += ", "
@@ -100,7 +103,8 @@ func composeSignature(name string, args []Argument) string {
 func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
 	conn := GetConn(ctx)
 	create := "CREATE FUNCTION "
-	create += composeSignature(function.Name, function.Arguments)
+	fname := _s(function.Name, function.Schema)
+	create += composeSignature(fname, function.Arguments)
 	create += " RETURNS "
 	if function.Returns != "" {
 		create += function.Returns
@@ -124,12 +128,12 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 	return function, nil
 }
 
-func DeleteFunction(ctx context.Context, name string) error {
+func DeleteFunction(ctx context.Context, fname string) error {
 	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+quoteParts(name))
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+quoteParts(fname))
 	return err
 }
 
-func ExecFunction(ctx context.Context, name string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
-	return Execute(ctx, name, record, filters, readonly)
+func ExecFunction(ctx context.Context, fname string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
+	return Execute(ctx, fname, record, filters, readonly)
 }

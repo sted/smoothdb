@@ -260,7 +260,7 @@ func (dbe *DbEngine) UpdateDatabase(ctx context.Context, name string, update *Da
 	defer tx.Rollback(ctx)
 
 	if update.Owner != nil {
-		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" OWNER to "+*update.Owner)
+		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" OWNER TO "+*update.Owner)
 		if err != nil {
 			return err
 		}

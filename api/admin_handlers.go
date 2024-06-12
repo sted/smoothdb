@@ -47,18 +47,14 @@ func TableGetHandler(c context.Context, w http.ResponseWriter, r heligo.Request)
 
 func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	var tableUpdate database.TableUpdate
-	tableUpdate.Name = r.Param("table")
+	name := r.Param("table")
 	err := r.ReadJSON(&tableUpdate)
 	if err != nil {
 		return WriteBadRequest(w, err)
 	}
-	table, err := database.UpdateTable(c, &tableUpdate)
+	err = database.UpdateTable(c, name, &tableUpdate)
 	if err == nil {
-		if table != nil {
-			return heligo.WriteJSON(w, http.StatusCreated, table)
-		} else {
-			return heligo.WriteHeader(w, http.StatusCreated)
-		}
+		return heligo.WriteHeader(w, http.StatusCreated)
 	} else {
 		return WriteServerError(w, err)
 	}

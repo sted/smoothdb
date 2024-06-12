@@ -78,7 +78,7 @@ func TestWeirdNames(t *testing.T) {
 			Method:      "GET",
 			Query:       "/databases/dbtest/tables/table1",
 			Body:        ``,
-			Expected:    `{"name":"public.table1","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a.a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"public.table1"}]}`,
+			Expected:    `{"name":"table1","schema":"public","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a.a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"table1","schema":"public"}]}`,
 			Status:      200,
 		},
 		{
@@ -140,7 +140,7 @@ func TestWeirdNames(t *testing.T) {
 			Method:      "GET",
 			Query:       "/databases/dbtest/tables/table2",
 			Body:        ``,
-			Expected:    `{"name":"public.table2","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a\"a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"public.table2"}]}`,
+			Expected:    `{"name":"table2","schema":"public","owner":"admin","rowsecurity":false,"hasindexes":false,"hastriggers":false,"ispartition":false,"constraints":null,"columns":[{"name":"a\"a","type":"integer","notnull":false,"default":null,"constraints":null,"table":"table2","schema":"public"}]}`,
 			Status:      200,
 		},
 		{

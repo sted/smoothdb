@@ -9,6 +9,7 @@ type Column struct {
 	Default     *string  `json:"default"`
 	Constraints []string `json:"constraints"`
 	Table       string   `json:"table,omitempty"`
+	Schema      string   `json:"schema,omitempty"`
 }
 
 type ColumnUpdate struct {
@@ -19,7 +20,7 @@ type ColumnUpdate struct {
 }
 
 const columnsQuery = `
-	SELECT column_name, data_type, is_nullable, column_default, table_schema || '.' || table_name
+	SELECT column_name, data_type, is_nullable, column_default, table_name, table_schema
 	FROM information_schema.columns
 	WHERE table_name = $1 AND table_schema = $2`
 
@@ -40,7 +41,7 @@ func GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	var nullable string
 	column := Column{}
 	for rows.Next() {
-		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table)
+		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table, &column.Schema)
 		if err != nil {
 			return columns, err
 		}
@@ -64,7 +65,7 @@ func GetColumn(ctx context.Context, ftablename string, name string) (*Column, er
 	column := &Column{}
 	var nullable string
 	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
-		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table)
+		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table, &column.Schema)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +160,7 @@ func DeleteColumn(ctx context.Context, table string, name string, cascade bool) 
 
 type ColumnType struct {
 	Table       string `json:"table"`
+	Schema      string `json:"schema"`
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	DataType    string `json:"datatype"`
@@ -168,7 +170,8 @@ type ColumnType struct {
 
 const columnTypesQuery = `
 	SELECT
-		c.table_schema || '.' || c.table_name tablename,
+		c.table_name tablename,
+		c.table_schema schema,
 		c.column_name name,
 		c.udt_name type,		
 		c.data_type datatype,
@@ -178,9 +181,9 @@ const columnTypesQuery = `
 		information_schema.columns c
 		JOIN pg_type t ON c.udt_name = t.typname and c.udt_schema::regnamespace = t.typnamespace
 	WHERE
-		c.table_schema NOT IN ('pg_catalog', 'information_schema')
+		c.table_schema !~ '^pg_' AND c.table_schema <> 'information_schema'
 	ORDER BY
-		table_schema, table_name, ordinal_position;
+		table_name, table_schema, ordinal_position;
 `
 
 func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
@@ -194,7 +197,7 @@ func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
 
 	typ := ColumnType{}
 	for rows.Next() {
-		err := rows.Scan(&typ.Table, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
+		err := rows.Scan(&typ.Table, &typ.Schema, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
 		if err != nil {
 			return types, err
 		}
