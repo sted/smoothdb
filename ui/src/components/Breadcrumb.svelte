@@ -1,23 +1,29 @@
 <script lang="ts">
 	import { router } from "../routes";
-	import { modalStore } from "../stores";
 
 	import RiExpandUpDownLine from "svelte-remixicon/RiExpandUpDownLine.svelte";
 	import RiAddLine from "svelte-remixicon/RiAddLine.svelte";
+	import type { MouseEventHandler } from "svelte/elements";
+
+	interface Props {
+		rowAdd: MouseEventHandler<HTMLButtonElement>;
+	}
+
+	let { rowAdd }: Props = $props();
 
 	interface Breadcrumb {
 		title: string;
 		path: string;
-		hasMultipleChoices: boolean; // New property to track if there are multiple choices
+		hasMultipleChoices: boolean;
 	}
 
 	const titleize = (segment: string): string => {
 		return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ");
 	};
 
-	let breadcrumbs: Breadcrumb[] = [];
-	let activeDropdownIndex: number | null = null;
-	let dropdownRoutes: string[] = [];
+	let breadcrumbs: Breadcrumb[] = $state([]);
+	let activeDropdownIndex: number | null = $state(null);
+	let dropdownRoutes: string[] = $state([]);
 
 	router.subscribe(() => {
 		const segments = window.location.pathname.split("/").filter(Boolean);
@@ -27,19 +33,20 @@
 			return {
 				title: titleize(segment),
 				path,
-				hasMultipleChoices: nextRoutes.length > 1, // Set based on the number of alternate routes
+				hasMultipleChoices: nextRoutes.length > 1,
 			};
 		});
 		activeDropdownIndex = null;
 	});
 
 	function handleSegmentClick(event: MouseEvent, path: string): void {
+		event.preventDefault();
 		router.navigate(path);
 		closeDropdown();
 	}
 
 	function handleDropdownClick(event: MouseEvent, path: string, index: number): void {
-		event.stopPropagation(); // Prevent the segment click event
+		event.stopPropagation();
 
 		const nextRoutes = router.getAltRoutes(path);
 		if (nextRoutes.length > 1) {
@@ -69,10 +76,6 @@
 		router.navigate(newPath);
 		closeDropdown();
 	}
-
-	function handleAddClick() {
-		modalStore.set({ showModal: true, data: {} });
-	}
 </script>
 
 <svelte:window on:click={handleClickOutside} />
@@ -84,13 +87,12 @@
 				<span
 					role="button"
 					tabindex="0"
-					on:click|preventDefault={(event) => handleSegmentClick(event, path)}
-					>{title}</span
+					onclick={(event) => handleSegmentClick(event, path)}>{title}</span
 				>
 				{#if hasMultipleChoices}
 					<button
 						tabindex="0"
-						on:click={(event) => handleDropdownClick(event, path, index)}
+						onclick={(event) => handleDropdownClick(event, path, index)}
 					>
 						<RiExpandUpDownLine />
 					</button>
@@ -102,7 +104,7 @@
 								class="dropdown-item"
 								role="button"
 								tabindex="0"
-								on:click={() => navigateFromDropdown(path, route)}
+								onclick={() => navigateFromDropdown(path, route)}
 							>
 								{titleize(route)}
 							</li>
@@ -113,7 +115,7 @@
 			</li>
 		{/each}
 		<li>
-			<button tabindex="0" on:click={() => handleAddClick()}>
+			<button tabindex="0" onclick={rowAdd}>
 				<RiAddLine />
 			</button>
 		</li>
@@ -148,7 +150,7 @@
 	}
 
 	.breadcrumb-item {
-		position: relative; /* Per posizionare il dropdown relativo a questo elemento */
+		position: relative;
 	}
 
 	.dropdown {

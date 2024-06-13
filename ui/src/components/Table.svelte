@@ -1,82 +1,39 @@
 <script lang="ts">
-	import { onMount, onDestroy } from "svelte";
-	import { createEventDispatcher } from "svelte";
-	import { shouldRefresh } from "../stores";
+	import { onMount } from "svelte";
 	import RiPencilLine from "svelte-remixicon/RiPencilLine.svelte";
-	import type { Unsubscriber } from "svelte/store";
 
-	export let url: string;
-	export let limit: number = 0;
-	export let sortableColumns: string[] = [];
-	export let columnsDef: string[] = [];
+	interface Props {
+		dataUrl: string;
+		rowClick: Function;
+		rowEdit: Function;
+	}
+	let { dataUrl, rowClick, rowEdit }: Props = $props();
 
-	let unsubscribe: Unsubscriber;
+	type DataItem = Record<string, any>;
+	interface Column {
+		name: string;
+	}
+	let data: DataItem[] = $state([]);
+	let columns: Column[] = $derived.by(() => {
+		return data.length > 0 ? Object.keys(data[0]).map((name) => ({ name })) : [];
+	});
+	$effect(() => {
+		dataUrl;
+		refresh();
+	});
 
 	onMount(() => {
 		fetchData();
-
-		unsubscribe = shouldRefresh.subscribe((value) => {
-			if (value) {
-				fetchData();
-				shouldRefresh.set(false);
-			}
-		});
 	});
 
-	onDestroy(() => {
-		unsubscribe();
-	});
-
-	type DataItem = Record<string, any>;
-
-	let data: DataItem[] = [];
-	interface Column {
-		name: string;
-		sortable: boolean;
+	export function refresh() {
+		fetchData();
 	}
-	let columns: Column[] = [];
-	let offset: number = 0;
-	const dispatch = createEventDispatcher();
-
-	$: columns =
-		columnsDef.length > 0
-			? columnsDef.map((name) => ({
-					name,
-					sortable: sortableColumns.includes(name),
-				}))
-			: data.length > 0
-				? Object.keys(data[0]).map((name) => ({
-						name,
-						sortable: sortableColumns.includes(name),
-					}))
-				: [];
 
 	async function fetchData(): Promise<void> {
-		if (limit > 0) {
-			url += `?offset=${offset}&limit=${limit}`;
-		}
-
-		const response = await fetch(url);
+		const response = await fetch(dataUrl);
 		data = await response.json();
-
-		if (limit > 0) {
-			//total = result.total;
-		}
 	}
-
-	// function nextPage(): void {
-	// 	if (limit > 0 && offset + limit < total) {
-	// 		offset += limit;
-	// 		fetchData();
-	// 	}
-	// }
-
-	// function prevPage(): void {
-	// 	if (limit > 0 && offset - limit >= 0) {
-	// 		offset -= limit;
-	// 		fetchData();
-	// 	}
-	// }
 
 	function handleBodyClick(event: MouseEvent) {
 		const row = (event.target as HTMLElement).closest("tr");
@@ -84,9 +41,9 @@
 		if (row && row.dataset.index) {
 			const rowIndex = parseInt(row.dataset.index, 10);
 			if (cell?.classList.contains("edit")) {
-				dispatch("rowEdit", data[rowIndex]);
+				rowEdit(structuredClone($state.snapshot(data[rowIndex])));
 			} else {
-				dispatch("rowClick", data[rowIndex]);
+				rowClick(data[rowIndex].name);
 			}
 		}
 	}
@@ -94,7 +51,7 @@
 
 <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 <table>
-	<thead on:click={handleBodyClick} on:keyup={() => {}}>
+	<thead onclick={handleBodyClick}>
 		<tr>
 			<th></th>
 			{#each columns as column}
@@ -102,7 +59,7 @@
 			{/each}
 		</tr>
 	</thead>
-	<tbody on:click={handleBodyClick} on:keyup={() => {}}>
+	<tbody onclick={handleBodyClick}>
 		{#if data.length > 0}
 			{#each data as row, index}
 				<tr data-index={index}>

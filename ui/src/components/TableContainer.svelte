@@ -1,30 +1,25 @@
 <script lang="ts">
-    import { adminDbUrl } from "../main";
     import { router } from "../routes";
-    import { modalStore } from "../stores";
     import Table from "./Table.svelte";
 
-    export let suffixNextUrl = "";
+    interface Props {
+        dataUrl: string;
+        rowEdit: (e: CustomEvent) => void;
+    }
+    let { dataUrl, rowEdit }: Props = $props();
+    let table: Table;
 
-    $: dbUrl = adminDbUrl + window.location.pathname.replace(/^\/ui/, "");
-
-    interface TableRowData {
-        [key: string]: any;
+    export function refresh() {
+        table.refresh();
     }
 
-    function handleRowClick(event: CustomEvent<TableRowData>) {
-        if (suffixNextUrl !== "") {
-            router.navigate(window.location.pathname + "/" + event.detail.name + suffixNextUrl);
-        }
-    }
-
-    function handleRowEdit(event: CustomEvent<TableRowData>) {
-        modalStore.set({ showModal: true, data: event.detail });
+    function rowClick(name: string) {
+        router.navigate(window.location.pathname + "/" + name);
     }
 </script>
 
 <div class="table-container">
-    <Table url={dbUrl} on:rowClick={handleRowClick} on:rowEdit={handleRowEdit} />
+    <Table bind:this={table} {dataUrl} {rowClick} {rowEdit} />
 </div>
 
 <style>

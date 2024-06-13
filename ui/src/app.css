@@ -18,3 +18,15 @@ body {
 input, button, select {
   font-size: inherit;  
 }
+
+input[type=text], select {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+select {
+  appearance: none;
+}

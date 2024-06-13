@@ -3,9 +3,16 @@
 	import { router } from "./routes";
 	import Sidebar from "./components/Sidebar.svelte";
 	import Breadcrumb from "./components/Breadcrumb.svelte";
+	import BasicPage from "./pages/BasicPage.svelte";
+
+	let page: BasicPage;
 
 	setContext("router", router);
 	router.navigate(window.location.pathname);
+
+	function rowAdd(ev: Event) {
+		page.rowAdd();
+	}
 </script>
 
 <div class="app-grid">
@@ -13,10 +20,10 @@
 		<Sidebar />
 	</div>
 	<div class="breadcrumb">
-		<Breadcrumb />
+		<Breadcrumb {rowAdd} />
 	</div>
 	<div class="router-content">
-		<svelte:component this={$router.component} />
+		<svelte:component this={$router.page} bind:this={page} />
 	</div>
 </div>
 

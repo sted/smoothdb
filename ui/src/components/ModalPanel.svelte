@@ -1,22 +1,33 @@
 <script lang="ts">
     import { slide } from "svelte/transition";
     import RiCloseLine from "svelte-remixicon/RiCloseLine.svelte";
-    import { modalStore } from "../stores";
 
-    $: show = $modalStore.showModal;
+    interface Props {
+        form: any;
+        formSubmitted: (refreshTable: boolean) => void;
+    }
+    let { form, formSubmitted }: Props = $props();
 
-    function close(): void {
-        modalStore.set({ showModal: false, data: {} });
+    let openModal = $state(false);
+    let data: any = $state();
+
+    export function open(d: any) {
+        openModal = true;
+        data = d;
+    }
+    export function close() {
+        openModal = false;
     }
 </script>
 
-<div>modal</div>
-{#if show}
-    <div class="overlay" on:click={close}></div>
-    <div class="sidebar" transition:slide={{ duration: 200, axis: "x" }}>
-        <button class="close-btn" on:click={close}><RiCloseLine size="1rem" /></button>
+{#if openModal}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="overlay" onclick={close}></div>
+    <div class="panel" transition:slide={{ duration: 200, axis: "x" }}>
+        <button class="close-btn" onclick={close}><RiCloseLine /></button>
         <div class="content">
-            <slot name="form" />
+            <svelte:component this={form} {data} {formSubmitted} />
         </div>
     </div>
 {/if}
@@ -31,7 +42,7 @@
         background: rgba(0, 0, 0, 0.5);
         z-index: 50;
     }
-    .sidebar {
+    .panel {
         display: flex;
         flex-direction: column;
         position: fixed;
@@ -41,7 +52,7 @@
         max-width: 100%;
         min-width: 40%;
         height: 100%;
-        padding: 0 25px;
+        padding: 30px;
         background: white;
         z-index: 100;
         overflow: auto; /* Per gestire contenuti lunghi */
