@@ -29,13 +29,24 @@ jobs:
       run: |
         psql -U postgres -d postgres -c 'SELECT version();'
 
+    - name: Prepare tests
+      run: make prepare-postgrest-tests
+    
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
 
-    - name: Prepare tests
-      run: make prepare-postgrest-tests
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+  
+    - name: Install npm dependencies and build UI
+      run: |
+        cd ui
+        npm install
+        npm run build
 
     - name: Run tests
       run: make test
