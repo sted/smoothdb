@@ -305,9 +305,24 @@ func InitAdminRouter(apiHelper Helper) {
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
-		schema, err := database.CreateSchema(c, schemaInput.Name)
+		schema, err := database.CreateSchema(c, &schemaInput)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, schema)
+		} else {
+			return WriteServerError(w, err)
+		}
+	})
+
+	databases.Handle("PATCH", "/:dbname/schemas/:schema", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		var schemaUpdate database.SchemaUpdate
+		name := r.Param("schema")
+		err := r.ReadJSON(&schemaUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = database.UpdateSchema(c, name, &schemaUpdate)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, "")
 		} else {
 			return WriteServerError(w, err)
 		}
