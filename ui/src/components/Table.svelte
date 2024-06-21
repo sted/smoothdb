@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import RiPencilLine from "svelte-remixicon/RiPencilLine.svelte";
+	import { router } from "../routes";
 
 	interface Props {
 		dataUrl: string;
@@ -17,6 +18,7 @@
 	let columns: Column[] = $derived.by(() => {
 		return data.length > 0 ? Object.keys(data[0]).map((name) => ({ name })) : [];
 	});
+
 	$effect(() => {
 		dataUrl;
 		refresh();
@@ -31,7 +33,9 @@
 	}
 
 	async function fetchData(): Promise<void> {
-		const response = await fetch(dataUrl);
+		const response = await fetch(dataUrl, {
+			headers: { "Accept-Profile": $router.schema },
+		});
 		data = await response.json();
 	}
 
@@ -40,10 +44,11 @@
 		const cell = (event.target as HTMLElement).closest("td");
 		if (row && row.dataset.index) {
 			const rowIndex = parseInt(row.dataset.index, 10);
+			const d = data[rowIndex];
 			if (cell?.classList.contains("edit")) {
-				rowEdit(structuredClone($state.snapshot(data[rowIndex])));
+				rowEdit(structuredClone($state.snapshot(d)));
 			} else {
-				rowClick(data[rowIndex].name);
+				rowClick(d.name, d.schema ?? "");
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import { adminDbUrl } from "../main";
+    import { router } from "../routes";
 
     interface Props {
         entityName: string;
@@ -19,23 +20,28 @@
         ev.preventDefault();
         const method = isEditing ? "PATCH" : "POST";
         const url = adminDbUrl + dataUrl + (isEditing ? `/${initialData.name}`: '');
+        const schema = initialData.schema ?? $router.schema;
 
         fetch(url, {
             method,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "Content-Profile": schema },
             body: JSON.stringify(currentData),
         })
-            .then(() => formSubmitted(true))
-            .catch((error) => console.error("Failed to create or update database:", error));
+        .then(() => formSubmitted(true))
+        .catch((error) => console.error("Failed to create or update database:", error));
     }
 
     async function handleDrop() {
         const method = "DELETE";
         const url = adminDbUrl + dataUrl + `/${initialData.name}`;
+        const schema = initialData.schema ?? $router.schema;
 
-        fetch(url, { method })
-            .then(() => formSubmitted(true))
-            .catch((error) => console.error("Failed to drop database:", error));
+        fetch(url, { 
+            method,
+            headers: { "Content-Profile": schema },
+        })
+        .then(() => formSubmitted(true))
+        .catch((error) => console.error("Failed to drop database:", error));
     }
 </script>
 

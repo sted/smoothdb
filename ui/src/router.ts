@@ -27,6 +27,7 @@ interface LocationState {
     page: any
     component?: any
     params: RouteParams
+    schema: string
 }
 
 export default class Router {
@@ -37,7 +38,7 @@ export default class Router {
     private routesMap: Map<string, { regex: RegExp, nextSegments: Set<string> }> = new Map();
 
     constructor(routeDefs: RouteDef[], defPage: any) {
-        this.defaultState = {path: "", page: defPage, params: {}}
+        this.defaultState = {path: "", page: defPage, params: {}, schema: ""}
         this.location = writable<LocationState>(this.defaultState);
         // compile routes and pre-calculate segments
         this.routes = routeDefs.map(({ pattern, page, component, redirect }: RouteDef): Route => {
@@ -48,7 +49,7 @@ export default class Router {
           });
 
         window.addEventListener('popstate', () => {
-            this.navigate(window.location.pathname, false);
+            this.navigate(window.location.pathname, get(this.location).schema, false);
         });
     }
 
@@ -56,7 +57,7 @@ export default class Router {
         return this.location.subscribe(run)
     }
 
-    navigate(path: string, updateHistory = true) {
+    navigate(path: string, schema = "", updateHistory = true) {
         if (!path.startsWith(this.basePath)) {
             path = this.basePath + path;
         }
@@ -76,7 +77,7 @@ export default class Router {
 
                 if (route.redirect) {
                     const redirectPath = this.basePath + route.redirect.replace(/:([^\/]+)/g, (_, key) => paramValues[key]);
-                    this.navigate(redirectPath);
+                    this.navigate(redirectPath, schema);
                     return;
                 }
                
@@ -86,6 +87,7 @@ export default class Router {
                 }
                 newState.component = route.component;
                 newState.params = paramValues;
+                newState.schema = schema;
                 
                 break;
             }

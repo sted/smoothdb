@@ -31,12 +31,13 @@
 			const path = "/" + segments.slice(0, index + 1).join("/");
 			const nextRoutes = router.getAltRoutes(path);
 			return {
-				title: titleize(segment),
+				title: segment,
 				path,
 				hasMultipleChoices: nextRoutes.length > 1,
 			};
 		});
 		activeDropdownIndex = null;
+		breadcrumbs.shift();
 	});
 
 	function handleSegmentClick(event: MouseEvent, path: string): void {

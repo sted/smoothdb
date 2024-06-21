@@ -30,15 +30,8 @@
 	const db = $router.params["db"];
 	const dataUrl = `/databases/${db}/tables`;
 
+	let prom_schemas: Promise<Role[]> = getData(`${adminDbUrl}/databases/${db}/schemas`);
 	let prom_roles: Promise<Role[]> = getData(`${adminDbUrl}/roles`);
-	prom_roles.then(() => {
-		const t = $router.params["table"];
-		if (t) {
-			getData(`${adminDbUrl}/databases/${db}/tables`).then((table) => {
-				currentData = table;
-			});
-		}
-	});
 
 	onMount(() => {
 		nameInput.focus();
@@ -52,7 +45,13 @@
 	</label>
 	<label for="schema">
 		Schema
-		<input id="schema" type="text" bind:value={currentData.schema} />
+		<select id="schema" bind:value={currentData.schema}>
+			{#await prom_schemas then schemas}
+				{#each schemas as schema}
+					<option value={schema.name}>{schema.name}</option>
+				{/each}
+			{/await}
+		</select>
 	</label>
 	<label for="owner">
 		Owner

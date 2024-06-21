@@ -4,7 +4,7 @@
 
     interface Props {
         dataUrl: string;
-        rowEdit: (e: CustomEvent) => void;
+        rowEdit: (d: any) => void;
     }
     let { dataUrl, rowEdit }: Props = $props();
     let table: Table;
@@ -13,8 +13,8 @@
         table.refresh();
     }
 
-    function rowClick(name: string) {
-        router.navigate(window.location.pathname + "/" + name);
+    function rowClick(name: string, schema: string) {
+        router.navigate(window.location.pathname + "/" + name, schema);
     }
 </script>
 
