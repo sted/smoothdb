@@ -70,13 +70,13 @@ func fillColumnConstraints(column *Column, constraints []Constraint) {
 	}
 }
 
-func GetConstraints(ctx context.Context, ftablename string) ([]Constraint, error) {
-	conn := GetConn(ctx)
+func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
+
 	constraints := []Constraint{}
 	query := constraintsQuery
 	var args []any
-	if ftablename != "" {
-		schemaname, tablename := splitTableName(ftablename)
+	if tablename != "" {
 		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
@@ -110,7 +110,8 @@ func GetConstraints(ctx context.Context, ftablename string) ([]Constraint, error
 
 func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
 	conn := GetConn(ctx)
-	create := "ALTER TABLE " + quoteParts(constraint.Table) + " ADD "
+	ftablename := composeTableName(ctx, constraint.Schema, constraint.Name)
+	create := "ALTER TABLE " + ftablename + " ADD "
 	create += constraint.Definition
 
 	_, err := conn.Exec(ctx, create)
@@ -121,9 +122,11 @@ func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint,
 	return constraint, nil
 }
 
-func DeleteConstraint(ctx context.Context, ftablename string, name string) error {
-	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "ALTER TABLE "+quoteParts(ftablename)+" DROP CONSTRAINT "+quote(name))
+func DeleteConstraint(ctx context.Context, tablename string, name string) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	ftablename := _sq(tablename, schemaname)
+
+	_, err := conn.Exec(ctx, "ALTER TABLE "+ftablename+" DROP CONSTRAINT "+quote(name))
 	if err != nil {
 		return err
 	}

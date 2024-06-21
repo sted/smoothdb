@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"strings"
 )
 
 type Table struct {
@@ -24,18 +23,6 @@ type TableUpdate struct {
 	Schema      *string `json:"schema"`
 	Owner       *string `json:"owner"`
 	RowSecurity *bool   `json:"rowsecurity"`
-}
-
-func splitTableName(name string) (schemaname, tablename string) {
-	parts := strings.Split(name, ".")
-	if len(parts) == 1 {
-		schemaname = "public" //@@ should depend on the config
-		tablename = parts[0]
-	} else {
-		schemaname = parts[0]
-		tablename = parts[1]
-	}
-	return
 }
 
 const tablesQuery = `
@@ -81,22 +68,22 @@ func GetTables(ctx context.Context) ([]Table, error) {
 	return tables, nil
 }
 
-func GetTable(ctx context.Context, fname string) (*Table, error) {
-	conn := GetConn(ctx)
-	constraints, err := GetConstraints(ctx, fname)
+func GetTable(ctx context.Context, name string) (*Table, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
+
+	constraints, err := GetConstraints(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	schemaname, tablename := splitTableName(fname)
 	table := Table{}
 	err = conn.QueryRow(ctx,
-		tablesQuery+" AND c.relname = $1 AND n.nspname = $2", tablename, schemaname).
+		tablesQuery+" AND c.relname = $1 AND n.nspname = $2", name, schemaname).
 		Scan(&table.Name, &table.Schema, &table.Owner, &table.RowSecurity, &table.HasIndexes, &table.HasTriggers, &table.IsPartition)
 	if err != nil {
 		return nil, err
 	}
 	fillTableConstraints(&table, constraints)
-	table.Columns, err = GetColumns(ctx, fname)
+	table.Columns, err = GetColumns(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -128,12 +115,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
 	}
-	var ftablename string
-	if table.Schema != "" {
-		ftablename = _sq(table.Name, table.Schema)
-	} else {
-		ftablename = quote(table.Name)
-	}
+	ftablename := composeTableName(ctx, table.Schema, table.Name)
 	create += ftablename
 	var columnList string
 	for _, col := range table.Columns {
@@ -195,9 +177,8 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	return GetTable(ctx, table.Name)
 }
 
-func UpdateTable(ctx context.Context, fname string, table *TableUpdate) error {
-	gi := GetSmoothContext(ctx)
-	conn := gi.Conn
+func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
+	conn, schemaname := GetConnAndSchema(ctx)
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -206,16 +187,8 @@ func UpdateTable(ctx context.Context, fname string, table *TableUpdate) error {
 	defer tx.Rollback(ctx)
 
 	var alter string
-	prefix := "ALTER TABLE " + quoteParts(fname)
+	prefix := "ALTER TABLE " + _sq(name, schemaname)
 
-	// SCHEMA
-	if table.Schema != nil {
-		alter = prefix + " SET SCHEMA " + quote(*table.Schema)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
 	// OWNER
 	if table.Owner != nil {
 		alter = prefix + " OWNER TO " + quote(*table.Owner)
@@ -236,8 +209,17 @@ func UpdateTable(ctx context.Context, fname string, table *TableUpdate) error {
 			return err
 		}
 	}
-	// NAME as the last update
-	if table.Name != nil {
+	// SCHEMA
+	if table.Schema != nil {
+		alter = prefix + " SET SCHEMA " + quote(*table.Schema)
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return err
+		}
+		prefix = "ALTER TABLE " + _sq(name, *table.Schema)
+	}
+	// NAME
+	if table.Name != nil && *table.Name != name {
 		alter = prefix + " RENAME TO " + quote(*table.Name)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
@@ -248,13 +230,16 @@ func UpdateTable(ctx context.Context, fname string, table *TableUpdate) error {
 	return tx.Commit(ctx)
 }
 
-func DeleteTable(ctx context.Context, fname string, ifExists bool) error {
-	conn := GetConn(ctx)
+func DeleteTable(ctx context.Context, name string, ifExists bool) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	ftablename := _sq(name, schemaname)
+
 	delete := "DROP TABLE"
 	if ifExists {
 		delete += " IF EXISTS "
 	}
-	delete += quoteParts(fname)
+	delete += ftablename
+
 	_, err := conn.Exec(ctx, delete)
 	if err != nil {
 		return err

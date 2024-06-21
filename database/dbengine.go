@@ -30,6 +30,14 @@ type DbEngine struct {
 	mainDb           *Database
 }
 
+func getDefaultSchema() string {
+	if dbe != nil {
+		return dbe.defaultSchema
+	} else {
+		return "public"
+	}
+}
+
 // InitDbEngine creates a connection pool, connects to the engine and initializes it
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 

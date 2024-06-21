@@ -20,17 +20,17 @@ type ColumnUpdate struct {
 }
 
 const columnsQuery = `
-	SELECT column_name, data_type, is_nullable, column_default, table_name, table_schema
+	SELECT column_name, udt_name, is_nullable, column_default, table_name, table_schema
 	FROM information_schema.columns
 	WHERE table_name = $1 AND table_schema = $2`
 
-func GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
-	conn := GetConn(ctx)
-	constraints, err := GetConstraints(ctx, ftablename)
+func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
+
+	constraints, err := GetConstraints(ctx, tablename)
 	if err != nil {
 		return nil, err
 	}
-	schemaname, tablename := splitTableName(ftablename)
 	columns := []Column{}
 	rows, err := conn.Query(ctx, columnsQuery, tablename, schemaname)
 	if err != nil {
@@ -55,13 +55,13 @@ func GetColumns(ctx context.Context, ftablename string) ([]Column, error) {
 	return columns, nil
 }
 
-func GetColumn(ctx context.Context, ftablename string, name string) (*Column, error) {
-	conn := GetConn(ctx)
-	constraints, err := GetConstraints(ctx, ftablename)
+func GetColumn(ctx context.Context, tablename string, name string) (*Column, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
+
+	constraints, err := GetConstraints(ctx, tablename)
 	if err != nil {
 		return nil, err
 	}
-	schemaname, tablename := splitTableName(ftablename)
 	column := &Column{}
 	var nullable string
 	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
@@ -76,7 +76,9 @@ func GetColumn(ctx context.Context, ftablename string, name string) (*Column, er
 
 func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	conn := GetConn(ctx)
-	create := "ALTER TABLE " + column.Table + " ADD COLUMN "
+	ftablename := composeTableName(ctx, column.Schema, column.Table)
+
+	create := "ALTER TABLE " + ftablename + " ADD COLUMN "
 	composeColumnSQL(&create, column)
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
@@ -86,8 +88,10 @@ func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	return column, nil
 }
 
-func UpdateColumn(ctx context.Context, ftablename string, name string, column *ColumnUpdate) error {
-	conn := GetConn(ctx)
+func UpdateColumn(ctx context.Context, tablename string, name string, column *ColumnUpdate) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	ftablename := _sq(tablename, schemaname)
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return err
@@ -99,7 +103,7 @@ func UpdateColumn(ctx context.Context, ftablename string, name string, column *C
 	prefix := "ALTER TABLE " + ftablename + " ALTER COLUMN "
 	// TYPE
 	if column.Type != nil {
-		alter = prefix + name + " TYPE " + *column.Type
+		alter = prefix + quote(name) + " TYPE " + *column.Type
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return err
@@ -144,9 +148,11 @@ func UpdateColumn(ctx context.Context, ftablename string, name string, column *C
 	return tx.Commit(ctx)
 }
 
-func DeleteColumn(ctx context.Context, table string, name string, cascade bool) error {
-	conn := GetConn(ctx)
-	delete := "ALTER TABLE " + table + " DROP COLUMN " + name
+func DeleteColumn(ctx context.Context, tablename string, name string, cascade bool) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	ftablename := _sq(tablename, schemaname)
+
+	delete := "ALTER TABLE " + ftablename + " DROP COLUMN " + quote(name)
 	if cascade {
 		delete += " CASCADE"
 	}

@@ -78,6 +78,28 @@ func _stq(rel, schema, table string) string {
 	return normalize(rel, schema, table, true)
 }
 
+// splitTableName splits the full table name (schema.table) to get the schema and the table name.
+// If the name has no schema, the default configured schema is returned.
+func splitTableName(name string) (schemaname, tablename string) {
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) == 1 {
+		schemaname = dbe.defaultSchema
+		tablename = parts[0]
+	} else {
+		schemaname = parts[0]
+		tablename = parts[1]
+	}
+	return
+}
+
+func composeTableName(ctx context.Context, schemaname, tablename string) string {
+	if schemaname == "" {
+		options := GetQueryOptions(ctx)
+		schemaname = options.Schema
+	}
+	return quote(schemaname) + "." + quote(tablename)
+}
+
 func isStar(s string) bool {
 	return s == "*"
 }

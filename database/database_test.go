@@ -148,7 +148,7 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 		if columns[0].Name != "id" ||
-			columns[0].Type != "integer" {
+			columns[0].Type != "int4" {
 			t.Fatal(err)
 		}
 		if columns[1].Name != "name" ||
@@ -157,17 +157,17 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 		if columns[2].Name != "number" ||
-			columns[2].Type != "integer" ||
+			columns[2].Type != "int4" ||
 			columns[2].Constraints[0] != "UNIQUE (number)" {
 			t.Fatal(err)
 		}
 		if columns[3].Name != "date" ||
-			columns[3].Type != "timestamp without time zone" ||
+			columns[3].Type != "timestamp" ||
 			columns[3].Constraints[0] != "CHECK (date > now())" {
 			t.Fatal(err)
 		}
 		if columns[4].Name != "bool" ||
-			columns[4].Type != "boolean" ||
+			columns[4].Type != "bool" ||
 			!columns[4].NotNull {
 			t.Fatal(err)
 		}

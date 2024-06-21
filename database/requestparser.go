@@ -950,6 +950,8 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	if ap := header.Get(schemaProfile); ap != "" {
 		options.Schema = ap
 	}
-
+	if options.Schema == "" {
+		options.Schema = getDefaultSchema()
+	}
 	return options
 }

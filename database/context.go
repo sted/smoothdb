@@ -25,9 +25,6 @@ func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbCon
 	defaultParser := PostgRestParser{}
 	defaultBuilder := DirectQueryBuilder{}
 	queryOptions := defaultParser.getQueryOptions(r)
-	if queryOptions.Schema == "" {
-		queryOptions.Schema = dbe.defaultSchema
-	}
 	return context.WithValue(ctx, smoothTag,
 		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, &queryOptions})
 }
@@ -74,7 +71,7 @@ func ContextWithDbConn(parent context.Context, db *Database, conn *DbConn) conte
 
 func contextImpl(parent context.Context, db *Database, conn *DbConn, role string) context.Context {
 	defaultParser := PostgRestParser{}
-	queryOptions := QueryOptions{}
+	queryOptions := QueryOptions{Schema: getDefaultSchema()}
 	defaultBuilder := DirectQueryBuilder{}
 
 	return context.WithValue(parent, smoothTag,
@@ -97,6 +94,18 @@ func GetDb(ctx context.Context) *Database {
 func GetDbRole(ctx context.Context) string {
 	gi := GetSmoothContext(ctx)
 	return gi.Role
+}
+
+// GetQueryOptions gets the query options from the current context
+func GetQueryOptions(ctx context.Context) *QueryOptions {
+	gi := GetSmoothContext(ctx)
+	return gi.QueryOptions
+}
+
+// GetConnAndSchema gets the database connection and the schema from the current context
+func GetConnAndSchema(ctx context.Context) (*DbConn, string) {
+	gi := GetSmoothContext(ctx)
+	return gi.Conn, gi.QueryOptions.Schema
 }
 
 // SetRequestParser allows changing the request parser in the current context

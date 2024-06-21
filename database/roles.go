@@ -157,13 +157,12 @@ func UpdateRole(ctx context.Context, name string, role *RoleUpdate) error {
 
 	// NAME as the last update
 	if role.Name != nil && *role.Name != name {
-		_, err = conn.Exec(ctx, prefix+" RENAME TO "+*role.Name)
+		_, err = conn.Exec(ctx, prefix+" RENAME TO "+quote(*role.Name))
 		if err != nil {
 			return err
 		}
 	}
 	return tx.Commit(ctx)
-
 }
 
 func DeleteRole(ctx context.Context, name string) error {

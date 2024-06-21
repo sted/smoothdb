@@ -42,7 +42,7 @@ func TestFunctions(t *testing.T) {
 			Method:      "POST",
 			Query:       "http://localhost:8082/admin/databases/dbtest/functions",
 			Body: `{
-				"name": "functions.f1",
+				"name": "f1",
 				"arguments": [
 					{"name": "a", "type": "integer"},
 					{"name": "b", "type": "text"}

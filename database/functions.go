@@ -80,7 +80,7 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 }
 
 func composeSignature(fname string, args []Argument) string {
-	sig := quoteParts(fname) + "("
+	sig := fname + "("
 	for i, a := range args {
 		if i != 0 {
 			sig += ", "
@@ -103,7 +103,7 @@ func composeSignature(fname string, args []Argument) string {
 func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
 	conn := GetConn(ctx)
 	create := "CREATE FUNCTION "
-	fname := _s(function.Name, function.Schema)
+	fname := composeTableName(ctx, function.Schema, function.Name)
 	create += composeSignature(fname, function.Arguments)
 	create += " RETURNS "
 	if function.Returns != "" {
@@ -128,8 +128,9 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 	return function, nil
 }
 
-func DeleteFunction(ctx context.Context, fname string) error {
-	conn := GetConn(ctx)
+func DeleteFunction(ctx context.Context, name string) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	fname := _sq(name, schemaname)
 	_, err := conn.Exec(ctx, "DROP FUNCTION "+quoteParts(fname))
 	return err
 }
