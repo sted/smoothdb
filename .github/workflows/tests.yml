@@ -45,7 +45,7 @@ jobs:
     - name: Install npm dependencies and build UI
       run: |
         cd ui
-        npm install
+        npm install --force
         npm run build
 
     - name: Run tests
