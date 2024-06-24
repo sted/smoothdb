@@ -110,7 +110,7 @@ func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error)
 
 func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint, error) {
 	conn := GetConn(ctx)
-	ftablename := composeTableName(ctx, constraint.Schema, constraint.Name)
+	ftablename := composeName(ctx, constraint.Schema, constraint.Name)
 	create := "ALTER TABLE " + ftablename + " ADD "
 	create += constraint.Definition
 

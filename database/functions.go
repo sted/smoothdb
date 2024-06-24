@@ -103,7 +103,7 @@ func composeSignature(fname string, args []Argument) string {
 func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
 	conn := GetConn(ctx)
 	create := "CREATE FUNCTION "
-	fname := composeTableName(ctx, function.Schema, function.Name)
+	fname := composeName(ctx, function.Schema, function.Name)
 	create += composeSignature(fname, function.Arguments)
 	create += " RETURNS "
 	if function.Returns != "" {

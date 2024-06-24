@@ -115,7 +115,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
 	}
-	ftablename := composeTableName(ctx, table.Schema, table.Name)
+	ftablename := composeName(ctx, table.Schema, table.Name)
 	create += ftablename
 	var columnList string
 	for _, col := range table.Columns {

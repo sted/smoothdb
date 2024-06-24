@@ -76,7 +76,7 @@ func GetColumn(ctx context.Context, tablename string, name string) (*Column, err
 
 func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	conn := GetConn(ctx)
-	ftablename := composeTableName(ctx, column.Schema, column.Table)
+	ftablename := composeName(ctx, column.Schema, column.Table)
 
 	create := "ALTER TABLE " + ftablename + " ADD COLUMN "
 	composeColumnSQL(&create, column)
