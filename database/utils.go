@@ -92,7 +92,7 @@ func splitTableName(name string) (schemaname, tablename string) {
 	return
 }
 
-func composeTableName(ctx context.Context, schemaname, tablename string) string {
+func composeName(ctx context.Context, schemaname, tablename string) string {
 	if schemaname == "" {
 		options := GetQueryOptions(ctx)
 		schemaname = options.Schema
