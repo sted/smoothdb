@@ -60,10 +60,10 @@ func TestBase(t *testing.T) {
 	_, err = CreateTable(ctx, &Table{
 		Name: "b1",
 		Columns: []Column{
-			{Name: "name", Type: "text"},
-			{Name: "number", Type: "integer"},
-			{Name: "date", Type: "timestamp"},
-			{Name: "bool", Type: "bool"},
+			{Name: "name", Type: "text", Default: lo.ToPtr("'sted'")},
+			{Name: "number", Type: "integer", Default: lo.ToPtr("1")},
+			{Name: "date", Type: "timestamp", Default: lo.ToPtr("now()")},
+			{Name: "bool", Type: "bool", Default: lo.ToPtr("true")},
 			{Name: "float4", Type: "float4"},
 		},
 	})
