@@ -4,13 +4,16 @@ import "context"
 
 type View struct {
 	Name         string `json:"name"`
+	Schema       string `json:"schema"`
 	Owner        string `json:"owner"`
 	Definition   string `json:"definition"`
 	Materialized bool   `json:"materialized"`
 }
 
 const viewsQuery = `
-	SELECT n.nspname || '.' || c.relname,                                  
+	SELECT 
+		c.relname,
+		n.nspname, 
 		pg_get_userbyid(c.relowner) AS viewowner,               
 		pg_get_viewdef(c.oid) AS definition,
 		c.relkind                  
@@ -31,7 +34,7 @@ func GetViews(ctx context.Context) ([]View, error) {
 	view := View{}
 	var kind byte
 	for rows.Next() {
-		err := rows.Scan(&view.Name, &view.Owner, &view.Definition, &kind)
+		err := rows.Scan(&view.Name, &view.Schema, &view.Owner, &view.Definition, &kind)
 		if err != nil {
 			return views, err
 		}
@@ -49,14 +52,13 @@ func GetViews(ctx context.Context) ([]View, error) {
 }
 
 func GetView(ctx context.Context, name string) (*View, error) {
-	conn := GetConn(ctx)
+	conn, schemaname := GetConnAndSchema(ctx)
 
-	schemaname, viewname := splitTableName(name)
 	view := View{}
 	var kind byte
 	err := conn.QueryRow(ctx, viewsQuery+
-		" AND c.relname = $1 AND n.nspname = $2", viewname, schemaname).
-		Scan(&view.Name, &view.Owner, &kind)
+		" AND c.relname = $1 AND n.nspname = $2", name, schemaname).
+		Scan(&view.Name, &view.Schema, &view.Owner, &kind)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,8 @@ func CreateView(ctx context.Context, view *View) (*View, error) {
 	if view.Materialized {
 		create += "MATERIALIZED "
 	}
-	create += "VIEW " + quoteParts(view.Name) + " AS " + view.Definition
+	fviewname := composeName(ctx, view.Schema, view.Name)
+	create += "VIEW " + fviewname + " AS " + view.Definition
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
@@ -83,8 +86,10 @@ func CreateView(ctx context.Context, view *View) (*View, error) {
 }
 
 func DeleteView(ctx context.Context, name string) error {
-	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP VIEW "+quoteParts(name))
+	conn, schemaname := GetConnAndSchema(ctx)
+	fviewname := _sq(name, schemaname)
+
+	_, err := conn.Exec(ctx, "DROP VIEW "+fviewname)
 	if err != nil {
 		return err
 	}
