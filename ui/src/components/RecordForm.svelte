@@ -48,7 +48,9 @@
 <h3>{(isEditing ? "Edit" : "Create") + " " + entityName}</h3>
 
 <form onsubmit={handleSubmit}>
-    {@render children()}
+    <div class="control-container">
+        {@render children()}
+    </div>
 
     <div class="button-container">
         {#if isEditing}
@@ -62,16 +64,29 @@
 </form>
 
 <style>
+    h3 {
+        margin-bottom: 10px;
+    }
+
     form {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        flex: 1;
+        overflow: hidden;
     }
 
+    .control-container {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 20px;
+        overflow: auto;
+    }
+    
     .button-container {
         display: flex;
         justify-content: flex-start;
-        margin-top: 20px;
+        margin-top: 10px;
     }
 
     button {
@@ -83,7 +98,7 @@
     }
 
     .button-primary {
-        background-color: #007bff9e;
+        background-color: #10378cca;
         margin-left: auto;
     }
 

@@ -45,21 +45,23 @@
     .panel {
         display: flex;
         flex-direction: column;
+        overflow: hidden;
         position: fixed;
         right: 0;
         top: 0;
-        width: auto;
-        max-width: 100%;
-        min-width: 40%;
+        width: 30%;
+        max-width: 400px;
         height: 100%;
         padding: 30px;
         background: white;
         z-index: 100;
-        overflow: auto; /* Per gestire contenuti lunghi */
         box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
     }
     .content {
-        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
         margin-top: 10px;
     }
     .close-btn {
