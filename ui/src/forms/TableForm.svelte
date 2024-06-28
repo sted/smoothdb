@@ -39,12 +39,12 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-	<label for="name">
-		Name
+	<div>
+		<label for="name"> Name </label>
 		<input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
-	</label>
-	<label for="schema">
-		Schema
+	</div>
+	<div>
+		<label for="schema"> Schema </label>
 		<select id="schema" bind:value={currentData.schema}>
 			{#await prom_schemas then schemas}
 				{#each schemas as schema}
@@ -52,9 +52,9 @@
 				{/each}
 			{/await}
 		</select>
-	</label>
-	<label for="owner">
-		Owner
+	</div>
+	<div>
+		<label for="owner"> Owner </label>
 		<select id="owner" bind:value={currentData.owner}>
 			{#await prom_roles then roles}
 				{#each roles as role}
@@ -62,7 +62,7 @@
 				{/each}
 			{/await}
 		</select>
-	</label>
+	</div>
 	<div>
 		<input id="login" type="checkbox" bind:checked={currentData.rowsecurity} />
 		<label for="login">Row security</label>

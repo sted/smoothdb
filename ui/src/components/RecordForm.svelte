@@ -31,7 +31,7 @@
         .catch((error) => console.error("Failed to create or update database:", error));
     }
 
-    async function handleDrop() {
+    async function handleDelete() {
         const method = "DELETE";
         const url = adminDbUrl + dataUrl + `/${initialData.name}`;
         const schema = initialData.schema ?? $router.schema;
@@ -54,7 +54,7 @@
 
     <div class="button-container">
         {#if isEditing}
-            <button class="button-drop" type="button" onclick={handleDrop}>Drop</button>
+            <button class="button-drop" type="button" onclick={handleDelete}>Drop</button>
         {/if}
         <button class="button-primary" type="submit" disabled={isButtonDisabled}
             >{isEditing ? "Update" : "Create"}
@@ -81,6 +81,7 @@
         flex: 1;
         gap: 20px;
         overflow: auto;
+        padding: 2px;
     }
     
     .button-container {

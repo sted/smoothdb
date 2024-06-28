@@ -31,12 +31,12 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-    <label for="name">
-        Name
+    <div>
+        <label for="name">Name</label>
         <input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
-    </label>
-    <label for="owner">
-        Owner
+    </div>
+    <div>
+        <label for="owner">Owner</label>
         <select id="owner" bind:value={currentData.owner}>
             {#await prom_roles then roles}
                 {#each roles as role}
@@ -44,5 +44,5 @@
                 {/each}
             {/await}
         </select>
-    </label>
+    </div>
 </RecordForm>

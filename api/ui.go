@@ -9,6 +9,8 @@ import (
 	"github.com/sted/smoothdb/ui"
 )
 
+const defaultUIRoute = "/ui/databases"
+
 func InitAdminUI(apiHelper Helper) {
 
 	api := apiHelper.GetRouter().Group("/ui")
@@ -23,7 +25,9 @@ func InitAdminUI(apiHelper Helper) {
 		}
 		if r2 != nil {
 			p := r2.URL.Path
-			if (p == "" || !strings.HasPrefix(p, "assets/")) && p != "index.html" {
+			if p == "" {
+				http.Redirect(w, r.Request, defaultUIRoute, http.StatusFound)
+			} else if !strings.HasPrefix(p, "assets/") && p != "index.html" {
 				p = "index.html"
 			}
 			http.ServeFileFS(w, r2, content, p)
@@ -37,4 +41,8 @@ func InitAdminUI(apiHelper Helper) {
 	api.Handle("GET", "", handler)
 	api.Handle("GET", "/", handler)
 	api.Handle("GET", "/*path", handler)
+
+	// Redirect home to default UI route when AdminUI is enabled
+	router := apiHelper.GetRouter()
+	router.Handle("GET", "/", heligo.Adapt(http.RedirectHandler(defaultUIRoute, http.StatusFound)))
 }

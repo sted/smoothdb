@@ -87,16 +87,18 @@ export default class Router {
                 }
                 newState.component = route.component;
                 newState.params = paramValues;
-                newState.schema = schema;
-                
+                newState.schema = schema || currentState.schema; // if it is "", keep the current schema
+            
                 break;
             }
         }
 
-        if (updateHistory && newState.path !== currentState.path) {
-            window.history.pushState({}, '', path);
+        if (matched) {
+            if (updateHistory && newState.path !== currentState.path) {
+                window.history.pushState({}, '', path);
+            }
+            this.location.set(newState);
         }
-        this.location.set(newState);
     }
 
     getAltRoutes(path: string): string[] {

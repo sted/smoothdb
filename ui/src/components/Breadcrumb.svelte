@@ -17,10 +17,6 @@
 		hasMultipleChoices: boolean;
 	}
 
-	const titleize = (segment: string): string => {
-		return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ");
-	};
-
 	let breadcrumbs: Breadcrumb[] = $state([]);
 	let activeDropdownIndex: number | null = $state(null);
 	let dropdownRoutes: string[] = $state([]);
@@ -107,7 +103,7 @@
 								tabindex="0"
 								onclick={() => navigateFromDropdown(path, route)}
 							>
-								{titleize(route)}
+								{route}
 							</li>
 						{/each}
 					</ol>

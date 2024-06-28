@@ -15,6 +15,8 @@
 		name: string;
 		type: string;
 		notnull: boolean;
+		default: string;
+		constraints: string;
 	}
 
 	const initialData: Column = $state.snapshot(data);
@@ -34,20 +36,24 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-	<label for="name">
-		Name
+	<div>
+		<label for="name"> Name </label>
 		<input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
-	</label>
-	<label for="type">
-		Type
+	</div>
+	<div>
+		<label for="type"> Type </label>
 		<select id="type" bind:value={currentData.type}>
 			{#each types as type}
 				<option value={type}>{type}</option>
 			{/each}
 		</select>
-	</label>
+	</div>
 	<div>
 		<input id="notnull" type="checkbox" bind:checked={currentData.notnull} />
 		<label for="notnull">Not null</label>
+	</div>
+	<div>
+		<label for="default"> Default </label>
+		<input id="default" type="text" bind:value={currentData.default} />
 	</div>
 </RecordForm>

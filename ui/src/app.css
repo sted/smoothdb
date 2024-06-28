@@ -38,3 +38,20 @@ input[type=text], select {
 select {
   appearance: none;
 }
+
+.remixicon {
+  vertical-align: -2px;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+input[type="checkbox"] + label {
+  margin-left: 5px;
+}
+
+label + input, label + select {
+  margin-top: 5px;
+}

@@ -31,10 +31,10 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-    <label for="name">
-        Name
+    <div>
+        <label for="name"> Name </label>
         <input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
-    </label>
+    </div>
     <div>
         <input id="login" type="checkbox" bind:checked={currentData.canlogin} />
         <label for="login">Can login</label>
