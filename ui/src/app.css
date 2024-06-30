@@ -35,10 +35,6 @@ input[type=text], select {
   box-sizing: border-box;
 }
 
-select {
-  appearance: none;
-}
-
 .remixicon {
   vertical-align: -2px;
 }
@@ -52,6 +48,6 @@ input[type="checkbox"] + label {
   margin-left: 5px;
 }
 
-label + input, label + select {
+label + input, label + .select-wrapper {
   margin-top: 5px;
 }

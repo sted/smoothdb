@@ -4,6 +4,7 @@
 	import { router } from "../routes";
 	import { getData } from "../utils";
 	import RecordForm from "../components/RecordForm.svelte";
+	import Select from "../components/DataSelect.svelte";
 	import Role from "./RoleForm.svelte";
 
 	interface Props {
@@ -45,23 +46,13 @@
 	</div>
 	<div>
 		<label for="schema"> Schema </label>
-		<select id="schema" bind:value={currentData.schema}>
-			{#await prom_schemas then schemas}
-				{#each schemas as schema}
-					<option value={schema.name}>{schema.name}</option>
-				{/each}
-			{/await}
-		</select>
+		<Select id="schema" bind:value={currentData.schema} data={prom_schemas} fieldName="name"
+		></Select>
 	</div>
 	<div>
 		<label for="owner"> Owner </label>
-		<select id="owner" bind:value={currentData.owner}>
-			{#await prom_roles then roles}
-				{#each roles as role}
-					<option value={role.name}>{role.name}</option>
-				{/each}
-			{/await}
-		</select>
+		<Select id="schema" bind:value={currentData.owner} data={prom_roles} fieldName="name"
+		></Select>
 	</div>
 	<div>
 		<input id="login" type="checkbox" bind:checked={currentData.rowsecurity} />

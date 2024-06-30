@@ -5,7 +5,6 @@
 	import { getData } from "../utils";
 	import RecordForm from "../components/RecordForm.svelte";
 	import Select from "../components/DataSelect.svelte";
-	import Constraint from "./ConstraintForm.svelte";
 
 	interface Props {
 		data: any;
@@ -13,45 +12,28 @@
 	}
 	let { data, formSubmitted }: Props = $props();
 
-	interface Column {
+	interface Constraint {
 		name: string;
 		type: string;
-		notnull: boolean;
-		default: string;
-		constraints: string;
+		//columns: string[];
 	}
 
-	const initialData: Column = $state.snapshot(data);
-	let currentData: Column = $state(data);
+	const initialData: Constraint = $state.snapshot(data);
+	let currentData: Constraint = $state(data);
 	currentData.type ||= "";
 	let nameInput: HTMLInputElement;
 
-	const entityName = "column";
+	const entityName = "constraint";
 	const db = $router.params["db"];
 	const table = $router.params["table"];
-	const dataUrl = `/databases/${db}/tables/${table}/columns`;
+	const dataUrl = `/databases/${db}/tables/${table}/constraints`;
 
-	const types = [
-		"int2",
-		"int4",
-		"int8",
-		"float4",
-		"float8",
-		"bool",
-		"text",
-		"timestamp",
-		"date",
-		"interval",
-		"json",
-		"jsonb",
-	];
-
-	async function init() {
-		let constraints: Promise<Constraint[]> = await getData(
-			`${adminDbUrl}/databases/${db}/tables/${table}/constraints`,
-		);
-		//const hasAlreadyPrimary =
-	}
+	const types = {
+		"primary key": "primary",
+		unique: "unique",
+		check: "check",
+		"foreign key": "foreign",
+	};
 
 	onMount(() => {
 		nameInput.focus();
@@ -66,13 +48,5 @@
 	<div>
 		<label for="type"> Type </label>
 		<Select id="type" bind:value={currentData.type} data={types}></Select>
-	</div>
-	<div>
-		<input id="notnull" type="checkbox" bind:checked={currentData.notnull} />
-		<label for="notnull">Not null</label>
-	</div>
-	<div>
-		<label for="default"> Default </label>
-		<input id="default" type="text" bind:value={currentData.default} />
 	</div>
 </RecordForm>

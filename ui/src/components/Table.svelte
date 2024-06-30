@@ -107,7 +107,7 @@
 		cursor: pointer;
 	}
 	tbody {
-		background-color: rgb(247, 252, 255);
+		background-color: rgb(250, 250, 250);
 	}
 	tbody tr:hover {
 		background-color: rgb(240, 240, 240);
@@ -119,9 +119,7 @@
 		padding: 10px;
 		outline: 0;
 	}
-	tr > td:nth-child(1),
-	tr > td:nth-child(2) {
+	tr {
 		cursor: pointer;
-		text-decoration: underline;
 	}
 </style>

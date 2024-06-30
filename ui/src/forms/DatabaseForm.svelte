@@ -3,6 +3,7 @@
     import { adminDbUrl } from "../main";
     import { getData } from "../utils";
     import RecordForm from "../components/RecordForm.svelte";
+    import Select from "../components/DataSelect.svelte";
     import Role from "./RoleForm.svelte";
 
     interface Props {
@@ -37,12 +38,7 @@
     </div>
     <div>
         <label for="owner">Owner</label>
-        <select id="owner" bind:value={currentData.owner}>
-            {#await prom_roles then roles}
-                {#each roles as role}
-                    <option value={role.name}>{role.name}</option>
-                {/each}
-            {/await}
-        </select>
+        <Select id="owner" bind:value={currentData.owner} data={prom_roles} fieldName="name"
+        ></Select>
     </div>
 </RecordForm>
