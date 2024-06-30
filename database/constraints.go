@@ -6,7 +6,7 @@ import (
 
 type Constraint struct {
 	Name           string   `json:"name"`
-	Type           byte     `json:"type"` // c: check, u: unique, p: primary, f: foreign
+	Type           string   `json:"type"` // check, unique, primary, foreign
 	Table          string   `json:"table"`
 	Schema         string   `json:"schema"`
 	Columns        []string `json:"columns"`
@@ -30,7 +30,13 @@ type ForeignKey struct {
 const constraintsQuery = `
 SELECT
     c.conname name,
-    c.contype type, 
+    CASE c.contype
+		WHEN 'p' THEN 'primary'
+		WHEN 'u' THEN 'unique'
+		WHEN 'c' THEN 'check'
+		WHEN 'f' THEN 'foreign'
+		ELSE ''
+	END type,
     cls1.relname table,
 	ns1.nspname schema,
     columns.cols,
@@ -55,7 +61,7 @@ LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace`
 func fillTableConstraints(table *Table, constraints []Constraint) {
 	table.Constraints = nil
 	for _, c := range constraints {
-		if c.Table == table.Name && c.Schema == table.Schema && (len(c.Columns) > 1 || c.Type == 'p') {
+		if c.Table == table.Name && c.Schema == table.Schema && (len(c.Columns) > 1 || c.Type == "primary") {
 			table.Constraints = append(table.Constraints, c.Definition)
 		}
 	}

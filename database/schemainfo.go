@@ -92,17 +92,17 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	for _, c := range constraints {
 		ftable := _s(c.Table, c.Schema)
 		switch c.Type {
-		case 'p':
+		case "primary":
 			dbi.cachedPrimaryKeys[ftable] = c
-		case 'f':
+		case "foreign":
 			freltable := _s(*c.RelatedTable, *c.RelatedSchema)
 			// Here we skip foreign keys from or to partitions
 			if !dbi.cachedTables[ftable].IsPartition && !dbi.cachedTables[freltable].IsPartition {
 				dbi.cachedForeignKeys[ftable] = append(dbi.cachedForeignKeys[ftable], *constraintToForeignKey(&c))
 			}
-		case 'u':
+		case "unique":
 			dbi.cachedUniqueConstraints[ftable] = append(dbi.cachedUniqueConstraints[ftable], c)
-		case 'c':
+		case "check":
 			dbi.cachedCheckConstraints[ftable] = append(dbi.cachedCheckConstraints[ftable], c)
 		}
 	}
