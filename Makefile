@@ -5,7 +5,12 @@ TEST_FLAGS=-v -count=1 -race
 
 all: build
 
-build:
+build: build-ui build-go
+
+build-ui:
+	cd ui && npm install && npm run build
+
+build-go:
 	$(GO) build -trimpath -ldflags "-X main.Version=$(VERSION)"
 	$(MAKE) -C plugins
 

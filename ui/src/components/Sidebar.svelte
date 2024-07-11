@@ -1,14 +1,17 @@
 <script lang="ts">
-    import { router } from "../routes";
-    import RiDatabase2Line from "svelte-remixicon/RiDatabase2Line.svelte";
-    import RiGroupLine from "svelte-remixicon/RiGroupLine.svelte";
+    import RiDatabase2Line from "/assets/images/database-2-line.svg";
+    import RiGroupLine from "/assets/images/group-line.svg";
 </script>
 
 <aside>
     <div class="logo"><a href="/"><b>smoothdb</b></a></div>
     <ol>
-        <li><a href="/ui/databases"><RiDatabase2Line /> Databases</a></li>
-        <li><a href="/ui/roles"><RiGroupLine /> Roles</a></li>
+        <li>
+            <a href="/ui/databases"><img class="remixicon" src={RiDatabase2Line} /> Databases</a>
+        </li>
+        <li>
+            <a href="/ui/roles"><img class="remixicon" src={RiGroupLine} /> Roles</a>
+        </li>
     </ol>
 </aside>
 

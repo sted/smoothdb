@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { router } from "../routes";
-
-	import RiExpandUpDownLine from "svelte-remixicon/RiExpandUpDownLine.svelte";
-	import RiAddLine from "svelte-remixicon/RiAddLine.svelte";
 	import type { MouseEventHandler } from "svelte/elements";
+	import RiExpandUpDownLine from "/assets/images/expand-up-down-line.svg";
+	import RiAddLine from "/assets/images/add-line.svg";
 
 	interface Props {
 		rowAdd: MouseEventHandler<HTMLButtonElement>;
@@ -81,6 +80,7 @@
 	<ol>
 		{#each breadcrumbs as { title, path, hasMultipleChoices }, index}
 			<li class="breadcrumb-item">
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<span
 					role="button"
 					tabindex="0"
@@ -91,7 +91,7 @@
 						tabindex="0"
 						onclick={(event) => handleDropdownClick(event, path, index)}
 					>
-						<RiExpandUpDownLine />
+						<img class="remixicon" src={RiExpandUpDownLine} />
 					</button>
 				{/if}
 				{#if index === activeDropdownIndex}
@@ -113,7 +113,7 @@
 		{/each}
 		<li>
 			<button tabindex="0" onclick={rowAdd}>
-				<RiAddLine />
+				<img class="remixicon" src={RiAddLine} />
 			</button>
 		</li>
 	</ol>

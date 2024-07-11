@@ -402,7 +402,22 @@ To try the example
 
 in the examples directory and browse to *localhost:8085/products* and *localhost:8085/view*.
 
+## Admin UI
+
+> [!WARNING] Beta
+
+A simple interface for the basic administration commands.
+
+It allows to configure databases, tables, colums, roles, etc.
+
+It must be esplicitly enabled and for now it needs the configuration of the anonymous role to work.
+
 ## Plugins
+
+> [!WARNING]
+> This is experimental.
+>
+> It is inherently complicated to build plugins in Go, and it is normally advisable to compile them together with the host program code.
 
 Another way to extend the capabilities of SmoothDB is through the plugin mechanism: the plugins are Go libraries that comply with the `plugins.Plugin` interface and are loaded when the server starts.
 
@@ -439,9 +454,6 @@ To build it use the following command:
 	go build -trimpath -buildmode=plugin -o example.plugin main.go
 ```
 
-> [!WARNING]
-> It is inherently complicated to build plugins in Go, and it is normally advisable to compile them together with the host program code.
-
 ## Configuration
 
 Configuration parameters can be provided via configuration file, environment variables and command line, with increasing priority.
@@ -459,6 +471,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none", "role" | "role" |
 | EnableAdminRoute | Enable administration of databases and tables | false |
+| EnableAdminUI | Enable Admin dashboard | false |
 | EnableAPIRoute | Enable API access | true |
 | BaseAPIURL | Base URL for the API | "/api" |
 | ShortAPIURL | Skip database name in API URL. Database.AllowedDatabases must contain a single db | false |

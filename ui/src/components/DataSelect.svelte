@@ -1,5 +1,5 @@
 <script lang="ts">
-	import RiExpandUpDownLine from "svelte-remixicon/RiExpandUpDownLine.svelte";
+	import RiExpandUpDownLine from "/assets/images/expand-up-down-line.svg";
 
 	type InputData = Promise<any[]> | Promise<object> | any[] | object;
 	type NormalizedData = { key: string; value: string }[];
@@ -45,7 +45,7 @@
 		{/each}
 	</select>
 	<div class="expand-widget">
-		<RiExpandUpDownLine />
+		<img class="remixicon" src={RiExpandUpDownLine} />
 	</div>
 </div>
 

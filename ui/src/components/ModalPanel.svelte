@@ -1,6 +1,6 @@
 <script lang="ts">
     import { slide } from "svelte/transition";
-    import RiCloseLine from "svelte-remixicon/RiCloseLine.svelte";
+    import RiCloseLine from "/assets/images/close-line.svg";
 
     interface Props {
         form: any;
@@ -25,7 +25,9 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="overlay" onclick={close}></div>
     <div class="panel" transition:slide={{ duration: 200, axis: "x" }}>
-        <button class="close-btn" onclick={close}><RiCloseLine /></button>
+        <button class="close-btn" onclick={close}>
+            <img class="remixicon" src={RiCloseLine} />
+        </button>
         <div class="content">
             <svelte:component this={form} {data} {formSubmitted} />
         </div>

@@ -37,6 +37,8 @@ input[type=text], select {
 
 .remixicon {
   vertical-align: -2px;
+  width: 16px;
+  height: 16px;
 }
 
 a {

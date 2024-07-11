@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import RiPencilLine from "svelte-remixicon/RiPencilLine.svelte";
 	import { router } from "../routes";
+	import RiEditLine from "/assets/images/edit-line.svg";
 
 	interface Props {
 		dataUrl: string;
@@ -54,8 +54,9 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <table>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<thead onclick={handleBodyClick}>
 		<tr>
 			<th></th>
@@ -64,11 +65,14 @@
 			{/each}
 		</tr>
 	</thead>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<tbody onclick={handleBodyClick}>
 		{#if data.length > 0}
 			{#each data as row, index}
 				<tr data-index={index}>
-					<td class="edit"><RiPencilLine /></td>
+					<!-- svelte-ignore a11y_missing_attribute -->
+					<td class="edit"><img class="remixicon" src={RiEditLine} /></td>
 					{#each columns as column}
 						<td>{row[column.name]}</td>
 					{/each}
