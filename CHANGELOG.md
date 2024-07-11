@@ -1,9 +1,19 @@
 # Change Log
 
-## unrelesed
+## 0.2.7 - 2024-07-11
 
 ### Added
+* Admin UI, to be completed
+* Plugins, first experimental release
+* Create db with owner
+* Roles and Databases update
 * count=exact and tests
+* Separate pretty and color log configuration
+* Explicit schema
+* Schema for DDL operations as header
+
+### Fixes
+* Some fixes to logging
 
 ## 0.2.6 - 2024-04-15
 
