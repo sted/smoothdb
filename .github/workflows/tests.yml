@@ -27,7 +27,7 @@ jobs:
 
     - name: Test PostgreSQL connection
       run: |
-        psql -U postgres -d postgres -c 'SELECT version();'flags ""
+        psql -U postgres -d postgres -c 'SELECT version();'
 
     - name: Prepare tests
       run: make prepare-postgrest-tests
