@@ -27,7 +27,7 @@ jobs:
 
     - name: Test PostgreSQL connection
       run: |
-        psql -U postgres -d postgres -c 'SELECT version();'
+        psql -U postgres -d postgres -c 'SELECT version();'flags ""
 
     - name: Prepare tests
       run: make prepare-postgrest-tests
@@ -36,17 +36,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.22'
-
-    - name: Install Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-  
-    - name: Install npm dependencies and build UI
-      run: |
-        cd ui
-        npm install --force
-        npm run build
 
     - name: Run tests
       run: make test

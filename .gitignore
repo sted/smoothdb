@@ -10,3 +10,5 @@ misc/scratch.sql
 *.plugin
 _plugins
 
+
+dist/

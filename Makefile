@@ -11,7 +11,7 @@ build-ui:
 	cd ui && npm install && npm run build
 
 build-go:
-	$(GO) build -trimpath -ldflags "-X main.Version=$(VERSION)"
+	$(GO) build -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
 	$(MAKE) -C plugins
 
 test:
@@ -30,4 +30,4 @@ clean:
 	$(MAKE) -C plugins clean
 
 
-.PHONY: all build clean test
+.PHONY: all build build-ui build-go clean test
