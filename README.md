@@ -140,10 +140,12 @@ POST /api/testdb/test HTTP/1.1
 > In these example we use the default configuration for SmoothDB.
 > To have fully PostgREST API compliancy, you should have a configuration similar to:
 > ```json 
-> 	EnableAdminRoute: false
-> 	BaseAPIURL: ""
-> 	ShortAPIURL: true
+>{
+> 	EnableAdminRoute: false,
+> 	BaseAPIURL: "",
+> 	ShortAPIURL: true,
 > 	Database.AllowedDatabases: ["testdb"]
+>} 
 > ```
 > With these configurations the "/admin" is no longer accessible and "/api/testdb/test..." becomes simply "/test...".
 
@@ -404,7 +406,8 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 
 ## Admin UI
 
-> [!WARNING] Beta
+> [!WARNING] 
+> Beta.
 
 A simple interface for the basic administration commands.
 
