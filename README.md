@@ -141,10 +141,10 @@ POST /api/testdb/test HTTP/1.1
 > To have fully PostgREST API compliancy, you should have a configuration similar to:
 > ```json 
 >{
-> 	EnableAdminRoute: false,
-> 	BaseAPIURL: "",
-> 	ShortAPIURL: true,
-> 	Database.AllowedDatabases: ["testdb"]
+> 	"EnableAdminRoute": false,
+> 	"BaseAPIURL": "",
+> 	"ShortAPIURL": true,
+> 	"Database.AllowedDatabases": ["testdb"]
 >} 
 > ```
 > With these configurations the "/admin" is no longer accessible and "/api/testdb/test..." becomes simply "/test...".
@@ -411,9 +411,16 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 
 A simple interface for the basic administration commands.
 
-It allows to configure databases, tables, colums, roles, etc.
+It allows to configure databases, tables, colums, roles, etc., must be esplicitly enabled and for now needs the configuration of the anonymous role to work.
 
-It must be esplicitly enabled and for now it needs the configuration of the anonymous role to work.
+These are the required configurations:
+
+```json 
+{
+	"AllowAnon": true,
+ 	"EnableAdminRoute": true,
+	"EnableAdminUI": true,
+} 
 
 ## Plugins
 
