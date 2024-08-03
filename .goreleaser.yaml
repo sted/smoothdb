@@ -56,7 +56,8 @@ brews:
     # test: |
     #   system "#{bin}/smoothdb --version"
 
-# changelog:
+changelog:
+  disable: true
 #   sort: asc
 #   filters:
 #     exclude:
