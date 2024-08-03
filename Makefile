@@ -12,7 +12,6 @@ build-ui:
 
 build-go:
 	$(GO) build -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
-	$(MAKE) -C plugins
 
 test:
 	$(GO) test $(TEST_FLAGS) ./database
@@ -27,7 +26,5 @@ prepare-postgrest-tests:
 
 clean:
 	go clean
-	$(MAKE) -C plugins clean
-
 
 .PHONY: all build build-ui build-go clean test

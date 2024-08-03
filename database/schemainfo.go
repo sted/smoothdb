@@ -147,16 +147,16 @@ func (si *SchemaInfo) GetTypeById(id uint32) *Type {
 	return &t
 }
 
-func (si *SchemaInfo) GetTable(table string) *Table {
-	t, ok := si.cachedTables[table]
+func (si *SchemaInfo) GetTable(ftable string) *Table {
+	t, ok := si.cachedTables[ftable]
 	if !ok {
 		return nil
 	}
 	return &t
 }
 
-func (si *SchemaInfo) GetColumnType(table string, column string) *ColumnType {
-	t, ok := si.cachedColumnTypes[table]
+func (si *SchemaInfo) GetColumnType(ftable string, column string) *ColumnType {
+	t, ok := si.cachedColumnTypes[ftable]
 	if !ok {
 		return nil
 	}
@@ -167,24 +167,24 @@ func (si *SchemaInfo) GetColumnType(table string, column string) *ColumnType {
 	return &ct
 }
 
-func (si *SchemaInfo) GetPrimaryKey(table string) *Constraint {
-	c, ok := si.cachedPrimaryKeys[table]
+func (si *SchemaInfo) GetPrimaryKey(ftable string) *Constraint {
+	c, ok := si.cachedPrimaryKeys[ftable]
 	if !ok {
 		return nil
 	}
 	return &c
 }
 
-func (si *SchemaInfo) GetForeignKeys(table string) []ForeignKey {
-	return si.cachedForeignKeys[table]
+func (si *SchemaInfo) GetForeignKeys(ftable string) []ForeignKey {
+	return si.cachedForeignKeys[ftable]
 }
 
-func (si *SchemaInfo) GetRelationships(table string) []Relationship {
-	return si.cachedRelationships[table]
+func (si *SchemaInfo) GetRelationships(ftable string) []Relationship {
+	return si.cachedRelationships[ftable]
 }
 
-func (si *SchemaInfo) FindRelationshipByCol(table, col string) *Relationship {
-	rels := si.GetRelationships(table)
+func (si *SchemaInfo) FindRelationshipByCol(ftable, col string) *Relationship {
+	rels := si.GetRelationships(ftable)
 	for _, rel := range rels {
 		if len(rel.Columns) == 1 && rel.Columns[0] == col {
 			return &rel

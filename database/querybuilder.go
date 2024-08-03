@@ -55,8 +55,8 @@ func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
 	if info == nil {
 		return quotedField // to enable building queries without schema info
 	}
-	tablename := _s(table, schema)
-	typ := info.GetColumnType(tablename, field)
+	ftablename := _s(table, schema)
+	typ := info.GetColumnType(ftablename, field)
 	if typ != nil && (typ.IsArray || typ.IsComposite) {
 		quotedField = "to_jsonb(" + quotedField + ")"
 	}
