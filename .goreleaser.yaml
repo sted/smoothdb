@@ -50,12 +50,12 @@ brews:
   - repository:
       owner: sted
       name: homebrew-tap
+    directory: Formula
     # url_template: "https://github.com/sted/smoothdb/releases/download/{{ .Tag }}/{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
     # install: |
     #   bin.install "smoothdb"
     # test: |
     #   system "#{bin}/smoothdb --version"
-    directory: Formula
 
 changelog:
   disable: true
