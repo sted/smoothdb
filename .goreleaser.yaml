@@ -55,6 +55,7 @@ brews:
     #   bin.install "smoothdb"
     # test: |
     #   system "#{bin}/smoothdb --version"
+    directory: Formula
 
 changelog:
   disable: true
