@@ -11,9 +11,13 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    - make build-ui
 
 builds:
-  - env:
+  - id: smoothdb
+    ldflags:
+      - -s -w -X main.Version={{ .Version }}
+    env:
       - CGO_ENABLED=0
     goarch:
       - amd64
@@ -26,10 +30,7 @@ builds:
         goarch: arm
       - goos: darwin
         goarch: arm
-    hooks:
-      pre:
-        - make build-ui
-
+   
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
