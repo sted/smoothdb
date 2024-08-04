@@ -14,23 +14,35 @@ The main differences are:
 * Can be used both stand-alone and as a library (the main motivation for writing this)
 * It also supports DDL operations (create / alter / drop databases, tables, manage constraints, roles, etc)
 * Supports multiple databases with a single instance
+* It has an Admin UI web dashboard
 
 See [TODO.md](TODO.md) for the many things to be completed.
 Please create issues to let me know your priorities.
 
 ## Getting started
 
-### Install and build
+### Install
 
-If you have Go installed, installing the binary is easy:
+SmoothDB can be installed using the pre-built binaries published on [github](https://github.com/sted/smoothdb/releases) for each of the supported platforms. Support on windows is not yet well tested.
+
+If you are on MacOS (or Linux) you can use Homebew to install the package:
+
+```
+brew tap sted/tap
+brew install smoothdb
+```
+
+If you have Go installed, you can also install SmoothDB using:
 
 ```
 go install github.com/sted/smoothdb@latest
 ```
 
-To test your installation (provided $GOPATH/bin is in your path), type `smoothdb`.
+To test your installation type 
 
-Packages will follow.
+```
+smoothdb -h
+```
 
 ### Start
 
@@ -409,6 +421,8 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 > [!WARNING] 
 > Beta.
 
+![](/misc/screenshot.png)
+
 A simple interface for the basic administration commands.
 
 It allows to configure databases, tables, colums, roles, etc., must be esplicitly enabled and for now needs the configuration of the anonymous role to work.
@@ -421,6 +435,7 @@ These are the required configurations:
  	"EnableAdminRoute": true,
 	"EnableAdminUI": true,
 } 
+```
 
 ## Plugins
 

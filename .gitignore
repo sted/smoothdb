@@ -4,11 +4,10 @@ config.jsonc
 __debug_bin*
 *.log
 misc/scratch.sql
-.vscode/*
+.vscode
 .DS_Store
 *.pem
 *.plugin
 _plugins
-
-
-dist/
+dist
+node_modules

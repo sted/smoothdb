@@ -1,9 +1,19 @@
 # Change Log
 
+## 0.2.9 - 2024-08-04
+
+### Fixes
+* Better docs for installing and some other minor fixes
+
+## 0.2.8 - 2024-08-03
+
+### Added
+* Using goreleaser to publish binaries and support homebrew, still experimental
+
 ## 0.2.7 - 2024-07-11
 
 ### Added
-* Admin UI, to be completed
+* Admin UI, first steps
 * Plugins, first experimental release
 * Create db with owner
 * Roles and Databases update
