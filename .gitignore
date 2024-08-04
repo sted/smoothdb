@@ -9,5 +9,4 @@ misc/scratch.sql
 *.pem
 *.plugin
 _plugins
-dist
 node_modules
