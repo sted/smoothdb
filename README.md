@@ -23,7 +23,7 @@ Please create issues to let me know your priorities.
 
 ### Install
 
-SmoothDB can be installed using the pre-built binaries published on [github](https://github.com/sted/smoothdb/releases) for each of the supported platforms. Support on windows is not yet well tested.
+SmoothDB can be installed using the pre-built binaries published on [github](https://github.com/sted/smoothdb/releases) for each of the supported platforms. Support on Windows is not yet well tested.
 
 If you are on MacOS (or Linux) you can use Homebew to install the package:
 
@@ -32,7 +32,7 @@ brew tap sted/tap
 brew install smoothdb
 ```
 
-If you have Go installed, you can also install SmoothDB using:
+If you have Go installed, you can install SmoothDB using:
 
 ```
 go install github.com/sted/smoothdb@latest
@@ -81,7 +81,7 @@ A valid JWT for SmoothDB must include at least the **role** claim in the payload
 
 To generate a JWT for testing, you can use the generator at [jwt.io](jwt.io), using as a secret the same value configured in the configuration file for JWTSecret.
 
-This is an example of an authenticated API call:
+Below is an example of an authenticated API call:
 
 ```http
 GET /test HTTP/1.1
@@ -425,7 +425,7 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 
 A simple interface for the basic administration commands.
 
-It allows to configure databases, tables, colums, roles, etc., must be esplicitly enabled and for now needs the configuration of the anonymous role to work.
+It allows to configure databases, tables, colums, roles, etc., must be explicitly enabled and for now needs the configuration of the anonymous role to work.
 
 These are the required configurations:
 
