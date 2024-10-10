@@ -383,6 +383,9 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 		if err != nil {
 			return nil, err
 		}
+		if len(fields) == 0 {
+			break
+		}
 		selectFields = append(selectFields, fields...)
 	}
 	return selectFields, nil
@@ -392,6 +395,9 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	var label, cast, fk string
 	var spread, inner bool
 	token := p.next()
+	if token == "" {
+		return nil, nil
+	}
 	if token == "..." {
 		spread = true
 		token = p.next()
