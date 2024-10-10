@@ -383,9 +383,6 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 		if err != nil {
 			return nil, err
 		}
-		if len(fields) == 0 {
-			break
-		}
 		selectFields = append(selectFields, fields...)
 	}
 	return selectFields, nil
