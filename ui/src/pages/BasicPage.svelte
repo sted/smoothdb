@@ -1,15 +1,16 @@
 <script lang="ts">
     import { adminDbUrl } from "../main";
-    import { router } from "../routes";
     import TableContainer from "../components/TableContainer.svelte";
     import ModalPanel from "../components/ModalPanel.svelte";
+    import { router } from "../routes";
 
     let dataUrl: string = $state("");
 
     let modal: ModalPanel;
     let table: TableContainer;
 
-    router.subscribe(() => {
+    $effect(() => {
+        router.path;
         dataUrl = adminDbUrl + window.location.pathname.replace(/^\/ui/, "");
     });
 
@@ -28,4 +29,4 @@
 </script>
 
 <TableContainer bind:this={table} {dataUrl} {rowEdit} />
-<ModalPanel bind:this={modal} form={$router.component} {formSubmitted} />
+<ModalPanel bind:this={modal} {formSubmitted} />

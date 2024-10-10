@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { router } from "../routes";
+	import type { Data } from "../api";
 	import RiEditLine from "/assets/images/edit-line.svg";
 
 	interface Props {
@@ -10,11 +11,10 @@
 	}
 	let { dataUrl, rowClick, rowEdit }: Props = $props();
 
-	type DataItem = Record<string, any>;
 	interface Column {
 		name: string;
 	}
-	let data: DataItem[] = $state([]);
+	let data: Data[] = $state([]);
 	let columns: Column[] = $derived.by(() => {
 		return data.length > 0 ? Object.keys(data[0]).map((name) => ({ name })) : [];
 	});
@@ -34,8 +34,11 @@
 
 	async function fetchData(): Promise<void> {
 		const response = await fetch(dataUrl, {
-			headers: { "Accept-Profile": $router.schema },
+			headers: { "Accept-Profile": router.schema },
 		});
+		if (!response.ok) {
+			throw new Error("Failed to fetch: " + response.statusText);
+		}
 		data = await response.json();
 	}
 
@@ -46,9 +49,9 @@
 			const rowIndex = parseInt(row.dataset.index, 10);
 			const d = data[rowIndex];
 			if (cell?.classList.contains("edit")) {
-				rowEdit(structuredClone($state.snapshot(d)));
+				rowEdit(d);
 			} else {
-				rowClick(d.name, d.schema ?? "");
+				rowClick(d);
 			}
 		}
 	}

@@ -27,8 +27,8 @@
 	let nameInput: HTMLInputElement;
 
 	const entityName = "column";
-	const db = $router.params["db"];
-	const table = $router.params["table"];
+	const db = router.params["db"];
+	const table = router.params["table"];
 	const dataUrl = `/databases/${db}/tables/${table}/columns`;
 
 	const types = [
@@ -45,13 +45,6 @@
 		"json",
 		"jsonb",
 	];
-
-	async function init() {
-		let constraints: Promise<Constraint[]> = await getData(
-			`${adminDbUrl}/databases/${db}/tables/${table}/constraints`,
-		);
-		//const hasAlreadyPrimary =
-	}
 
 	onMount(() => {
 		nameInput.focus();

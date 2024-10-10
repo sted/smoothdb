@@ -24,8 +24,8 @@
 	let nameInput: HTMLInputElement;
 
 	const entityName = "constraint";
-	const db = $router.params["db"];
-	const table = $router.params["table"];
+	const db = router.params["db"];
+	const table = router.params["table"];
 	const dataUrl = `/databases/${db}/tables/${table}/constraints`;
 
 	const types = {

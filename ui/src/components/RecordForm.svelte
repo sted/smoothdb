@@ -2,12 +2,13 @@
     import type { Snippet } from "svelte";
     import { adminDbUrl } from "../main";
     import { router } from "../routes";
+    import type { Data } from "../api";
 
     interface Props {
         entityName: string;
         dataUrl: string;
-        initialData: any;
-        currentData: any;
+        initialData: Data;
+        currentData: Data;
         formSubmitted: (b:boolean) => void;
         children: Snippet;
     }
@@ -20,7 +21,7 @@
         ev.preventDefault();
         const method = isEditing ? "PATCH" : "POST";
         const url = adminDbUrl + dataUrl + (isEditing ? `/${initialData.name}`: '');
-        const schema = initialData.schema ?? $router.schema;
+        const schema = initialData.schema ?? router.schema;
 
         fetch(url, {
             method,
@@ -34,7 +35,7 @@
     async function handleDelete() {
         const method = "DELETE";
         const url = adminDbUrl + dataUrl + `/${initialData.name}`;
-        const schema = initialData.schema ?? $router.schema;
+        const schema = initialData.schema ?? router.schema;
 
         fetch(url, { 
             method,

@@ -20,9 +20,10 @@
 	let activeDropdownIndex: number | null = $state(null);
 	let dropdownRoutes: string[] = $state([]);
 
-	router.subscribe(() => {
+	$effect(() => {
+		router.path;
 		const segments = window.location.pathname.split("/").filter(Boolean);
-		breadcrumbs = segments.map((segment, index) => {
+		const bcrumbs = segments.map((segment, index) => {
 			const path = "/" + segments.slice(0, index + 1).join("/");
 			const nextRoutes = router.getAltRoutes(path);
 			return {
@@ -32,7 +33,7 @@
 			};
 		});
 		activeDropdownIndex = null;
-		breadcrumbs.shift();
+		breadcrumbs = bcrumbs.slice(1);
 	});
 
 	function handleSegmentClick(event: MouseEvent, path: string): void {

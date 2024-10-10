@@ -1,11 +1,8 @@
-import type { Writable } from 'svelte/store';
-import { writable, get } from 'svelte/store';
-import type { ComponentType } from 'svelte';
+import type { Component } from 'svelte';
 
-
-export interface RouteDef {
+export interface RouteConfig {
     pattern: string
-    page?: any
+    page?: Component
     component?: any
     redirect?: string
 }
@@ -13,8 +10,8 @@ export interface RouteDef {
 interface Route {
     regex: RegExp
     paramNames: string[]
-    page?: ComponentType 
-    component?: ComponentType
+    page?: Component
+    component?: Component
     redirect?: string
 }
 
@@ -22,47 +19,37 @@ interface RouteParams {
     [key: string]: string;
 }
 
-interface LocationState {
-    path: string
-    page: any
-    component?: any
-    params: RouteParams
-    schema: string
-}
-
 export default class Router {
-    private basePath: string = '/ui'; 
-    private defaultState: LocationState
-    private location: Writable<LocationState>
+    path: string = $state("")
+    page: Component | undefined = $state()
+    component: Component | undefined = $state()
+    params: RouteParams = $state({})
+    schema: string = $state("")
+
+    private basePath: string = '/ui';
     private routes: Route[]
     private routesMap: Map<string, { regex: RegExp, nextSegments: Set<string> }> = new Map();
 
-    constructor(routeDefs: RouteDef[], defPage: any) {
-        this.defaultState = {path: "", page: defPage, params: {}, schema: ""}
-        this.location = writable<LocationState>(this.defaultState);
+    constructor(routeDefs: RouteConfig[], defPage: any) {
+        this.page = defPage
         // compile routes and pre-calculate segments
-        this.routes = routeDefs.map(({ pattern, page, component, redirect }: RouteDef): Route => {
+        this.routes = routeDefs.map(({ pattern, page, component, redirect }: RouteConfig): Route => {
             pattern = this.basePath + pattern;
-            const {regex, paramNames} = this.compilePattern(pattern);
+            const { regex, paramNames } = this.compilePattern(pattern);
             this.precalculateNextSegments(pattern);
-            return {regex, paramNames, page, component, redirect}
-          });
+            return { regex, paramNames, page, component, redirect }
+        });
 
         window.addEventListener('popstate', () => {
-            this.navigate(window.location.pathname, get(this.location).schema, false);
+            this.navigate(window.location.pathname, this.schema, false);
         });
     }
 
-    subscribe(run: (value: LocationState) => void): () => void {
-        return this.location.subscribe(run)
-    }
-
-    navigate(path: string, schema = "", updateHistory = true) {
+    navigate(path: string, schema = "", updateHistory = true): boolean {
+        const oldPath = this.path;
         if (!path.startsWith(this.basePath)) {
             path = this.basePath + path;
         }
-        const currentState = get(this.location);
-        let newState: LocationState = { ...this.defaultState };
         let paramValues: RouteParams = {};
         let matched = false;
 
@@ -77,34 +64,34 @@ export default class Router {
 
                 if (route.redirect) {
                     const redirectPath = this.basePath + route.redirect.replace(/:([^\/]+)/g, (_, key) => paramValues[key]);
-                    this.navigate(redirectPath, schema);
-                    return;
+                    return this.navigate(redirectPath, schema);
                 }
-               
-                newState.path = path;
+
+                this.path = path;
                 if (route.page) {
-                    newState.page = route.page;
+                    this.page = route.page;
                 }
-                newState.component = route.component;
-                newState.params = paramValues;
-                newState.schema = schema || currentState.schema; // if it is "", keep the current schema
-            
+                this.component = route.component;
+                this.params = paramValues;
+                if (schema !== "")
+                    this.schema = schema; // if it is "", keep the current schema
+
                 break;
             }
         }
 
         if (matched) {
-            if (updateHistory && newState.path !== currentState.path) {
+            if (updateHistory && oldPath !== this.path) {
                 window.history.pushState({}, '', path);
             }
-            this.location.set(newState);
         }
+        return matched;
     }
 
     getAltRoutes(path: string): string[] {
-        const segments = path.split('/').filter(Boolean).slice(0, -1); 
+        const segments = path.split('/').filter(Boolean).slice(0, -1);
         const pathWithoutLastSegment = segments.join('/');
-    
+
         for (const { regex, nextSegments } of this.routesMap.values()) {
             if (regex.test('/' + pathWithoutLastSegment)) {
                 return Array.from(nextSegments);
@@ -112,8 +99,8 @@ export default class Router {
         }
         return [];
     }
-     
-    private compilePattern(pattern: string): {regex: RegExp, paramNames: string[]} {
+
+    private compilePattern(pattern: string): { regex: RegExp, paramNames: string[] } {
         const regex = /:([^\/]+)/g;
         const paramNames: string[] = [];
         const replacedPattern = pattern.replace(regex, (_, key) => {
@@ -123,7 +110,7 @@ export default class Router {
         return { regex: new RegExp(`^${replacedPattern}$`), paramNames };
     }
 
-    private precalculateNextSegments(pattern: string): void {      
+    private precalculateNextSegments(pattern: string): void {
         const segments = pattern.split('/').filter(Boolean);
         let currentPattern = '';
 
@@ -139,6 +126,6 @@ export default class Router {
                 }
                 this.routesMap.get(regexPattern)?.nextSegments.add(nextSegment);
             }
-        });    
-    }    
+        });
+    }
 }

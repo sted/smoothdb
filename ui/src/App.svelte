@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { setContext } from "svelte";
 	import { router } from "./routes";
 	import Sidebar from "./components/Sidebar.svelte";
 	import Breadcrumb from "./components/Breadcrumb.svelte";
@@ -7,7 +6,6 @@
 
 	let page: BasicPage;
 
-	setContext("router", router);
 	router.navigate(window.location.pathname);
 
 	function rowAdd(ev: Event) {
@@ -23,7 +21,7 @@
 		<Breadcrumb {rowAdd} />
 	</div>
 	<div class="router-content">
-		<svelte:component this={$router.page} bind:this={page} />
+		<BasicPage bind:this={page}></BasicPage>
 	</div>
 </div>
 

@@ -1,10 +1,11 @@
 <script lang="ts">
     import { router } from "../routes";
     import Table from "./Table.svelte";
+    import type { Data } from "../api";
 
     interface Props {
         dataUrl: string;
-        rowEdit: (d: any) => void;
+        rowEdit: (d: Data) => void;
     }
     let { dataUrl, rowEdit }: Props = $props();
     let table: Table;
@@ -13,8 +14,10 @@
         table.refresh();
     }
 
-    function rowClick(name: string, schema: string) {
-        router.navigate(window.location.pathname + "/" + name, schema);
+    function rowClick(d: Data) {
+        const name = d.name;
+        const schema = d.schema ?? "";
+        if (!router.navigate(window.location.pathname + "/" + name, schema)) rowEdit(d);
     }
 </script>
 

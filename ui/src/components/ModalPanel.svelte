@@ -1,12 +1,12 @@
 <script lang="ts">
     import { slide } from "svelte/transition";
     import RiCloseLine from "/assets/images/close-line.svg";
+    import { router } from "../routes";
 
     interface Props {
-        form: any;
         formSubmitted: (refreshTable: boolean) => void;
     }
-    let { form, formSubmitted }: Props = $props();
+    let { formSubmitted }: Props = $props();
 
     let openModal = $state(false);
     let data: any = $state();
@@ -29,7 +29,7 @@
             <img class="remixicon" src={RiCloseLine} />
         </button>
         <div class="content">
-            <svelte:component this={form} {data} {formSubmitted} />
+            <router.component {data} {formSubmitted}></router.component>
         </div>
     </div>
 {/if}

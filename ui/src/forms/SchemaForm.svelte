@@ -23,7 +23,7 @@
     let nameInput: HTMLInputElement;
 
     const entityName = "schema";
-    const db = $router.params["db"];
+    const db = router.params["db"];
     const dataUrl = `/databases/${db}/schemas`;
 
     let prom_roles: Promise<Role[]> = getData(`${adminDbUrl}/roles`);
