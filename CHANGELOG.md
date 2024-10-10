@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.2.10 - 2024-10-10
+
+### Fixes
+* Possible loop in the parser with invalid select list
+* Small refactoring for UI code
+* Dependencies updates
+
 ## 0.2.9 - 2024-08-04
 
 ### Fixes
