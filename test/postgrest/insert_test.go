@@ -606,6 +606,16 @@ func TestPostgREST_Insert(t *testing.T) {
 			Expected:    `[{"id": 200, "body": "xxx", "owner": "postgrest_test_anonymous"}]`,
 			Status:      201,
 		},
+		// @@added - with quotes
+		{
+			Description: "ignores json keys not included in ?columns",
+			Method:      "POST",
+			Query:       "/articles?columns=\"id\",\"body\"",
+			Body:        `{"id": 200, "body": "xxx", "smth": "here", "other": "stuff", "fake_id": 13}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 200, "body": "xxx", "owner": "postgrest_test_anonymous"}]`,
+			Status:      201,
+		},
 		// 		request methodPost "/articles?columns=id,body&select=id,body" [("Prefer", "return=representation")]
 		// 		  [json| [
 		// 			{"id": 201, "body": "yyy", "smth": "here", "other": "stuff", "fake_id": 13},

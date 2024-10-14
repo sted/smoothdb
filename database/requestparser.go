@@ -461,6 +461,40 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	return selectFields, nil
 }
 
+// COLUMNS
+func (p *PostgRestParser) parseColumns(s string) ([]string, error) {
+	var columnFields []string
+	p.scan(s, ",")
+	next := p.next()
+	if next != "" && next != "," {
+		columnFields = append(columnFields, next)
+		for p.next() == "," {
+			next = p.next()
+			if next != "" {
+				columnFields = append(columnFields, next)
+			}
+		}
+	}
+	return columnFields, nil
+}
+
+// CONFLICTS
+func (p *PostgRestParser) parseConflicts(s string) ([]string, error) {
+	var conflictFields []string
+	p.scan(s, ",")
+	next := p.next()
+	if next != "" && next != "," {
+		conflictFields = append(conflictFields, next)
+		for p.next() == "," {
+			next = p.next()
+			if next != "" {
+				conflictFields = append(conflictFields, next)
+			}
+		}
+	}
+	return conflictFields, nil
+}
+
 // ORDER
 func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string
@@ -802,29 +836,36 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 			}
 			columns += cFields
 		}
+		delete(filters, "columns")
 		parts.columnFields = make(map[string]struct{})
-		//for _, c := range p.parseColumns(columns) {
-		for _, c := range strings.Split(columns, ",") {
+		parsedColumns, err := p.parseColumns(columns)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range parsedColumns {
 			parts.columnFields[c] = struct{}{}
 		}
-		delete(filters, "columns")
 	}
 
 	// ON CONFLICT
 	// on_conflict=c1,c2,c3
 	var onconflict string
-	if columnsFilters, ok := filters["on_conflict"]; ok {
-		for i, cFields := range columnsFilters {
+	if conflictFilters, ok := filters["on_conflict"]; ok {
+		for i, cFields := range conflictFilters {
 			if i != 0 {
 				onconflict += ","
 			}
 			onconflict += cFields
 		}
+		delete(filters, "on_conflict")
 		parts.conflictFields = make(map[string]struct{})
-		for _, c := range strings.Split(onconflict, ",") {
+		parsedConflicts, err := p.parseConflicts(onconflict)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range parsedConflicts {
 			parts.conflictFields[c] = struct{}{}
 		}
-		delete(filters, "on_conflict")
 	}
 
 	// ORDER

@@ -1,5 +1,10 @@
 # Change Log
 
+## dev
+
+### Fixes
+* Support quotes on columns and on_conflict fileds
+
 ## 0.2.10 - 2024-10-10
 
 ### Fixes

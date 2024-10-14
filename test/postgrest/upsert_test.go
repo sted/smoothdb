@@ -165,6 +165,22 @@ func TestPostgREST_Upsert(t *testing.T) {
 				 		  ]`,
 			Status: 201,
 		},
+		// @@added - with quotes
+		{
+			Description: "INSERTs and UPDATEs rows on compound unique key conflict",
+			Method:      "POST",
+			Query:       "/compound_unique?on_conflict=\"key1\",\"key2\"",
+			Body: `[
+				 			{ "key1": 1, "key2": 1, "value": "B" },
+				 			{ "key1": 1, "key2": 2, "value": "C" }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "key1": 1, "key2": 1, "value": "B" },
+				 			{ "key1": 1, "key2": 2, "value": "C" }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	context "when Prefer: resolution=ignore-duplicates is specified" $ do
 		// 	  it "INSERTs and ignores rows on pk conflict" $
 		// 		request methodPost "/tiobe_pls" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
