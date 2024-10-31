@@ -256,8 +256,12 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 		}
 		elemLen := int((binary.BigEndian.Uint32(buf[rp:])))
 		rp += 4
-		at.appendType(buf[rp:], elemOID, info)
-		rp += elemLen
+		if elemLen == 0xFFFFFFFF {
+			t.WriteString("null")
+		} else {
+			at.appendType(buf[rp:rp+elemLen], elemOID, info)
+			rp += elemLen
+		}
 	}
 	t.WriteByte(']')
 }
@@ -370,7 +374,7 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.appendFloat8(buf)
 	case pgtype.BoolOID:
 		j.appendBool(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, 3614 /*text search*/ :
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID, 3614 /*text search*/ :
 		j.WriteByte('"')
 		j.appendString(buf, true)
 		j.WriteByte('"')
@@ -492,7 +496,7 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendFloat8(buf)
 	case pgtype.BoolOID:
 		csv.appendBool(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, 3614 /*text search*/ :
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID, 3614 /*text search*/ :
 		csv.appendField(buf) //
 	case pgtype.DateOID:
 		csv.appendDate(buf)
