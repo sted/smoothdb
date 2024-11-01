@@ -4,6 +4,7 @@
 
 ### Fixes
 * Support quotes on columns and on_conflict fileds
+* Char pg type support and fixes to array serialization
 
 ## 0.2.10 - 2024-10-10
 

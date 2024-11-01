@@ -1,6 +1,6 @@
 module github.com/sted/smoothdb
 
-go 1.22.0
+go 1.23.1
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/samber/lo v1.47.0
 	github.com/sted/heligo v0.2.3
-	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
+	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 

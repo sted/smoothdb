@@ -5,7 +5,7 @@ __debug_bin*
 *.log
 misc/scratch.sql
 .vscode
-.DS_Store
+**/.DS_Store
 *.pem
 *.plugin
 _plugins
