@@ -77,6 +77,10 @@ func getEnvironment(c *Config) {
 	if dburl != "" {
 		c.Database.URL = dburl
 	}
+	jwtSecret := os.Getenv("SMOOTHDB_JWT_SECRET")
+	if jwtSecret != "" {
+		c.JWTSecret = jwtSecret
+	}
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
