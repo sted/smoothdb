@@ -23,12 +23,12 @@ import (
 
 // SmoothError is the generic struct for error reporting
 type SmoothError struct {
-	Subsystem string
-	Message   string
-	Code      string
-	Hint      string
-	Details   string
-	Position  int32
+	Subsystem string `json:"subsystem"`
+	Message   string `json:"message"`
+	Code      string `json:"code"`
+	Hint      string `json:"hint"`
+	Details   string `json:"details"`
+	Position  int32  `json:"position"`
 }
 
 // WriteBadRequest writes a BadRequest or StatusRequestEntityTooLarge status
