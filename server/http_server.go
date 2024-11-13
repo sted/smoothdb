@@ -32,6 +32,10 @@ func (s *Server) initHTTPServer() {
 		api.InitTestRouter(s)
 	}
 
+	if cfg.LoginMode != "none" {
+		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, cfg.JWTSecret)
+	}
+
 	if cfg.CertFile != "" {
 		// Load certificates
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)

@@ -492,6 +492,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Address | Server address and port | 0.0.0.0:4000 |
 | CertFile | TLS certificate file | "" |
 | KeyFile | TLS certificate key file | "" |
+| LoginMode | Login mode: "none", "db", "gotrue" | none |
+| AuthURL | URL of the external AuthN service | "" |
 | AllowAnon | Allow unauthenticated connections | false |
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none", "role" | "role" |
@@ -532,9 +534,11 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Name | Description |
 | --- | --- | 
 | SMOOTHDB_DATABASE_URL | Database.URL |
+| SMOOTHDB_JWT_SECRET | JWTSecret |
+| SMOOTHDB_AUTH_URL | AuthURL |
 | SMOOTHDB_ALLOW_ANON | AllowAnon |
 | SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 
-| SMOOTHDB_DEBUG | true forces: AllowAnon: true, EnableAdminRoute: true, Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
+| SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", EnableAdminRoute: true, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
 	
 ### Command line parameters
 
@@ -581,7 +585,7 @@ Contributions are warmly welcomed in the form of Pull Requests and Issue reporti
 Some areas needing particular attention:
 
 * Security
-* Completing features present in PostgREST
+* Completing features present in PostgREST (see [TODO.md](TODO.md))
 * Verifying compatibility
 * Documentation
 * Performances and benchmarks

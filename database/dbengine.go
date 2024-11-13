@@ -371,3 +371,24 @@ func (dbe *DbEngine) GetOrCreateActiveDatabase(ctx context.Context, name string)
 func (dbe *DbEngine) GetMainDatabase(ctx context.Context) (*Database, error) {
 	return dbe.mainDb, nil
 }
+
+func VerifyAuthN(user, password string) error {
+	config, err := pgx.ParseConfig(fmt.Sprintf(dbe.config.URL))
+	if err != nil {
+		return err
+	}
+	config.User = user
+	config.Password = password
+	conn, err := pgx.ConnectConfig(context.Background(), config)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(context.Background())
+
+	// Test the connection
+	err = conn.Ping(context.Background())
+	if err != nil {
+		return err
+	}
+	return nil
+}

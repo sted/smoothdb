@@ -24,6 +24,8 @@ type Config struct {
 	Address              string          `comment:"Server address and port (default: 0.0.0.0:4000)"`
 	CertFile             string          `comment:"TLS certificate file (default: '')"`
 	KeyFile              string          `comment:"TLS certificate key file (default: '')"`
+	LoginMode            string          `comment:"Login mode: none, db, gotrue (default: none)"`
+	AuthURL              string          `comment:"URL of the external AuthN service (default: '')"`
 	AllowAnon            bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret            string          `comment:"Secret for JWT tokens"`
 	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
@@ -50,6 +52,8 @@ func defaultConfig() *Config {
 		Address:              "0.0.0.0:4000",
 		CertFile:             "",
 		KeyFile:              "",
+		LoginMode:            "none",
+		AuthURL:              "",
 		AllowAnon:            false,
 		JWTSecret:            "",
 		SessionMode:          "role",
@@ -77,6 +81,10 @@ func getEnvironment(c *Config) {
 	if dburl != "" {
 		c.Database.URL = dburl
 	}
+	authUrl := os.Getenv("SMOOTHDB_AUTH_URL")
+	if authUrl != "" {
+		c.AuthURL = authUrl
+	}
 	jwtSecret := os.Getenv("SMOOTHDB_JWT_SECRET")
 	if jwtSecret != "" {
 		c.JWTSecret = jwtSecret
@@ -84,6 +92,7 @@ func getEnvironment(c *Config) {
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
+		c.LoginMode = "db"
 		c.EnableAdminRoute = true
 		c.EnableAdminUI = true
 		c.Logging.Level = "trace"

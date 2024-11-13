@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -27,7 +28,7 @@ type SmoothError struct {
 	Message   string `json:"message"`
 	Code      string `json:"code"`
 	Hint      string `json:"hint"`
-	Details   string `json:"details"`
+	Details   any    `json:"details"`
 	Position  int32  `json:"position"`
 }
 
@@ -77,6 +78,9 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
 		heligo.WriteHeader(w, status)
+	} else if _, ok := err.(*pgconn.ConnectError); ok {
+		status = http.StatusBadRequest
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: err.Error()})
 	} else {
 		status = http.StatusInternalServerError
 		heligo.WriteJSON(w, status, SmoothError{Message: err.Error()})
@@ -396,4 +400,44 @@ func StripPrefix(r *http.Request, prefix string) *http.Request {
 		return r2
 	}
 	return nil
+}
+
+func postJSON[I any](url string, inputData I, output any, errorOutput any) (int, error) {
+	jsonData, err := json.Marshal(inputData)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal input data: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		if errorOutput != nil {
+			if err := json.Unmarshal(body, errorOutput); err != nil {
+				return resp.StatusCode, fmt.Errorf("failed to unmarshal error response: %w", err)
+			}
+		}
+		return resp.StatusCode, nil
+	}
+
+	if err := json.Unmarshal(body, output); err != nil {
+		return resp.StatusCode, fmt.Errorf("failed to unmarshal successful response: %w", err)
+	}
+
+	return resp.StatusCode, nil
 }
