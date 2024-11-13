@@ -2,9 +2,16 @@
 
 ## dev
 
+### Added
+* UUID support
+* Login route
+* Env variable for JWT secret
+* Support for Char type
+
 ### Fixes
-* Support quotes on columns and on_conflict fileds
-* Char pg type support and fixes to array serialization
+* Support quotes on columns and on_conflict fields
+* Fixes on array serialization
+* Fields in JSON struct for errors in lowercase
 
 ## 0.2.10 - 2024-10-10
 

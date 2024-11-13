@@ -3,6 +3,7 @@ package database
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,7 +33,7 @@ func (e SerializeError) Error() string { return e.msg }
 
 // appendString is adapted from the standard library
 
-var hex = "0123456789abcdef"
+var hexDigits = "0123456789abcdef"
 
 // safeSet holds the value true if the ASCII character with the given array
 // position can be represented inside a JSON string without any further
@@ -79,8 +80,8 @@ func (t *TextBuilder) appendString(s []byte, escapeHTML bool) {
 				// user-controlled strings are rendered into JSON
 				// and served to some browsers.
 				t.WriteString(`u00`)
-				t.WriteByte(hex[byt>>4])
-				t.WriteByte(hex[byt&0xF])
+				t.WriteByte(hexDigits[byt>>4])
+				t.WriteByte(hexDigits[byt&0xF])
 			}
 			i++
 			start = i
@@ -108,7 +109,7 @@ func (t *TextBuilder) appendString(s []byte, escapeHTML bool) {
 				t.Write(s[start:i])
 			}
 			t.WriteString(`\u202`)
-			t.WriteByte(hex[c&0xF])
+			t.WriteByte(hexDigits[c&0xF])
 			i += size
 			start = i
 			continue
@@ -219,6 +220,22 @@ func (t *TextBuilder) appendInterval(buf []byte) {
 
 func (t *TextBuilder) appendJSON(buf []byte) {
 	t.Write(buf)
+}
+
+func (t *TextBuilder) appendUUID(buf []byte) {
+	var uuid [36]byte
+	t.WriteByte('"')
+	hex.Encode(uuid[0:8], buf[:4])
+	uuid[8] = '-'
+	hex.Encode(uuid[9:13], buf[4:6])
+	uuid[13] = '-'
+	hex.Encode(uuid[14:18], buf[6:8])
+	uuid[18] = '-'
+	hex.Encode(uuid[19:23], buf[8:10])
+	uuid[23] = '-'
+	hex.Encode(uuid[24:], buf[10:])
+	t.Write(uuid[:])
+	t.WriteByte('"')
 }
 
 type appendTyper interface {
@@ -390,6 +407,8 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.appendJSON(buf)
 	case pgtype.IntervalOID:
 		j.appendInterval(buf)
+	case pgtype.UUIDOID:
+		j.appendUUID(buf)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {
@@ -506,6 +525,8 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendField(buf) //
 	case pgtype.IntervalOID:
 		csv.appendInterval(buf)
+	case pgtype.UUIDOID:
+		csv.appendUUID(buf)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {
