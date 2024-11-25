@@ -2,7 +2,6 @@ package authn
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -74,8 +73,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		session.DbConn = dbconn
 		newAcquire = true
 
-		b, _ := json.Marshal(session.Claims)
-		claimsString = string(b)
+		claimsString = session.Claims.RawClaims
 	} else {
 		dbconn = session.DbConn
 	}

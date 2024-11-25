@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,21 @@ type Claims struct {
 	Role string `json:"role"`
 	Id   string `json:"id"`
 	jwt.RegisteredClaims
+	RawClaims string `json:"-"`
+}
+
+func (c *Claims) UnmarshalJSON(data []byte) error {
+	type Alias Claims
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	c.RawClaims = string(data)
+	return nil
 }
 
 func extractAuthHeader(req *http.Request) string {
