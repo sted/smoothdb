@@ -1,12 +1,12 @@
 # Change Log
 
-## dev
+## 0.2.11 - 2024-11-25
 
 ### Added
-* UUID support
 * Login route
 * Env variable for JWT secret
-* Support for Char type
+* Support for Char and UUID types
+* Flexible JWT claims
 
 ### Fixes
 * Support quotes on columns and on_conflict fields
