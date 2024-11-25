@@ -243,7 +243,7 @@ type appendTyper interface {
 }
 
 func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) {
-	rp := 0
+	rp := uint32(0)
 	numDims := binary.BigEndian.Uint32(buf[rp:])
 	if numDims != 1 {
 
@@ -262,16 +262,16 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 
 	}
 	rp += 4
-	elemCount := int(binary.BigEndian.Uint32(buf[rp:]))
+	elemCount := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
 	//elemLowerBound := int32(binary.BigEndian.Uint32(buf[rp:]))
 	rp += 4
 	t.WriteByte('[')
-	for i := 0; i < elemCount; i++ {
+	for i := uint32(0); i < elemCount; i++ {
 		if i > 0 {
 			t.WriteByte(',')
 		}
-		elemLen := int((binary.BigEndian.Uint32(buf[rp:])))
+		elemLen := (binary.BigEndian.Uint32(buf[rp:]))
 		rp += 4
 		if elemLen == 0xFFFFFFFF {
 			t.WriteString("null")
