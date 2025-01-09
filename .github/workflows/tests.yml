@@ -1,5 +1,5 @@
-# This workflow will test a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+# This workflow tests a Go project with PostgreSQL integration.
+# For more details: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
 name: Tests
 
@@ -10,35 +10,53 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   tests-linux:
     runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v3
-    - run: git fetch --prune --unshallow
 
+    steps:
+    # Checkout the code
+    - uses: actions/checkout@v4
+
+    # Fetch full Git history for any dependencies that require it
+    - name: Fetch full Git history
+      run: git fetch --prune --unshallow
+
+    # Start PostgreSQL service
     - name: Start PostgreSQL service
       run: |
-        sudo sed -i 's/peer/trust/; s/scram-sha-256/trust/' /etc/postgresql/14/main/pg_hba.conf
-        sudo systemctl start postgresql.service
+        # Detect the PostgreSQL version dynamically
+        PG_VERSION=$(psql --version | awk '{print $3}' | cut -d. -f1)
+        PG_HBA_PATH="/etc/postgresql/$PG_VERSION/main/pg_hba.conf"
+        
+        # Update authentication methods to trust for testing
+        sudo sed -i 's/peer/trust/; s/scram-sha-256/trust/' "$PG_HBA_PATH"
+        
+        # Restart PostgreSQL service to apply changes
+        sudo systemctl restart postgresql.service
+        
+        # Wait for PostgreSQL to become ready
         pg_isready
+        
+        # Create a test role
         psql -U postgres --command="CREATE ROLE auth LOGIN NOINHERIT"
 
+    # Test PostgreSQL connection
     - name: Test PostgreSQL connection
       run: |
         psql -U postgres -d postgres -c 'SELECT version();'
 
+    # Prepare for tests (e.g., initializing database schema)
     - name: Prepare tests
       run: make prepare-postgrest-tests
-    
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.22'
 
+    # Set up Go environment
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    # Run tests
     - name: Run tests
       run: make test
       env:
         SMOOTHDB_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-  
