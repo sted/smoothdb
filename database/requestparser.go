@@ -946,21 +946,26 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 
 	preferValues := header.Values("Prefer")
 	for _, prefer := range preferValues {
-		switch prefer {
-		case "return=representation":
-			options.ReturnRepresentation = true
-		case "resolution=merge-duplicates":
-			options.MergeDuplicates = true
-		case "resolution=ignore-duplicates":
-			options.IgnoreDuplicates = true
-		case "params=single-object":
-			options.ParamsAsSingleObject = true
-		case "tx=commit":
-			options.TxCommit = true
-		case "tx=rollback":
-			options.TxRollback = true
-		case "count=exact":
-			options.Count = "exact"
+		parts := strings.Split(prefer, ",")
+		for _, part := range parts {
+			preferValue := strings.TrimSpace(part)
+
+			switch preferValue {
+			case "return=representation":
+				options.ReturnRepresentation = true
+			case "resolution=merge-duplicates":
+				options.MergeDuplicates = true
+			case "resolution=ignore-duplicates":
+				options.IgnoreDuplicates = true
+			case "params=single-object":
+				options.ParamsAsSingleObject = true
+			case "tx=commit":
+				options.TxCommit = true
+			case "tx=rollback":
+				options.TxRollback = true
+			case "count=exact":
+				options.Count = "exact"
+			}
 		}
 	}
 
