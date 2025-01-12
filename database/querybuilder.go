@@ -164,16 +164,25 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 	return sel
 }
 
-func findRelationship(table, relation, schema string, info *SchemaInfo) (rel *Relationship, err error) {
+func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel *Relationship, err error) {
 	tableWithSchema := _s(table, schema)
 	relationWithSchema := _s(relation, schema)
 	rels := info.GetRelationships(tableWithSchema)
-	frels := filterRelationships(rels, relationWithSchema)
+	frels := filterRelationships(rels, relationWithSchema, fk)
 	nrels := len(frels)
 	switch {
 	case nrels == 0:
-		// search self rel by column (try to see if relation is an fk column)
-		rel = info.FindRelationshipByCol(tableWithSchema, relation)
+		if fk != "" {
+			hint := fk // the hint is not an fk but a col? we try
+			rel = info.FindRelationshipByCol(tableWithSchema, hint)
+		} else {
+			// search rel by column (try to see if relation is instead an fk column)
+			rel = info.FindRelationshipByCol(tableWithSchema, relation)
+			if rel == nil {
+				// search rel by fk constraint (try to see if relation is instead an fk constraint)
+				rel = info.FindRelationshipByFK(tableWithSchema, relation)
+			}
+		}
 		if rel == nil {
 			return nil, &BuildError{"cannot find relationship for table " + table + " with table " + relation}
 		}
@@ -209,7 +218,7 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			} else {
 				parentTable = table
 			}
-			frel, err := findRelationship(parentTable, sfield.relation.name, schema, stack.info)
+			frel, err := findRelationship(parentTable, sfield.relation.name, sfield.relation.fk, schema, stack.info)
 			if err != nil {
 				return "", "", nil, err
 			}

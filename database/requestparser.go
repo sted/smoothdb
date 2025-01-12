@@ -422,6 +422,8 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		if fk == "inner" {
 			fk = ""
 			inner = true
+		} else if fk == "left" {
+			fk = ""
 		}
 	}
 	if p.lookAhead() != "(" {

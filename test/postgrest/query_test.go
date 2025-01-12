@@ -981,7 +981,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)" `shouldRespondWith`
 		// 	  [json|[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		// {
+		// 	Description: "requesting data using many<->many (composite keys) relation using hint",
+		// 	Query:       "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)",
+		// 	Expected:    `[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]`,
+		// 	Headers:     nil,
+		// 	Status:      200,
+		// },
 		//   it "requesting children with composite key" $
 		// 	get "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)" `shouldRespondWith`
 		// 	  [json|[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]|]
@@ -1057,24 +1063,24 @@ func TestPostgREST_Query(t *testing.T) {
 		//       [json|[{"name":"Kabul","capital_country_id_fkey":{"name":"Afghanistan"}}, {"name":"Algiers","capital_country_id_fkey":{"name":"Algeria"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
 		// @@ column as fk constraint
-		// {
-		// 	Description: "works when using column as target",
-		// 	Query:       "/capital?select=name,capital_country_id_fkey(name)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"name":"Kabul","capital_country_id_fkey":{"name":"Afghanistan"}}, {"name":"Algiers","capital_country_id_fkey":{"name":"Algeria"}}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "works when using column as target",
+			Query:       "/capital?select=name,capital_country_id_fkey(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Kabul","capital_country_id_fkey":{"name":"Afghanistan"}}, {"name":"Algiers","capital_country_id_fkey":{"name":"Algeria"}}]`,
+			Status:      200,
+		},
 		//     get "/country?select=name,capital_country_id_fkey(name)" `shouldRespondWith`
 		//       [json|[{"name":"Afghanistan","capital_country_id_fkey":{"name":"Kabul"}}, {"name":"Algeria","capital_country_id_fkey":{"name":"Algiers"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
 		// @@ column as fk constraint
-		// {
-		// 	Description: "works when using column as target",
-		// 	Query:       "/country?select=name,capital_country_id_fkey(name)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"name":"Afghanistan","capital_country_id_fkey":{"name":"Kabul"}}, {"name":"Algeria","capital_country_id_fkey":{"name":"Algiers"}}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "works when using column as target",
+			Query:       "/country?select=name,capital_country_id_fkey(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Afghanistan","capital_country_id_fkey":{"name":"Kabul"}}, {"name":"Algeria","capital_country_id_fkey":{"name":"Algiers"}}]`,
+			Status:      200,
+		},
 		//     get "/country?select=name,id(name)" `shouldRespondWith`
 		//       [json|[{"name":"Afghanistan","id":{"name":"Kabul"}}, {"name":"Algeria","id":{"name":"Algiers"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
@@ -1089,16 +1095,42 @@ func TestPostgREST_Query(t *testing.T) {
 		//     get "/country?select=name,capital!id(name)" `shouldRespondWith`
 		//       [json|[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when using column as hint",
+			Query:       "/country?select=name,capital!id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]`,
+			Status:      200,
+		},
 		//     get "/country?select=name,capital!country_id(name)" `shouldRespondWith`
 		//       [json|[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works when using column as hint",
+			Query:       "/country?select=name,capital!country_id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Afghanistan","capital":{"name":"Kabul"}}, {"name":"Algeria","capital":{"name":"Algiers"}}]`,
+			Status:      200,
+		},
 		//     get "/capital?select=name,country!id(name)" `shouldRespondWith`
 		//       [json|[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-		//     get "/capital?select=name,country!country_id(name)" `shouldRespondWith`
+		{
+			Description: "works when using column as hint",
+			Query:       "/capital?select=name,country!id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]`,
+			Status:      200,
+		}, //     get "/capital?select=name,country!country_id(name)" `shouldRespondWith`
 		//       [json|[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "works when using column as hint",
+			Query:       "/capital?select=name,country!country_id(name)",
+			Headers:     nil,
+			Expected:    `[{"name":"Kabul","country":{"name":"Afghanistan"}}, {"name":"Algiers","country":{"name":"Algeria"}}]`,
+			Status:      200,
+		},
 		//   describe "computed columns" $ do
 		// 	it "computed column on table" $
 		// 	  get "/items?id=eq.1&select=id,always_true" `shouldRespondWith`

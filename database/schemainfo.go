@@ -24,6 +24,7 @@ type Relationship struct {
 	JunctionTable   string
 	JColumns        []string
 	JRelatedColumns []string
+	ForeignKey      string
 }
 
 type SchemaInfo struct {
@@ -190,6 +191,21 @@ func (si *SchemaInfo) FindRelationshipByCol(ftable, col string) *Relationship {
 			return &rel
 		}
 	}
+	for _, rel := range rels {
+		if len(rel.RelatedColumns) == 1 && rel.RelatedColumns[0] == col {
+			return &rel
+		}
+	}
+	return nil
+}
+
+func (si *SchemaInfo) FindRelationshipByFK(ftable, fk string) *Relationship {
+	rels := si.GetRelationships(ftable)
+	for _, rel := range rels {
+		if rel.ForeignKey == fk {
+			return &rel
+		}
+	}
 	return nil
 }
 
@@ -223,6 +239,7 @@ func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
 			Columns:        fk.Columns,
 			RelatedTable:   freltable,
 			RelatedColumns: fk.RelatedColumns,
+			ForeignKey:     fk.Name,
 		},
 		{
 			Type:           type2,
@@ -230,6 +247,7 @@ func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
 			Columns:        fk.RelatedColumns,
 			RelatedTable:   ftable,
 			RelatedColumns: fk.Columns,
+			ForeignKey:     fk.Name,
 		},
 	}
 	si.cachedRelationships[ftable] = append(si.cachedRelationships[ftable], rels[0])
@@ -251,6 +269,7 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 			JunctionTable:   fjtable,
 			JColumns:        fkeys[0].Columns,
 			JRelatedColumns: fkeys[1].Columns,
+			ForeignKey:      fkeys[0].Name,
 		},
 		{
 			Type:            M2M,
@@ -261,6 +280,7 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 			JunctionTable:   fjtable,
 			JColumns:        fkeys[1].Columns,
 			JRelatedColumns: fkeys[0].Columns,
+			ForeignKey:      fkeys[1].Name,
 		},
 	}
 
@@ -268,9 +288,9 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 	si.cachedRelationships[freltable] = append(si.cachedRelationships[freltable], rels[1])
 }
 
-func filterRelationships(rels []Relationship, relatedTable string) []Relationship {
+func filterRelationships(rels []Relationship, relatedTable, fk string) []Relationship {
 	return lo.Filter(rels, func(rel Relationship, _ int) bool {
-		return rel.RelatedTable == relatedTable
+		return rel.RelatedTable == relatedTable && (fk == "" || rel.ForeignKey == fk)
 	})
 }
 
