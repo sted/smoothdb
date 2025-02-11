@@ -44,7 +44,7 @@
 * [ ] Projects
 * [ ] Related orders
 * [ ] Related limit and offset
-* [ ] hints for rels
+* [x] hints for rels
 * [ ] embeds with views (this is not easy)
 * [ ] variadic function
 * [ ] prefer single-object (now just unnamed functions)

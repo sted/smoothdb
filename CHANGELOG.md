@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.2.12 - unreleased
+
+## Added
+## Fixes
+
 ## 0.2.11 - 2024-11-25
 
 ### Added
