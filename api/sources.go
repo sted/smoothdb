@@ -16,6 +16,10 @@ func InitSourcesRouter(apiHelper Helper) {
 	}
 	api := apiHelper.GetRouter().Group(baseURL, apiHelper.MiddlewareStd())
 
+	// TABLES
+
+	api.Handle("GET", "", TableListHandler)
+
 	// RECORDS
 
 	api.Handle("GET", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {

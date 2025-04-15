@@ -1,9 +1,15 @@
 # Change Log
 
-## 0.2.12 - unreleased
+## 0.2.13 - 2025-04-15
 
 ## Added
+* Route for listing tables in /api
+* Disambigue embedded resources by fk contraints; hints by fk and related cols; !left; tests
+* Support comma-separated Prefer values
+
 ## Fixes
+* Fix for 32bit arch
+* Dependencies
 
 ## 0.2.11 - 2024-11-25
 

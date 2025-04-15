@@ -178,10 +178,10 @@ func (dbe *DbEngine) getDatabase(ctx context.Context, conn *pgx.Conn, name strin
 // Use GetActiveDatabase to get an active instance of a database
 func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
 	conn, err := dbe.mainDb.pool.Acquire(ctx)
-	defer conn.Release()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Release()
 	return dbe.getDatabase(ctx, conn.Conn(), name)
 }
 
