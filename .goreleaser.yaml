@@ -50,6 +50,7 @@ brews:
   - repository:
       owner: sted
       name: homebrew-tap
+      token: "{{ .Env.TAP_TOKEN }}"
     directory: Formula
     # url_template: "https://github.com/sted/smoothdb/releases/download/{{ .Tag }}/{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
     # install: |
