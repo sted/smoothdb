@@ -1,6 +1,6 @@
 # Change Log
 
-## 0.2.13 - 2025-04-15
+## 0.2.12 - 2025-04-15
 
 ## Added
 * Route for listing tables in /api
