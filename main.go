@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sted/smoothdb/server"
+	"github.com/sted/smoothdb/version"
 )
 
 func main() {
@@ -14,7 +15,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Starting server...")
-	fmt.Printf("Version %s\n", Version)
+	fmt.Printf("Version %s\n", version.Version)
 	fmt.Println("Listening at ", s.Config.Address)
 	s.Run()
 }

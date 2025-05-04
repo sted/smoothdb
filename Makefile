@@ -11,7 +11,7 @@ build-ui:
 	cd ui && npm install && npm run build
 
 build-go:
-	$(GO) build -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
+	$(GO) build -trimpath -ldflags "-s -w -X github.com/sted/smoothdb/version.Version=$(VERSION)"
 
 test:
 	$(GO) test $(TEST_FLAGS) ./database

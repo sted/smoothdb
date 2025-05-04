@@ -8,6 +8,7 @@ import (
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/logging"
+	"github.com/sted/smoothdb/version"
 )
 
 type MiddlewareConfig interface {
@@ -113,7 +114,11 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 			r.Body = http.MaxBytesReader(w, r.Body, cfg.RequestMaxBytes())
 			defer r.Body.Close()
-			w.Header().Set("Server", "smoothdb")
+			if version.Version != "" {
+				w.Header().Set("Server", "smoothdb/"+version.Version)
+			} else {
+				w.Header().Set("Server", "smoothdb")
+			}
 			ctx, session, status, err := m.acquireSession(c, r, forceDBE, getDBName)
 			if err != nil {
 				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
