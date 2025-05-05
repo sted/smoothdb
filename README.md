@@ -110,7 +110,7 @@ The response contains the access token and related information:
     "token_type": "Bearer",
     "expires_in": 3600,
     "expires_at": 1683036800,
-    "refresh_token": "aaaabbbbccccdddd",
+    "refresh_token": "aaaabbbbccccddddeeee",
     "user": {
         "aud": "authenticated",
         "role": "authenticated",
