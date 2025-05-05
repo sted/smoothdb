@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -107,6 +108,28 @@ func (db *Database) refreshTable(ctx context.Context, name string) {
 	// table.Columns, _ = db.GetColumns(ctx, name)
 	// table.Struct = fieldsToStruct(table.Columns)
 	// db.cachedTables[name] = table
+}
+
+// ReloadSchemaCache reloads the schema cache without restarting the server
+func (db *Database) ReloadSchemaCache(ctx context.Context) error {
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	// Create a context with the database connection
+	c := ContextWithDbConn(ctx, db, conn.Conn())
+	
+	// Reload the schema info
+	newInfo, err := NewSchemaInfo(c, db)
+	if err != nil {
+		return fmt.Errorf("failed to reload schema info: %w", err)
+	}
+
+	// Atomically replace the old schema info with the new one
+	db.info = newInfo
+	return nil
 }
 
 func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {

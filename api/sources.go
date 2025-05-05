@@ -19,6 +19,7 @@ func InitSourcesRouter(apiHelper Helper) {
 	// TABLES
 
 	api.Handle("GET", "", TableListHandler)
+	api.Handle("GET", "/$info/:table", TableGetHandler)
 
 	// RECORDS
 

@@ -28,6 +28,8 @@ type DbEngine struct {
 	defaultSchema    string
 	authRole         string
 	mainDb           *Database
+	logger           *logging.Logger
+	listener         *NotificationListener
 }
 
 func getDefaultSchema() string {
@@ -41,7 +43,7 @@ func getDefaultSchema() string {
 // InitDbEngine creates a connection pool, connects to the engine and initializes it
 func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 
-	dbe = &DbEngine{config: dbConfig}
+	dbe = &DbEngine{config: dbConfig, logger: logger}
 
 	config, err := pgxpool.ParseConfig(dbConfig.URL)
 	if err != nil {
@@ -104,11 +106,30 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 		dbe.defaultSchema = "public"
 	}
 
+	// Initialize notification listener
+	listenerConfig := DefaultListenerConfig()
+	// You may want to add configuration options for the listener in the Config struct
+	dbe.listener = NewNotificationListener(dbConfig.URL, listenerConfig, logger)
+
+	// Register schema reload handler
+	dbe.listener.RegisterHandler("reload schema", CreateSchemaReloadHandler(dbe))
+
+	// Start the listener
+	err = dbe.listener.Start(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to start notification listener: %w", err)
+	}
+
 	return dbe, nil
 }
 
 // Close closes the database engine and all of its active databases
 func (dbe *DbEngine) Close() {
+	// Stop the notification listener
+	if dbe.listener != nil {
+		dbe.listener.Stop()
+	}
+
 	dbe.activeDatabases.Range(func(k, v any) bool {
 		v.(*Database).Close()
 		dbe.activeDatabases.Delete(k)
@@ -390,5 +411,57 @@ func VerifyAuthN(user, password string) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+// reloadSchemaAndLog handles the actual schema reload and logging for a database
+func (dbe *DbEngine) reloadSchemaAndLog(ctx context.Context, db *Database, dbName string) error {
+	err := db.ReloadSchemaCache(ctx)
+	if dbe.logger != nil {
+		if err != nil {
+			dbe.logger.Err(err).Msgf("Failed to reload schema cache for %s", dbName)
+		} else {
+			dbe.logger.Info().Msgf("Schema cache reloaded successfully for %s", dbName)
+		}
+	}
+	return err
+}
+
+// ReloadDatabaseSchema reloads the schema cache for a specific database
+func (dbe *DbEngine) ReloadDatabaseSchema(ctx context.Context, dbName string) error {
+	if dbName == "" {
+		// If no specific database is mentioned, reload the main database
+		dbName = dbe.mainDb.Name
+	}
+
+	db_, exists := dbe.activeDatabases.Load(dbName)
+	if !exists {
+		return fmt.Errorf("database %q is not active", dbName)
+	}
+
+	db := db_.(*Database)
+	return dbe.reloadSchemaAndLog(ctx, db, dbName)
+}
+
+// ReloadAllSchemas reloads the schema cache for all active databases
+func (dbe *DbEngine) ReloadAllSchemas(ctx context.Context) error {
+	var errors []error
+
+	dbe.activeDatabases.Range(func(key, value interface{}) bool {
+		dbName := key.(string)
+		db := value.(*Database)
+
+		err := dbe.reloadSchemaAndLog(ctx, db, dbName)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("database %s: %w", dbName, err))
+		}
+
+		return true // Continue iteration
+	})
+
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to reload some schema caches: %v", errors)
+	}
+
 	return nil
 }

@@ -578,6 +578,86 @@ smoothdb --initdb
 
 and following the prompt, is an easy way to initialize the role and other configurations
 
+## Schema Cache Reload via PostgreSQL NOTIFY
+
+SmoothDB supports reloading the schema cache without restarting the server, similar to PostgREST's functionality. This feature uses PostgreSQL's LISTEN/NOTIFY mechanism to trigger schema cache reloads. The same system will be used soon also to reload configuration.
+
+### How it works
+
+1. SmoothDB listens on the `smoothdb` channel for notifications
+2. When a notification is received with the payload `reload schema`, it triggers a schema cache reload
+3. You can reload schema cache for all databases or specific databases
+
+### Usage
+
+#### Reload schema cache for all active databases
+
+```sql
+NOTIFY smoothdb, 'reload schema';
+```
+
+#### Reload schema cache for a specific database
+
+```sql
+NOTIFY smoothdb, 'reload schema mydatabase';
+```
+
+#### Using the helper function
+
+For convenience, you can create a helper function in your database:
+
+```sql
+-- Create the helper function (run this once)
+CREATE OR REPLACE FUNCTION notify_schema_reload(database_name text DEFAULT NULL)
+RETURNS void AS $$
+BEGIN
+  IF database_name IS NULL THEN
+    -- Reload all databases
+    PERFORM pg_notify('smoothdb', 'reload schema');
+  ELSE
+    -- Reload specific database
+    PERFORM pg_notify('smoothdb', 'reload schema ' || database_name);
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Usage examples:
+SELECT notify_schema_reload();        -- Reload all databases
+SELECT notify_schema_reload('mydb');  -- Reload specific database
+```
+
+#### Automatic schema reload on DDL changes
+
+You can set up automatic schema cache reload when DDL changes occur:
+
+```sql
+-- Create the event trigger function
+CREATE OR REPLACE FUNCTION auto_notify_schema_reload()
+RETURNS event_trigger AS $$
+BEGIN
+  -- Get the current database name
+  PERFORM pg_notify('smoothdb', 'reload schema ' || current_database());
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the event trigger
+CREATE EVENT TRIGGER schema_change_trigger
+ON ddl_command_end
+EXECUTE FUNCTION auto_notify_schema_reload();
+```
+
+This will automatically reload the schema cache whenever DDL operations (CREATE, ALTER, DROP) are performed.
+
+### Configuration
+
+By default, the notification listener is enabled and listens on the `smoothdb` channel. You can customize this behavior by modifying the listener configuration in the database package.
+
+### Notes
+
+- The listener automatically reconnects if the connection is lost
+- Schema reloads are performed asynchronously and do not block other operations
+- If a specific database is not found or not active, the reload request for that database is ignored
+
 ## Development
 
 Contributions are warmly welcomed in the form of Pull Requests and Issue reporting.
