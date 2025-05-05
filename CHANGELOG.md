@@ -9,7 +9,6 @@
 * CORS environment variables
 * Health endpoints
 
-
 ## 0.2.12 - 2025-04-15
 
 ### Added
