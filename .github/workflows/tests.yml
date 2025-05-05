@@ -5,9 +5,19 @@ name: Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'misc/**'
+      - 'examples/**'
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'misc/**'
+      - 'examples/**'
 
 jobs:
   tests-linux:
@@ -16,21 +26,6 @@ jobs:
     steps:
     # Checkout the code
     - uses: actions/checkout@v4
-
-    - name: Check for non-doc changes
-      id: changes
-      run: |
-        git fetch origin main --depth=1
-        CHANGED=$(git diff --name-only origin/main...HEAD | grep -vE '(\.md$|^docs/|^misc/|^examples/)' || true)
-        if [ -z "$CHANGED" ]; then
-          echo "only_docs=true" >> $GITHUB_OUTPUT
-        else
-          echo "only_docs=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Skip if only docs
-      if: steps.changes.outputs.only_docs == 'true'
-      run: echo "Docs-only changes (docs/, misc/, examples/, *.md). Skipping tests." && exit 0
 
     # Fetch full Git history for any dependencies that require it
     - name: Fetch full Git history
