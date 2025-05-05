@@ -67,7 +67,7 @@ The default Content-Type is "**application/json**".
 
 ### Authentication
 
-Like PostgREST (see [PostgREST Authentication](https://postgrest.org/en/stable/references/auth.html)), smoothdb is designed to keep the database at the center of API security.
+Like PostgREST (see [PostgREST Authentication](https://postgrest.org/en/stable/references/auth.html)), SmoothDB is designed to keep the database at the center of API security.
 
 To make an authenticated request, the client must include an Authorization HTTP header with the value **Bearer \<jwt\>**, where **jwt** is a [Java Web Token](jwt.io). 
 
@@ -87,7 +87,50 @@ Below is an example of an authenticated API call:
 GET /test HTTP/1.1
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic3RlZCJ9.-XquFDiIKNq5t6iov2bOD5k_LljFfAN7LqRzeWVuv7k
 ```
-We will omit this header in the following examples.
+
+#### Token Generation
+
+SmoothDB provides a `/token` endpoint that generates JWT tokens:
+
+```http
+POST /token HTTP/1.1
+Content-Type: application/json
+
+{
+    "email": "user@example.com",
+    "password": "your_password"
+}
+```
+
+The response contains the access token and related information:
+
+```json
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR...",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "expires_at": 1683036800,
+    "refresh_token": "aaaabbbbccccdddd",
+    "user": {
+        "aud": "authenticated",
+        "role": "authenticated",
+        "email": "user@example.com"
+    }
+}
+```
+
+SmoothDB supports two authentication methods via the `LoginMode` configuration option:
+
+1. **Internal Authentication** (`LoginMode: "db"`), suitable for local development but not recommended for production. Credentials are verified against PostgreSQL database users. 
+
+2. **Supabase Auth** (`LoginMode: "gotrue"`), recommended for production applications. Authentication is delegated to the Supabase Auth service specified in the `AuthURL` configuration.
+
+**Important Notes:**
+
+- No explicit authorization step is needed beyond providing the JWT token with each request
+- Both authentication methods require email and password for token generation through the `/token` endpoint
+
+We will omit the Authorization header in the following examples.
 
 ### Create a database
 ```http
