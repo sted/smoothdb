@@ -734,10 +734,6 @@ EXECUTE FUNCTION auto_notify_schema_reload();
 
 This will automatically reload the schema cache whenever DDL operations (CREATE, ALTER, DROP) are performed.
 
-### Configuration
-
-By default, the notification listener is enabled and listens on the `smoothdb` channel. You can customize this behavior by modifying the listener configuration in the database package.
-
 ### Notes
 
 - The listener automatically reconnects if the connection is lost

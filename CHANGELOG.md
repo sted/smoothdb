@@ -1,13 +1,14 @@
 # Change Log
 
-## 0.3.0 - 2025-04-05
+## 0.3.0 - 2025-05-05
 
 ### Added
 * Schema Cache Reload via PostgreSQL NOTIFY
-* Route for listing columns in /api (/api/<db>/$info/<table>)
+* Route for listing columns in /api (eg /api/db/$info/table)
 * Server version in the HTTP header
 * CORS environment variables
 * Health endpoints
+
 
 ## 0.2.12 - 2025-04-15
 
