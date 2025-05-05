@@ -66,7 +66,9 @@ func (l *NotificationListener) RegisterHandler(command string, handler Notificat
 // Start begins listening for notifications
 func (l *NotificationListener) Start(ctx context.Context) error {
 	if !l.config.Enabled {
-		l.logger.Info().Msg("Notification listener is disabled")
+		if l.logger != nil {
+			l.logger.Info().Msg("Notification listener is disabled")
+		}
 		return nil
 	}
 
@@ -103,7 +105,9 @@ func (l *NotificationListener) listenLoop(ctx context.Context) {
 		default:
 			err := l.connectAndListen(ctx)
 			if err != nil {
-				l.logger.Err(err).Msg("Notification listener error")
+				if l.logger != nil {
+					l.logger.Err(err).Msg("Notification listener error")
+				}
 				select {
 				case <-time.After(l.config.ReconnectDelay):
 					continue
@@ -132,7 +136,9 @@ func (l *NotificationListener) connectAndListen(ctx context.Context) error {
 		return fmt.Errorf("failed to start listening: %w", err)
 	}
 
-	l.logger.Info().Msgf("Notification listener started, channel: %s", l.config.Channel)
+	if l.logger != nil {
+		l.logger.Info().Msgf("Notification listener started, channel: %s", l.config.Channel)
+	}
 
 	for {
 		select {
@@ -155,7 +161,9 @@ func (l *NotificationListener) connectAndListen(ctx context.Context) error {
 
 // handleNotification processes received notifications
 func (l *NotificationListener) handleNotification(ctx context.Context, payload string) {
-	l.logger.Debug().Msgf("Received notification, payload: %s", payload)
+	if l.logger != nil {
+		l.logger.Debug().Msgf("Received notification, payload: %s", payload)
+	}
 
 	// Parse the payload
 	// Expected formats:
@@ -184,10 +192,14 @@ func (l *NotificationListener) handleNotification(ctx context.Context, payload s
 	if ok {
 		err := handler(ctx, payload)
 		if err != nil {
-			l.logger.Err(err).Msgf("Failed to handle notification, command: %s", command)
+			if l.logger != nil {
+				l.logger.Err(err).Msgf("Failed to handle notification, command: %s", command)
+			}
 		}
 	} else {
-		l.logger.Warn().Msgf("No handler registered for command %s", command)
+		if l.logger != nil {
+			l.logger.Warn().Msgf("No handler registered for command %s", command)
+		}
 	}
 }
 
