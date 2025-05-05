@@ -581,6 +581,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | SMOOTHDB_AUTH_URL | AuthURL |
 | SMOOTHDB_ALLOW_ANON | AllowAnon |
 | SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 
+| SMOOTHDB_CORS_ALLOWED_ORIGINS | CORSAllowedOrigins (comma-separated list) |
+| SMOOTHDB_CORS_ALLOW_CREDENTIALS | CORSAllowCredentials (true/false) |
 | SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", EnableAdminRoute: true, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
 	
 ### Command line parameters

@@ -107,6 +107,16 @@ func getEnvironment(c *Config) {
 	if enableAdminRoute != "" {
 		c.EnableAdminRoute = strings.ToLower(enableAdminRoute) == "true"
 	}
+	
+	// CORS configuration
+	corsAllowedOrigins := os.Getenv("SMOOTHDB_CORS_ALLOWED_ORIGINS")
+	if corsAllowedOrigins != "" {
+		c.CORSAllowedOrigins = strings.Split(corsAllowedOrigins, ",")
+	}
+	corsAllowCredentials := os.Getenv("SMOOTHDB_CORS_ALLOW_CREDENTIALS")
+	if corsAllowCredentials != "" {
+		c.CORSAllowCredentials = strings.ToLower(corsAllowCredentials) == "true"
+	}
 }
 
 const usageStr = `
@@ -118,6 +128,16 @@ Server Options:
 	-c, --config <path>  Configuration file (default: './config.jsonc')
 	--initdb             Initialize db interactively and exit
 	-h, --help           Show this message
+
+Environment Variables:
+	SMOOTHDB_DATABASE_URL         Database URL
+	SMOOTHDB_AUTH_URL             URL of the external AuthN service
+	SMOOTHDB_JWT_SECRET           Secret for JWT tokens
+	SMOOTHDB_DEBUG                Enable debug mode (true/false)
+	SMOOTHDB_ALLOW_ANON           Allow unauthenticated connections (true/false)
+	SMOOTHDB_ENABLE_ADMIN_ROUTE   Enable administration of databases and tables (true/false)
+	SMOOTHDB_CORS_ALLOWED_ORIGINS CORS Access-Control-Allow-Origin (comma-separated list)
+	SMOOTHDB_CORS_ALLOW_CREDENTIALS CORS Access-Control-Allow-Credentials (true/false)
 `
 
 func getFlags(defaultConfigPath string) (map[string]any, string, bool) {
