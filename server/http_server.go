@@ -46,6 +46,8 @@ func (s *Server) initHTTPServer() {
 		}
 	}
 
+	api.InitHealthRoutes(s)
+
 	s.HTTP = &http.Server{
 		Addr:         cfg.Address,
 		Handler:      s.router,

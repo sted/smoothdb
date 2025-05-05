@@ -2,22 +2,21 @@
 
 ## 0.3.0 - 2025-04-05
 
-## Added
+### Added
 * Schema Cache Reload via PostgreSQL NOTIFY
 * Route for listing columns in /api (/api/<db>/$info/<table>)
 * Server version in the HTTP header
 * CORS environment variables
-
-## Fixes
+* Health endpoints
 
 ## 0.2.12 - 2025-04-15
 
-## Added
+### Added
 * Route for listing tables in /api
 * Disambigue embedded resources by fk contraints; hints by fk and related cols; !left; tests
 * Support comma-separated Prefer values
 
-## Fixes
+### Fixes
 * Fix for 32bit arch
 * Dependencies
 

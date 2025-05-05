@@ -623,6 +623,47 @@ smoothdb --initdb
 
 and following the prompt, is an easy way to initialize the role and other configurations
 
+## Health Check Endpoints
+
+SmoothDB provides two health check endpoints for monitoring and integration with load balancers, orchestrators, and monitoring systems:
+
+### GET /live
+
+Returns a 200 OK response if the server is running. This endpoint can be used for basic liveness probes.
+
+Example:
+```bash
+curl -I "http://localhost:8000/live"
+```
+
+Response:
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+### GET /ready
+
+Returns a 200 OK response if the server is ready to handle requests. In the current implementation, this endpoint behaves the same as `/live`.
+
+Example:
+```bash
+curl -I "http://localhost:8000/ready"
+```
+
+Response:
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+Both endpoints return a JSON response body:
+```json
+{
+  "status": "ok"
+}
+```
+
 ## Schema Cache Reload via PostgreSQL NOTIFY
 
 SmoothDB supports reloading the schema cache without restarting the server, similar to PostgREST's functionality. This feature uses PostgreSQL's LISTEN/NOTIFY mechanism to trigger schema cache reloads. The same system will be used soon also to reload configuration.
