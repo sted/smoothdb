@@ -785,6 +785,10 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	}
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
+	// patch order fields
+	for i := range parts.orderFields {
+		parts.orderFields[i].field.tablename = "t"
+	}
 	orderClause := orderClause("t", "", "", parts.orderFields, info)
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
