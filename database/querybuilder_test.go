@@ -90,6 +90,12 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"milano", "14", "11", "17"},
 		},
 		{
+			// complex booleans
+			"?or=(or(and(a.eq.1,b.eq.93,c.eq.apple),and(e.eq.1,f.eq.93,g.eq.apple)),or(and(a.eq.1,b.eq.35,c.eq.apple),and(e.eq.1,f.eq.35,g.eq.apple)),or(and(a.eq.1,b.eq.25978,c.eq.apple),and(e.eq.1,f.eq.25978,g.eq.apple)))",
+			`SELECT * FROM "table" WHERE (("table"."a" = $1 AND "table"."b" = $2 AND "table"."c" = $3 OR "table"."e" = $4 AND "table"."f" = $5 AND "table"."g" = $6) OR ("table"."a" = $7 AND "table"."b" = $8 AND "table"."c" = $9 OR "table"."e" = $10 AND "table"."f" = $11 AND "table"."g" = $12) OR ("table"."a" = $13 AND "table"."b" = $14 AND "table"."c" = $15 OR "table"."e" = $16 AND "table"."f" = $17 AND "table"."g" = $18))`,
+			[]any{"1", "93", "apple", "1", "93", "apple", "1", "35", "apple", "1", "35", "apple", "1", "25978", "apple", "1", "25978", "apple"},
+		},
+		{
 			// quotes
 			"?&name=eq.\"Stefano,DelliPonti\"&zbackslash=eq.\"\\\\bs\\\"\"",
 			`SELECT * FROM "table" WHERE "table"."name" = $1 AND "table"."zbackslash" = $2`,
