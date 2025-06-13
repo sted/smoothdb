@@ -1404,7 +1404,7 @@ create table test.perf_articles(
 create table test.employees(
   first_name text,
   last_name text,
-  salary money,
+  salary int,
   company text,
   occupation text,
   primary key(first_name, last_name)

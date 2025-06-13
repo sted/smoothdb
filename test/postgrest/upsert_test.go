@@ -54,22 +54,21 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  { matchStatus = 201
 		// 		  , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", matchContentTypeJson]
 		// 		  }
-		// @@ does not work for the salary field with MONEY type
-		// {
-		// 	Description: "INSERTs and UPDATEs rows on composite pk conflict",
-		// 	Method:      "POST",
-		// 	Query:       "/employees",
-		// 	Body: `[
-		// 					{ "first_name": "Frances M.", "last_name": "Roe", "salary": "30000" },
-		// 		 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": 42000 }
-		// 		 		  ]`,
-		// 	Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
-		// 	Expected: `[
-		// 		 			{ "first_name": "Frances M.", "last_name": "Roe", "salary": "$30,000.00", "company": "One-Up Realty", "occupation": "Author" },
-		// 		 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": "$42,000.00", "company": null, "occupation": null }
-		// 		 		  ]`,
-		// 	Status: 201,
-		// },
+		{
+			Description: "INSERTs and UPDATEs rows on composite pk conflict",
+			Method:      "POST",
+			Query:       "/employees",
+			Body: `[
+							{ "first_name": "Frances M.", "last_name": "Roe", "salary": 30000 },
+				 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": 42000 }
+				 		  ]`,
+			Headers: test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[
+				 			{ "first_name": "Frances M.", "last_name": "Roe", "salary": 30000, "company": "One-Up Realty", "occupation": "Author" },
+				 			{ "first_name": "Peter S.", "last_name": "Yang", "salary": 42000, "company": null, "occupation": null }
+				 		  ]`,
+			Status: 201,
+		},
 		// 	  when (actualPgVersion >= pgVersion110) $
 		// 		it "INSERTs and UPDATEs rows on composite pk conflict for partitioned tables" $
 		// 		  request methodPost "/car_models" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]

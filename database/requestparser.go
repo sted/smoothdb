@@ -31,10 +31,11 @@ type Field struct {
 //
 // label is used as an alias both for a field and a relation.
 type SelectField struct {
-	field    Field           // field info
-	label    string          // label for the field or the nested relation
-	cast     string          // type cast
-	relation *SelectRelation // relation (can be null)
+	field     Field           // field info
+	label     string          // label for the field or the nested relation
+	cast      string          // type cast
+	aggregate string          // aggregate function: avg, count, max, min, sum
+	relation  *SelectRelation // relation (can be null)
 }
 
 // SelectRelation stores information about a relationship, expressed in the select clause like:
@@ -147,6 +148,16 @@ var postgRestParserOperators = map[string]string{
 	"phfts":  "@@",
 	"wfts":   "@@",
 	"not":    "", // just to be recognizable in filterParameters
+}
+
+// isValidAggregateFunction checks if the given function name is a valid PostgREST aggregate function
+func isValidAggregateFunction(fn string) bool {
+	switch strings.ToLower(fn) {
+	case "avg", "count", "max", "min", "sum":
+		return true
+	default:
+		return false
+	}
 }
 
 // filterParameters checks the map of filters and skip the keys with this rationale:
@@ -307,7 +318,7 @@ func (p *PostgRestParser) reset() {
 // Select := SelectList
 // SelectList := SelectItem (',' SelectItem)*
 // SelectItem := SelectField | SelectTable '(' SelectList ')'
-// SelectField := [<label> ':'] Field ["::" <cast>]
+// SelectField := [<label> ':'] Field ['.' <aggregate> '()'] ["::" <cast>]
 // SelectTable := [<label> ':'] Field
 //
 // Order := OrderItem (',' OrderItem)*
@@ -369,7 +380,7 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
-	p.scan(s, ".,():!", "->>", "->", "::", "...")
+	p.scan(s, ".,():!", "->>", "->", "::", "...", "()")
 	return p.selectList(nil)
 }
 
@@ -378,7 +389,8 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 	if err != nil {
 		return nil, err
 	}
-	for p.next() == "," {
+	for p.lookAhead() == "," {
+		p.next() // consume the comma
 		fields, err := p.selectItem(rel)
 		if err != nil {
 			return nil, err
@@ -389,8 +401,9 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 }
 
 func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []SelectField, err error) {
-	var label, cast, fk string
+	var label, cast, fk, aggregate string
 	var spread, inner bool
+	var explicitLabel bool
 	token := p.next()
 	if token == "" {
 		return nil, nil
@@ -401,6 +414,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	}
 	if p.lookAhead() == ":" {
 		label = token
+		explicitLabel = true
 		p.next()
 	} else {
 		p.back()
@@ -412,6 +426,26 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if label == "" {
 		label = field.last
 	}
+
+	// Check for aggregate function: field.avg(), field.sum(), etc.
+	if p.lookAhead() == "." {
+		next := p.cur + 1
+		if next < len(p.tokens) {
+			// Check if we have: . <function> ()
+			aggFunc := p.tokens[next]
+			if isValidAggregateFunction(aggFunc) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
+				p.next() // consume the dot
+				p.next() // consume the aggregate function
+				p.next() // consume the ()
+				aggregate = strings.ToUpper(aggFunc)
+				// Set default label to aggregate function name if no explicit label was provided
+				if !explicitLabel {
+					label = strings.ToLower(aggFunc)
+				}
+			}
+		}
+	}
+
 	if p.lookAhead() == "::" {
 		p.next()
 		cast = p.next()
@@ -426,7 +460,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			fk = ""
 		}
 	}
-	if p.lookAhead() != "(" {
+	if p.lookAhead() != "(" && p.lookAhead() != "()" {
 		// field
 
 		if spread {
@@ -436,29 +470,51 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			field.tablename = rel.name
 		}
 		if field.name != "," {
-			selectFields = append(selectFields, SelectField{field, label, cast, nil})
+			selectFields = append(selectFields, SelectField{field, label, cast, aggregate, nil})
 		} else {
 			p.back()
 		}
 	} else {
 		// table
 
-		p.next()
+		// Consume the opening parenthesis
+		parenToken := p.next()
+		isEmptyParens := false
+
+		// Handle the case where we have "()" as a single token (empty relationship)
+		if parenToken == "()" {
+			isEmptyParens = true
+		} else if parenToken != "(" {
+			return nil, &ParseError{"'(' expected"}
+		}
+
 		if cast != "" {
 			return nil, &ParseError{"table cannot have cast"}
+		}
+		if aggregate != "" {
+			return nil, &ParseError{"table cannot have aggregate function"}
 		}
 		var parent string
 		if rel != nil {
 			parent = rel.name
 		}
 		newrel := &SelectRelation{field.name, parent, spread, inner, fk, nil}
-		if p.lookAhead() != ")" {
+
+		if !isEmptyParens && p.lookAhead() != ")" {
 			newrel.fields, err = p.selectList(newrel)
 			if err != nil {
 				return nil, err
 			}
 		}
-		selectFields = append(selectFields, SelectField{label: label, relation: newrel})
+
+		// Consume closing parenthesis only if we consumed a separate ( token
+		if parenToken == "(" {
+			if p.next() != ")" {
+				return nil, &ParseError{") expected"}
+			}
+		}
+
+		selectFields = append(selectFields, SelectField{label: label, aggregate: "", relation: newrel})
 	}
 	return selectFields, nil
 }

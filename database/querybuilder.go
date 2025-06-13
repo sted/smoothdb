@@ -2,6 +2,7 @@ package database
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/samber/lo"
 )
@@ -72,6 +73,17 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 	} else {
 		fieldPart += fieldname
 	}
+
+	// Apply aggregate function if present
+	if sfield.aggregate != "" {
+		fieldPart = sfield.aggregate + "(" + fieldPart + ")"
+		// Cast AVG results to float since PostgreSQL returns numeric type
+		// that we do not support yet
+		if sfield.aggregate == "AVG" {
+			fieldPart += "::float8"
+		}
+	}
+
 	if sfield.cast != "" {
 		fieldPart += "::" + sfield.cast
 	}
@@ -310,6 +322,38 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 		}
 	}
 	return selClause, joins, keys, nil
+}
+
+// groupByClause creates a GROUP BY clause when aggregate functions are present
+func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) string {
+	// If no select fields are specified, no GROUP BY needed
+	if len(parts.selectFields) == 0 {
+		return ""
+	}
+
+	var hasAggregates bool
+	var nonAggregateFields []string
+
+	for _, sfield := range parts.selectFields {
+		if sfield.aggregate != "" {
+			hasAggregates = true
+		} else if sfield.relation == nil && sfield.field.name != "*" && sfield.field.name != "" && sfield.field.name != "," {
+			// Skip empty field names and comma separators
+			fieldname := _sq(table, schema) + "." + quote(sfield.field.name)
+			if sfield.field.jsonPath != "" {
+				fieldname = "(" + toJson(table, schema, sfield.field.name, fieldname, info) +
+					sfield.field.jsonPath + ")"
+			}
+			nonAggregateFields = append(nonAggregateFields, fieldname)
+		}
+	}
+
+	// Only add GROUP BY if we have both aggregates AND non-aggregate fields
+	if hasAggregates && len(nonAggregateFields) > 0 {
+		return strings.Join(nonAggregateFields, ", ")
+	}
+
+	return ""
 }
 
 func orderClause(table, schema, label string, orderFields []OrderField, info *SchemaInfo) string {
@@ -677,7 +721,7 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 	return delete, valueList, nil
 }
 
-func buildAfterSelect(query, from, joins, whereClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	nmarker := len(valueList)
 	query += " " + from
 	if joins != "" {
@@ -685,6 +729,9 @@ func buildAfterSelect(query, from, joins, whereClause, orderClause string, value
 	}
 	if whereClause != "" {
 		query += " WHERE " + whereClause
+	}
+	if groupByClause != "" {
+		query += " GROUP BY " + groupByClause
 	}
 	if orderClause != "" {
 		query += " ORDER BY " + orderClause
@@ -793,7 +840,7 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, "", orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
@@ -808,11 +855,13 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	groupByClause := groupByClause(table, schema, parts, info)
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
+
 	query := "SELECT " + selectClause
 	from := "FROM " + _sq(table, schema)
 
-	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 func (DirectQueryBuilder) preferredSerializer() TextSerializer {
@@ -831,7 +880,9 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	groupByClause := groupByClause(table, schema, parts, info)
 	orderClause := orderClause(table, schema, "", parts.orderFields, info)
+
 	query := "SELECT "
 	if selectClause == "*" {
 		query += "json_agg(" + table + ")"
@@ -839,7 +890,7 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 		query += "SELECT " + selectClause
 	}
 	from := "FROM " + table
-	return buildAfterSelect(query, from, joins, whereClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 func (QueryWithJSON) preferredSerializer() TextSerializer {

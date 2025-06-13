@@ -137,6 +137,36 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT ("table"."a"->'b'->'c') AS "c", ("table"."b"->>'c'->'d'->'e') AS "e", ("table"."c"->'d'->'e')::int AS "pippo" FROM "table" WHERE ("table"."jsondata"->'a'->'b') = $1`,
 			[]any{"{\"e\":{\"f\":2,\"g\":[1,2]}}"},
 		},
+		{
+			// simple aggregate function
+			"?select=amount.sum()",
+			`SELECT SUM("table"."amount") AS "sum" FROM "table"`,
+			nil,
+		},
+		{
+			// multiple aggregate functions
+			"?select=amount.sum(),amount.avg(),count:id.count()",
+			`SELECT SUM("table"."amount") AS "sum", AVG("table"."amount")::float8 AS "avg", COUNT("table"."id") AS "count" FROM "table"`,
+			nil,
+		},
+		{
+			// aggregate with grouping
+			"?select=amount.sum(),customer_id",
+			`SELECT SUM("table"."amount") AS "sum", "table"."customer_id" FROM "table" GROUP BY "table"."customer_id"`,
+			nil,
+		},
+		{
+			// aggregate with cast
+			"?select=amount.avg()::int",
+			`SELECT AVG("table"."amount")::float8::int AS "avg" FROM "table"`,
+			nil,
+		},
+		{
+			// aggregate with where clause
+			"?select=amount.sum()&status=eq.completed",
+			`SELECT SUM("table"."amount") AS "sum" FROM "table" WHERE "table"."status" = $1`,
+			[]any{"completed"},
+		},
 	}
 
 	for i, test := range tests {
