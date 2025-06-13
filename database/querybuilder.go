@@ -77,11 +77,6 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 	// Apply aggregate function if present
 	if sfield.aggregate != "" {
 		fieldPart = sfield.aggregate + "(" + fieldPart + ")"
-		// Cast AVG results to float since PostgreSQL returns numeric type
-		// that we do not support yet
-		if sfield.aggregate == "AVG" {
-			fieldPart += "::float8"
-		}
 	}
 
 	if sfield.cast != "" {

@@ -238,6 +238,128 @@ func (t *TextBuilder) appendUUID(buf []byte) {
 	t.WriteByte('"')
 }
 
+func (t *TextBuilder) appendNumeric(buf []byte) {
+	if len(buf) < 8 {
+		t.WriteString("0")
+		return
+	}
+
+	// Parse header: ndigits, weight, sign, dscale (all int16 big-endian)
+	ndigits := int16(binary.BigEndian.Uint16(buf[0:2]))
+	weight := int16(binary.BigEndian.Uint16(buf[2:4]))
+	sign := binary.BigEndian.Uint16(buf[4:6])
+	dscale := int16(binary.BigEndian.Uint16(buf[6:8]))
+
+	// Handle special values
+	switch sign {
+	case 0xC000: // NaN
+		t.WriteString("NaN")
+		return
+	case 0xD000: // Positive Infinity
+		t.WriteString("Infinity")
+		return
+	case 0xF000: // Negative Infinity
+		t.WriteString("-Infinity")
+		return
+	}
+
+	// Handle zero
+	if ndigits == 0 {
+		t.WriteString("0")
+		return
+	}
+
+	// Extract digits (base 10000)
+	digits := make([]uint16, ndigits)
+	for i := int16(0); i < ndigits; i++ {
+		if 8+i*2+1 >= int16(len(buf)) {
+			break
+		}
+		digits[i] = binary.BigEndian.Uint16(buf[8+i*2:])
+	}
+
+	// Build the decimal string
+	var result strings.Builder
+
+	// Add negative sign if needed
+	if sign == 0x4000 {
+		result.WriteByte('-')
+	}
+
+	// Convert base-10000 digits to decimal string
+	// weight+1 digits are before decimal point
+	digitsBeforeDecimal := weight + 1
+
+	// Handle digits before decimal point
+	if digitsBeforeDecimal > 0 {
+		// First digit doesn't need leading zeros
+		if digitsBeforeDecimal <= int16(len(digits)) {
+			result.WriteString(strconv.Itoa(int(digits[0])))
+			// Remaining digits before decimal with 4-digit padding
+			for i := int16(1); i < digitsBeforeDecimal && i < int16(len(digits)); i++ {
+				result.WriteString(fmt.Sprintf("%04d", digits[i]))
+			}
+			// Add trailing zeros if weight indicates more digits
+			for i := int16(len(digits)); i < digitsBeforeDecimal; i++ {
+				result.WriteString("0000")
+			}
+		} else {
+			// Handle case where we have fewer digits than weight indicates
+			for i, digit := range digits {
+				if i == 0 {
+					result.WriteString(strconv.Itoa(int(digit)))
+				} else {
+					result.WriteString(fmt.Sprintf("%04d", digit))
+				}
+			}
+			// Add trailing zeros for remaining weight
+			for i := int16(len(digits)); i < digitsBeforeDecimal; i++ {
+				result.WriteString("0000")
+			}
+		}
+	} else {
+		// All digits are after decimal point or we start with 0
+		result.WriteByte('0')
+	}
+
+	// Add decimal point and fractional digits if needed
+	if dscale > 0 {
+		result.WriteByte('.')
+
+		// Handle leading zeros if weight is negative
+		if digitsBeforeDecimal <= 0 {
+			for i := int16(0); i < -digitsBeforeDecimal*4; i++ {
+				result.WriteByte('0')
+			}
+		}
+
+		// Add fractional part
+		startFracDigit := digitsBeforeDecimal
+		if startFracDigit < 0 {
+			startFracDigit = 0
+		}
+
+		fracCharsWritten := int16(0)
+		for i := startFracDigit; i < int16(len(digits)) && fracCharsWritten < dscale; i++ {
+			digitStr := fmt.Sprintf("%04d", digits[i])
+			charsToWrite := dscale - fracCharsWritten
+			if charsToWrite > 4 {
+				charsToWrite = 4
+			}
+			result.WriteString(digitStr[:charsToWrite])
+			fracCharsWritten += charsToWrite
+		}
+
+		// Add trailing zeros if needed
+		for fracCharsWritten < dscale {
+			result.WriteByte('0')
+			fracCharsWritten++
+		}
+	}
+
+	t.WriteString(result.String())
+}
+
 type appendTyper interface {
 	appendType(buf []byte, typ uint32, info *SchemaInfo) error
 }
@@ -409,6 +531,8 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.appendInterval(buf)
 	case pgtype.UUIDOID:
 		j.appendUUID(buf)
+	case pgtype.NumericOID:
+		j.appendNumeric(buf)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {
@@ -527,6 +651,8 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendInterval(buf)
 	case pgtype.UUIDOID:
 		csv.appendUUID(buf)
+	case pgtype.NumericOID:
+		csv.appendNumeric(buf)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {

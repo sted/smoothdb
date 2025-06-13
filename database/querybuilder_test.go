@@ -146,7 +146,7 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// multiple aggregate functions
 			"?select=amount.sum(),amount.avg(),count:id.count()",
-			`SELECT SUM("table"."amount") AS "sum", AVG("table"."amount")::float8 AS "avg", COUNT("table"."id") AS "count" FROM "table"`,
+			`SELECT SUM("table"."amount") AS "sum", AVG("table"."amount") AS "avg", COUNT("table"."id") AS "count" FROM "table"`,
 			nil,
 		},
 		{
@@ -158,7 +158,7 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// aggregate with cast
 			"?select=amount.avg()::int",
-			`SELECT AVG("table"."amount")::float8::int AS "avg" FROM "table"`,
+			`SELECT AVG("table"."amount")::int AS "avg" FROM "table"`,
 			nil,
 		},
 		{

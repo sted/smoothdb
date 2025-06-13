@@ -52,14 +52,14 @@
 * [x] Plugins
 * [ ] SQL injection mitigation and related tests
 * [ ] Computed table relationships
-* [ ] More types: Multirange, Domain, Numeric
+* [ ] More types: Multirange, Domain
 * [ ] location header
 * [ ] return=headers-only
 * [x] count=exact
 * [ ] count=estimated
 * [ ] count=planned
 * [ ] Support isdistinct,all,any
-* [ ] Aggregate functions: avg(), count(), max(), min(), and sum()
+* [x] Aggregate functions: avg(), count(), max(), min(), and sum()
 * [ ] PUT for upsert
 * [ ] Computed fields
 * [ ] Triggers
