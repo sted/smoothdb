@@ -167,6 +167,30 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT SUM("table"."amount") AS "sum" FROM "table" WHERE "table"."status" = $1`,
 			[]any{"completed"},
 		},
+		{
+			// count() without field
+			"?select=count()",
+			`SELECT COUNT(*) AS "count" FROM "table"`,
+			nil,
+		},
+		{
+			// count() with alias
+			"?select=cnt:count()",
+			`SELECT COUNT(*) AS "cnt" FROM "table"`,
+			nil,
+		},
+		{
+			// count() with cast
+			"?select=count()::text",
+			`SELECT COUNT(*)::text AS "count" FROM "table"`,
+			nil,
+		},
+		{
+			// count() with other fields (grouping)
+			"?select=count(),customer_id",
+			`SELECT COUNT(*) AS "count", "table"."customer_id" FROM "table" GROUP BY "table"."customer_id"`,
+			nil,
+		},
 	}
 
 	for i, test := range tests {

@@ -404,6 +404,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	var label, cast, fk, aggregate string
 	var spread, inner bool
 	var explicitLabel bool
+	var field Field
 	token := p.next()
 	if token == "" {
 		return nil, nil
@@ -412,35 +413,51 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		spread = true
 		token = p.next()
 	}
+
+	// Check if we have a label (identifier followed by ':')
 	if p.lookAhead() == ":" {
 		label = token
 		explicitLabel = true
-		p.next()
-	} else {
-		p.back()
-	}
-	field, err := p.field(false, true)
-	if err != nil {
-		return nil, err
-	}
-	if label == "" {
-		label = field.last
+		p.next() // consume ':'
+		token = p.next() // get the next token after ':'
 	}
 
-	// Check for aggregate function: field.avg(), field.sum(), etc.
-	if p.lookAhead() == "." {
-		next := p.cur + 1
-		if next < len(p.tokens) {
-			// Check if we have: . <function> ()
-			aggFunc := p.tokens[next]
-			if isValidAggregateFunction(aggFunc) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
-				p.next() // consume the dot
-				p.next() // consume the aggregate function
-				p.next() // consume the ()
-				aggregate = strings.ToUpper(aggFunc)
-				// Set default label to aggregate function name if no explicit label was provided
-				if !explicitLabel {
-					label = strings.ToLower(aggFunc)
+	// Check for standalone aggregate functions like count(), sum(), etc.
+	if isValidAggregateFunction(token) && p.lookAhead() == "()" {
+		// This is a standalone aggregate function without field
+		p.next() // consume the ()
+		aggregate = strings.ToUpper(token)
+		// For standalone aggregates, use * as the field
+		field = Field{name: "*"}
+		if label == "" {
+			label = strings.ToLower(token)
+		}
+	} else {
+		// Not a standalone aggregate, put the token back and parse as field
+		p.back()
+		field, err = p.field(false, true)
+		if err != nil {
+			return nil, err
+		}
+		if label == "" {
+			label = field.last
+		}
+
+		// Check for aggregate function: field.avg(), field.sum(), etc.
+		if p.lookAhead() == "." {
+			next := p.cur + 1
+			if next < len(p.tokens) {
+				// Check if we have: . <function> ()
+				aggFunc := p.tokens[next]
+				if isValidAggregateFunction(aggFunc) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
+					p.next() // consume the dot
+					p.next() // consume the aggregate function
+					p.next() // consume the ()
+					aggregate = strings.ToUpper(aggFunc)
+					// Set default label to aggregate function name if no explicit label was provided
+					if !explicitLabel {
+						label = strings.ToLower(aggFunc)
+					}
 				}
 			}
 		}

@@ -66,17 +66,29 @@ func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
 
 func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) string {
 	var fieldPart string
-	fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
-	if sfield.field.jsonPath != "" {
-		fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
-		fieldPart += "(" + fieldname + sfield.field.jsonPath + ")"
-	} else {
-		fieldPart += fieldname
-	}
 
-	// Apply aggregate function if present
-	if sfield.aggregate != "" {
-		fieldPart = sfield.aggregate + "(" + fieldPart + ")"
+	if sfield.aggregate == "" {
+		// Regular field without aggregate
+		fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+		if sfield.field.jsonPath != "" {
+			fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
+			fieldPart += "(" + fieldname + sfield.field.jsonPath + ")"
+		} else {
+			fieldPart += fieldname
+		}
+	} else {
+		// For COUNT() without a field (standalone count)
+		if sfield.field.name == "*" && sfield.aggregate == "COUNT" {
+			fieldPart = "COUNT(*)"
+		} else {
+			// For aggregates with specific fields
+			fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+			if sfield.field.jsonPath != "" {
+				fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
+				fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
+			}
+			fieldPart = sfield.aggregate + "(" + fieldname + ")"
+		}
 	}
 
 	if sfield.cast != "" {
