@@ -168,7 +168,7 @@ INSERT INTO touched_files VALUES
 TRUNCATE TABLE complex_items CASCADE;
 INSERT INTO complex_items VALUES (1, 'One', '{"foo":{"int":1,"bar":"baz"}}', '{1}');
 INSERT INTO complex_items VALUES (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}', '{1,2}');
-INSERT INTO complex_items VALUES (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}', '{1,2,3}');
+INSERT INTO complex_items VALUES (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}', '{1,2,3}', 3);
 
 
 --
@@ -379,6 +379,7 @@ INSERT INTO ranges VALUES (1, '[1,3]');
 INSERT INTO ranges VALUES (2, '[3,6]');
 INSERT INTO ranges VALUES (3, '[6,9]');
 INSERT INTO ranges VALUES (4, '[9,12]');
+INSERT INTO ranges VALUES (5, null);
 
 TRUNCATE TABLE being CASCADE;
 INSERT INTO being VALUES (1), (2), (3), (4);
@@ -511,6 +512,7 @@ INSERT INTO json_arr VALUES (6, '[{"a": [1,2,3]}, {"b": [4,5]}]');
 INSERT INTO json_arr VALUES (7, '{"c": [1,2,3], "d": [4,5]}');
 INSERT INTO json_arr VALUES (8, '{"c": [{"d": [4,5,6,7,8]}]}');
 INSERT INTO json_arr VALUES (9, '[{"0xy1": [1,{"23-xy-45": [2, {"xy-6": [3]}]}]}]');
+INSERT INTO json_arr VALUES (10, '{"!@#$%^&*_a": [{"!@#$%^&*_b": 1}, {"!@#$%^&*_c": [2]}], "!@#$%^&*_d": {"!@#$%^&*_e": 3}}');
 
 TRUNCATE TABLE jsonb_test CASCADE;
 INSERT INTO jsonb_test VALUES (1, '{ "a": {"b": 2} }');
@@ -678,41 +680,33 @@ INSERT INTO private.films (id, title) VALUES (12,'douze commandements'), (2001,'
 TRUNCATE TABLE private.personnages CASCADE;
 INSERT INTO private.personnages (film_id, role_id, character) VALUES (12,1,'méchant'), (2001,2,'astronaute');
 
-DO $do$BEGIN
-  IF (SELECT current_setting('server_version_num')::INT >= 100000) THEN
-    INSERT INTO test.car_models(name, year) VALUES ('DeLorean',1981);
-    INSERT INTO test.car_models(name, year) VALUES ('F310-B',1997);
-    INSERT INTO test.car_models(name, year) VALUES ('Veneno',2013);
-    INSERT INTO test.car_models(name, year) VALUES ('Murcielago',2001);
-  END IF;
+INSERT INTO test.car_models(name, year) VALUES ('DeLorean',1981);
+INSERT INTO test.car_models(name, year) VALUES ('F310-B',1997);
+INSERT INTO test.car_models(name, year) VALUES ('Veneno',2013);
+INSERT INTO test.car_models(name, year) VALUES ('Murcielago',2001);
 
-  IF (SELECT current_setting('server_version_num')::INT >= 110000) THEN
-    INSERT INTO test.car_brands(name) VALUES ('DMC');
-    INSERT INTO test.car_brands(name) VALUES ('Ferrari');
-    INSERT INTO test.car_brands(name) VALUES ('Lamborghini');
+INSERT INTO test.car_brands(name) VALUES ('DMC');
+INSERT INTO test.car_brands(name) VALUES ('Ferrari');
+INSERT INTO test.car_brands(name) VALUES ('Lamborghini');
 
-    UPDATE test.car_models SET car_brand_name = 'DMC' WHERE name = 'DeLorean';
-    UPDATE test.car_models SET car_brand_name = 'Ferrari' WHERE name = 'F310-B';
-    UPDATE test.car_models SET car_brand_name = 'Lamborghini' WHERE name = 'Veneno';
-    UPDATE test.car_models SET car_brand_name = 'Lamborghini' WHERE name = 'Murcielago';
-  END IF;
+UPDATE test.car_models SET car_brand_name = 'DMC' WHERE name = 'DeLorean';
+UPDATE test.car_models SET car_brand_name = 'Ferrari' WHERE name = 'F310-B';
+UPDATE test.car_models SET car_brand_name = 'Lamborghini' WHERE name = 'Veneno';
+UPDATE test.car_models SET car_brand_name = 'Lamborghini' WHERE name = 'Murcielago';
 
-  IF (SELECT current_setting('server_version_num')::INT >= 120000) THEN
-    INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-01-14',7,'DeLorean',1981);
-    INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-01-15',9,'DeLorean',1981);
-    INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-02-11',1,'Murcielago',2001);
-    INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-02-12',3,'Murcielago',2001);
+INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-01-14',7,'DeLorean',1981);
+INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-01-15',9,'DeLorean',1981);
+INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-02-11',1,'Murcielago',2001);
+INSERT INTO test.car_model_sales(date, quantity, car_model_name, car_model_year) VALUES ('2021-02-12',3,'Murcielago',2001);
 
-    INSERT INTO test.car_racers(name) VALUES ('Alain Prost');
-    INSERT INTO test.car_racers(name, car_model_name, car_model_year) VALUES ('Michael Schumacher', 'F310-B', 1997);
+INSERT INTO test.car_racers(name) VALUES ('Alain Prost');
+INSERT INTO test.car_racers(name, car_model_name, car_model_year) VALUES ('Michael Schumacher', 'F310-B', 1997);
 
-    INSERT INTO test.car_dealers(name,city) VALUES ('Springfield Cars S.A.','Springfield');
-    INSERT INTO test.car_dealers(name,city) VALUES ('The Best Deals S.A.','Franklin');
+INSERT INTO test.car_dealers(name,city) VALUES ('Springfield Cars S.A.','Springfield');
+INSERT INTO test.car_dealers(name,city) VALUES ('The Best Deals S.A.','Franklin');
 
-    INSERT INTO test.car_models_car_dealers(car_model_name, car_model_year, car_dealer_name, car_dealer_city, quantity) VALUES ('DeLorean',1981,'Springfield Cars S.A.','Springfield',15);
-    INSERT INTO test.car_models_car_dealers(car_model_name, car_model_year, car_dealer_name, car_dealer_city, quantity) VALUES ('Murcielago',2001,'The Best Deals S.A.','Franklin',2);
-  END IF;
-END$do$;
+INSERT INTO test.car_models_car_dealers(car_model_name, car_model_year, car_dealer_name, car_dealer_city, quantity) VALUES ('DeLorean',1981,'Springfield Cars S.A.','Springfield',15);
+INSERT INTO test.car_models_car_dealers(car_model_name, car_model_year, car_dealer_name, car_dealer_city, quantity) VALUES ('Murcielago',2001,'The Best Deals S.A.','Franklin',2);
 
 TRUNCATE TABLE test.products CASCADE;
 INSERT INTO test.products (id, name) VALUES (1,'product-1'), (2,'product-2'), (3,'product-3');
@@ -747,24 +741,6 @@ INSERT INTO test.fav_numbers VALUES (ROW(0.5, 0.5), 'A'),  (ROW(0.6, 0.6), 'B');
 TRUNCATE TABLE test.arrays CASCADE;
 INSERT INTO test.arrays VALUES (0, '{1,2,3}', '{{1,2,3},{4,5,6},{7,8,9}}'), (1, '{11,12,13}', '{{11,12,13},{14,15,16},{17,18,19}}');
 
-TRUNCATE TABLE test.limited_update_items CASCADE;
-INSERT INTO test.limited_update_items VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
-TRUNCATE TABLE test.limited_update_items_cpk CASCADE;
-INSERT INTO test.limited_update_items_cpk VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
-TRUNCATE TABLE test.limited_update_items_no_pk CASCADE;
-INSERT INTO test.limited_update_items_no_pk VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
-TRUNCATE TABLE test.limited_delete_items CASCADE;
-INSERT INTO test.limited_delete_items VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
-TRUNCATE TABLE test.limited_delete_items_cpk CASCADE;
-INSERT INTO test.limited_delete_items_cpk VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
-TRUNCATE TABLE test.limited_delete_items_no_pk CASCADE;
-INSERT INTO test.limited_delete_items_no_pk VALUES (1, 'item-1'), (2, 'item-2'), (3, 'item-3');
-
 TRUNCATE TABLE test.xmltest CASCADE;
 INSERT INTO test.xmltest VALUES
 (1, '<myxml>foo</myxml>'),
@@ -781,16 +757,16 @@ INSERT INTO private.internal_job (id, parent_id) VALUES (2, 1);
 TRUNCATE TABLE test.test CASCADE;
 INSERT INTO test.test (id, parent_id) VALUES (1, null), (2, 1);
 
--- TRUNCATE TABLE shops CASCADE;
--- INSERT INTO shops(id, address, shop_geom) VALUES(1, '1369 Cambridge St', 'SRID=4326;POINT(-71.10044 42.373695)');
--- INSERT INTO shops(id, address, shop_geom) VALUES(2, '757 Massachusetts Ave', 'SRID=4326;POINT(-71.10543 42.366432)');
--- INSERT INTO shops(id, address, shop_geom) VALUES(3, '605 W Kendall St', 'SRID=4326;POINT(-71.081924 42.36437)');
+TRUNCATE TABLE shops CASCADE;
+INSERT INTO shops(id, address, shop_geom) VALUES(1, '1369 Cambridge St', 'SRID=4326;POINT(-71.10044 42.373695)');
+INSERT INTO shops(id, address, shop_geom) VALUES(2, '757 Massachusetts Ave', 'SRID=4326;POINT(-71.10543 42.366432)');
+INSERT INTO shops(id, address, shop_geom) VALUES(3, '605 W Kendall St', 'SRID=4326;POINT(-71.081924 42.36437)');
 
--- TRUNCATE TABLE shop_bles CASCADE;
--- INSERT INTO shop_bles(id, name, coords, shop_id, range_area) VALUES(1, 'Beacon-1', 'SRID=4326;POINT(-71.10044 42.373695)', 1,
---   extensions.ST_GeomFromGeoJSON('{"type": "Polygon", "coordinates": [ [ [ -71.10045254230499, 42.37387083326593 ], [ -71.10048070549963, 42.37377126199953 ], [ -71.10039688646793, 42.37375838212269 ], [ -71.10037006437777, 42.37385844878863 ], [ -71.10045254230499, 42.37387083326593 ] ] ]}'));
--- INSERT INTO shop_bles(id, name, coords, shop_id, range_area) VALUES(2, 'Beacon-2', 'SRID=4326;POINT(-71.10044 42.373695)', 1,
---   extensions.ST_GeomFromGeoJSON('{"type": "Polygon", "coordinates": [ [ [ -71.10034391283989, 42.37385299961788 ], [ -71.10036939382553, 42.373756895982865 ], [ -71.1002916097641, 42.373745997623224 ], [ -71.1002641171217, 42.37384408279195 ], [ -71.10034391283989, 42.37385299961788 ] ] ]}'));
+TRUNCATE TABLE shop_bles CASCADE;
+INSERT INTO shop_bles(id, name, coords, shop_id, range_area) VALUES(1, 'Beacon-1', 'SRID=4326;POINT(-71.10044 42.373695)', 1,
+  extensions.ST_GeomFromGeoJSON('{"type": "Polygon", "coordinates": [ [ [ -71.10045254230499, 42.37387083326593 ], [ -71.10048070549963, 42.37377126199953 ], [ -71.10039688646793, 42.37375838212269 ], [ -71.10037006437777, 42.37385844878863 ], [ -71.10045254230499, 42.37387083326593 ] ] ]}'));
+INSERT INTO shop_bles(id, name, coords, shop_id, range_area) VALUES(2, 'Beacon-2', 'SRID=4326;POINT(-71.10044 42.373695)', 1,
+  extensions.ST_GeomFromGeoJSON('{"type": "Polygon", "coordinates": [ [ [ -71.10034391283989, 42.37385299961788 ], [ -71.10036939382553, 42.373756895982865 ], [ -71.1002916097641, 42.373745997623224 ], [ -71.1002641171217, 42.37384408279195 ], [ -71.10034391283989, 42.37385299961788 ] ] ]}'));
 
 TRUNCATE TABLE "SPECIAL ""@/\#~_-".languages CASCADE;
 INSERT INTO "SPECIAL ""@/\#~_-".languages (id, name) VALUES (1, 'English'), (2, 'Spanish');
@@ -838,3 +814,158 @@ INSERT INTO posters(id,name) VALUES (1,'Mark'), (2,'Elon'), (3,'Bill'), (4,'Jeff
 
 TRUNCATE TABLE subscriptions CASCADE;
 INSERT INTO subscriptions(subscriber,subscribed) VALUES (3,1), (4,1), (1,2);
+
+TRUNCATE TABLE datarep_todos CASCADE;
+INSERT INTO datarep_todos VALUES (1, 'Report', 0, '2018-01-02', '\x89504e470d0a1a0a0000000d4948445200000001000000010100000000376ef924000000001049444154789c62600100000000ffff03000000060005057bfabd400000000049454e44ae426082', '2017-12-14 01:02:30', 12.50); -- smallest possible PNG
+INSERT INTO datarep_todos VALUES (2, 'Essay', 256, '2018-01-03', NULL, '2017-12-14 01:02:30', 100000000000000.13); -- a number which can't be represented by a 64-bit float
+INSERT INTO datarep_todos VALUES (3, 'Algebra', 123456, '2018-01-01 14:12:34.123456');
+INSERT INTO datarep_todos VALUES (4, 'Opus Magnum', NULL, NULL);
+
+TRUNCATE TABLE datarep_next_two_todos CASCADE;
+INSERT INTO datarep_next_two_todos VALUES (1, 2, 3, 'school related');
+INSERT INTO datarep_next_two_todos VALUES (2, 1, 3, 'do these first');
+
+TRUNCATE TABLE bitchar_with_length CASCADE;
+INSERT INTO bitchar_with_length(bit, char) VALUES ('00000', 'aaaaa');
+INSERT INTO bitchar_with_length(bit, char) VALUES ('11111', 'bbbbb');
+
+TRUNCATE TABLE table_a CASCADE;
+INSERT INTO table_a(id, name) VALUES (1, 'Not null 1'), (2, null), (3, 'Not null 2');
+TRUNCATE TABLE table_b CASCADE;
+INSERT INTO table_b(table_a_id, name) VALUES (1, 'Test 1'), (2, 'Test 2'), (null, 'Test 3');
+
+TRUNCATE TABLE lines CASCADE;
+insert into lines values (1, 'line-1', 'LINESTRING(1 1,5 5)'::extensions.geometry), (2, 'line-2', 'LINESTRING(2 2,6 6)'::extensions.geometry);
+
+TRUNCATE TABLE timestamps CASCADE;
+INSERT INTO timestamps VALUES ('2023-10-18 12:37:59.611000+0000');
+INSERT INTO timestamps VALUES ('2023-10-18 14:37:59.611000+0000');
+INSERT INTO timestamps VALUES ('2023-10-18 16:37:59.611000+0000');
+
+TRUNCATE TABLE project_invoices CASCADE;
+INSERT INTO project_invoices VALUES (1, 100, 1);
+INSERT INTO project_invoices VALUES (2, 200, 1);
+INSERT INTO project_invoices VALUES (3, 500, 2);
+INSERT INTO project_invoices VALUES (4, 700, 2);
+INSERT INTO project_invoices VALUES (5, 1200, 3);
+INSERT INTO project_invoices VALUES (6, 2000, 3);
+INSERT INTO project_invoices VALUES (7, 100, 4);
+INSERT INTO project_invoices VALUES (8, 4000, 4);
+
+TRUNCATE TABLE budget_categories CASCADE;
+INSERT INTO budget_categories VALUES (1, 'Beanie Babies', 'Brian Smith', 1000.31);
+INSERT INTO budget_categories VALUES (2, 'DVDs', 'Jane Clarkson', 2000.12);
+INSERT INTO budget_categories VALUES (3, 'Pizza', 'Brian Smith', 1000.11);
+INSERT INTO budget_categories VALUES (4, 'Opera Tickets', 'Jane Clarkson', 7000.41);
+INSERT INTO budget_categories VALUES (5, 'Nuclear Fusion Research', 'Sally Hughes', 500.23);
+INSERT INTO budget_categories VALUES (6, 'T-5hirts', 'Dana de Groot', 500.33);
+
+TRUNCATE TABLE budget_expenses CASCADE;
+INSERT INTO budget_expenses VALUES (1, 200.26, 1);
+INSERT INTO budget_expenses VALUES (2, 400.26, 3);
+INSERT INTO budget_expenses VALUES (3, 100.22, 4);
+INSERT INTO budget_expenses VALUES (5, 900.27, 5);
+
+TRUNCATE TABLE factories CASCADE;
+INSERT INTO factories VALUES (1, 'Factory A');
+INSERT INTO factories VALUES (2, 'Factory B');
+INSERT INTO factories VALUES (3, 'Factory C');
+INSERT INTO factories VALUES (4, 'Factory D');
+
+TRUNCATE TABLE process_categories CASCADE;
+INSERT INTO process_categories VALUES (1, 'Batch');
+INSERT INTO process_categories VALUES (2, 'Mass');
+
+TRUNCATE TABLE processes CASCADE;
+INSERT INTO processes VALUES (1, 'Process A1', 1, 1);
+INSERT INTO processes VALUES (2, 'Process A2', 1, 2);
+INSERT INTO processes VALUES (3, 'Process B1', 2, 1);
+INSERT INTO processes VALUES (4, 'Process B2', 2, 1);
+INSERT INTO processes VALUES (5, 'Process C1', 3, 2);
+INSERT INTO processes VALUES (6, 'Process C2', 3, 2);
+INSERT INTO processes VALUES (7, 'Process XX', 3, 2);
+INSERT INTO processes VALUES (8, 'Process YY', 3, 2);
+
+TRUNCATE TABLE process_costs CASCADE;
+INSERT INTO process_costs VALUES (1, 150.00);
+INSERT INTO process_costs VALUES (2, 200.00);
+INSERT INTO process_costs VALUES (3, 180.00);
+INSERT INTO process_costs VALUES (4, 70.00);
+INSERT INTO process_costs VALUES (5, 40.00);
+INSERT INTO process_costs VALUES (6, 70.00);
+INSERT INTO process_costs VALUES (8, 40.00);
+
+TRUNCATE TABLE supervisors CASCADE;
+INSERT INTO supervisors VALUES (1, 'Mary');
+INSERT INTO supervisors VALUES (2, 'John');
+INSERT INTO supervisors VALUES (3, 'Peter');
+INSERT INTO supervisors VALUES (4, 'Sarah');
+INSERT INTO supervisors VALUES (5, 'Jane');
+
+TRUNCATE TABLE process_supervisor CASCADE;
+INSERT INTO process_supervisor VALUES (1, 1);
+INSERT INTO process_supervisor VALUES (2, 2);
+INSERT INTO process_supervisor VALUES (3, 3);
+INSERT INTO process_supervisor VALUES (3, 4);
+INSERT INTO process_supervisor VALUES (4, 1);
+INSERT INTO process_supervisor VALUES (4, 2);
+INSERT INTO process_supervisor VALUES (5, 3);
+INSERT INTO process_supervisor VALUES (6, 3);
+
+TRUNCATE TABLE operators CASCADE;
+INSERT INTO operators VALUES (1, 'Anne', '{"id": "543210", "afk": true}');
+INSERT INTO operators VALUES (2, 'Louis', '{"id": "012345"}');
+INSERT INTO operators VALUES (3, 'Jeff', '{"id": "666666", "afk": true}');
+INSERT INTO operators VALUES (4, 'Liz', '{"id": "999999"}');
+INSERT INTO operators VALUES (5, 'Alfred', '{"id": "000000"}');
+
+TRUNCATE TABLE process_operator CASCADE;
+INSERT INTO process_operator VALUES (1,1);
+INSERT INTO process_operator VALUES (1,2);
+INSERT INTO process_operator VALUES (2,1);
+INSERT INTO process_operator VALUES (2,2);
+INSERT INTO process_operator VALUES (2,3);
+INSERT INTO process_operator VALUES (3,3);
+INSERT INTO process_operator VALUES (4,1);
+INSERT INTO process_operator VALUES (4,3);
+INSERT INTO process_operator VALUES (6,3);
+INSERT INTO process_operator VALUES (6,5);
+INSERT INTO process_operator VALUES (7,5);
+
+TRUNCATE TABLE factory_buildings CASCADE;
+INSERT INTO factory_buildings VALUES (1, 'A001', 150, 'A', 1, '{"ins": "2024C", "pending": true}');
+INSERT INTO factory_buildings VALUES (2, 'A002', 200, 'A', 1, '{"ins": "2025A", "pending": true}');
+INSERT INTO factory_buildings VALUES (3, 'B001', 50, 'B', 2, '{"ins": "2025A", "pending": true}');
+INSERT INTO factory_buildings VALUES (4, 'B002', 120, 'C', 2, '{"ins": "2023A"}');
+INSERT INTO factory_buildings VALUES (5, 'C001', 240, 'B', 3, '{"ins": "2022B"}' );
+INSERT INTO factory_buildings VALUES (6, 'D001', 310, 'A', 4, '{"ins": "2024C", "pending": true}');
+
+TRUNCATE TABLE surr_serial_upsert CASCADE;
+INSERT INTO surr_serial_upsert(name, extra) VALUES ('value', 'existing value');
+
+TRUNCATE TABLE surr_gen_default_upsert CASCADE;
+INSERT INTO surr_gen_default_upsert(name, extra) VALUES ('value', 'existing value');
+
+TRUNCATE TABLE "Surr_Gen_Default_Upsert" CASCADE;
+INSERT INTO "Surr_Gen_Default_Upsert"(name, extra) VALUES ('value cs', 'existing value cs');
+
+TRUNCATE TABLE tsearch_to_tsvector CASCADE;
+INSERT INTO tsearch_to_tsvector(text_search) VALUES ('It''s kind of fun to do the impossible');
+INSERT INTO tsearch_to_tsvector(text_search) VALUES ('But also fun to do what is possible');
+INSERT INTO tsearch_to_tsvector(text_search) VALUES ('Fat cats ate rats');
+INSERT INTO tsearch_to_tsvector(text_search) VALUES ('C''est un peu amusant de faire l''impossible');
+INSERT INTO tsearch_to_tsvector(text_search) VALUES ('Es ist eine Art Spaß, das Unmögliche zu machen');
+
+UPDATE tsearch_to_tsvector SET jsonb_search = jsonb_build_object('text_search', text_search);
+
+
+TRUNCATE TABLE artists CASCADE;
+INSERT INTO artists
+VALUES (1, 'duster'), (2, 'black country, new road'), (3, 'bjork');
+
+TRUNCATE TABLE albums CASCADE;
+INSERT INTO albums 
+VALUES (1, 'stratosphere', 1),
+       (2, 'ants from up above',2), 
+       (3, 'vespertine',3),
+       (4, 'contemporary movement', 1);
