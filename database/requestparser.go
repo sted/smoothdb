@@ -33,8 +33,9 @@ type Field struct {
 type SelectField struct {
 	field     Field           // field info
 	label     string          // label for the field or the nested relation
-	cast      string          // type cast
+	cast      string          // type cast for the field (before aggregation)
 	aggregate string          // aggregate function: avg, count, max, min, sum
+	aggCast   string          // type cast for the aggregate result (after aggregation)
 	relation  *SelectRelation // relation (can be null)
 }
 
@@ -401,7 +402,7 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 }
 
 func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []SelectField, err error) {
-	var label, cast, fk, aggregate string
+	var label, cast, aggCast, fk, aggregate string
 	var spread, inner bool
 	var explicitLabel bool
 	var field Field
@@ -443,6 +444,12 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			label = field.last
 		}
 
+		// Check for field cast before aggregate: field::cast.aggregate()
+		if p.lookAhead() == "::" {
+			p.next() // consume ::
+			cast = p.next() // get cast type
+		}
+
 		// Check for aggregate function: field.avg(), field.sum(), etc.
 		if p.lookAhead() == "." {
 			next := p.cur + 1
@@ -463,9 +470,16 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		}
 	}
 
+	// Check for aggregate cast after aggregate function: field.sum()::cast
 	if p.lookAhead() == "::" {
-		p.next()
-		cast = p.next()
+		p.next() // consume ::
+		if aggregate != "" {
+			// This is an aggregate cast
+			aggCast = p.next()
+		} else {
+			// This is a field cast (fallback case)
+			cast = p.next()
+		}
 	}
 	if p.lookAhead() == "!" {
 		p.next()
@@ -487,7 +501,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			field.tablename = rel.name
 		}
 		if field.name != "," {
-			selectFields = append(selectFields, SelectField{field, label, cast, aggregate, nil})
+			selectFields = append(selectFields, SelectField{field, label, cast, aggregate, aggCast, nil})
 		} else {
 			p.back()
 		}

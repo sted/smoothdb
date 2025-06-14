@@ -72,10 +72,13 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 		fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 		if sfield.field.jsonPath != "" {
 			fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
-			fieldPart += "(" + fieldname + sfield.field.jsonPath + ")"
-		} else {
-			fieldPart += fieldname
+			fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
 		}
+		// Apply field cast for regular fields (no extra parentheses needed)
+		if sfield.cast != "" {
+			fieldname = fieldname + "::" + sfield.cast
+		}
+		fieldPart = fieldname
 	} else {
 		// For COUNT() without a field (standalone count)
 		if sfield.field.name == "*" && sfield.aggregate == "COUNT" {
@@ -87,13 +90,23 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 				fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 				fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
 			}
+			// Apply field cast before aggregation (need parentheses for complex expressions)
+			if sfield.cast != "" {
+				// Only add parentheses if the fieldname doesn't already have them (JSON paths already wrapped)
+				if strings.HasPrefix(fieldname, "(") {
+					fieldname = fieldname + "::" + sfield.cast
+				} else {
+					fieldname = "(" + fieldname + ")::" + sfield.cast
+				}
+			}
 			fieldPart = sfield.aggregate + "(" + fieldname + ")"
+		}
+		// Apply aggregate cast after aggregation
+		if sfield.aggCast != "" {
+			fieldPart = fieldPart + "::" + sfield.aggCast
 		}
 	}
 
-	if sfield.cast != "" {
-		fieldPart += "::" + sfield.cast
-	}
 	if sfield.label != "" {
 		fieldPart += " AS \"" + sfield.label + "\""
 	}
@@ -350,6 +363,10 @@ func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) st
 			if sfield.field.jsonPath != "" {
 				fieldname = "(" + toJson(table, schema, sfield.field.name, fieldname, info) +
 					sfield.field.jsonPath + ")"
+			}
+			// Apply field cast in GROUP BY if present
+			if sfield.cast != "" {
+				fieldname = fieldname + "::" + sfield.cast
 			}
 			nonAggregateFields = append(nonAggregateFields, fieldname)
 		}
