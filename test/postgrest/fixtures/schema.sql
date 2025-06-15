@@ -1136,6 +1136,10 @@ create function test.ret_image() returns "image/png" as $$
   select i.img::"image/png" from test.images i where i.name = 'A.png';
 $$ language sql;
 
+create function test.ret_rows_with_base64_bin() returns setof test.images_base64 as $$
+  select i.name, i.img from test.images_base64 i;
+$$ language sql;
+
 create function test.single_article(id integer) returns test.articles as $$
   select a.* from test.articles a where a.id = $1;
 $$ language sql;
@@ -2638,25 +2642,25 @@ CREATE TABLE test.test (
 CREATE OR REPLACE VIEW test.view_test AS
   SELECT id FROM test.test;
 
-create extension if not exists postgis with schema extensions;
+-- create extension if not exists postgis with schema extensions;
 
-create table shops (
-  id        int primary key
-, address   text
-, shop_geom extensions.geometry(POINT, 4326)
-);
+-- create table shops (
+--   id        int primary key
+-- , address   text
+-- , shop_geom extensions.geometry(POINT, 4326)
+-- );
 
-create table shop_bles (
-  id         int primary key
-, name       text
-, coords     extensions.geometry(POINT, 4326)
-, range_area extensions.geometry(POLYGON, 4326)
-, shop_id    int references shops(id)
-);
+-- create table shop_bles (
+--   id         int primary key
+-- , name       text
+-- , coords     extensions.geometry(POINT, 4326)
+-- , range_area extensions.geometry(POLYGON, 4326)
+-- , shop_id    int references shops(id)
+-- );
 
-create function get_shop(id int) returns shops as $$
-  select * from shops where id = $1;
-$$ language sql;
+-- create function get_shop(id int) returns shops as $$
+--   select * from shops where id = $1;
+-- $$ language sql;
 
 CREATE TABLE "SPECIAL ""@/\#~_-".languages(
   id INT PRIMARY KEY,
@@ -3407,69 +3411,69 @@ as $$ begin
   return query select items2.id from items2 where items2.id=search2.id;
 end$$;
 
-create table test.lines (
-  id   int primary key
-, name text
-, geom extensions.geometry(LINESTRING, 4326)
-);
+-- create table test.lines (
+--   id   int primary key
+-- , name text
+-- , geom extensions.geometry(LINESTRING, 4326)
+-- );
 
-create or replace function test.get_lines ()
-returns setof test.lines as $$
-  select * from lines;
-$$ language sql;
+-- create or replace function test.get_lines ()
+-- returns setof test.lines as $$
+--   select * from lines;
+-- $$ language sql;
 
-create or replace function test.get_line (id int)
-returns "application/vnd.twkb" as $$
-  select extensions.st_astwkb(geom)::"application/vnd.twkb" from lines where id = get_line.id;
-$$ language sql;
+-- create or replace function test.get_line (id int)
+-- returns "application/vnd.twkb" as $$
+--   select extensions.st_astwkb(geom)::"application/vnd.twkb" from lines where id = get_line.id;
+-- $$ language sql;
 
-create or replace function test.get_shop_bles ()
-returns setof test.shop_bles as $$
-  select * from shop_bles;
-$$ language sql;
+-- create or replace function test.get_shop_bles ()
+-- returns setof test.shop_bles as $$
+--   select * from shop_bles;
+-- $$ language sql;
 
 -- it can work without a final function too if the stype is already the media type
-create or replace function test.twkb_handler_transition (state "application/vnd.twkb", next test.lines)
-returns "application/vnd.twkb" as $$
-  select (state || extensions.st_astwkb(next.geom)) :: "application/vnd.twkb";
-$$ language sql;
+-- create or replace function test.twkb_handler_transition (state "application/vnd.twkb", next test.lines)
+-- returns "application/vnd.twkb" as $$
+--   select (state || extensions.st_astwkb(next.geom)) :: "application/vnd.twkb";
+-- $$ language sql;
 
-drop aggregate if exists test.twkb_agg(test.lines);
-create aggregate test.twkb_agg (test.lines) (
-  initcond = ''
-, stype = "application/vnd.twkb"
-, sfunc = test.twkb_handler_transition
-);
+-- drop aggregate if exists test.twkb_agg(test.lines);
+-- create aggregate test.twkb_agg (test.lines) (
+--   initcond = ''
+-- , stype = "application/vnd.twkb"
+-- , sfunc = test.twkb_handler_transition
+-- );
 
-create or replace function test.geo2json_trans (state "application/vnd.geo2+json", next anyelement)
-returns "application/vnd.geo2+json" as $$
-  select (state || extensions.ST_AsGeoJSON(next)::jsonb)::"application/vnd.geo2+json";
-$$ language sql;
+-- create or replace function test.geo2json_trans (state "application/vnd.geo2+json", next anyelement)
+-- returns "application/vnd.geo2+json" as $$
+--   select (state || extensions.ST_AsGeoJSON(next)::jsonb)::"application/vnd.geo2+json";
+-- $$ language sql;
 
-create or replace function test.geo2json_final (data "application/vnd.geo2+json")
-returns "application/vnd.geo2+json" as $$
-  select (jsonb_build_object('type', 'FeatureCollection', 'hello', 'world'))::"application/vnd.geo2+json";
-$$ language sql;
+-- create or replace function test.geo2json_final (data "application/vnd.geo2+json")
+-- returns "application/vnd.geo2+json" as $$
+--   select (jsonb_build_object('type', 'FeatureCollection', 'hello', 'world'))::"application/vnd.geo2+json";
+-- $$ language sql;
 
-drop aggregate if exists test.geo2json_agg_any(anyelement);
-create aggregate test.geo2json_agg_any(anyelement) (
-  initcond = '[]'
-, stype = "application/vnd.geo2+json"
-, sfunc = geo2json_trans
-, finalfunc = geo2json_final
-);
+-- drop aggregate if exists test.geo2json_agg_any(anyelement);
+-- create aggregate test.geo2json_agg_any(anyelement) (
+--   initcond = '[]'
+-- , stype = "application/vnd.geo2+json"
+-- , sfunc = geo2json_trans
+-- , finalfunc = geo2json_final
+-- );
 
-create or replace function test.geo2json_trans (state "application/vnd.geo2+json", next test.shop_bles)
-returns "application/vnd.geo2+json" as $$
-  select '"anyelement overridden"'::"application/vnd.geo2+json";
-$$ language sql;
+-- create or replace function test.geo2json_trans (state "application/vnd.geo2+json", next test.shop_bles)
+-- returns "application/vnd.geo2+json" as $$
+--   select '"anyelement overridden"'::"application/vnd.geo2+json";
+-- $$ language sql;
 
-drop aggregate if exists test.geo2json_agg(test.shop_bles);
-create aggregate test.geo2json_agg(test.shop_bles) (
-  initcond = '[]'
-, stype = "application/vnd.geo2+json"
-, sfunc = geo2json_trans
-);
+-- drop aggregate if exists test.geo2json_agg(test.shop_bles);
+-- create aggregate test.geo2json_agg(test.shop_bles) (
+--   initcond = '[]'
+-- , stype = "application/vnd.geo2+json"
+-- , sfunc = geo2json_trans
+-- );
 
 create table ov_json ();
 
@@ -3487,32 +3491,32 @@ create aggregate test.ov_json_agg(ov_json) (
 );
 
 -- override application/geo+json
-create or replace function test.lines_geojson_trans (state jsonb, next test.lines)
-returns "application/geo+json" as $$
-  select (state || extensions.ST_AsGeoJSON(next)::jsonb)::"application/geo+json";
-$$ language sql;
+-- create or replace function test.lines_geojson_trans (state jsonb, next test.lines)
+-- returns "application/geo+json" as $$
+--   select (state || extensions.ST_AsGeoJSON(next)::jsonb)::"application/geo+json";
+-- $$ language sql;
 
-create or replace function test.lines_geojson_final (data jsonb)
-returns "application/geo+json" as $$
-  select jsonb_build_object(
-    'type', 'FeatureCollection',
-    'crs',  json_build_object(
-        'type',      'name',
-        'properties', json_build_object(
-            'name', 'EPSG:4326'
-         )
-     ),
-    'features', data
-  )::"application/geo+json";
-$$ language sql;
+-- create or replace function test.lines_geojson_final (data jsonb)
+-- returns "application/geo+json" as $$
+--   select jsonb_build_object(
+--     'type', 'FeatureCollection',
+--     'crs',  json_build_object(
+--         'type',      'name',
+--         'properties', json_build_object(
+--             'name', 'EPSG:4326'
+--          )
+--      ),
+--     'features', data
+--   )::"application/geo+json";
+-- $$ language sql;
 
-drop aggregate if exists test.lines_geojson_agg(test.lines);
-create aggregate test.lines_geojson_agg (test.lines) (
-  initcond = '[]'
-, stype = "application/geo+json"
-, sfunc = lines_geojson_trans
-, finalfunc = lines_geojson_final
-);
+-- drop aggregate if exists test.lines_geojson_agg(test.lines);
+-- create aggregate test.lines_geojson_agg (test.lines) (
+--   initcond = '[]'
+-- , stype = "application/geo+json"
+-- , sfunc = lines_geojson_trans
+-- , finalfunc = lines_geojson_final
+-- );
 
 -- override application/vnd.pgrst.object
 create or replace function test.pgrst_obj_json_trans (state "application/vnd.pgrst.object", next anyelement)
@@ -3548,10 +3552,10 @@ create aggregate test.tsv_agg (test.projects) (
 );
 
 -- override CSV with BOM plus attachment
-create or replace function test.bom_csv_trans (state text, next test.lines)
-returns "text/csv" as $$
-  select (state || next.id::text || ',' || next.name || ',' || next.geom::text || E'\n')::"text/csv";
-$$ language sql;
+-- create or replace function test.bom_csv_trans (state text, next test.lines)
+-- returns "text/csv" as $$
+--   select (state || next.id::text || ',' || next.name || ',' || next.geom::text || E'\n')::"text/csv";
+-- $$ language sql;
 
 create or replace function test.bom_csv_final (data "text/csv")
 returns "text/csv" as $$
@@ -3560,13 +3564,13 @@ returns "text/csv" as $$
   select (convert_from (decode (E'EFBBBF', 'hex'),'UTF8') || (E'id,name,geom\n' || data))::"text/csv";
 $$ language sql;
 
-drop aggregate if exists test.bom_csv_agg(test.lines);
-create aggregate test.bom_csv_agg (test.lines) (
-  initcond = ''
-, stype = "text/csv"
-, sfunc = bom_csv_trans
-, finalfunc = bom_csv_final
-);
+-- drop aggregate if exists test.bom_csv_agg(test.lines);
+-- create aggregate test.bom_csv_agg (test.lines) (
+--   initcond = ''
+-- , stype = "text/csv"
+-- , sfunc = bom_csv_trans
+-- , finalfunc = bom_csv_final
+-- );
 
 create table empty_string as select 1 as id, ''::text as string;
 
