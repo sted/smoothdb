@@ -215,13 +215,13 @@ func (si *SchemaInfo) addRelationships(fk *ForeignKey, pk *Constraint) {
 
 	var uniqueSource bool
 	if pk != nil {
-		if arrayEquals(fk.Columns, pk.Columns) {
+		if arrayEqualUnordered(fk.Columns, pk.Columns) {
 			uniqueSource = true
 		}
 	}
 	uc := si.cachedUniqueConstraints[ftable]
 	for _, u := range uc {
-		if arrayEquals(fk.Columns, u.Columns) {
+		if arrayEqualUnordered(fk.Columns, u.Columns) {
 			uniqueSource = true
 			break
 		}

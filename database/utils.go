@@ -1,8 +1,10 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -104,16 +106,19 @@ func isStar(s string) bool {
 	return s == "*"
 }
 
-func arrayEquals[T comparable](a1 []T, a2 []T) bool {
-	if len(a1) != len(a2) {
+func arrayEqual[T comparable](a1 []T, a2 []T) bool {
+	return slices.Equal(a1, a2)
+}
+
+func arrayEqualUnordered[T cmp.Ordered](a, b []T) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	for i := range a1 {
-		if a1[i] != a2[i] {
-			return false
-		}
-	}
-	return true
+	c1 := slices.Clone(a)
+	c2 := slices.Clone(b)
+	slices.Sort(c1)
+	slices.Sort(c2)
+	return slices.Equal(c1, c2)
 }
 
 func IsExist(err error) bool {
