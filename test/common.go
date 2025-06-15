@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -126,9 +127,13 @@ func Execute(t *testing.T, config Config, tests []Test) {
 			} else {
 				var v1, v2 any
 				var j1, j2 []byte
-				_ = json.Unmarshal([]byte(test.Expected), &v1)
+				d1 := json.NewDecoder(bytes.NewBuffer([]byte(test.Expected)))
+				d1.UseNumber()
+				d1.Decode(&v1)
 				j1, _ = json.Marshal(v1)
-				_ = json.Unmarshal(body, &v2)
+				d2 := json.NewDecoder(bytes.NewBuffer(body))
+				d2.UseNumber()
+				d2.Decode(&v2)
 				j2, _ = json.Marshal(v2)
 				s1, s2 = string(j1), string(j2)
 			}
