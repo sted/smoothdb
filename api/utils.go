@@ -231,14 +231,18 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 		}
 		isArray := jsonIsArray(body)
 
+		// Create decoder with UseNumber to preserve large integers
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.UseNumber()
+
 		if isArray {
-			err = json.Unmarshal(body, &records)
+			err = decoder.Decode(&records)
 			if err != nil {
 				return nil, err
 			}
 		} else {
 			var record database.Record
-			err = json.Unmarshal(body, &record)
+			err = decoder.Decode(&record)
 			if err != nil {
 				return nil, err
 			}
