@@ -191,6 +191,48 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT COUNT(*) AS "count", "table"."customer_id" FROM "table" GROUP BY "table"."customer_id"`,
 			nil,
 		},
+		{
+			// JSON field with cast before aggregation
+			"?select=jsonb_col->>key::integer.sum()",
+			`SELECT SUM(("table"."jsonb_col"->>'key')::integer) AS "sum" FROM "table"`,
+			nil,
+		},
+		{
+			// JSON field with cast before and after aggregation
+			"?select=s:jsonb_col->>key::integer.sum()::text",
+			`SELECT SUM(("table"."jsonb_col"->>'key')::integer)::text AS "s" FROM "table"`,
+			nil,
+		},
+		{
+			// Regular field with cast before aggregation
+			"?select=price::numeric.avg()",
+			`SELECT AVG(("table"."price")::numeric) AS "avg" FROM "table"`,
+			nil,
+		},
+		{
+			// Regular field with cast before aggregation and after
+			"?select=total:price::numeric.sum()::text",
+			`SELECT SUM(("table"."price")::numeric)::text AS "total" FROM "table"`,
+			nil,
+		},
+		{
+			// Complex JSON aggregation with grouping
+			"?select=project_id,total:invoice_total::numeric.sum(),count()",
+			`SELECT "table"."project_id", SUM(("table"."invoice_total")::numeric) AS "total", COUNT(*) AS "count" FROM "table" GROUP BY "table"."project_id"`,
+			nil,
+		},
+		{
+			// Multiple JSON aggregations
+			"?select=data->>value::integer.sum(),data->>count::integer.avg()",
+			`SELECT SUM(("table"."data"->>'value')::integer) AS "sum", AVG(("table"."data"->>'count')::integer) AS "avg" FROM "table"`,
+			nil,
+		},
+		{
+			// Regular field cast without aggregation
+			"?select=name::text,age::integer",
+			`SELECT "table"."name"::text, "table"."age"::integer FROM "table"`,
+			nil,
+		},
 	}
 
 	for i, test := range tests {
