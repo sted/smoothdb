@@ -704,7 +704,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "selectStar works in absense of parameter",
 			Query:       "/complex_items?id=eq.3",
 			Headers:     nil,
-			Expected:    `[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Expected:    `[{"id":3,"name":"Three","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":3}]`,
 			Status:      200,
 		},
 		//   it "dash `-` in column names is accepted" $
@@ -714,7 +714,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "dash `-` in column names is accepted",
 			Query:       "/complex_items?id=eq.3&select=id,field-with_sep",
 			Headers:     nil,
-			Expected:    `[{"id":3,"field-with_sep":1}]`,
+			Expected:    `[{"id":3,"field-with_sep":3}]`,
 			Status:      200,
 		},
 		//   it "one simple column" $

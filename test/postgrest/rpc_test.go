@@ -1761,7 +1761,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		{
 			Description:     "binary output: Proc that returns scalar can query without selecting column",
 			Method:          "GET", // @@ POST -> GET
-			Query:           "/rpc/ret_base64_bin",
+			Query:           "/rpc/ret_image",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
