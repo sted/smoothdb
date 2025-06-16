@@ -10,6 +10,7 @@ type Config struct {
 	AllowedDatabases   []string `comment:"Allowed databases (default: [] for all)"`
 	SchemaSearchPath   []string `comment:"Schema search path (default: [] for Postgres search path)"`
 	TransactionMode    string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
+	AggregatesEnabled  bool     `comment:"Enable aggregate functions (default: true)"`
 }
 
 func DefaultConfig() *Config {
@@ -19,5 +20,6 @@ func DefaultConfig() *Config {
 		MaxPoolConnections: 100,
 		AnonRole:           "",
 		TransactionMode:    "none",
+		AggregatesEnabled:  true,
 	}
 }

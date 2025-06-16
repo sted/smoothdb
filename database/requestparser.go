@@ -161,6 +161,14 @@ func isValidAggregateFunction(fn string) bool {
 	}
 }
 
+// checkAggregatesEnabled checks if aggregate functions are enabled in the configuration
+func checkAggregatesEnabled() error {
+	if dbe != nil && !dbe.config.AggregatesEnabled {
+		return &ParseError{"Use of aggregate functions is not allowed"}
+	}
+	return nil
+}
+
 // filterParameters checks the map of filters and skip the keys with this rationale:
 // - they are not reserved words and
 // - they do not have an operator prefixing their value
@@ -425,6 +433,10 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 
 	// Check for standalone aggregate functions like count(), sum(), etc.
 	if isValidAggregateFunction(token) && p.lookAhead() == "()" {
+		// Check if aggregates are enabled
+		if err := checkAggregatesEnabled(); err != nil {
+			return nil, err
+		}
 		// This is a standalone aggregate function without field
 		p.next() // consume the ()
 		aggregate = strings.ToUpper(token)
@@ -457,6 +469,10 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 				// Check if we have: . <function> ()
 				aggFunc := p.tokens[next]
 				if isValidAggregateFunction(aggFunc) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
+					// Check if aggregates are enabled
+					if err := checkAggregatesEnabled(); err != nil {
+						return nil, err
+					}
 					p.next() // consume the dot
 					p.next() // consume the aggregate function
 					p.next() // consume the ()

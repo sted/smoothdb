@@ -299,6 +299,97 @@ You can nest relationships on multiple levels.
 GET /api/testdb/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design* HTTP/1.1
 ```
 
+### Aggregate Functions
+
+SmoothDB supports aggregate functions for performing calculations on data sets, compatible with [PostgREST aggregate queries](https://postgrest.org/en/stable/references/api/aggregate_functions.html).
+
+#### Basic Aggregates
+
+Simple aggregates return a single result:
+
+```http
+GET /orders?select=amount.sum() HTTP/1.1
+```
+```json
+[{"sum":108000}]
+```
+
+Supported aggregate functions:
+- `avg()` - Average value
+- `count()` - Count of rows
+- `max()` - Maximum value  
+- `min()` - Minimum value
+- `sum()` - Sum of values
+
+#### Grouped Aggregates
+
+Include non-aggregate fields to group results:
+
+```http
+GET /orders?select=amount.sum(),customer_id&order=customer_id.asc HTTP/1.1
+```
+```json
+[
+  {"sum":36000,"customer_id":1},
+  {"sum":24000,"customer_id":2},
+  {"sum":48000,"customer_id":3}
+]
+```
+
+#### Custom Labels and Type Casting
+
+```http
+GET /orders?select=total_revenue:amount.sum(),avg_order:amount.avg()::int HTTP/1.1
+```
+```json
+[{"total_revenue":108000,"avg_order":36000}]
+```
+
+#### Count Without Specifying Field
+
+```http
+GET /orders?select=count() HTTP/1.1
+```
+```json
+[{"count":25}]
+```
+
+#### Aggregates with JSON Columns
+
+```http
+GET /orders?select=details->tax::numeric.sum() HTTP/1.1
+```
+```json
+[{"sum":1250.50}]
+```
+
+#### Aggregates in Embedded Resources
+
+```http
+GET /customers?select=name,orders(amount.sum()) HTTP/1.1
+```
+```json
+[
+  {"name":"Alice","orders":[{"sum":15000}]},
+  {"name":"Bob","orders":[{"sum":22000}]}
+]
+```
+
+#### Configuration
+
+Aggregate functions are enabled by default. To disable them, set `Database.AggregatesEnabled` to `false` in your configuration:
+
+```json
+{
+  "Database": {
+    "AggregatesEnabled": false
+  }
+}
+```
+
+When disabled, attempts to use aggregate functions will return an error.
+
+
 ## Example for using SmoothDB in your application
 
 You can embed SmoothDB functionalities in your backend app with relative ease.
@@ -561,6 +652,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
+| Database.AggregatesEnabled | Enable aggregate functions | true |
 | Logging.Level | Log level: trace, debug, info, warn, error, fatal, panic | "info" |
 | Logging.FileLogging | Enable logging to file | true |
 | Logging.FilePath | File path for file-based logging | "./smoothdb.log" |
