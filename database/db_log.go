@@ -44,7 +44,9 @@ func (pl *DbLogger) Log(ctx context.Context, level tracelog.LogLevel, msg string
 
 	event := pl.zlog.WithLevel(zlevel)
 	if event.Enabled() {
-		event.Dur("elapsed", data["time"].(time.Duration))
+		if data["time"] != nil {
+			event.Dur("elapsed", data["time"].(time.Duration))
+		}
 		gctx := GetSmoothContext(ctx)
 		var role string
 		if gctx != nil {
