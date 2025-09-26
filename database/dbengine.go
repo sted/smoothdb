@@ -394,7 +394,7 @@ func (dbe *DbEngine) GetMainDatabase(ctx context.Context) (*Database, error) {
 }
 
 func VerifyAuthN(user, password string) error {
-	config, err := pgx.ParseConfig(fmt.Sprintf(dbe.config.URL))
+	config, err := pgx.ParseConfig(dbe.config.URL)
 	if err != nil {
 		return err
 	}
