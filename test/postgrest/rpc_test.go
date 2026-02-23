@@ -596,6 +596,36 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:    `[{"id":1,"name":"Windows 7","client":{"id":1},"tasks":[{"id":1},{"id":2}]}]`,
 			Status:      200,
 		},
+		// @@ added by me
+		{
+			Description: "can embed via FK column name in RPC (POST)",
+			Method:      "POST",
+			Query:       "/rpc/getproject?select=id,name,client_id(id)",
+			Body:        `{"id": 1}`,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":{"id":1}}]`,
+			Status:      200,
+		},
+		// @@ added by me
+		{
+			Description: "can embed via FK column name in RPC (GET)",
+			Method:      "GET",
+			Query:       "/rpc/getproject?id=1&select=id,name,client_id(id)",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":{"id":1}}]`,
+			Status:      200,
+		},
+		// @@ added by me
+		{
+			Description: "can embed and spread via FK column name in RPC (GET)",
+			Method:      "GET",
+			Query:       "/rpc/getproject?id=1&select=id,name,...client_id(client_name:name)",
+			Body:        ``,
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","client_name":"Microsoft"}]`,
+			Status:      200,
+		},
 		//   it "cannot embed if the related table is not in the exposed schema" $ do
 		//     post "/rpc/single_article?select=*,article_stars(*)" [json|{ "id": 1}|]
 		//       `shouldRespondWith` 400

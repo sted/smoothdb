@@ -51,7 +51,7 @@
 * [ ] Generate OpenAPI
 * [x] Plugins
 * [ ] SQL injection mitigation and related tests
-* [ ] Computed table relationships
+* [x] Computed table relationships
 * [ ] More types: Multirange, Domain
 * [ ] location header
 * [ ] return=headers-only

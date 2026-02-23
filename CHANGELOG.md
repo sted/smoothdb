@@ -1,5 +1,15 @@
 # Change Log
 
+## current
+
+### Added
+* Support for Computed Relationships (table-returning functions as virtual relationships)
+* Support filtering embedded resources by FK column name (e.g. `client_id.id=eq.1`)
+
+### Fixes
+* Fixed serialization bugs for composite and unrecognized types
+* Fixed CI race condition
+
 ## 0.3.0 - 2025-05-05
 
 ### Added
