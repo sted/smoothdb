@@ -465,6 +465,160 @@ func TestPartitionedTableFunction(t *testing.T) {
 	}
 }
 
+func TestComputedRelationship(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbe.DeleteDatabase(ctx, "test_comp_rel")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_comp_rel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	gi := GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, `
+		CREATE TABLE principals (
+			id serial PRIMARY KEY,
+			type text NOT NULL,
+			name text NOT NULL
+		);
+		CREATE TABLE documents (
+			id serial PRIMARY KEY,
+			name text NOT NULL,
+			read int[] NOT NULL DEFAULT '{}'
+		);
+		INSERT INTO principals (type, name) VALUES ('user', 'Alice'), ('user', 'Bob'), ('team', 'Admins');
+		INSERT INTO documents (name, read) VALUES
+			('Document A', '{1,2}'),
+			('Document B', '{1,3}'),
+			('Document C', '{}');
+
+		CREATE FUNCTION read_principals(documents)
+		RETURNS SETOF principals
+		LANGUAGE sql STABLE
+		AS $$
+			SELECT * FROM principals WHERE id = ANY($1.read)
+		$$;
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.ReloadSchemaCache(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("computed relationship is discovered", func(t *testing.T) {
+		rels := db.info.GetRelationships(_s("documents", "public"))
+		found := false
+		for _, rel := range rels {
+			if rel.Type == Computed && rel.FunctionName == "read_principals" {
+				found = true
+				if !rel.ReturnIsSet {
+					t.Error("expected ReturnIsSet to be true")
+				}
+				if rel.Table != "public.documents" {
+					t.Errorf("expected Table=public.documents, got %s", rel.Table)
+				}
+				if rel.RelatedTable != "public.principals" {
+					t.Errorf("expected RelatedTable=public.principals, got %s", rel.RelatedTable)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Fatal("computed relationship 'read_principals' not found in relationships for documents")
+		}
+	})
+
+	t.Run("select with computed relationship", func(t *testing.T) {
+		filters := Filters{
+			"select": {"id,name,read_principals(type,name)"},
+			"order":  {"id"},
+		}
+		result, _, err := GetRecords(ctx, "documents", filters)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		raw := string(result)
+		if !json.Valid(result) {
+			t.Fatalf("invalid JSON output: %s", raw)
+		}
+
+		var rows []map[string]any
+		if err := json.Unmarshal(result, &rows); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v (raw: %s)", err, raw)
+		}
+		if len(rows) != 3 {
+			t.Fatalf("expected 3 rows, got %d (raw: %s)", len(rows), raw)
+		}
+
+		// Document A has read={1,2} -> Alice, Bob
+		principals, ok := rows[0]["read_principals"].([]any)
+		if !ok {
+			t.Fatalf("expected read_principals to be array, got %T (raw: %s)", rows[0]["read_principals"], raw)
+		}
+		if len(principals) != 2 {
+			t.Fatalf("expected 2 principals for Document A, got %d (raw: %s)", len(principals), raw)
+		}
+
+		// Document C has read={} -> empty array
+		principals, ok = rows[2]["read_principals"].([]any)
+		if !ok {
+			t.Fatalf("expected read_principals to be array for Document C, got %T (raw: %s)", rows[2]["read_principals"], raw)
+		}
+		if len(principals) != 0 {
+			t.Fatalf("expected 0 principals for Document C, got %d (raw: %s)", len(principals), raw)
+		}
+	})
+
+	t.Run("select with computed relationship and filter", func(t *testing.T) {
+		filters := Filters{
+			"select":                {"id,name,read_principals(type,name)"},
+			"read_principals.type":  {"eq.user"},
+			"order":                 {"id"},
+		}
+		result, _, err := GetRecords(ctx, "documents", filters)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		raw := string(result)
+		if !json.Valid(result) {
+			t.Fatalf("invalid JSON output: %s", raw)
+		}
+
+		var rows []map[string]any
+		if err := json.Unmarshal(result, &rows); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v (raw: %s)", err, raw)
+		}
+		if len(rows) != 3 {
+			t.Fatalf("expected 3 rows, got %d (raw: %s)", len(rows), raw)
+		}
+
+		// Document B has read={1,3} but filtered to type=user -> only Alice (id=1)
+		principals := rows[1]["read_principals"].([]any)
+		if len(principals) != 1 {
+			t.Fatalf("expected 1 user principal for Document B (filter type=user), got %d (raw: %s)", len(principals), raw)
+		}
+		p := principals[0].(map[string]any)
+		if p["name"] != "Alice" {
+			t.Fatalf("expected Alice, got %v (raw: %s)", p["name"], raw)
+		}
+	})
+}
+
 func BenchmarkBase(b *testing.B) {
 
 	dbe_ctx, dbe_conn, _ := ContextWithDb(context.Background(), nil, "test")

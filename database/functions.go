@@ -18,6 +18,7 @@ type Function struct {
 	Definition   string     `json:"definition"`
 	ReturnTypeId uint32     `json:"rettypeid"`
 	ReturnIsSet  bool       `json:"retisset"`
+	ReturnRows   float32    `json:"retrows"` // prorows: estimated number of result rows
 	HasUnnamed   bool       `json:"hasunnamed"` // has unnamed parameters
 	HasOut       bool       `json:"hasout"`     // has OUT, INOUT, TABLE parameters
 	IsVariadic   bool       `json:"isvariadic"`
@@ -33,6 +34,7 @@ const functionsQuery = `
 		COALESCE(pg_catalog.pg_get_function_sqlbody(p.oid), p.prosrc) source,
 		prorettype rettypeid,
 		proretset retisset,
+		prorows retrows,
 		BOOL_OR(_.name is null) AND pronargs > 0 hasunnamed,
 		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout,
 		p.provariadic != 0 isvariadic
@@ -65,6 +67,7 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 			&f.Definition,
 			&f.ReturnTypeId,
 			&f.ReturnIsSet,
+			&f.ReturnRows,
 			&f.HasUnnamed,
 			&f.HasOut,
 			&f.IsVariadic)

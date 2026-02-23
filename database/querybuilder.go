@@ -26,6 +26,7 @@ type Join struct {
 	inner    bool          // is a inner join
 	rel      *Relationship // base relationship
 	relLabel string        // label for the relationship, taken from the select clause
+	relName  string        // relation/function name as it appears in the query
 }
 
 type BuildError struct {
@@ -120,10 +121,8 @@ func labelWithNumber(table string, num int) string {
 func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel string) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
-	sel += " FROM " + quoteParts(rel.RelatedTable)
 	_, t1 := splitTableName(rel.RelatedTable)
 	label1 := quote(labelWithNumber(t1, stack.level+1))
-	sel += " AS " + label1
 	var label2 string
 	if stack.level > 0 {
 		_, t2 := splitTableName(rel.Table)
@@ -133,64 +132,103 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 	} else {
 		label2 = quoteParts(rel.Table)
 	}
-	if rel.JunctionTable != "" {
-		sel += ", " + quoteParts(rel.JunctionTable)
-	}
-	if join.nested != "" {
-		sel += " " + join.nested
-	}
-	sel += " WHERE "
-	if rel.JunctionTable == "" {
-		for i := range rel.Columns {
-			if i != 0 {
-				sel += " AND "
-			}
-			sel += label1 + "." + quote(rel.RelatedColumns[i])
-			sel += " = "
-			if stack.afterWithClause {
-				sel += quote("_source")
-			} else {
-				sel += label2
-			}
-			sel += "." + quote(rel.Columns[i])
+
+	if rel.Type == Computed {
+		// Computed relationship: call the function with parent row reference
+		// Use the unqualified table name as the row reference (the implicit alias from outer FROM),
+		// with a qualified cast for the type. This is needed because in nested subqueries
+		// (inside json_agg wrapper), the schema-qualified reference doesn't resolve as a row ref.
+		var parentRef string
+		if stack.afterWithClause {
+			parentRef = quote("_source")
+		} else if stack.level > 0 {
+			_, t2 := splitTableName(rel.Table)
+			parentRef = quote(labelWithNumber(t2, stack.level))
+		} else if label != "" {
+			parentRef = label
+		} else {
+			_, t2 := splitTableName(rel.Table)
+			parentRef = quote(t2)
+		}
+		parentType := quoteParts(rel.Table)
+		funcRef := _sq(rel.FunctionName, rel.FunctionSchema)
+		sel += " FROM " + funcRef + "(" + parentRef + "::" + parentType + ")"
+		sel += " AS " + label1
+		if join.nested != "" {
+			sel += " " + join.nested
+		}
+		// Apply embedded resource filters (use function name for relPath matching)
+		schema, table := splitTableName(rel.RelatedTable)
+		stackRelName := join.relName
+		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, stackRelName, join.relLabel))
+		if wc != "" {
+			sel += " WHERE " + wc
+		}
+		oc := orderClause(table, schema, label1, parts.orderFields, stack.info)
+		if oc != "" {
+			sel += " ORDER BY " + oc
 		}
 	} else {
-		// M2M Join
-
-		for i := range rel.JColumns {
-			if i != 0 {
+		// FK-based relationship
+		sel += " FROM " + quoteParts(rel.RelatedTable)
+		sel += " AS " + label1
+		if rel.JunctionTable != "" {
+			sel += ", " + quoteParts(rel.JunctionTable)
+		}
+		if join.nested != "" {
+			sel += " " + join.nested
+		}
+		sel += " WHERE "
+		if rel.JunctionTable == "" {
+			for i := range rel.Columns {
+				if i != 0 {
+					sel += " AND "
+				}
+				sel += label1 + "." + quote(rel.RelatedColumns[i])
+				sel += " = "
+				if stack.afterWithClause {
+					sel += quote("_source")
+				} else {
+					sel += label2
+				}
+				sel += "." + quote(rel.Columns[i])
+			}
+		} else {
+			// M2M Join
+			for i := range rel.JColumns {
+				if i != 0 {
+					sel += " AND "
+				}
+				sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
+				sel += " = "
+				if stack.afterWithClause {
+					sel += quote("_source")
+				} else {
+					sel += label2
+				}
+				sel += "." + quote(rel.Columns[i])
+			}
+			for i := range rel.JRelatedColumns {
 				sel += " AND "
+				sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JRelatedColumns[i])
+				sel += " = "
+				sel += label1 + "." + quote(rel.RelatedColumns[i])
 			}
-			sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
-			sel += " = "
-			if stack.afterWithClause {
-				sel += quote("_source")
-			} else {
-				sel += label2
+		}
+		// where and order clause for the internal select: the expressions related to
+		// the external query are skipped inside the functions.
+		// If the internal table is equal to the external one we avoid repeating
+		// the expressions.
+		if rel.Table != rel.RelatedTable {
+			schema, table := splitTableName(rel.RelatedTable)
+			whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel))
+			if whereClause != "" {
+				sel += " AND " + whereClause
 			}
-			sel += "." + quote(rel.Columns[i])
-		}
-
-		for i := range rel.JRelatedColumns {
-			sel += " AND "
-			sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JRelatedColumns[i])
-			sel += " = "
-			sel += label1 + "." + quote(rel.RelatedColumns[i])
-		}
-	}
-	// where and order clause for the internal select: the expressions related to
-	// the external query are skipped inside the functions.
-	// If the internal table is equal to the external one we avoid repeating
-	// the expressions.
-	if rel.Table != rel.RelatedTable {
-		schema, table := splitTableName(rel.RelatedTable)
-		whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel))
-		if whereClause != "" {
-			sel += " AND " + whereClause
-		}
-		orderClause := orderClause(table, schema, label1, parts.orderFields, stack.info)
-		if orderClause != "" {
-			sel += " ORDER BY " + orderClause
+			orderClause := orderClause(table, schema, label1, parts.orderFields, stack.info)
+			if orderClause != "" {
+				sel += " ORDER BY " + orderClause
+			}
 		}
 	}
 	return sel
@@ -204,6 +242,13 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 	nrels := len(frels)
 	switch {
 	case nrels == 0:
+		// Try computed relationships by function name
+		for i := range rels {
+			if rels[i].Type == Computed && rels[i].FunctionName == relation &&
+				(schema == "" || rels[i].FunctionSchema == schema) {
+				return &rels[i], nil
+			}
+		}
 		if fk != "" {
 			hint := fk // the hint is not an fk but a col? we try
 			rel = info.FindRelationshipByCol(tableWithSchema, hint)
@@ -278,15 +323,34 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 						return "", "", nil, err
 					}
 					selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
+				case Computed:
+					if frel.ReturnIsSet {
+						if sfield.relation.spread {
+							err = &BuildError{"A spread operation on " + sfield.relation.name + " is not possible"}
+							return "", "", nil, err
+						}
+						selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
+					} else {
+						if sfield.relation.spread {
+							selClause += quote(joinName) + ".*"
+						} else {
+							selClause += " row_to_json(" + quote(joinName) + ".*) AS " + quote(labelRelName)
+						}
+					}
 				}
 			}
 			_, relatedTable = splitTableName(frel.RelatedTable)
 			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree}
-			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, relatedTable, sfield.label))
+			// For computed relationships, use the function name in the relPath so WHERE filters match
+			stackRelName := relatedTable
+			if frel.Type == Computed {
+				stackRelName = sfield.relation.name
+			}
+			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label))
 			if err != nil {
 				return "", "", nil, err
 			}
-			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label})
+			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name})
 		} else {
 			if i != 0 {
 				selClause += ", "
@@ -329,15 +393,27 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 				joins += " FROM ("
 				joins += selectForJoin
 				joins += " ) AS \"_" + relName + "\""
+			case Computed:
+				if join.rel.ReturnIsSet {
+					joins += " SELECT json_agg(\"_" + relName + "\") AS \"_" + relName + "\""
+					joins += " FROM ("
+					joins += selectForJoin
+					joins += " ) AS \"_" + relName + "\""
+				} else {
+					joins += selectForJoin
+				}
 			}
 			joins += ") AS \"" + relName + "\" ON"
-			if join.inner && (join.rel.Type == O2M || join.rel.Type == M2M) {
+			if join.inner && (join.rel.Type == O2M || join.rel.Type == M2M || (join.rel.Type == Computed && join.rel.ReturnIsSet)) {
 				joins += " \"" + relName + "\" IS NOT NULL"
 			} else {
 				joins += " TRUE"
 			}
-			for i := range join.rel.Columns {
-				keys = append(keys, quoteParts(join.rel.Table)+"."+quote(join.rel.Columns[i]))
+			// No FK columns needed for computed relationships
+			if join.rel.Type != Computed {
+				for i := range join.rel.Columns {
+					keys = append(keys, quoteParts(join.rel.Table)+"."+quote(join.rel.Columns[i]))
+				}
 			}
 		}
 	}

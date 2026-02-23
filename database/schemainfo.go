@@ -13,6 +13,7 @@ const (
 	M2O
 	O2O
 	M2M
+	Computed
 )
 
 type Relationship struct {
@@ -25,6 +26,10 @@ type Relationship struct {
 	JColumns        []string
 	JRelatedColumns []string
 	ForeignKey      string
+	// Computed relationship fields
+	FunctionName   string // function name (e.g., "read_principals")
+	FunctionSchema string // function schema (e.g., "public")
+	ReturnIsSet    bool   // whether the function returns SETOF
 }
 
 type SchemaInfo struct {
@@ -136,6 +141,42 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 			continue
 		}
 		dbi.cachedFunctions[fname] = f
+	}
+	// Computed relationships: detect functions with a single IN argument of table type
+	for _, f := range functions {
+		// Count IN arguments (mode 0 means default=IN, 'i' means explicit IN)
+		var inArgs []Argument
+		for _, arg := range f.Arguments {
+			if arg.Mode == 0 || arg.Mode == 'i' {
+				inArgs = append(inArgs, arg)
+			}
+		}
+		if len(inArgs) != 1 {
+			continue
+		}
+		// The IN argument's type must be a table type
+		argType, ok := dbi.cachedTypes[inArgs[0].TypeId]
+		if !ok || !argType.IsTable {
+			continue
+		}
+		// The return type must be a table or composite type
+		retType, ok := dbi.cachedTypes[f.ReturnTypeId]
+		if !ok || (!retType.IsTable && !retType.IsComposite) {
+			continue
+		}
+		sourceTable := _s(argType.Name, argType.Schema)
+		relatedTable := _s(retType.Name, retType.Schema)
+		// ROWS 1 hint means the function effectively returns a single row (to-one)
+		returnIsSet := f.ReturnIsSet && f.ReturnRows != 1
+		rel := Relationship{
+			Type:           Computed,
+			Table:          sourceTable,
+			RelatedTable:   relatedTable,
+			FunctionName:   f.Name,
+			FunctionSchema: f.Schema,
+			ReturnIsSet:    returnIsSet,
+		}
+		dbi.cachedRelationships[sourceTable] = append(dbi.cachedRelationships[sourceTable], rel)
 	}
 	return dbi, nil
 }
@@ -290,6 +331,10 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 
 func filterRelationships(rels []Relationship, relatedTable, fk string) []Relationship {
 	return lo.Filter(rels, func(rel Relationship, _ int) bool {
+		// Computed relationships are matched by function name, not by RelatedTable
+		if rel.Type == Computed {
+			return false
+		}
 		return rel.RelatedTable == relatedTable && (fk == "" || rel.ForeignKey == fk)
 	})
 }
