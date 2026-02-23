@@ -39,6 +39,7 @@ func TestMain(m *testing.M) {
 	srv = s
 
 	go s.Start()
+	test.WaitForServer("http://localhost:8082")
 
 	// Tear-up
 

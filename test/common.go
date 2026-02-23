@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 type Headers http.Header
@@ -100,6 +101,19 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, *http.Heade
 		return nil, nil, 0, err
 	}
 	return ReadResponse(resp)
+}
+
+func WaitForServer(baseURL string) {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	for i := 0; i < 40; i++ {
+		resp, err := client.Get(baseURL + "/live")
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	fmt.Println("Warning: server did not become ready")
 }
 
 func Prepare(config Config, commands []Command) {
