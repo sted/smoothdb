@@ -42,8 +42,15 @@
 * [x] range headers
 * [ ] Admin
 * [ ] Projects
-* [ ] Related orders
+* [x] Related orders
 * [ ] Related limit and offset
+* [ ] Null filtering on embedded resources (&relation=is.null)
+* [ ] Spread to-many relationships (correlated arrays)
+* [ ] Spread join table columns (junction table fields in M2M spread)
+* [ ] OR filtering across embedded resources (or=(rel.not.is.null,...))
+* [ ] Overriding FK relationships with computed functions
+* [ ] Recursive relationships (self-referential computed functions)
+* [ ] Chained views embedding (views of views)
 * [x] hints for rels
 * [ ] embeds with views (this is not easy)
 * [ ] variadic function

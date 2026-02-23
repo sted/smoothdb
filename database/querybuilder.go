@@ -20,13 +20,14 @@ type QueryBuilder interface {
 // Join containts information to create a join relationship.
 // It is composed while building the select clause.
 type Join struct {
-	name     string        // join name, crafted to be unique
-	fields   string        // fields to be selected in the related table (eg. a, b::text, c AS C)
-	nested   string        // nested joins
-	inner    bool          // is a inner join
-	rel      *Relationship // base relationship
-	relLabel string        // label for the relationship, taken from the select clause
-	relName  string        // relation/function name as it appears in the query
+	name         string        // join name, crafted to be unique
+	fields       string        // fields to be selected in the related table (eg. a, b::text, c AS C)
+	nested       string        // nested joins
+	inner        bool          // is a inner join
+	rel          *Relationship // base relationship
+	relLabel     string        // label for the relationship, taken from the select clause
+	relName      string        // relation/function name as it appears in the query
+	selectFields []SelectField // inner select fields (for related order validation)
 }
 
 type BuildError struct {
@@ -120,7 +121,7 @@ func labelWithNumber(table string, num int) string {
 	return table + "_" + strconv.Itoa(num)
 }
 
-func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel string) {
+func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel string, err error) {
 	rel := join.rel
 	sel = " SELECT " + join.fields
 	_, t1 := splitTableName(rel.RelatedTable)
@@ -166,7 +167,10 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		if wc != "" {
 			sel += " WHERE " + wc
 		}
-		oc := orderClause(table, schema, label1, parts.orderFields, stack.info)
+		oc, err := orderClause(table, schema, label1, stack.level+1, parts.orderFields, join.selectFields, stack.info)
+		if err != nil {
+			return "", err
+		}
 		if oc != "" {
 			sel += " ORDER BY " + oc
 		}
@@ -231,13 +235,16 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 			if whereClause != "" {
 				sel += " AND " + whereClause
 			}
-			orderClause := orderClause(table, schema, label1, parts.orderFields, stack.info)
-			if orderClause != "" {
-				sel += " ORDER BY " + orderClause
+			oc, err := orderClause(table, schema, label1, stack.level+1, parts.orderFields, join.selectFields, stack.info)
+			if err != nil {
+				return "", err
+			}
+			if oc != "" {
+				sel += " ORDER BY " + oc
 			}
 		}
 	}
-	return sel
+	return sel, nil
 }
 
 func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel *Relationship, err error) {
@@ -360,7 +367,7 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			if err != nil {
 				return "", "", nil, err
 			}
-			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name})
+			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name, sfield.relation.fields})
 		} else {
 			if i != 0 {
 				selClause += ", "
@@ -388,7 +395,10 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			relName := join.name
-			selectForJoin := selectForJoinClause(join, label, parts, stack)
+			selectForJoin, err := selectForJoinClause(join, label, parts, stack)
+			if err != nil {
+				return "", "", nil, err
+			}
 			if join.inner {
 				joins += " INNER"
 			} else {
@@ -466,25 +476,41 @@ func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) st
 	return ""
 }
 
-func orderClause(table, schema, label string, orderFields []OrderField, info *SchemaInfo) string {
+func orderClause(table, schema, label string, level int, orderFields []OrderField,
+	selectFields []SelectField, info *SchemaInfo) (string, error) {
 	var order string
 	for _, o := range orderFields {
 		if o.field.tablename != table {
-			// skip where filters for other tables
+			// skip order fields for other tables
 			continue
 		}
 		if order != "" {
 			order += ", "
 		}
 		var fieldname string
-		if label == "" {
+		if o.relation != "" {
+			// Related order: order by a column in a to-one related table
+			matchedLabel, err := validateRelatedOrder(table, schema, o, selectFields, info)
+			if err != nil {
+				return "", err
+			}
+			joinAlias := quote(labelWithNumber(table+"_"+matchedLabel, level+1))
+			fieldname = joinAlias + "." + quote(o.field.name)
+			if o.field.jsonPath != "" {
+				fieldname = "(" + fieldname + o.field.jsonPath + ")"
+			}
+		} else if label == "" {
 			fieldname = _stq(o.field.name, schema, table)
+			if o.field.jsonPath != "" {
+				fieldname = "(" + toJson(table, schema, o.field.name, fieldname, info) +
+					o.field.jsonPath + ")"
+			}
 		} else {
 			fieldname = label + "." + quote(o.field.name)
-		}
-		if o.field.jsonPath != "" {
-			fieldname = "(" + toJson(table, schema, o.field.name, fieldname, info) +
-				o.field.jsonPath + ")"
+			if o.field.jsonPath != "" {
+				fieldname = "(" + toJson(table, schema, o.field.name, fieldname, info) +
+					o.field.jsonPath + ")"
+			}
 		}
 		order += fieldname
 		if o.descending {
@@ -498,7 +524,44 @@ func orderClause(table, schema, label string, orderFields []OrderField, info *Sc
 			}
 		}
 	}
-	return order
+	return order, nil
+}
+
+// validateRelatedOrder checks that a related order references an embedded to-one relationship.
+// Returns the matched label (used for join alias construction) or an error.
+func validateRelatedOrder(table, schema string, o OrderField, selectFields []SelectField, info *SchemaInfo) (string, error) {
+	for _, sf := range selectFields {
+		if sf.relation == nil {
+			continue
+		}
+		sfLabel := sf.label
+		if sfLabel == "" {
+			sfLabel = sf.relation.name
+		}
+		if sfLabel == o.relation || sf.relation.name == o.relation {
+			// Found matching embedded resource - check relationship type
+			parentTable := sf.relation.parent
+			if parentTable == "" {
+				parentTable = table
+			}
+			rel, err := findRelationship(parentTable, sf.relation.name, sf.relation.fk, schema, info)
+			if err != nil {
+				return "", err
+			}
+			switch rel.Type {
+			case M2O, O2O:
+				// OK
+			case O2M, M2M:
+				return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+			case Computed:
+				if rel.ReturnIsSet {
+					return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+				}
+			}
+			return sfLabel, nil
+		}
+	}
+	return "", &BuildError{"'" + o.relation + "' is not an embedded resource in this request"}
 }
 
 func appendValue(where, value string, valueList []any, nmarker int) (string, []any, int) {
@@ -968,7 +1031,10 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	for i := range parts.orderFields {
 		parts.orderFields[i].field.tablename = "t"
 	}
-	orderClause := orderClause("t", "", "", parts.orderFields, info)
+	orderClause, err := orderClause("t", "", "", 0, parts.orderFields, parts.selectFields, info)
+	if err != nil {
+		return "", nil, err
+	}
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
@@ -988,7 +1054,10 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	groupByClause := groupByClause(table, schema, parts, info)
-	orderClause := orderClause(table, schema, "", parts.orderFields, info)
+	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
+	if err != nil {
+		return "", nil, err
+	}
 
 	query := "SELECT " + selectClause
 	from := "FROM " + _sq(table, schema)
@@ -1013,7 +1082,10 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 	groupByClause := groupByClause(table, schema, parts, info)
-	orderClause := orderClause(table, schema, "", parts.orderFields, info)
+	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
+	if err != nil {
+		return "", nil, err
+	}
 
 	query := "SELECT "
 	if selectClause == "*" {

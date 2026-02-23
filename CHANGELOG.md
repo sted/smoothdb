@@ -5,6 +5,7 @@
 ### Added
 * Support for Computed Relationships (table-returning functions as virtual relationships)
 * Support filtering embedded resources by FK column name (e.g. `client_id.id=eq.1`)
+* Related orders: order parent rows by columns in to-one embedded resources (e.g. `order=clients(name).desc`)
 
 ### Fixes
 * Fixed serialization bugs for composite and unrecognized types

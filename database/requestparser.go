@@ -52,6 +52,7 @@ type SelectRelation struct {
 
 type OrderField struct {
 	field       Field
+	relation    string // for related orders: the relation/label name (empty for regular orders)
 	descending  bool
 	invertNulls bool
 }
@@ -604,7 +605,7 @@ func (p *PostgRestParser) parseConflicts(s string) ([]string, error) {
 func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string
 	p.reset()
-	p.scan(o, ".,", "->>", "->")
+	p.scan(o, ".,()", "->>", "->")
 
 	token := p.lookAhead()
 	if token == "" {
@@ -615,7 +616,25 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 		if err != nil {
 			return nil, err
 		}
+
+		// Check for related order syntax: relation(field)
+		var relation string
+		if p.lookAhead() == "(" {
+			p.next() // consume (
+			relation = field.name
+			field, err = p.field(false, false)
+			if err != nil {
+				return nil, err
+			}
+			if p.lookAhead() != ")" {
+				return nil, &ParseError{"')' expected"}
+			}
+			p.next() // consume )
+		}
+
 		field.tablename = table
+		value1 = ""
+		value2 = ""
 		if p.lookAhead() == "." {
 			p.next()
 			value1 = p.next()
@@ -643,7 +662,7 @@ func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderFi
 			invertNulls = true
 		}
 		fields = append(fields,
-			OrderField{field: field, descending: descending, invertNulls: invertNulls})
+			OrderField{field: field, relation: relation, descending: descending, invertNulls: invertNulls})
 		if p.lookAhead() != "," {
 			break
 		}
