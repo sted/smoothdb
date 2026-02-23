@@ -58,6 +58,9 @@ brews:
     # test: |
     #   system "#{bin}/smoothdb --version"
 
+release:
+  replace_existing_artifacts: true
+
 changelog:
   disable: true
 #   sort: asc
