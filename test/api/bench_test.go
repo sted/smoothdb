@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sted/heligo"
@@ -65,17 +66,13 @@ func BenchmarkBase(b *testing.B) {
 	}
 
 	for _, t := range tests {
-		w := httptest.NewRecorder()
-		req, err := http.NewRequest(t.Method, t.Query, nil)
-		req.Header.Add("Authorization", user1Token)
-		if err != nil {
-			panic(err)
-		}
 		b.Run(t.Description, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
+				w := httptest.NewRecorder()
+				req, _ := http.NewRequest(t.Method, t.Query, strings.NewReader(""))
+				req.Header.Add("Authorization", user1Token)
 				router.ServeHTTP(w, req)
 			}
-
 		})
 	}
 }

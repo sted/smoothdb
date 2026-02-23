@@ -11,7 +11,11 @@ import (
 
 func (s *Server) initHTTPServer() {
 	s.router = heligo.New()
-	//router.Use(gin.Recovery())
+	s.router.TrailingSlash = true
+	s.router.Use(heligo.Recover(func(v any) {
+		s.logger.Error().Msgf("panic recovered: %v", v)
+	}))
+	s.router.Use(heligo.CleanPaths())
 	s.router.Use(HTTPLogger(s.logger))
 
 	cfg := s.Config

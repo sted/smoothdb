@@ -49,7 +49,8 @@ func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 // WriteServerError write a status related to a database error
 func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
-	if dberr, ok := err.(*pgconn.PgError); ok {
+	var dberr *pgconn.PgError
+	if errors.As(err, &dberr) {
 		switch dberr.Code {
 		case "42501":
 			status = http.StatusUnauthorized
@@ -78,7 +79,7 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
 		heligo.WriteHeader(w, status)
-	} else if _, ok := err.(*pgconn.ConnectError); ok {
+	} else if connectErr := (*pgconn.ConnectError)(nil); errors.As(err, &connectErr) {
 		status = http.StatusBadRequest
 		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: err.Error()})
 	} else {
