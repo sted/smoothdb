@@ -548,10 +548,15 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 				j.appendEnum(buf)
 				j.WriteByte('"')
 			default:
-				return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+				// Unknown scalar types (e.g. ltree): serialize as text
+				j.WriteByte('"')
+				j.appendString(buf, true)
+				j.WriteByte('"')
 			}
 		} else {
-			return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+			j.WriteByte('"')
+			j.appendString(buf, true)
+			j.WriteByte('"')
 		}
 	}
 	return nil
@@ -666,10 +671,10 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 			case ct.IsEnum:
 				csv.appendEnum(buf)
 			default:
-				return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+				csv.appendField(buf)
 			}
 		} else {
-			return fmt.Errorf("cannot serialize, type not supported (%d)", typ)
+			csv.appendField(buf)
 		}
 	}
 	return nil

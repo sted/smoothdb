@@ -3,10 +3,10 @@ package database
 import "context"
 
 type Argument struct {
-	Name string
-	Type string
-	Mode byte // i IN, o OUT, b INOUT, v VARIADIC, t TABLE
-	//Default string
+	Name   string
+	Type   string
+	Mode   byte   // i IN, o OUT, b INOUT, v VARIADIC, t TABLE
+	TypeId uint32 // OID of the argument type
 }
 
 type Function struct {
@@ -27,7 +27,7 @@ const functionsQuery = `
 	SELECT
 		proname name,
 		n.nspname schema,
-		ARRAY_AGG((COALESCE(_.name, ''), COALESCE(_.type::regtype::text, ''), COALESCE(_.mode, '')) ORDER BY _.idx) args,
+		ARRAY_AGG((COALESCE(_.name, ''), COALESCE(_.type::regtype::text, ''), COALESCE(_.mode, ''), COALESCE(_.type::int4, 0)) ORDER BY _.idx) args,
 		prorettype::regtype rettype,
 		l.lanname language,
 		COALESCE(pg_catalog.pg_get_function_sqlbody(p.oid), p.prosrc) source,
@@ -39,7 +39,7 @@ const functionsQuery = `
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
-	LEFT JOIN UNNEST(proargnames, proargtypes, proargmodes) WITH ORDINALITY AS _(name, type, mode, idx) ON true
+	LEFT JOIN UNNEST(proargnames, COALESCE(proallargtypes, proargtypes::oid[]), proargmodes) WITH ORDINALITY AS _(name, type, mode, idx) ON true
 	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
 	GROUP BY p.oid, n.nspname, l.lanname;`
 

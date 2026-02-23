@@ -745,14 +745,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		   , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		// 		   , matchBody = bodyEquals inserted
 		// 		   }
-		//@@ do not support money, we strippet them
 		{
 			Description:     "succeeds with multipart response",
 			Method:          "POST",
 			Query:           "/menagerie",
 			Body:            "integer,double,varchar,boolean,date,money,enum\n13,3.14159,testing!,false,1900-01-01,,foo\n12,0.1,a string,true,1929-10-01,,bar",
 			Headers:         test.Headers{"Accept": {"text/csv"}, "Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
-			Expected:        "integer,double,varchar,boolean,date,money,enum\n13,3.14159,testing!,false,1900-01-01,,foo\n12,0.1,a string,true,1929-10-01,,bar",
+			Expected:        "integer,double,varchar,boolean,date,money,enum\n13,3.14159,testing!,false,1900-01-01,$0.00,foo\n12,0.1,a string,true,1929-10-01,$0.00,bar",
 			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
 			Status:          201,
 		},

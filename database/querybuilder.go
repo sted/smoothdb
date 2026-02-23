@@ -854,6 +854,27 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	if err != nil {
 		return "", nil, err
 	}
+	// When SELECT is *, check for composite/table-typed output columns
+	// and wrap them with to_json() so they serialize as nested JSON objects
+	if selectClause == "*" && f != nil && f.HasOut {
+		var cols []string
+		hasComposite := false
+		for _, arg := range f.Arguments {
+			if arg.Mode != 't' && arg.Mode != 'o' && arg.Mode != 'b' {
+				continue
+			}
+			st := info.GetTypeById(arg.TypeId)
+			if st != nil && (st.IsComposite || st.IsTable) {
+				cols = append(cols, "to_json(\"t\"."+quote(arg.Name)+") AS "+quote(arg.Name))
+				hasComposite = true
+			} else {
+				cols = append(cols, "\"t\"."+quote(arg.Name))
+			}
+		}
+		if hasComposite {
+			selectClause = strings.Join(cols, ", ")
+		}
+	}
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
 	// patch order fields

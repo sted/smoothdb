@@ -7,6 +7,9 @@ import (
 	"os"
 	"testing"
 
+	"encoding/json"
+	"strings"
+
 	"github.com/samber/lo"
 )
 
@@ -256,6 +259,210 @@ func TestDDL(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestUnknownTypeSerialize(t *testing.T) {
+	// Test that unrecognized PostgreSQL types (e.g. ltree) are serialized
+	// as text strings instead of producing broken JSON.
+
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbe.DeleteDatabase(ctx, "test_unk_type")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_unk_type")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	gi := GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS ltree")
+	if err != nil {
+		t.Skip("ltree extension not available:", err)
+	}
+
+	_, err = CreateTable(ctx, &Table{
+		Name: "label",
+		Columns: []Column{
+			{Name: "id", Type: "serial"},
+			{Name: "path", Type: "ltree"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = gi.Conn.Exec(ctx, "INSERT INTO label (path) VALUES ('Top.Science.Astronomy')")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Refresh schema info to pick up the ltree type
+	err = db.ReloadSchemaCache(ctx)
+
+	result, _, err := GetRecords(ctx, "label", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := string(result)
+
+	// The JSON must be valid
+	if !json.Valid(result) {
+		t.Fatalf("invalid JSON output: %s", raw)
+	}
+
+	// The ltree value must appear as a quoted string
+	if !strings.Contains(raw, `"Top.Science.Astronomy"`) {
+		t.Fatalf("expected ltree value as quoted string, got: %s", raw)
+	}
+}
+
+func TestCompositeTypeInFunctionOutput(t *testing.T) {
+	// Test that composite types (table row types) in function outputs
+	// are serialized as nested JSON objects.
+
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbe.DeleteDatabase(ctx, "test_comp_func")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_comp_func")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	_, err = CreateTable(ctx, &Table{
+		Name: "documents",
+		Columns: []Column{
+			{Name: "id", Type: "serial"},
+			{Name: "name", Type: "text"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = CreateRecords(ctx, "documents", []Record{
+		{"name": "Doc A"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gi := GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, `
+		CREATE FUNCTION search_documents()
+		RETURNS TABLE(document documents, score float8)
+		LANGUAGE sql AS $$
+			SELECT d::documents, 0.5::float8 FROM documents d;
+		$$;
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.ReloadSchemaCache(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, _, err := ExecFunction(ctx, "search_documents", nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := string(result)
+
+	if !json.Valid(result) {
+		t.Fatalf("invalid JSON output: %s", raw)
+	}
+
+	// The composite value should be a nested object with the document fields
+	if !strings.Contains(raw, `"Doc A"`) {
+		t.Fatalf("expected document name in output, got: %s", raw)
+	}
+}
+
+func TestPartitionedTableFunction(t *testing.T) {
+	// Test that functions returning rows from partitioned tables
+	// include field names in JSON output.
+
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbe.DeleteDatabase(ctx, "test_partition")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_partition")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	gi := GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, `
+		CREATE TABLE events (
+			id serial,
+			pid int NOT NULL,
+			ts timestamptz NOT NULL DEFAULT now(),
+			PRIMARY KEY (pid, id)
+		) PARTITION BY LIST (pid);
+		CREATE TABLE events_1 PARTITION OF events FOR VALUES IN (1);
+		INSERT INTO events (pid) VALUES (1);
+
+		CREATE FUNCTION get_events()
+		RETURNS SETOF events
+		LANGUAGE sql AS $$
+			SELECT * FROM events;
+		$$;
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.ReloadSchemaCache(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, _, err := ExecFunction(ctx, "get_events", nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := string(result)
+
+	if !json.Valid(result) {
+		t.Fatalf("invalid JSON output: %s", raw)
+	}
+
+	// Must have field names, not just values
+	if !strings.Contains(raw, `"id"`) || !strings.Contains(raw, `"pid"`) || !strings.Contains(raw, `"ts"`) {
+		t.Fatalf("expected field names in output, got: %s", raw)
+	}
 }
 
 func BenchmarkBase(b *testing.B) {

@@ -28,8 +28,8 @@ const typesQuery = `
 	(t.typcategory = 'R') AS isrange,
 	((t.typcategory = 'C' AND COALESCE(c.relkind = 'c', false)) OR 
 	(t.typtype = 'd' AND COALESCE(base_type.typcategory = 'C' AND base_c.relkind = 'c', false))) AS iscomposite,
-	((t.typcategory = 'C' AND COALESCE(c.relkind IN ('r','v'), false)) OR 
-	(t.typtype = 'd' AND COALESCE(base_type.typcategory = 'C' AND base_c.relkind IN ('r','v'), false))) AS istable,
+	((t.typcategory = 'C' AND COALESCE(c.relkind IN ('r','v','p'), false)) OR
+	(t.typtype = 'd' AND COALESCE(base_type.typcategory = 'C' AND base_c.relkind IN ('r','v','p'), false))) AS istable,
 	(t.typcategory = 'E') AS isenum,
 	(t.typtype = 'd') AS isdomain,
 	t.typelem arraysubtype,
