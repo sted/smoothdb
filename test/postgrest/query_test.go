@@ -813,6 +813,20 @@ func TestPostgREST_Query(t *testing.T) {
 		},
 		// @@ added by me
 		{
+			Description: "filtering embedded resource by FK column name",
+			Query:       "/projects?select=id,name,clients(*)&client_id.id=eq.1",
+			Headers:     nil,
+			Expected: `[
+				{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}},
+				{"id":2,"name":"Windows 10","clients":{"id":1,"name":"Microsoft"}},
+				{"id":3,"name":"IOS","clients":null},
+				{"id":4,"name":"OSX","clients":null},
+				{"id":5,"name":"Orphan","clients":null}
+			]`,
+			Status: 200,
+		},
+		// @@ added by me
+		{
 			Description: "requesting parents and children with two embedded filters",
 			Query:       "/projects?select=id,name,clients(*),tasks(*)&id=not.eq.4&clients.id=eq.1&tasks.id=in.(1,3,5)",
 			Headers:     nil,

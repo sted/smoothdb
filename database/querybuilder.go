@@ -41,14 +41,16 @@ type BuildStack struct {
 	level           int         // depth
 	relPath         []string    // sequence of nested tables
 	labelPath       []string    // sequence of nested labels for the correspondent tables (can contain empty strings)
+	colPath         []string    // sequence of FK column names that point to the correspondent tables (can contain empty strings)
 	afterWithClause bool        //
 }
 
 // nextBuildStack creates a stack with a new level
-func nextBuildStack(stack BuildStack, rel string, label string) BuildStack {
+func nextBuildStack(stack BuildStack, rel string, label string, col string) BuildStack {
 	relPath := append(stack.relPath, rel)
 	labelPath := append(stack.labelPath, label)
-	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, false}
+	colPath := append(stack.colPath, col)
+	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, colPath, false}
 }
 
 // toJson wraps a field into a to_jsonb operator if its type is array or composite,
@@ -160,7 +162,7 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		// Apply embedded resource filters (use function name for relPath matching)
 		schema, table := splitTableName(rel.RelatedTable)
 		stackRelName := join.relName
-		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, stackRelName, join.relLabel))
+		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, stackRelName, join.relLabel, ""))
 		if wc != "" {
 			sel += " WHERE " + wc
 		}
@@ -221,7 +223,11 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		// the expressions.
 		if rel.Table != rel.RelatedTable {
 			schema, table := splitTableName(rel.RelatedTable)
-			whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel))
+			col := ""
+			if len(rel.Columns) == 1 {
+				col = rel.Columns[0]
+			}
+			whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel, col))
 			if whereClause != "" {
 				sel += " AND " + whereClause
 			}
@@ -346,7 +352,11 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			if frel.Type == Computed {
 				stackRelName = sfield.relation.name
 			}
-			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label))
+			col := ""
+			if frel.Type != Computed && len(frel.Columns) == 1 {
+				col = frel.Columns[0]
+			}
+			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label, col))
 			if err != nil {
 				return "", "", nil, err
 			}
@@ -541,10 +551,11 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 				continue
 			}
 			// 2. then by comparing each item in the field relPath
-			//    with each item in the stack, table or label
+			//    with each item in the stack, table or label or FK column name
 			for i := range n.field.relPath {
 				if n.field.relPath[i] != stack.relPath[i] &&
-					n.field.relPath[i] != stack.labelPath[i] {
+					n.field.relPath[i] != stack.labelPath[i] &&
+					(len(stack.colPath) <= i || n.field.relPath[i] != stack.colPath[i]) {
 					continue outer
 				}
 			}
