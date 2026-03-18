@@ -1,6 +1,17 @@
 # Change Log
 
-## current
+## 0.4.1 - 2026-03-18
+
+### Added
+* Support for setting and retrieving comments on tables and columns via the DDL Admin API
+
+### Fixes
+* Fixed incorrect native type casting for boolean and null values when filtering JSONB via `->` operator
+* Fixed table creation in non-default schema returning 404
+* Fixed owner change ordering in table creation and update (owner is now set last to avoid permission errors)
+
+
+## 0.4.0 - 2026-02-23
 
 ### Added
 * Support for Computed Relationships (table-returning functions as virtual relationships)
