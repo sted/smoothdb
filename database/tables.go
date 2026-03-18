@@ -71,8 +71,11 @@ func GetTables(ctx context.Context) ([]Table, error) {
 	return tables, nil
 }
 
-func GetTable(ctx context.Context, name string) (*Table, error) {
+func GetTable(ctx context.Context, name string, schemas ...string) (*Table, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
+	if len(schemas) > 0 && schemas[0] != "" {
+		schemaname = schemas[0]
+	}
 
 	constraints, err := GetConstraints(ctx, name)
 	if err != nil {
@@ -143,22 +146,6 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	var alter string
 	prefix := "ALTER TABLE " + ftablename
 
-	// SCHEMA
-	if table.Schema != "" {
-		alter = prefix + " SET SCHEMA " + quote(table.Schema)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// OWNER
-	if table.Owner != "" {
-		alter = prefix + " OWNER TO " + quote(table.Owner)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return nil, err
-		}
-	}
 	// RLS
 	if table.RowSecurity {
 		alter = prefix + " ENABLE ROW LEVEL SECURITY"
@@ -187,6 +174,14 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 			}
 		}
 	}
+	// OWNER as last operation, since changing owner revokes current role's privileges
+	if table.Owner != "" {
+		alter = prefix + " OWNER TO " + quote(table.Owner)
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -195,7 +190,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 
 	//db.refreshTable(ctx, table.Name)
 
-	return GetTable(ctx, table.Name)
+	return GetTable(ctx, table.Name, table.Schema)
 }
 
 func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
@@ -210,14 +205,6 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 	var alter string
 	prefix := "ALTER TABLE " + _sq(name, schemaname)
 
-	// OWNER
-	if table.Owner != nil {
-		alter = prefix + " OWNER TO " + quote(*table.Owner)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
 	// RLS
 	if table.RowSecurity != nil {
 		if *table.RowSecurity {
@@ -250,6 +237,14 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 	// NAME
 	if table.Name != nil && *table.Name != name {
 		alter = prefix + " RENAME TO " + quote(*table.Name)
+		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return err
+		}
+	}
+	// OWNER as last operation, since changing owner revokes current role's privileges
+	if table.Owner != nil {
+		alter = prefix + " OWNER TO " + quote(*table.Owner)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return err
