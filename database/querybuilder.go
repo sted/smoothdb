@@ -564,11 +564,11 @@ func validateRelatedOrder(table, schema string, o OrderField, selectFields []Sel
 	return "", &BuildError{"'" + o.relation + "' is not an embedded resource in this request"}
 }
 
-func appendValue(where, value string, valueList []any, nmarker int) (string, []any, int) {
-	if value == "null" ||
+func appendValue(where, value string, valueList []any, nmarker int, forceParam bool) (string, []any, int) {
+	if !forceParam && (value == "null" ||
 		value == "true" ||
 		value == "false" ||
-		value == "unknown" {
+		value == "unknown") {
 		where += value
 	} else if nmarker >= 0 {
 		nmarker++
@@ -665,7 +665,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 				if i != 0 {
 					where += ", "
 				}
-				where, valueList, nmarker = appendValue(where, value, valueList, nmarker)
+				where, valueList, nmarker = appendValue(where, value, valueList, nmarker, node.field.jsonPath != "")
 			}
 			where += ")"
 		} else if node.operator == "@@" {
@@ -683,11 +683,11 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 				where += "'" + arg + "'"
 				where += ", "
 			}
-			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker)
+			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, false)
 			where += ")"
 
 		} else {
-			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker)
+			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, node.field.jsonPath != "")
 		}
 	}
 	return where, valueList
