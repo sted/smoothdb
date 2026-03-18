@@ -7,6 +7,7 @@ type Column struct {
 	Type        string   `json:"type"`
 	NotNull     bool     `json:"notnull"`
 	Default     *string  `json:"default"`
+	Comment     *string  `json:"comment"`
 	Constraints []string `json:"constraints"`
 	Table       string   `json:"table,omitempty"`
 	Schema      string   `json:"schema,omitempty"`
@@ -17,12 +18,17 @@ type ColumnUpdate struct {
 	Type    *string `json:"type"`
 	NotNull *bool   `json:"notnull"`
 	Default *string `json:"default"`
+	Comment *string `json:"comment"`
 }
 
 const columnsQuery = `
-	SELECT column_name, udt_name, is_nullable, column_default, table_name, table_schema
-	FROM information_schema.columns
-	WHERE table_name = $1 AND table_schema = $2`
+	SELECT c.column_name, c.udt_name, c.is_nullable, c.column_default,
+		col_description(cl.oid, c.ordinal_position),
+		c.table_name, c.table_schema
+	FROM information_schema.columns c
+	JOIN pg_class cl ON cl.relname = c.table_name
+	JOIN pg_namespace n ON n.oid = cl.relnamespace AND n.nspname = c.table_schema
+	WHERE c.table_name = $1 AND c.table_schema = $2`
 
 func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
@@ -41,7 +47,7 @@ func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	var nullable string
 	column := Column{}
 	for rows.Next() {
-		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table, &column.Schema)
+		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Comment, &column.Table, &column.Schema)
 		if err != nil {
 			return columns, err
 		}
@@ -65,7 +71,7 @@ func GetColumn(ctx context.Context, tablename string, name string) (*Column, err
 	column := &Column{}
 	var nullable string
 	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
-		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Table, &column.Schema)
+		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Comment, &column.Table, &column.Schema)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +89,14 @@ func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 	_, err := conn.Exec(ctx, create)
 	if err != nil {
 		return nil, err
+	}
+	// COMMENT
+	if column.Comment != nil {
+		comment := "COMMENT ON COLUMN " + ftablename + "." + quote(column.Name) + " IS " + quoteLit(*column.Comment)
+		_, err = conn.Exec(ctx, comment)
+		if err != nil {
+			return nil, err
+		}
 	}
 	//db.refreshTable(ctx, column.Table)
 	return column, nil
@@ -131,6 +145,14 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 			alter = prefix + name + " DROP DEFAULT"
 		}
 		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return err
+		}
+	}
+	// COMMENT
+	if column.Comment != nil {
+		comment := "COMMENT ON COLUMN " + ftablename + "." + quote(name) + " IS " + quoteLit(*column.Comment)
+		_, err = tx.Exec(ctx, comment)
 		if err != nil {
 			return err
 		}

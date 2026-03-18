@@ -8,6 +8,7 @@ type Table struct {
 	Name        string   `json:"name"`
 	Schema      string   `json:"schema"`
 	Owner       string   `json:"owner"`
+	Comment     *string  `json:"comment"`
 	RowSecurity bool     `json:"rowsecurity"`
 	Columns     []Column `json:"columns,omitempty"`
 	Constraints []string `json:"constraints"`
@@ -22,6 +23,7 @@ type TableUpdate struct {
 	Name        *string `json:"name"`
 	Schema      *string `json:"schema"`
 	Owner       *string `json:"owner"`
+	Comment     *string `json:"comment"`
 	RowSecurity *bool   `json:"rowsecurity"`
 }
 
@@ -29,6 +31,7 @@ const tablesQuery = `
 	SELECT c.relname tablename,
 		n.nspname schema,
 		pg_get_userbyid(c.relowner) tableowner,
+		obj_description(c.oid) comment,
 		c.relrowsecurity rowsecurity,
 		c.relhasindex hasindexes,
 		c.relhastriggers hastriggers,
@@ -53,7 +56,7 @@ func GetTables(ctx context.Context) ([]Table, error) {
 
 	table := Table{}
 	for rows.Next() {
-		err := rows.Scan(&table.Name, &table.Schema, &table.Owner, &table.RowSecurity,
+		err := rows.Scan(&table.Name, &table.Schema, &table.Owner, &table.Comment, &table.RowSecurity,
 			&table.HasIndexes, &table.HasTriggers, &table.IsPartition)
 		if err != nil {
 			return tables, err
@@ -78,7 +81,7 @@ func GetTable(ctx context.Context, name string) (*Table, error) {
 	table := Table{}
 	err = conn.QueryRow(ctx,
 		tablesQuery+" AND c.relname = $1 AND n.nspname = $2", name, schemaname).
-		Scan(&table.Name, &table.Schema, &table.Owner, &table.RowSecurity, &table.HasIndexes, &table.HasTriggers, &table.IsPartition)
+		Scan(&table.Name, &table.Schema, &table.Owner, &table.Comment, &table.RowSecurity, &table.HasIndexes, &table.HasTriggers, &table.IsPartition)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +169,24 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	if err != nil {
 		return nil, err
 	}
+	// COMMENT
+	if table.Comment != nil {
+		comment := "COMMENT ON TABLE " + ftablename + " IS " + quoteLit(*table.Comment)
+		_, err = tx.Exec(ctx, comment)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// COLUMN COMMENTS
+	for _, col := range table.Columns {
+		if col.Comment != nil {
+			comment := "COMMENT ON COLUMN " + ftablename + "." + quote(col.Name) + " IS " + quoteLit(*col.Comment)
+			_, err = tx.Exec(ctx, comment)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -205,6 +226,14 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 			alter = prefix + " DISABLE ROW LEVEL SECURITY"
 		}
 		_, err = tx.Exec(ctx, alter)
+		if err != nil {
+			return err
+		}
+	}
+	// COMMENT
+	if table.Comment != nil {
+		comment := "COMMENT ON TABLE " + _sq(name, schemaname) + " IS " + quoteLit(*table.Comment)
+		_, err = tx.Exec(ctx, comment)
 		if err != nil {
 			return err
 		}
