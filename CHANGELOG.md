@@ -1,6 +1,6 @@
 # Change Log
 
-## ongoing
+## 0.5.0 - 2026-04-01
 
 ### Added
 * Support for recursive queries
