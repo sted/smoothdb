@@ -1,5 +1,12 @@
 # Change Log
 
+## ongoing
+
+### Added
+* Support for recursive queries
+* Support for any/all operator modifiers on eq, like, ilike, gt, gte, lt, lte, match, imatch (e.g. `last_name=like(any).{O*,P*}`)
+
+
 ## 0.4.1 - 2026-03-18
 
 ### Added

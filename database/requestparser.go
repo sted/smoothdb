@@ -58,14 +58,15 @@ type OrderField struct {
 }
 
 type WhereConditionNode struct {
-	field    Field
-	operator string
-	opSource string
-	opArgs   []string
-	not      bool
-	values   []string
-	inserted bool
-	children []*WhereConditionNode
+	field      Field
+	operator   string
+	opSource   string
+	opArgs     []string
+	opModifier string // "any" or "all" modifier for operators like eq(any), like(all), etc.
+	not        bool
+	values     []string
+	inserted   bool
+	children   []*WhereConditionNode
 }
 
 func (node *WhereConditionNode) isRootNode() bool {
@@ -904,8 +905,9 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		node.operator = op
 		node.opSource = token
 		token = p.next()
-		if op == "@@" {
-			if token == "(" {
+		if token == "(" {
+			if op == "@@" {
+				// FTS operator arguments: fts(english)
 				for {
 					node.opArgs = append(node.opArgs, p.next())
 					token = p.next()
@@ -914,6 +916,17 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 					}
 				}
 				if token != ")" {
+					return &ParseError{"')' expected"}
+				}
+				token = p.next()
+			} else {
+				// Operator modifier: like(any), eq(all), etc.
+				mod := p.next()
+				if mod != "any" && mod != "all" {
+					return &ParseError{"'any' or 'all' expected"}
+				}
+				node.opModifier = mod
+				if p.next() != ")" {
 					return &ParseError{"')' expected"}
 				}
 				token = p.next()
@@ -936,6 +949,24 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 				}
 				if token != ")" {
 					return &ParseError{"')' expected"}
+				}
+			} else if node.opModifier != "" {
+				// Parse {v1,v2,...} for any/all modifiers
+				if p.next() != "{" {
+					return &ParseError{"'{' expected"}
+				}
+				for {
+					err = p.value(node)
+					if err != nil {
+						return err
+					}
+					token = p.next()
+					if token != "," {
+						break
+					}
+				}
+				if token != "}" {
+					return &ParseError{"'}' expected"}
 				}
 			} else {
 				err = p.value(node)

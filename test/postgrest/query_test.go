@@ -101,6 +101,18 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
 			Status:      200,
 		},
+		// it "matches not_null using is operator" $
+		//   get "/no_pk?a=is.not_null" `shouldRespondWith`
+		//     [json| [{"a":"1","b":"0"},{"a":"2","b":"0"}] |]
+		//     { matchHeaders = [matchContentTypeJson] }
+		// @@ not implemented: is.not_null
+		// {
+		// 	Description: "matches not_null using is operator",
+		// 	Query:       "/no_pk?a=is.not_null",
+		// 	Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+		// 	Status:      200,
+		// },
+
 		// it "matches nulls in varchar and numeric fields alike" $ do
 		//   get "/no_pk?a=is.null" `shouldRespondWith`
 		//     [json| [{"a": null, "b": null}] |]
@@ -120,6 +132,31 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"a":null,"b":null}]`,
 			Status:      200,
 		},
+		// it "not.is.not_null is equivalent to is.null" $ do
+		//   get "/no_pk?a=not.is.not_null" `shouldRespondWith`
+		//     [json| [{"a": null, "b": null}] |]
+		//   get "/nullable_integer?a=is.null" `shouldRespondWith` [json|[{"a":null}]|]
+		// @@ not implemented: is.not_null
+		// {
+		// 	Description: "not.is.not_null is equivalent to is.null",
+		// 	Query:       "/no_pk?a=not.is.not_null",
+		// 	Expected:    `[{"a":null,"b":null}]`,
+		// 	Status:      200,
+		// },
+
+		// it "matches with null and not_null values in upper or mixed case" $ do
+		//   get "/no_pk?a=is.NULL" `shouldRespondWith`
+		//     [json| [{"a": null, "b": null}] |]
+		//   get "/no_pk?a=is.NoT_NuLl" `shouldRespondWith`
+		//     [json| [{"a":"1","b":"0"},{"a":"2","b":"0"}] |]
+		// @@ not implemented: is.not_null
+		// {
+		// 	Description: "matches with null and not_null values in upper or mixed case",
+		// 	Query:       "/no_pk?a=is.NoT_NuLl",
+		// 	Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+		// 	Status:      200,
+		// },
+
 		// it "matches with trilean values" $ do
 		//   get "/chores?done=is.true" `shouldRespondWith`
 		//     [json| [{"id": 1, "name": "take out the garbage", "done": true }] |]
@@ -344,6 +381,85 @@ func TestPostgREST_Query(t *testing.T) {
 			Query:       "/simple_pk?k=not.imatch.^xy&order=extra.asc",
 			Headers:     nil,
 			Expected:    `[]`,
+			Status:      200,
+		},
+
+		// describe "any/all quantifiers" $ do
+		// it "works with the eq operator" $
+		//   get "/projects?id=eq(any).{3,4,5}" `shouldRespondWith`
+		//     [json|[{"id":3,"name":"IOS","client_id":2},{"id":4,"name":"OSX","client_id":2},{"id":5,"name":"Orphan","client_id":null}]|]
+		{
+			Description: "works with the eq(any) operator",
+			Query:       "/projects?id=eq(any).{3,4,5}",
+			Expected:    `[{"id":3,"name":"IOS","client_id":2},{"id":4,"name":"OSX","client_id":2},{"id":5,"name":"Orphan","client_id":null}]`,
+			Status:      200,
+		},
+		// it "works with the gt/gte operator" $ do
+		//   get "/projects?id=gt(all).{4,3}" `shouldRespondWith`
+		//     [json|[{"id":5,"name":"Orphan","client_id":null}]|]
+		{
+			Description: "works with the gt(all) operator",
+			Query:       "/projects?id=gt(all).{4,3}",
+			Expected:    `[{"id":5,"name":"Orphan","client_id":null}]`,
+			Status:      200,
+		},
+		//   get "/projects?id=gte(all).{4,3}" `shouldRespondWith`
+		//     [json|[{"id":4,"name":"OSX","client_id":2},{"id":5,"name":"Orphan","client_id":null}]|]
+		{
+			Description: "works with the gte(all) operator",
+			Query:       "/projects?id=gte(all).{4,3}",
+			Expected:    `[{"id":4,"name":"OSX","client_id":2},{"id":5,"name":"Orphan","client_id":null}]`,
+			Status:      200,
+		},
+		// it "works with the lt/lte operator" $ do
+		//   get "/projects?id=lt(all).{4,3}" `shouldRespondWith`
+		//     [json|[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]|]
+		{
+			Description: "works with the lt(all) operator",
+			Query:       "/projects?id=lt(all).{4,3}",
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]`,
+			Status:      200,
+		},
+		//   get "/projects?id=lte(all).{4,3}" `shouldRespondWith`
+		//     [json|[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1},{"id":3,"name":"IOS","client_id":2}]|]
+		{
+			Description: "works with the lte(all) operator",
+			Query:       "/projects?id=lte(all).{4,3}",
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1},{"id":3,"name":"IOS","client_id":2}]`,
+			Status:      200,
+		},
+		// it "works with the like/ilike operator" $ do
+		//   get "/articles?body=like(any).{*plan*,*brain*}&select=id" `shouldRespondWith`
+		//     [json|[{"id":1},{"id":2}]|]
+		{
+			Description: "works with the like(any) operator",
+			Query:       "/articles?body=like(any).{*plan*,*brain*}&select=id",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Status:      200,
+		},
+		//   get "/articles?body=ilike(all).{*plan*,*greatness*}&select=id" `shouldRespondWith`
+		//     [json|[{"id":1}]|]
+		{
+			Description: "works with the ilike(all) operator",
+			Query:       "/articles?body=ilike(all).{*plan*,*greatness*}&select=id",
+			Expected:    `[{"id":1}]`,
+			Status:      200,
+		},
+		// it "works with the match/imatch operator" $ do
+		//   get "/articles?body=match(any).{stop,thing}&select=id" `shouldRespondWith`
+		//     [json|[{"id":1}]|]
+		{
+			Description: "works with the match(any) operator",
+			Query:       "/articles?body=match(any).{stop,thing}&select=id",
+			Expected:    `[{"id":1}]`,
+			Status:      200,
+		},
+		//   get "/articles?body=imatch(any).{stop,thing}&select=id" `shouldRespondWith`
+		//     [json|[{"id":1},{"id":2}]|]
+		{
+			Description: "works with the imatch(any) operator",
+			Query:       "/articles?body=imatch(any).{stop,thing}&select=id",
+			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
 
@@ -597,6 +713,33 @@ func TestPostgREST_Query(t *testing.T) {
 				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status: 200,
 		},
+		// context "text and json columns" $ do
+		// @@ not implemented: FTS on text/json columns (auto to_tsvector)
+		//   it "finds matches with to_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible"
+		//   it "can use lexeme boolean operators" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26possible"
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible%7Cpossible"
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26!possible"
+		//   it "finds matches with plainto_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats"
+		//   it "finds matches with websearch_to_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats"
+		//   it "finds matches with different dictionaries" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant"
+		//   it "can be negated with not operator" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun"
+		// context "Use of the phraseto_tsquery function" (text and json columns) $ do
+		//   it "finds matches" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats"
+		//   it "finds matches with different dictionaries" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass"
+		//   it "can be negated with not operator" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.phfts(english).The%20Fat%20Cats"
+		//   it "can be used with or query param" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&or=(text_search.phfts(german).Art%20Spass,text_search.phfts(french).amusant,text_search.fts(english).impossible)"
+
 		// 	it "matches with computed column" $
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
 		// 	  [json| [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] |]
@@ -696,6 +839,28 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"id":1},{"id":2}]`,
 			Status:      200,
 		},
+		// context "IS DISTINCT FROM" $ do
+		//   it "matches with IS DISTINCT FROM" $
+		//     get "/no_pk?select=a&a=isdistinct.2" `shouldRespondWith`
+		//       [json| [{"a":"1"}, {"a":null}] |]
+		// @@ not implemented: isdistinct operator
+		// {
+		// 	Description: "matches with IS DISTINCT FROM",
+		// 	Query:       "/no_pk?select=a&a=isdistinct.2",
+		// 	Expected:    `[{"a":"1"},{"a":null}]`,
+		// 	Status:      200,
+		// },
+		//   it "matches with IS DISTINCT FROM using not operator" $
+		//     get "/no_pk?select=a&a=not.isdistinct.2" `shouldRespondWith`
+		//       [json| [{"a":"2"}] |]
+		// @@ not implemented: isdistinct operator
+		// {
+		// 	Description: "matches with IS DISTINCT FROM using not operator",
+		// 	Query:       "/no_pk?select=a&a=not.isdistinct.2",
+		// 	Expected:    `[{"a":"2"}]`,
+		// 	Status:      200,
+		// },
+
 		// describe "Shaping response with select parameter" $ do
 		//   it "selectStar works in absense of parameter" $
 		// 	get "/complex_items?id=eq.3" `shouldRespondWith`
@@ -2829,6 +2994,35 @@ func TestPostgREST_Query(t *testing.T) {
 				          {"id":4,"name":"OSX","client_id":2},
 				          {"id":5,"name":"Orphan","client_id":null}]`,
 			Status: 200,
+		},
+		// context "searching for empty string" $
+		//   it "works with empty eq filter" $
+		//     get "/empty_string?string=eq.&select=id,string" `shouldRespondWith`
+		//       [json| [{"id":1,"string":""}] |]
+		// @@ not implemented: empty value after operator (eq.)
+		// {
+		// 	Description: "works with empty eq filter",
+		// 	Query:       "/empty_string?string=eq.&select=id,string",
+		// 	Expected:    `[{"id":1,"string":""}]`,
+		// 	Status:      200,
+		// },
+
+		// context "return error for infinite recursion" $
+		//   it "return http status 500" $
+		//     get "/infinite_recursion?select=*" `shouldRespondWith` 500
+		{
+			Description: "return http status 500 for infinite recursion",
+			Query:       "/infinite_recursion?select=*",
+			Status:      500,
+		},
+
+		// context "invalid resource path" $
+		//   it "return http status 404" $
+		//     get "/first/second/third?select=*" `shouldRespondWith` 404
+		{
+			Description: "return http status 404 for invalid resource path",
+			Query:       "/first/second/third?select=*",
+			Status:      404,
 		},
 	}
 

@@ -654,41 +654,60 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			fieldname = "(" + toJson(table, schema, node.field.name, fieldname, stack.info) +
 				node.field.jsonPath + ")"
 		}
-		where += fieldname
-		if node.operator == "IN" && len(node.values) == 0 {
-			where += " = ANY('{}')"
-			return where, valueList
-		}
-		where += " " + node.operator + " "
-		if node.operator == "IN" {
+		if node.opModifier != "" {
+			// any/all modifier: expand to (field OP v1 OR/AND field OP v2 ...)
+			var boolOp string
+			if node.opModifier == "any" {
+				boolOp = " OR "
+			} else {
+				boolOp = " AND "
+			}
 			where += "("
 			for i, value := range node.values {
 				if i != 0 {
-					where += ", "
+					where += boolOp
 				}
+				where += fieldname + " " + node.operator + " "
 				where, valueList, nmarker = appendValue(where, value, valueList, nmarker, node.field.jsonPath != "")
 			}
 			where += ")"
-		} else if node.operator == "@@" {
-			switch node.opSource {
-			case "fts":
-				where += "to_tsquery("
-			case "plfts":
-				where += "plainto_tsquery("
-			case "phfts":
-				where += "phraseto_tsquery("
-			case "wfts":
-				where += "websearch_to_tsquery("
-			}
-			for _, arg := range node.opArgs {
-				where += "'" + arg + "'"
-				where += ", "
-			}
-			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, false)
-			where += ")"
-
 		} else {
-			where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, node.field.jsonPath != "")
+			where += fieldname
+			if node.operator == "IN" && len(node.values) == 0 {
+				where += " = ANY('{}')"
+				return where, valueList
+			}
+			where += " " + node.operator + " "
+			if node.operator == "IN" {
+				where += "("
+				for i, value := range node.values {
+					if i != 0 {
+						where += ", "
+					}
+					where, valueList, nmarker = appendValue(where, value, valueList, nmarker, node.field.jsonPath != "")
+				}
+				where += ")"
+			} else if node.operator == "@@" {
+				switch node.opSource {
+				case "fts":
+					where += "to_tsquery("
+				case "plfts":
+					where += "plainto_tsquery("
+				case "phfts":
+					where += "phraseto_tsquery("
+				case "wfts":
+					where += "websearch_to_tsquery("
+				}
+				for _, arg := range node.opArgs {
+					where += "'" + arg + "'"
+					where += ", "
+				}
+				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, false)
+				where += ")"
+
+			} else {
+				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, node.field.jsonPath != "")
+			}
 		}
 	}
 	return where, valueList
