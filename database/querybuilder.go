@@ -566,7 +566,9 @@ func validateRelatedOrder(table, schema string, o OrderField, selectFields []Sel
 }
 
 func appendValue(where, value string, valueList []any, nmarker int, forceParam bool) (string, []any, int) {
-	if !forceParam && (value == "null" ||
+	if !forceParam && value == "not_null" {
+		where += "NOT NULL"
+	} else if !forceParam && (value == "null" ||
 		value == "true" ||
 		value == "false" ||
 		value == "unknown") {
@@ -676,6 +678,20 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			if node.operator == "IN" && len(node.values) == 0 {
 				where += " = ANY('{}')"
 				return where, valueList
+			}
+			if node.operator == "@@" {
+				// If the column is not a tsvector, wrap with to_tsvector()
+				if stack.info != nil {
+					ftablename := _s(table, schema)
+					ct := stack.info.GetColumnType(ftablename, node.field.name)
+					if ct != nil && ct.Type != "tsvector" {
+						lang := "'english'"
+						if len(node.opArgs) > 0 {
+							lang = "'" + node.opArgs[0] + "'"
+						}
+						where = where[:len(where)-len(fieldname)] + "to_tsvector(" + lang + ", " + fieldname + ")"
+					}
+				}
 			}
 			where += " " + node.operator + " "
 			if node.operator == "IN" {

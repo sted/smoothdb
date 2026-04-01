@@ -160,7 +160,8 @@ var postgRestParserOperators = map[string]string{
 	"sr":     ">>",
 	"nxr":    "&<",
 	"nxl":    "&>",
-	"adj":    "-|-",
+	"adj":       "-|-",
+	"isdistinct": "IS DISTINCT FROM",
 	"fts":     "@@",
 	"plfts":   "@@",
 	"phfts":   "@@",
@@ -785,8 +786,10 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			lvalue == "false" ||
 			lvalue == "unknown" {
 			value = lvalue
+		} else if lvalue == "not_null" {
+			value = "not_null"
 		} else if node.operator == "IS" {
-			return &ParseError{"IS operator requires null, true, false or unknown"}
+			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
 		} else {
 			value += p.completeIfFloat()
 		}

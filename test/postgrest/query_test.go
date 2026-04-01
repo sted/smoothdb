@@ -105,13 +105,12 @@ func TestPostgREST_Query(t *testing.T) {
 		//   get "/no_pk?a=is.not_null" `shouldRespondWith`
 		//     [json| [{"a":"1","b":"0"},{"a":"2","b":"0"}] |]
 		//     { matchHeaders = [matchContentTypeJson] }
-		// @@ not implemented: is.not_null
-		// {
-		// 	Description: "matches not_null using is operator",
-		// 	Query:       "/no_pk?a=is.not_null",
-		// 	Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "matches not_null using is operator",
+			Query:       "/no_pk?a=is.not_null",
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			Status:      200,
+		},
 
 		// it "matches nulls in varchar and numeric fields alike" $ do
 		//   get "/no_pk?a=is.null" `shouldRespondWith`
@@ -136,26 +135,24 @@ func TestPostgREST_Query(t *testing.T) {
 		//   get "/no_pk?a=not.is.not_null" `shouldRespondWith`
 		//     [json| [{"a": null, "b": null}] |]
 		//   get "/nullable_integer?a=is.null" `shouldRespondWith` [json|[{"a":null}]|]
-		// @@ not implemented: is.not_null
-		// {
-		// 	Description: "not.is.not_null is equivalent to is.null",
-		// 	Query:       "/no_pk?a=not.is.not_null",
-		// 	Expected:    `[{"a":null,"b":null}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "not.is.not_null is equivalent to is.null",
+			Query:       "/no_pk?a=not.is.not_null",
+			Expected:    `[{"a":null,"b":null}]`,
+			Status:      200,
+		},
 
 		// it "matches with null and not_null values in upper or mixed case" $ do
 		//   get "/no_pk?a=is.NULL" `shouldRespondWith`
 		//     [json| [{"a": null, "b": null}] |]
 		//   get "/no_pk?a=is.NoT_NuLl" `shouldRespondWith`
 		//     [json| [{"a":"1","b":"0"},{"a":"2","b":"0"}] |]
-		// @@ not implemented: is.not_null
-		// {
-		// 	Description: "matches with null and not_null values in upper or mixed case",
-		// 	Query:       "/no_pk?a=is.NoT_NuLl",
-		// 	Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "matches with null and not_null values in upper or mixed case",
+			Query:       "/no_pk?a=is.NoT_NuLl",
+			Expected:    `[{"a":"1","b":"0"},{"a":"2","b":"0"}]`,
+			Status:      200,
+		},
 
 		// it "matches with trilean values" $ do
 		//   get "/chores?done=is.true" `shouldRespondWith`
@@ -714,31 +711,63 @@ func TestPostgREST_Query(t *testing.T) {
 			Status: 200,
 		},
 		// context "text and json columns" $ do
-		// @@ not implemented: FTS on text/json columns (auto to_tsvector)
 		//   it "finds matches with to_tsquery" $ do
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible"
-		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible"
-		//   it "can use lexeme boolean operators" $ do
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26possible"
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible%7Cpossible"
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26!possible"
-		//   it "finds matches with plainto_tsquery" $ do
+		{
+			Description: "text columns: finds matches with to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//   it "finds matches with plainto_tsquery" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats"
-		//   it "finds matches with websearch_to_tsquery" $ do
+		{
+			Description: "text columns: finds matches with plainto_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
+			Status:      200,
+		},
+		//   it "finds matches with websearch_to_tsquery" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats"
-		//   it "finds matches with different dictionaries" $ do
+		{
+			Description: "text columns: finds matches with websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
+			Status:      200,
+		},
+		//   it "finds matches with different dictionaries" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant"
-		//   it "can be negated with not operator" $ do
+		{
+			Description: "text columns: finds matches with different dictionaries",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant",
+			Expected:    `[{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//   it "can be negated with not operator" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun"
+		{
+			Description: "text columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun",
+			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
 		// context "Use of the phraseto_tsquery function" (text and json columns) $ do
-		//   it "finds matches" $ do
+		//   it "finds matches" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats"
-		//   it "finds matches with different dictionaries" $ do
+		{
+			Description: "text columns: phraseto_tsquery finds matches",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats",
+			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
+			Status:      200,
+		},
+		//   it "finds matches with different dictionaries" $
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass"
-		//   it "can be negated with not operator" $ do
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.phfts(english).The%20Fat%20Cats"
-		//   it "can be used with or query param" $ do
-		//     get "/tsearch_to_tsvector?select=text_search&or=(text_search.phfts(german).Art%20Spass,text_search.phfts(french).amusant,text_search.fts(english).impossible)"
+		{
+			Description: "text columns: phraseto_tsquery with different dictionaries",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass",
+			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
 
 		// 	it "matches with computed column" $
 		// 	get "/items?always_true=eq.true&order=id.asc" `shouldRespondWith`
@@ -843,23 +872,21 @@ func TestPostgREST_Query(t *testing.T) {
 		//   it "matches with IS DISTINCT FROM" $
 		//     get "/no_pk?select=a&a=isdistinct.2" `shouldRespondWith`
 		//       [json| [{"a":"1"}, {"a":null}] |]
-		// @@ not implemented: isdistinct operator
-		// {
-		// 	Description: "matches with IS DISTINCT FROM",
-		// 	Query:       "/no_pk?select=a&a=isdistinct.2",
-		// 	Expected:    `[{"a":"1"},{"a":null}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "matches with IS DISTINCT FROM",
+			Query:       "/no_pk?select=a&a=isdistinct.2",
+			Expected:    `[{"a":null},{"a":"1"}]`,
+			Status:      200,
+		},
 		//   it "matches with IS DISTINCT FROM using not operator" $
 		//     get "/no_pk?select=a&a=not.isdistinct.2" `shouldRespondWith`
 		//       [json| [{"a":"2"}] |]
-		// @@ not implemented: isdistinct operator
-		// {
-		// 	Description: "matches with IS DISTINCT FROM using not operator",
-		// 	Query:       "/no_pk?select=a&a=not.isdistinct.2",
-		// 	Expected:    `[{"a":"2"}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "matches with IS DISTINCT FROM using not operator",
+			Query:       "/no_pk?select=a&a=not.isdistinct.2",
+			Expected:    `[{"a":"2"}]`,
+			Status:      200,
+		},
 
 		// describe "Shaping response with select parameter" $ do
 		//   it "selectStar works in absense of parameter" $

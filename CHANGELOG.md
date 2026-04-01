@@ -5,6 +5,9 @@
 ### Added
 * Support for recursive queries
 * Support for any/all operator modifiers on eq, like, ilike, gt, gte, lt, lte, match, imatch (e.g. `last_name=like(any).{O*,P*}`)
+* Support for `is.not_null` filter value (and `not.is.not_null`, case-insensitive)
+* Support for `isdistinct` operator (`IS DISTINCT FROM`)
+* Support for full-text search on text and jsonb columns (auto `to_tsvector()` wrapping)
 
 
 ## 0.4.1 - 2026-03-18
