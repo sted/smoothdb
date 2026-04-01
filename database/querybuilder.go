@@ -1010,13 +1010,14 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	if rec.ViaTable == "" {
 		// --- Single-table mode ---
 
-		// Base case
+		// Base case — when ExcludeStart is true (after operator), skip mainWhere on the
+		// seed row so it remains a traversal anchor even if it doesn't match the filter.
 		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
 		nmarker++
 		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, rec.StartValue)
-		if mainWhere != "" {
+		if mainWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + mainWhere)
 		}
 
@@ -1042,13 +1043,14 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		viaFrom := quote(rec.ViaFromCol)
 		viaTo := quote(rec.ViaToCol)
 
-		// Base case: the start node itself
+		// Base case: the start node itself — when ExcludeStart is true (after operator),
+		// skip mainWhere so the seed remains a traversal anchor.
 		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
 		nmarker++
 		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, rec.StartValue)
-		if mainWhere != "" {
+		if mainWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + mainWhere)
 		}
 

@@ -47,6 +47,13 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.ConnConfig.Tracer = dbe.dbtracer
 
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		// Force text format for tsvector — pgx v5.9+ defaults to binary,
+		// but we decode RawValues() as text.
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name:  "tsvector",
+			OID:   pgtype.TSVectorOID,
+			Codec: &pgtype.TextFormatOnlyCodec{Codec: pgtype.TSVectorCodec{}},
+		})
 		var set string
 		var err error
 		if len(dbe.config.SchemaSearchPath) != 0 {
