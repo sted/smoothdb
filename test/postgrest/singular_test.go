@@ -54,14 +54,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//       `shouldRespondWith`
 		//         [json|{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}|]
 		//         { matchHeaders = [matchContentTypeSingular] }
-		// {
-		// 	Description: "can shape plurality singular object routes",
-		// 	Method:      "GET",
-		// 	Query:       "/projects_view?id=eq.1&select=id,name,clients(*),tasks(id,name)",
-		// 	Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-		// 	Expected:    `{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "can shape plurality singular object routes (view)",
+			Method:      "GET",
+			Query:       "/projects_view?id=eq.1&select=id,name,clients(*),tasks(id,name)",
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Expected:    `{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}`,
+			Status:      200,
+		},
 		// context "when updating rows" $ do
 		//   it "works for one row with return=rep" $ do
 		//     request methodPatch "/addresses?id=eq.1"

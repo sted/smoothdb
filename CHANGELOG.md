@@ -8,6 +8,7 @@
 * Support for `is.not_null` filter value (and `not.is.not_null`, case-insensitive)
 * Support for `isdistinct` operator (`IS DISTINCT FROM`)
 * Support for full-text search on text and jsonb columns (auto `to_tsvector()` wrapping)
+* Resource embedding with views and materialized views (including chained views, aliased columns, M2M through view junctions)
 
 
 ## 0.4.1 - 2026-03-18

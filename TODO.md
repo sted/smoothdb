@@ -15,8 +15,8 @@
 * [ ] count=planned
 
 ## Embedding / Relationships
-* [ ] Embeds with views
-* [ ] Chained views embedding (views of views)
+* [x] Embeds with views
+* [x] Chained views embedding (views of views)
 * [ ] Spread to-many relationships (correlated arrays)
 * [ ] Spread join table columns (junction table fields in M2M spread)
 * [ ] Overriding FK relationships with computed functions

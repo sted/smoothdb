@@ -95,3 +95,93 @@ func DeleteView(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+// ViewColDep maps a view column back to its originating base table column,
+// extracted from the view's internal query tree (pg_rewrite ev_action).
+type ViewColDep struct {
+	ViewSchema string
+	ViewName   string
+	ViewColumn string
+	BaseSchema string
+	BaseTable  string
+	BaseColumn string
+}
+
+const viewColDepsQuery = `
+WITH RECURSIVE
+raw_matches AS (
+    SELECT r.ev_class AS view_oid,
+           m.arr[1]::int AS resno, m.arr[2] AS resname,
+           m.arr[3]::oid AS resorigtbl, m.arr[4]::int AS resorigcol,
+           m.ord
+    FROM pg_rewrite r,
+         LATERAL (
+             SELECT arr, ord FROM regexp_matches(r.ev_action::text,
+                 ':resno (\d+) :resname (\w+) :ressortgroupref \d+ :resorigtbl (\d+) :resorigcol (\d+)',
+                 'g') WITH ORDINALITY AS _(arr, ord)
+         ) m
+    WHERE r.ev_class IN (
+        SELECT c.oid FROM pg_class c
+        WHERE c.relkind IN ('v','m')
+          AND c.relnamespace NOT IN (
+              SELECT oid FROM pg_namespace WHERE nspname ~ '^pg_' OR nspname = 'information_schema'
+          )
+    )
+    AND m.arr[3]::oid != 0
+),
+view_col_deps AS (
+    SELECT DISTINCT ON (rm.view_oid, rm.resno)
+           rm.view_oid, rm.resno AS view_colnum, rm.resorigtbl AS base_table_oid, rm.resorigcol AS base_colnum
+    FROM raw_matches rm
+    JOIN pg_attribute va ON va.attrelid = rm.view_oid AND va.attnum = rm.resno
+    WHERE rm.resname = va.attname
+    ORDER BY rm.view_oid, rm.resno, rm.ord
+),
+resolved(view_oid, view_colnum, base_table_oid, base_colnum, depth, path) AS (
+    SELECT d.view_oid, d.view_colnum, d.base_table_oid, d.base_colnum,
+           1, ARRAY[d.view_oid]
+    FROM view_col_deps d
+    UNION ALL
+    SELECT r.view_oid, r.view_colnum, d.base_table_oid, d.base_colnum,
+           r.depth + 1, r.path || d.view_oid
+    FROM resolved r
+    JOIN view_col_deps d ON d.view_oid = r.base_table_oid
+                        AND d.view_colnum = r.base_colnum
+    WHERE NOT d.view_oid = ANY(r.path)
+      AND r.depth < 10
+)
+SELECT vn.nspname, vc.relname, va.attname,
+       bn.nspname, bt.relname, ba.attname
+FROM resolved r
+JOIN pg_class vc ON vc.oid = r.view_oid
+JOIN pg_namespace vn ON vn.oid = vc.relnamespace
+JOIN pg_attribute va ON va.attrelid = r.view_oid AND va.attnum = r.view_colnum
+JOIN pg_class bt ON bt.oid = r.base_table_oid
+JOIN pg_namespace bn ON bn.oid = bt.relnamespace
+JOIN pg_attribute ba ON ba.attrelid = r.base_table_oid AND ba.attnum = r.base_colnum
+WHERE bt.relkind NOT IN ('v','m')
+ORDER BY r.view_oid, r.view_colnum`
+
+func GetViewColDeps(ctx context.Context) ([]ViewColDep, error) {
+	conn := GetConn(ctx)
+	rows, err := conn.Query(ctx, viewColDepsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deps []ViewColDep
+	d := ViewColDep{}
+	for rows.Next() {
+		err := rows.Scan(&d.ViewSchema, &d.ViewName, &d.ViewColumn,
+			&d.BaseSchema, &d.BaseTable, &d.BaseColumn)
+		if err != nil {
+			return nil, err
+		}
+		deps = append(deps, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return deps, nil
+}

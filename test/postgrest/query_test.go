@@ -1587,147 +1587,147 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	it "can detect fk relations through views to tables in the public schema" $
 		// 	  get "/consumers_view?select=*,orders_view(*)" `shouldRespondWith` 200
 
-		// @@ not implemented
-		// {
-		// 	Description: "can detect fk relations through views to tables in the public schema",
-		// 	Query:       "/consumers_view?select=*,orders_view(*)",
-		// 	Expected:    ``,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
-		// 	it "can detect fk relations through materialized views to tables in the public schema" $
-		// 	  get "/materialized_projects?select=*,users(*)" `shouldRespondWith` 200
+		{
+			Description: "can detect fk relations through views to tables in the public schema",
+			Query:       "/consumers_view?select=*,orders_view(*)",
+			Expected:    ``,
+			Headers:     nil,
+			Status:      200,
+		},
+		{
+			Description: "can detect fk relations through materialized views to tables in the public schema",
+			Query:       "/materialized_projects?select=*,users(*)",
+			Expected:    ``,
+			Status:      200,
+		},
+		{
+			Description: "can request two parents from a view",
+			Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
+			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738Z","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "can detect relations in views with column renames",
+			Query:       "/articles?id=eq.1&select=id,articleStars(users(*))",
+			Expected:    `[{"id":1,"articleStars":[{"users":{"id":1,"name":"Angela Martin"}},{"users":{"id":2,"name":"Michael Scott"}},{"users":{"id":3,"name":"Dwight Schrute"}}]}]`,
+			Status:      200,
+		},
 
-		// 	it "can request two parents" $
-		// 	  get "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1"
-		// 		`shouldRespondWith`
-		// 		  [json|[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]|]
+		{
+			Description: "works when requesting parents and children on views",
+			Query:       "/projects_view?id=eq.1&select=id,name,clients(*),tasks(id,name)",
+			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when requesting parents and children on views with renamed keys",
+			Query:       "/projects_view_alt?t_id=eq.1&select=t_id,name,clients(*),tasks(id,name)",
+			Expected:    `[{"t_id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]`,
+			Status:      200,
+		},
+		{
+			Description: "detects parent relations when having many views of a private table (books)",
+			Query:       "/books?select=title,author:authors(name)&id=eq.5",
+			Expected:    `[{"title":"Farenheit 451","author":{"name":"Ray Bradbury"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "detects parent relations when having many views of a private table (forties_books)",
+			Query:       "/forties_books?select=title,author:authors(name)&limit=1",
+			Expected:    `[{"title":"1984","author":{"name":"George Orwell"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "detects parent relations when having many views of a private table (fifties_books)",
+			Query:       "/fifties_books?select=title,author:authors(name)&limit=1",
+			Expected:    `[{"title":"The Catcher in the Rye","author":{"name":"J.D. Salinger"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "detects parent relations when having many views of a private table (sixties_books)",
+			Query:       "/sixties_books?select=title,author:authors(name)&limit=1",
+			Expected:    `[{"title":"To Kill a Mockingbird","author":{"name":"Harper Lee"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "can detect fk relations through multiple views recursively",
+			Query:       "/consumers_view_view?select=*,orders_view(*)",
+			Expected:    ``,
+			Status:      200,
+		},
+		{
+			Description: "works with views that have subselects",
+			Query:       "/authors_books_number?select=*,books(title)&id=eq.1",
+			Expected:    `[{"id":1,"name":"George Orwell","num_in_forties":1,"num_in_fifties":0,"num_in_sixties":0,"num_in_all_decades":1,"books":[{"title":"1984"}]}]`,
+			Status:      200,
+		},
+		{
+			Description: "works with views that have case subselects",
+			Query:       "/authors_have_book_in_decade?select=*,books(title)&id=eq.3",
+			Expected:    `[{"id":3,"name":"Antoine de Saint-Exupéry","has_book_in_forties":true,"has_book_in_fifties":false,"has_book_in_sixties":false,"books":[{"title":"The Little Prince"}]}]`,
+			Status:      200,
+		},
 
-		// @@ not implemented: articleStars is a view
-		// {
-		// 	Description: "can request two parents",
-		// 	Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
-		// 	Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
-		// 	it "can detect relations in views from exposed schema that are based on tables in private schema and have columns renames" $
-		// 	  get "/articles?id=eq.1&select=id,articleStars(users(*))" `shouldRespondWith`
-		// 		[json|[{"id":1,"articleStars":[{"users":{"id":1,"name":"Angela Martin"}},{"users":{"id":2,"name":"Michael Scott"}},{"users":{"id":3,"name":"Dwight Schrute"}}]}]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works when requesting parents and children on views" $
-		// 	  get "/projects_view?id=eq.1&select=id, name, clients(*), tasks(id, name)" `shouldRespondWith`
-		// 		[json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works when requesting parents and children on views with renamed keys" $
-		// 	  get "/projects_view_alt?t_id=eq.1&select=t_id, name, clients(*), tasks(id, name)" `shouldRespondWith`
-		// 		[json|[{"t_id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"},"tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]}]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "detects parent relations when having many views of a private table" $ do
-		// 	  get "/books?select=title,author:authors(name)&id=eq.5" `shouldRespondWith`
-		// 		[json|[ { "title": "Farenheit 451", "author": { "name": "Ray Bradbury" } } ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	  get "/forties_books?select=title,author:authors(name)&limit=1" `shouldRespondWith`
-		// 		[json|[ { "title": "1984", "author": { "name": "George Orwell" } } ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	  get "/fifties_books?select=title,author:authors(name)&limit=1" `shouldRespondWith`
-		// 		[json|[ { "title": "The Catcher in the Rye", "author": { "name": "J.D. Salinger" } } ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	  get "/sixties_books?select=title,author:authors(name)&limit=1" `shouldRespondWith`
-		// 		[json|[ { "title": "To Kill a Mockingbird", "author": { "name": "Harper Lee" } } ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "can detect fk relations through multiple views recursively when all views are in api schema" $ do
-		// 	  get "/consumers_view_view?select=*,orders_view(*)" `shouldRespondWith` 200
-
-		// 	it "works with views that have subselects" $
-		// 	  get "/authors_books_number?select=*,books(title)&id=eq.1" `shouldRespondWith`
-		// 		[json|[ {"id":1, "name":"George Orwell","num_in_forties":1,"num_in_fifties":0,"num_in_sixties":0,"num_in_all_decades":1,
-		// 				 "books":[{"title":"1984"}]} ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works with views that have case subselects" $
-		// 	  get "/authors_have_book_in_decade?select=*,books(title)&id=eq.3" `shouldRespondWith`
-		// 		[json|[ {"id":3,"name":"Antoine de Saint-Exupéry","has_book_in_forties":true,"has_book_in_fifties":false,"has_book_in_sixties":false,
-		// 				 "books":[{"title":"The Little Prince"}]} ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works with views that have subselect in the FROM clause" $
-		// 	  get "/forties_and_fifties_books?select=title,first_publisher,author:authors(name)&id=eq.1" `shouldRespondWith`
-		// 		[json|[{"title":"1984","first_publisher":"Secker & Warburg","author":{"name":"George Orwell"}}]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works with views that have subselects in a function call" $
-		// 	  get "/authors_have_book_in_decade2?select=*,books(title)&id=eq.3"
-		// 		`shouldRespondWith`
-		// 		  [json|[ {"id":3,"name":"Antoine de Saint-Exupéry","has_book_in_forties":true,"has_book_in_fifties":false,
-		// 				   "has_book_in_sixties":false,"books":[{"title":"The Little Prince"}]} ]|]
-
-		// 	it "works with views that have CTE" $
-		// 	  get "/odd_years_publications?select=title,publication_year,first_publisher,author:authors(name)&id=in.(1,2,3)" `shouldRespondWith`
-		// 		[json|[
-		// 		  {"title":"1984","publication_year":1949,"first_publisher":"Secker & Warburg","author":{"name":"George Orwell"}},
-		// 		  {"title":"The Diary of a Young Girl","publication_year":1947,"first_publisher":"Contact Publishing","author":{"name":"Anne Frank"}},
-		// 		  {"title":"The Little Prince","publication_year":1947,"first_publisher":"Reynal & Hitchcock","author":{"name":"Antoine de Saint-Exupéry"}} ]|]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works when having a capitalized table name and camelCase fk column" $
-		// 	  get "/foos?select=*,bars(*)" `shouldRespondWith` 200
-
-		// @@ not implemented (view)
-		// {
-		// 	Description: "works when having a capitalized table name and camelCase fk column",
-		// 	Query:       "/foos?select=*,bars(*)",
-		// 	Expected:    ``,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
-		// 	it "works when embedding a view with a table that has a long compound pk" $ do
-		// 	  get "/player_view?select=id,contract(purchase_price)&id=in.(1,3,5,7)" `shouldRespondWith`
-		// 		[json|
-		// 		  [{"id":1,"contract":[{"purchase_price":10}]},
-		// 		   {"id":3,"contract":[{"purchase_price":30}]},
-		// 		   {"id":5,"contract":[{"purchase_price":50}]},
-		// 		   {"id":7,"contract":[]}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	  get "/contract?select=tournament,player_view(first_name)&limit=3" `shouldRespondWith`
-		// 		[json|
-		// 		  [{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},
-		// 		   {"tournament":"tournament_2","player_view":{"first_name":"first_name_2"}},
-		// 		   {"tournament":"tournament_3","player_view":{"first_name":"first_name_3"}}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "works when embedding a view with a view that referes to a table that has a long compound pk" $ do
-		// 	  get "/player_view?select=id,contract_view(purchase_price)&id=in.(1,3,5,7)" `shouldRespondWith`
-		// 		[json|
-		// 		  [{"id":1,"contract_view":[{"purchase_price":10}]},
-		// 		   {"id":3,"contract_view":[{"purchase_price":30}]},
-		// 		   {"id":5,"contract_view":[{"purchase_price":50}]},
-		// 		   {"id":7,"contract_view":[]}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-		// 	  get "/contract_view?select=tournament,player_view(first_name)&limit=3" `shouldRespondWith`
-		// 		[json|
-		// 		  [{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},
-		// 		   {"tournament":"tournament_2","player_view":{"first_name":"first_name_2"}},
-		// 		   {"tournament":"tournament_3","player_view":{"first_name":"first_name_3"}}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "can embed a view that has group by" $
-		// 	  get "/projects_count_grouped_by?select=number_of_projects,client:clients(name)&order=number_of_projects" `shouldRespondWith`
-		// 		[json|
-		// 		  [{"number_of_projects":1,"client":null},
-		// 		   {"number_of_projects":2,"client":{"name":"Microsoft"}},
-		// 		   {"number_of_projects":2,"client":{"name":"Apple"}}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
-
-		// 	it "can embed a view that has a subselect containing a select in a where" $
-		// 	  get "/authors_w_entities?select=name,entities,books(title)&id=eq.1" `shouldRespondWith`
-		// 		[json| [{"name":"George Orwell","entities":[3, 4],"books":[{"title":"1984"}]}] |]
-		// 		{ matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "works with views that have subselect in the FROM clause",
+			Query:       "/forties_and_fifties_books?select=title,first_publisher,author:authors(name)&id=eq.1",
+			Expected:    `[{"title":"1984","first_publisher":"Secker & Warburg","author":{"name":"George Orwell"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "works with views that have subselects in a function call",
+			Query:       "/authors_have_book_in_decade2?select=*,books(title)&id=eq.3",
+			Expected:    `[{"id":3,"name":"Antoine de Saint-Exupéry","has_book_in_forties":true,"has_book_in_fifties":false,"has_book_in_sixties":false,"books":[{"title":"The Little Prince"}]}]`,
+			Status:      200,
+		},
+		{
+			Description: "works with views that have CTE",
+			Query:       "/odd_years_publications?select=title,publication_year,first_publisher,author:authors(name)&id=in.(1,2,3)",
+			Expected:    `[{"title":"1984","publication_year":1949,"first_publisher":"Secker & Warburg","author":{"name":"George Orwell"}},{"title":"The Diary of a Young Girl","publication_year":1947,"first_publisher":"Contact Publishing","author":{"name":"Anne Frank"}},{"title":"The Little Prince","publication_year":1947,"first_publisher":"Reynal & Hitchcock","author":{"name":"Antoine de Saint-Exupéry"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when having a capitalized table name and camelCase fk column",
+			Query:       "/foos?select=*,bars(*)",
+			Expected:    ``,
+			Status:      200,
+		},
+		{
+			Description: "works when embedding a view with a table that has a long compound pk",
+			Query:       "/player_view?select=id,contract(purchase_price)&id=in.(1,3,5,7)",
+			Expected:    `[{"id":1,"contract":[{"purchase_price":10}]},{"id":3,"contract":[{"purchase_price":30}]},{"id":5,"contract":[{"purchase_price":50}]},{"id":7,"contract":[]}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when embedding a table with a view (compound pk)",
+			Query:       "/contract?select=tournament,player_view(first_name)&limit=3",
+			Expected:    `[{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},{"tournament":"tournament_2","player_view":{"first_name":"first_name_2"}},{"tournament":"tournament_3","player_view":{"first_name":"first_name_3"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when embedding a view with a view (compound pk)",
+			Query:       "/player_view?select=id,contract_view(purchase_price)&id=in.(1,3,5,7)",
+			Expected:    `[{"id":1,"contract_view":[{"purchase_price":10}]},{"id":3,"contract_view":[{"purchase_price":30}]},{"id":5,"contract_view":[{"purchase_price":50}]},{"id":7,"contract_view":[]}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when embedding a view with a view (compound pk, reverse)",
+			Query:       "/contract_view?select=tournament,player_view(first_name)&limit=3",
+			Expected:    `[{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},{"tournament":"tournament_2","player_view":{"first_name":"first_name_2"}},{"tournament":"tournament_3","player_view":{"first_name":"first_name_3"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "can embed a view that has group by",
+			Query:       "/projects_count_grouped_by?select=number_of_projects,client:clients(name)&order=number_of_projects",
+			Expected:    `[{"number_of_projects":1,"client":null},{"number_of_projects":2,"client":{"name":"Microsoft"}},{"number_of_projects":2,"client":{"name":"Apple"}}]`,
+			Status:      200,
+		},
+		{
+			Description: "can embed a view that has a subselect containing a select in a where",
+			Query:       "/authors_w_entities?select=name,entities,books(title)&id=eq.1",
+			Expected:    `[{"name":"George Orwell","entities":[3,4],"books":[{"title":"1984"}]}]`,
+			Status:      200,
+		},
 
 		//   describe "aliased embeds" $ do
 		// 	it "works with child relation" $
