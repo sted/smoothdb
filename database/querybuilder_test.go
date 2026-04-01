@@ -233,6 +233,50 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT "table"."name"::text, "table"."age"::integer FROM "table"`,
 			nil,
 		},
+		// --- Recursive queries ---
+		{
+			// basic recursive query
+			"?id=start.5&manager_id=recurse.3",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive".* FROM "__recursive"`,
+			[]any{"5", 3},
+		},
+		{
+			// recursive with select and order
+			"?id=start.1&parent_id=recurse.all&select=id,name&order=name.asc",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."parent_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive"."id", "__recursive"."name" FROM "__recursive" ORDER BY "__recursive"."name"`,
+			[]any{"1", 100},
+		},
+		{
+			// recursive with user filters (applied to both base case and recursive step)
+			"?id=start.5&manager_id=recurse.3&is_active=is.true",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 AND "table"."is_active" IS true UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path) AND "table"."is_active" IS true) SELECT "__recursive".* FROM "__recursive"`,
+			[]any{"5", 3},
+		},
+		{
+			// recursive with limit and offset
+			"?id=start.5&manager_id=recurse.3&limit=10&offset=5",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive".* FROM "__recursive" LIMIT $3 OFFSET $4`,
+			[]any{"5", 3, int64(10), int64(5)},
+		},
+		{
+			// after operator — excludes the seed row
+			"?id=after.5&manager_id=recurse.3",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			[]any{"5", 3},
+		},
+		// --- Via (multi-table) recursive queries ---
+		{
+			// basic via — base case is start node, edges followed in recursive step
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			[]any{"1", 100},
+		},
+		{
+			// via with edge filter — via values shifted by offset
+			"?id=after.1&id=recurse.3&edge=via(src_id,dst_id)&edge.rel_type=eq.contains",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path) AND "edge"."rel_type" = $1) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			[]any{"contains", "1", 3},
+		},
 	}
 
 	for i, test := range tests {
@@ -254,6 +298,37 @@ func TestQueryBuilder(t *testing.T) {
 		}
 		if !compareValues(values, test.values) {
 			t.Errorf("\n%d. Expected values\n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.values, values, test.query)
+		}
+	}
+}
+
+func TestRecursiveParserErrors(t *testing.T) {
+	errorTests := []struct {
+		query string
+		errMsg string
+	}{
+		{"?id=start.5", "'start' requires a 'recurse' operator"},
+		{"?manager_id=recurse.3", "'recurse' requires a 'start' or 'after' operator"},
+		{"?id=start.5&manager_id=recurse.0", "recurse depth must be a positive integer or 'all'"},
+		{"?id=start.5&manager_id=recurse.abc", "recurse depth must be a positive integer or 'all'"},
+		{"?id=start.5&manager_id=recurse.-1", "recurse depth must be a positive integer or 'all'"},
+		{"?id=start.1&manager_id=recurse.3&edge=via(src_id,dst_id)", "'via' requires 'start' and 'recurse' to use the same field"},
+		{"?id=start.1&id=recurse.3&edge=via(src_id)", "via requires two columns: via(from_col,to_col)"},
+		{"?id=start.1&id=recurse.3&edge=via(,dst_id)", "via requires two columns: via(from_col,to_col)"},
+	}
+
+	for i, test := range errorTests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = PostgRestParser{}.parse("table", u.Query())
+		if err == nil {
+			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
+			continue
+		}
+		if err.Error() != test.errMsg {
+			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
 		}
 	}
 }

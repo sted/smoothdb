@@ -1,6 +1,7 @@
 package database
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -959,6 +960,197 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 	return query, valueList, nil
 }
 
+const defaultMaxRecursiveDepth = 100
+
+func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
+	selectClause, mainWhere, orderClause string,
+	valueList []any, info *SchemaInfo) (string, []any, error) {
+
+	rec := parts.recursive
+	qtable := _sq(table, schema)
+	startField := quote(rec.StartField)
+	recurseField := quote(rec.RecurseField)
+	cteName := quote("__recursive")
+
+	// Determine effective max depth.
+	// MaxRecursiveDepth == 0 means recursive queries are disabled.
+	if dbe != nil && dbe.config.MaxRecursiveDepth == 0 {
+		return "", nil, &ParseError{"recursive queries are disabled"}
+	}
+	maxDepth := rec.MaxDepth
+	serverMax := defaultMaxRecursiveDepth
+	if dbe != nil && dbe.config.MaxRecursiveDepth > 0 {
+		serverMax = dbe.config.MaxRecursiveDepth
+	}
+	if maxDepth < 0 || maxDepth > serverMax {
+		maxDepth = serverMax
+	}
+
+	// Parameter marker allocation order:
+	// 1. Via edge conditions (if any) — built first so they get the lowest markers
+	// 2. Start value ($N)
+	// 3. Max depth ($N+1)
+	// This ordering matters because whereClause() assigns markers sequentially from nmarker.
+	nmarker := len(valueList)
+
+	// Build via edge table WHERE clause using the standard whereClause builder
+	var viaWhere string
+	if rec.ViaConditions != nil {
+		var viaValues []any
+		viaWhere, viaValues = whereClause(rec.ViaTable, schema, "", rec.ViaConditions, nmarker, BuildStack{})
+		valueList = append(valueList, viaValues...)
+		nmarker = len(valueList)
+	}
+
+	var q strings.Builder
+
+	// --- CTE ---
+	q.WriteString("WITH RECURSIVE " + cteName + " AS (")
+
+	if rec.ViaTable == "" {
+		// --- Single-table mode ---
+
+		// Base case
+		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
+		q.WriteString(" FROM " + qtable)
+		nmarker++
+		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
+		valueList = append(valueList, rec.StartValue)
+		if mainWhere != "" {
+			q.WriteString(" AND " + mainWhere)
+		}
+
+		q.WriteString(" UNION ALL ")
+
+		// Recursive step
+		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
+		q.WriteString(" FROM " + qtable)
+		q.WriteString(" INNER JOIN " + cteName + " ON " + qtable + "." + recurseField + " = " + cteName + "." + startField)
+		nmarker++
+		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
+		valueList = append(valueList, maxDepth)
+		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
+		if mainWhere != "" {
+			q.WriteString(" AND " + mainWhere)
+		}
+	} else {
+		// --- Multi-table (via) mode ---
+		// doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)
+		// Base case is the start node itself (depth 0), same as single-table.
+		// The edge table join happens in the recursive step.
+		qvia := _sq(rec.ViaTable, schema)
+		viaFrom := quote(rec.ViaFromCol)
+		viaTo := quote(rec.ViaToCol)
+
+		// Base case: the start node itself
+		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
+		q.WriteString(" FROM " + qtable)
+		nmarker++
+		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
+		valueList = append(valueList, rec.StartValue)
+		if mainWhere != "" {
+			q.WriteString(" AND " + mainWhere)
+		}
+
+		q.WriteString(" UNION ALL ")
+
+		// Recursive step: follow edges from previously found docs
+		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
+		q.WriteString(" FROM " + qtable)
+		q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField)
+		q.WriteString(" INNER JOIN " + cteName + " ON " + qvia + "." + viaFrom + " = " + cteName + "." + startField)
+		nmarker++
+		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
+		valueList = append(valueList, maxDepth)
+		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
+		if viaWhere != "" {
+			q.WriteString(" AND " + viaWhere)
+		}
+		if mainWhere != "" {
+			q.WriteString(" AND " + mainWhere)
+		}
+	}
+
+	q.WriteString(") ")
+
+	// --- Outer query ---
+	// Rewrite table references to CTE name for the outer query
+	tablePrefix := qtable + "."
+	ctePrefix := cteName + "."
+
+	// In via mode, use DISTINCT to deduplicate nodes reachable by multiple paths
+	selectKeyword := "SELECT "
+	if rec.ViaTable != "" {
+		selectKeyword = "SELECT DISTINCT "
+	}
+
+	if selectClause == "*" {
+		// Enumerate actual table columns to exclude internal __depth/__path
+		ftable := _s(table, schema)
+		if info != nil {
+			if colTypes, ok := info.cachedColumnTypes[ftable]; ok {
+				cols := make([]string, 0, len(colTypes))
+				for colName := range colTypes {
+					cols = append(cols, cteName+"."+quote(colName))
+				}
+				sort.Strings(cols)
+				q.WriteString(selectKeyword + strings.Join(cols, ", ") + " FROM " + cteName)
+			} else {
+				q.WriteString(selectKeyword + cteName + ".* FROM " + cteName)
+			}
+		} else {
+			q.WriteString(selectKeyword + cteName + ".* FROM " + cteName)
+		}
+	} else {
+		outerSelect := strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
+		q.WriteString(selectKeyword + outerSelect + " FROM " + cteName)
+	}
+
+	// Optionally exclude the seed row
+	if rec.ExcludeStart {
+		q.WriteString(" WHERE __depth > 0")
+	}
+
+	if orderClause != "" {
+		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, ctePrefix)
+		q.WriteString(" ORDER BY " + outerOrder)
+	}
+
+	// Limit
+	var limit int64 = -1
+	if parts.limit != "" || options.HasRange && options.RangeMax != -1 {
+		nmarker++
+		q.WriteString(" LIMIT $" + strconv.Itoa(nmarker))
+		if options.HasRange {
+			limit = options.RangeMax - options.RangeMin + 1
+		} else {
+			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
+			options.RangeMax = limit - 1
+		}
+		valueList = append(valueList, limit)
+	}
+
+	// Offset
+	if parts.offset != "" || options.HasRange {
+		nmarker++
+		q.WriteString(" OFFSET $" + strconv.Itoa(nmarker))
+		var offset int64
+		if options.HasRange {
+			offset = options.RangeMin
+		} else {
+			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
+			options.RangeMin = offset
+			if options.RangeMax == -1 {
+				options.RangeMax = 0
+			}
+			options.RangeMax += options.RangeMin
+		}
+		valueList = append(valueList, offset)
+	}
+
+	return q.String(), valueList, nil
+}
+
 func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 
@@ -1059,6 +1251,14 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 		return "", nil, err
 	}
 
+	if parts.recursive != nil {
+		if groupByClause != "" {
+			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
+		}
+		return buildRecursiveSelect(table, schema, parts, options,
+			selectClause, whereClause, orderClause, valueList, info)
+	}
+
 	query := "SELECT " + selectClause
 	from := "FROM " + _sq(table, schema)
 
@@ -1085,6 +1285,14 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
 	if err != nil {
 		return "", nil, err
+	}
+
+	if parts.recursive != nil {
+		if groupByClause != "" {
+			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
+		}
+		return buildRecursiveSelect(table, schema, parts, options,
+			selectClause, whereClause, orderClause, valueList, info)
 	}
 
 	query := "SELECT "

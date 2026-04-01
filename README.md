@@ -390,6 +390,69 @@ Aggregate functions are enabled by default. To disable them, set `Database.Aggre
 When disabled, attempts to use aggregate functions will return an error.
 
 
+### Recursive Queries
+
+> [!NOTE]
+> This is a SmoothDB extension to PostgREST syntax. We plan to propose it upstream to PostgREST.
+
+SmoothDB supports recursive queries on self-referential tables and views using the `start` and `recurse` operators. These generate PostgreSQL recursive CTEs with automatic cycle detection.
+
+#### Basic Usage
+
+Given a table with a parent pointer (e.g. `employees.manager_id → employees.id`):
+
+```http
+GET /api/testdb/employees?id=start.1&manager_id=recurse.3 HTTP/1.1
+```
+
+This returns the row with `id=1` and all descendants up to 3 levels deep, following `manager_id` back to `id`.
+
+Use `recurse.all` (or bare `recurse`) for unlimited depth (capped by `MaxRecursiveDepth`):
+
+```http
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all HTTP/1.1
+```
+
+#### Excluding the Root
+
+Use `after` instead of `start` to exclude the seed row from results:
+
+```http
+GET /api/testdb/employees?id=after.1&manager_id=recurse.all HTTP/1.1
+```
+
+#### Combining with Standard Parameters
+
+All standard query parameters work on the recursive result set:
+
+```http
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true&select=id,name&order=name.asc&limit=10 HTTP/1.1
+```
+
+Filters are applied at every level of the recursion, pruning entire branches.
+
+#### Multi-Table Traversal with `via`
+
+For graph traversal through a separate edge/relationship table, use the `via` operator. Given a `documents` table and a `relationships` table with `src_id` and `dst_id` columns:
+
+```http
+GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id) HTTP/1.1
+```
+
+This traverses all documents reachable from document 1 through the `relationships` table, excluding the root.
+
+Filter which edges to follow using the standard PostgREST `table.column` prefix syntax:
+
+```http
+GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id)&relationships.rel_type=eq.contains HTTP/1.1
+```
+
+Full PostgREST filter syntax is supported on the edge table, including `or` and `in`:
+
+```http
+GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id)&relationships.rel_type=in.(contains,references) HTTP/1.1
+```
+
 ## Example for using SmoothDB in your application
 
 You can embed SmoothDB functionalities in your backend app with relative ease.
@@ -653,6 +716,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
+| Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
 | Logging.Level | Log level: trace, debug, info, warn, error, fatal, panic | "info" |
 | Logging.FileLogging | Enable logging to file | true |
 | Logging.FilePath | File path for file-based logging | "./smoothdb.log" |

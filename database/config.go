@@ -11,6 +11,7 @@ type Config struct {
 	SchemaSearchPath   []string `comment:"Schema search path (default: [] for Postgres search path)"`
 	TransactionMode    string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
 	AggregatesEnabled  bool     `comment:"Enable aggregate functions (default: true)"`
+	MaxRecursiveDepth  int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
 }
 
 func DefaultConfig() *Config {
@@ -21,5 +22,6 @@ func DefaultConfig() *Config {
 		AnonRole:           "",
 		TransactionMode:    "none",
 		AggregatesEnabled:  true,
+		MaxRecursiveDepth:  100,
 	}
 }

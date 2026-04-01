@@ -72,6 +72,20 @@ func (node *WhereConditionNode) isRootNode() bool {
 	return node.operator == "" && node.field.name == ""
 }
 
+// RecursiveInfo holds the parameters for a recursive CTE query.
+// StartField/StartValue define the base case; RecurseField defines the FK to follow.
+type RecursiveInfo struct {
+	StartField   string // column for base case (e.g. "id")
+	StartValue   string // seed value (e.g. "5")
+	RecurseField string // FK column to follow (e.g. "manager_id")
+	MaxDepth     int    // max depth; -1 = unlimited (capped by server max)
+	ExcludeStart bool   // true when "after" operator is used instead of "start"
+	ViaTable      string              // edge table for multi-table recursion (empty = single-table)
+	ViaFromCol    string              // edge table column matching the start value (e.g. "src_id")
+	ViaToCol      string              // edge table column linking to main table's start field (e.g. "dst_id")
+	ViaConditions *WhereConditionNode // parsed filter tree for the edge table
+}
+
 // QueryParts is the root of the AST produced by the request parser
 type QueryParts struct {
 	selectFields        []SelectField
@@ -81,6 +95,7 @@ type QueryParts struct {
 	limit               string
 	offset              string
 	whereConditionsTree *WhereConditionNode
+	recursive           *RecursiveInfo
 }
 
 type QueryOptions struct {
@@ -145,11 +160,15 @@ var postgRestParserOperators = map[string]string{
 	"nxr":    "&<",
 	"nxl":    "&>",
 	"adj":    "-|-",
-	"fts":    "@@",
-	"plfts":  "@@",
-	"phfts":  "@@",
-	"wfts":   "@@",
-	"not":    "", // just to be recognizable in filterParameters
+	"fts":     "@@",
+	"plfts":   "@@",
+	"phfts":   "@@",
+	"wfts":    "@@",
+	"not":     "",  // just to be recognizable in filterParameters
+	"start":   "",  // recursive: base case seed (includes root)
+	"after":   "",  // recursive: base case seed (excludes root)
+	"recurse": "",  // recursive: FK traversal
+	"via":     "",  // recursive: edge table for multi-table traversal
 }
 
 // isValidAggregateFunction checks if the given function name is a valid PostgREST aggregate function
@@ -1029,6 +1048,121 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		parts.offset = offsetFilter[0]
 		delete(filters, "offset")
 	}
+
+	// RECURSIVE
+	// id=start.5&manager_id=recurse.3
+	var recInfo *RecursiveInfo
+	for k, vv := range filters {
+		for _, v := range vv {
+			prefix, rest, ok := strings.Cut(v, ".")
+			if !ok {
+				if v == "recurse" {
+					// recurse without depth value — treat as "all"
+					if recInfo == nil {
+						recInfo = &RecursiveInfo{MaxDepth: -1}
+					}
+					if recInfo.RecurseField != "" {
+						return nil, &ParseError{"only one 'recurse' operator is allowed"}
+					}
+					recInfo.RecurseField = k
+				} else if strings.HasPrefix(v, "via(") && strings.HasSuffix(v, ")") {
+					// via(from_col,to_col)
+					if recInfo == nil {
+						recInfo = &RecursiveInfo{MaxDepth: -1}
+					}
+					if recInfo.ViaTable != "" {
+						return nil, &ParseError{"only one 'via' operator is allowed"}
+					}
+					args := v[4 : len(v)-1] // strip "via(" and ")"
+					cols := strings.SplitN(args, ",", 2)
+					if len(cols) != 2 || cols[0] == "" || cols[1] == "" {
+						return nil, &ParseError{"via requires two columns: via(from_col,to_col)"}
+					}
+					recInfo.ViaTable = k
+					recInfo.ViaFromCol = cols[0]
+					recInfo.ViaToCol = cols[1]
+				}
+				continue
+			}
+			switch prefix {
+			case "start", "after":
+				if recInfo == nil {
+					recInfo = &RecursiveInfo{MaxDepth: -1}
+				}
+				if recInfo.StartField != "" {
+					return nil, &ParseError{"only one 'start'/'after' operator is allowed"}
+				}
+				recInfo.StartField = k
+				recInfo.StartValue = rest
+				recInfo.ExcludeStart = (prefix == "after")
+			case "recurse":
+				if recInfo == nil {
+					recInfo = &RecursiveInfo{MaxDepth: -1}
+				}
+				if recInfo.RecurseField != "" {
+					return nil, &ParseError{"only one 'recurse' operator is allowed"}
+				}
+				recInfo.RecurseField = k
+				if rest == "all" {
+					recInfo.MaxDepth = -1
+				} else {
+					depth, err := strconv.Atoi(rest)
+					if err != nil || depth < 1 {
+						return nil, &ParseError{"recurse depth must be a positive integer or 'all'"}
+					}
+					recInfo.MaxDepth = depth
+				}
+			}
+		}
+	}
+	if recInfo != nil {
+		if recInfo.StartField == "" {
+			return nil, &ParseError{"'recurse' requires a 'start' or 'after' operator"}
+		}
+		if recInfo.RecurseField == "" {
+			return nil, &ParseError{"'start' requires a 'recurse' operator"}
+		}
+		if recInfo.ViaTable != "" && recInfo.StartField != recInfo.RecurseField {
+			return nil, &ParseError{"'via' requires 'start' and 'recurse' to use the same field"}
+		}
+		// Remove start/recurse/via from filters so they don't become WHERE clauses
+		delete(filters, recInfo.StartField)
+		if recInfo.StartField != recInfo.RecurseField {
+			delete(filters, recInfo.RecurseField)
+		}
+		if recInfo.ViaTable != "" {
+			delete(filters, recInfo.ViaTable)
+			// Extract via.* edge table filters and parse them through the
+			// standard PostgREST parser, supporting or/and/not/in/all operators.
+			viaPrefix := recInfo.ViaTable + "."
+			viaFilters := make(Filters)
+			for k := range filters {
+				if strings.HasPrefix(k, viaPrefix) {
+					col := k[len(viaPrefix):]
+					viaFilters[col] = filters[k]
+					delete(filters, k)
+				}
+			}
+			if len(viaFilters) > 0 {
+				recInfo.ViaConditions = &WhereConditionNode{}
+				viaKeys := []string{}
+				for k := range viaFilters {
+					viaKeys = append(viaKeys, k)
+				}
+				sort.Strings(viaKeys)
+				for _, k := range viaKeys {
+					for _, v := range viaFilters[k] {
+						err = p.parseWhereCondition(recInfo.ViaTable, k, v, recInfo.ViaConditions)
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+		}
+		parts.recursive = recInfo
+	}
+
 	// WHERE
 	keys := []string{}
 	for k := range filters {
