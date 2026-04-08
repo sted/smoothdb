@@ -45,7 +45,6 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
-
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for tsvector — pgx v5.9+ defaults to binary,
 		// but we decode RawValues() as text.

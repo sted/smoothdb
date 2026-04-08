@@ -18,7 +18,7 @@ func (e ContentTypeError) Error() string { return e.msg }
 
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
 		return nil, 0, &ContentTypeError{msg: "Content type not available"}
 	}
@@ -49,7 +49,7 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
@@ -63,7 +63,7 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
@@ -85,7 +85,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
@@ -107,7 +107,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	if err != nil {
 		return nil, 0, err
 	}
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info)
 	if err != nil {
 		return nil, 0, err
@@ -125,7 +125,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 
 func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
-	options := gi.QueryOptions
+	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
 		return nil, 0, &ContentTypeError{msg: "Content type not available"}
 	}

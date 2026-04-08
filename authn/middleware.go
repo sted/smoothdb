@@ -66,26 +66,27 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 	} else {
 		db = session.Db
 	}
-	if session.DbConn == nil {
+	if session.DbConn == nil || session.DbConn.Conn().PgConn().IsClosed() {
+		if session.DbConn != nil {
+			// Connection went stale while held by the session — release it
+			session.DbConn.Release()
+			session.DbConn = nil
+		}
 		dbconn, err = database.AcquireConnection(ctx, db)
 		if err != nil {
 			return nil, nil, http.StatusInternalServerError, err
 		}
 		session.DbConn = dbconn
 		newAcquire = true
-
-		claimsString = session.Claims.RawClaims
 	} else {
 		dbconn = session.DbConn
 	}
+	claimsString = session.Claims.RawClaims
 	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire)
 	if err != nil {
 		return nil, nil, http.StatusInternalServerError, err
 	}
 	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
-	if err != nil {
-		return nil, nil, http.StatusInternalServerError, err
-	}
 	return ctx, session, http.StatusOK, nil
 }
 
@@ -98,7 +99,7 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 	// Otherwise it will be released in the sessionmanager after a cer
 	if !m.SessionManager().enabled {
 		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
-	} else if database.HasTX(session.DbConn) {
+	} else if session.DbConn != nil && database.HasTX(session.DbConn) {
 		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, false)
 		session.DbConn = nil
 	}

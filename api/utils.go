@@ -314,7 +314,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	// check preconditions
 	var zero bool
 	sc := database.GetSmoothContext(c)
-	options := sc.QueryOptions
+	options := &sc.QueryOptions
 	if r.Method == "POST" {
 		// [] as input cause no inserts
 		if zero, status, err = writeIfZeroRecordsToInsert(w, records, options); zero {
@@ -338,7 +338,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 // in the response (eg 416 for RequestedRangeNotSatisfiable)
 func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Request, count int64) int {
 	sc := database.GetSmoothContext(ctx)
-	options := sc.QueryOptions
+	options := &sc.QueryOptions
 	// @@ must check if the table has a pk
 	w.Header().Set("Content-Location", r.RequestURI)
 	// Content-Range
