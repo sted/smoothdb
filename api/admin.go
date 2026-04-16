@@ -16,8 +16,6 @@ func InitAdminRouter(apiHelper Helper) {
 	adminURL := apiHelper.BaseAdminURL()
 	admin_db := router.Group(adminURL, apiHelper.MiddlewareStd())
 	admin_dbe := router.Group(adminURL, apiHelper.MiddlewareDBE())
-	admin_nodb := router.Group(adminURL)
-
 	// ROLES
 
 	roles := admin_db.Group("/roles")
@@ -572,7 +570,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 	// SESSIONS
 
-	admin_nodb.Handle("GET", "/sessions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	admin_dbe.Handle("GET", "/sessions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		stats := apiHelper.SessionStatistics()
 		return heligo.WriteJSON(w, http.StatusOK, stats)
 	})

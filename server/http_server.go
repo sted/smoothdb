@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"net/http"
 	"time"
@@ -19,6 +20,21 @@ func (s *Server) initHTTPServer() {
 	s.router.Use(HTTPLogger(s.logger))
 
 	cfg := s.Config
+	api.SetVerboseErrors(cfg.VerboseErrors)
+
+	// Security headers
+	hasTLS := cfg.CertFile != ""
+	s.router.Use(func(next heligo.Handler) heligo.Handler {
+		return func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			if hasTLS {
+				w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			}
+			return next(ctx, w, r)
+		}
+	})
+
 	if len(cfg.CORSAllowedOrigins) != 0 {
 		s.initCORS()
 	}
@@ -37,14 +53,17 @@ func (s *Server) initHTTPServer() {
 	}
 
 	if cfg.LoginMode != "none" {
-		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, cfg.JWTSecret)
+		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, cfg.JWTSecret, cfg.TokenExpiry)
 	}
 
 	if cfg.CertFile != "" {
 		// Load certificates
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err == nil {
-			s.tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+			s.tlsConfig = &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS12,
+			}
 		} else {
 			s.logger.Warn().Err(err)
 		}

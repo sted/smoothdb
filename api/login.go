@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/authn"
@@ -45,7 +46,7 @@ type AccessTokenResponse struct {
 	WeakPassword         *WeakPasswordError `json:"weak_password,omitempty"`
 }
 
-func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string) {
+func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string, tokenExpiry int64) {
 	api := apiHelper.GetRouter()
 
 	api.Handle("POST", "/token", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
@@ -60,8 +61,12 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 		case "db":
 			err = database.VerifyAuthN(credentials.Email, credentials.Password)
 			if err == nil {
-				token, _ := authn.GenerateToken(credentials.Email, jwtSecret)
-				resp = AccessTokenResponse{Token: token}
+				var expiry time.Duration
+				if tokenExpiry > 0 {
+					expiry = time.Duration(tokenExpiry) * time.Second
+				}
+				token, _ := authn.GenerateToken(credentials.Email, jwtSecret, expiry)
+				resp = AccessTokenResponse{Token: token, ExpiresIn: int(tokenExpiry)}
 				return heligo.WriteJSON(w, http.StatusOK, resp)
 			} else {
 				return heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Subsystem: "auth", Message: err.Error()})

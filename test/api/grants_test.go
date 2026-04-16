@@ -211,3 +211,21 @@ func TestGrants(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+func TestGrantsSQLInjection(t *testing.T) {
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/admin",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	tests := []test.Test{
+		{
+			Description: "get table privileges with quote in table name should return empty, not 500",
+			Method:      "GET",
+			Query:       "/grants/dbtest/table/test'injection",
+			Expected:    `[]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig, tests)
+}

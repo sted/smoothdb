@@ -1,5 +1,27 @@
 # Change Log
 
+## Unreleased
+
+### Added
+* Configurable JWT token expiry (`TokenExpiry` config, default 24h)
+* Configurable error verbosity (`VerboseErrors` config, default true) to control whether database hints/details are returned to clients
+* Security headers middleware (`X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`)
+* Config startup validations: warn on empty JWT secret, reject CORS credentials with wildcard origins, warn on unlimited request body size
+
+### Fixed
+* Fixed parallel test suites port collision (postgrest suite moved to port 8084)
+* SQL injection in `GetPolicies`, `GetDatabasePrivileges`, and `GetPrivileges` — switched from string concatenation to parameterized queries
+* JWT algorithm validation now pinned to HS256 (was accepting any HMAC variant)
+* CORS default changed from wildcard `*` to empty (must be explicitly configured)
+* CORS allowed headers restricted to specific list instead of wildcard
+* Admin `/sessions` endpoint now requires authentication
+* TLS minimum version enforced to TLS 1.2
+* Session keys now use SHA-256 hash instead of raw token strings
+* Removed hardcoded JWT secret from sample config
+
+### Improved
+* Session improvements and tests
+
 ## 0.5.0 - 2026-04-01
 
 ### Added

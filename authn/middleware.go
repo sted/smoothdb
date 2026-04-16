@@ -2,6 +2,8 @@ package authn
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 
@@ -41,10 +43,12 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("unauthorized access")
 	}
 	dbname := getDBName(ctx, r)
-	key := tokenString + "; "
+	keyInput := tokenString + "; "
 	if !forceDBE {
-		key += dbname
+		keyInput += dbname
 	}
+	h := sha256.Sum256([]byte(keyInput))
+	key := hex.EncodeToString(h[:])
 	session, isNewSession := m.SessionManager().getSession(key)
 	if isNewSession {
 		if tokenString != "" {

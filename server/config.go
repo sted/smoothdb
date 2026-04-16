@@ -42,6 +42,8 @@ type Config struct {
 	Plugins              []string        `comment:"Ordered list of plugins (default: [])"`
 	ReadTimeout          int64           `comment:"The maximum duration (seconds) for reading the entire request, including the body (default: 60)"`
 	WriteTimeout         int64           `comment:"The maximum duration before timing out writes of the response (default: 60)"`
+	TokenExpiry          int64           `comment:"JWT token expiry in seconds (default: 86400 = 24h, 0 for no expiry)"`
+	VerboseErrors        bool            `comment:"Return full database error details (hint, detail) to clients (default: true)"`
 	RequestMaxBytes      int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
 	Database             database.Config `comment:"Database configuration"`
 	Logging              logging.Config  `comment:"Logging configuration"`
@@ -63,13 +65,15 @@ func defaultConfig() *Config {
 		BaseAPIURL:           "/api",
 		ShortAPIURL:          false,
 		BaseAdminURL:         "/admin",
-		CORSAllowedOrigins:   []string{"*"},
+		CORSAllowedOrigins:   []string{},
 		CORSAllowCredentials: false,
 		EnableDebugRoute:     false,
 		PluginDir:            "./_plugins",
 		Plugins:              []string{},
 		ReadTimeout:          60,
 		WriteTimeout:         60,
+		TokenExpiry:          86400,
+		VerboseErrors:        true,
 		RequestMaxBytes:      1024 * 1024,
 		Database:             *database.DefaultConfig(),
 		Logging:              *logging.DefaultConfig(),
@@ -225,6 +229,19 @@ func checkConfig(cfg *Config) error {
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
+	}
+	if cfg.LoginMode != "none" && cfg.JWTSecret == "" {
+		fmt.Println("Warning: 'JWTSecret' is empty while authentication is enabled (LoginMode:", cfg.LoginMode+")")
+	}
+	if cfg.CORSAllowCredentials {
+		for _, origin := range cfg.CORSAllowedOrigins {
+			if origin == "*" {
+				return fmt.Errorf("invalid CORS configuration: 'CORSAllowCredentials' cannot be true when 'CORSAllowedOrigins' includes '*'")
+			}
+		}
+	}
+	if cfg.RequestMaxBytes == 0 {
+		fmt.Println("Warning: 'RequestMaxBytes' is 0 (unlimited request body size)")
 	}
 	canContinue, err := database.CheckDatabase(&cfg.Database)
 	if err != nil {

@@ -22,6 +22,13 @@ import (
 	"github.com/sted/smoothdb/database"
 )
 
+var verboseErrors = true
+
+// SetVerboseErrors controls whether full database error details are returned to clients.
+func SetVerboseErrors(v bool) {
+	verboseErrors = v
+}
+
 // SmoothError is the generic struct for error reporting
 type SmoothError struct {
 	Subsystem string `json:"subsystem"`
@@ -69,13 +76,16 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		default:
 			status = http.StatusInternalServerError
 		}
-		heligo.WriteJSON(w, status, SmoothError{
+		smoothErr := SmoothError{
 			Subsystem: "database",
 			Message:   dberr.Message,
 			Code:      dberr.Code,
-			Hint:      dberr.Hint,
-			Details:   dberr.Detail,
-		})
+		}
+		if verboseErrors {
+			smoothErr.Hint = dberr.Hint
+			smoothErr.Details = dberr.Detail
+		}
+		heligo.WriteJSON(w, status, smoothErr)
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
 		heligo.WriteHeader(w, status)
@@ -84,7 +94,11 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: err.Error()})
 	} else {
 		status = http.StatusInternalServerError
-		heligo.WriteJSON(w, status, SmoothError{Message: err.Error()})
+		msg := "internal server error"
+		if verboseErrors {
+			msg = err.Error()
+		}
+		heligo.WriteJSON(w, status, SmoothError{Message: msg})
 	}
 	return status, err
 }

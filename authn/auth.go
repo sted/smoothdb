@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-jwt/jwt/v5/request"
@@ -37,7 +38,7 @@ func extractAuthHeader(req *http.Request) string {
 
 func parseAuthHeader(tokenString string, secret string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method.Alg() != "HS256" {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
@@ -52,8 +53,18 @@ func parseAuthHeader(tokenString string, secret string) (*Claims, error) {
 	}
 }
 
-func GenerateToken(role, secret string) (string, error) {
+// GenerateToken creates a signed JWT for the given role.
+// If expiry > 0, the token will include exp and iat claims.
+// If expiry == 0, the token has no expiration (for testing or long-lived tokens).
+func GenerateToken(role, secret string, expiry ...time.Duration) (string, error) {
 	claims := &Claims{Role: role}
+	if len(expiry) > 0 && expiry[0] > 0 {
+		now := time.Now()
+		claims.RegisteredClaims = jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiry[0])),
+			IssuedAt:  jwt.NewNumericDate(now),
+		}
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }

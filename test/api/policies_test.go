@@ -109,3 +109,21 @@ func TestPolicies(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+func TestPoliciesSQLInjection(t *testing.T) {
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/admin",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	tests := []test.Test{
+		{
+			Description: "get policies with quote in table name should return empty, not 500",
+			Method:      "GET",
+			Query:       "/databases/dbtest/tables/test'injection/policies",
+			Expected:    `[]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig, tests)
+}

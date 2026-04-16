@@ -97,11 +97,13 @@ func GetDatabasePrivileges(ctx context.Context, dbname string) ([]Privilege, err
 	privileges := []Privilege{}
 
 	query := privilegesDatabaseQuery
+	var args []any
 	if dbname != "" {
-		query += " WHERE datname = '" + dbname + "'"
+		query += " WHERE datname = $1"
+		args = append(args, dbname)
 	}
 
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -131,15 +133,17 @@ func GetPrivileges(ctx context.Context, targetType string, targetName string) ([
 	privileges := []Privilege{}
 	var query string
 
+	var args []any
 	if targetType == "table" { // @@ table includes views etc for now
 		query = privilegesRelationQuery
 		if targetName != "" {
 			schemaname, tablename := splitTableName(targetName)
-			query += " AND c.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
+			query += " AND c.relname = $1 AND n.nspname = $2"
+			args = append(args, tablename, schemaname)
 		}
 	}
 
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

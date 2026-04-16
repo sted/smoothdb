@@ -45,9 +45,9 @@ func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	policies := []Policy{}
 	query := policyQuery
 	schemaname, tablename := splitTableName(ftablename)
-	query += " WHERE c.relname = '" + tablename + "' AND n.nspname = '" + schemaname + "'"
+	query += " WHERE c.relname = $1 AND n.nspname = $2"
 	query += " ORDER BY tablename"
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, tablename, schemaname)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +85,9 @@ func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 			create += quote(role)
 		}
 	}
+	// USING and WITH CHECK are SQL expressions by design (like PostgREST RLS policies)
+	// and cannot be parameterized. This is safe because CreatePolicy is only reachable
+	// via the admin API which requires EnableAdminRoute + authentication.
 	if policy.Using != nil {
 		create += " USING (" + *policy.Using + ")"
 	}

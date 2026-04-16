@@ -22,7 +22,7 @@ func (s *Server) initCORS() {
 			http.MethodPatch,
 			http.MethodDelete,
 		},
-		AllowedHeaders:   []string{"*"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept", "Prefer", "Accept-Profile", "Content-Profile"},
 		AllowCredentials: s.Config.CORSAllowCredentials,
 		MaxAge:           86400,
 	})
