@@ -332,3 +332,151 @@ func TestRecursiveParserErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildExecuteDeterministicOrder guards against the pg_stat_statements
+// fragmentation bug (see CollHub doc 27565): named RPC parameters must be
+// emitted in a stable order regardless of Go map iteration so identical calls
+// hash to the same queryid.
+func TestBuildExecuteDeterministicOrder(t *testing.T) {
+	record := Record{
+		"p_a": 1,
+		"p_b": "hello",
+		"p_c": 2,
+		"p_d": 3.14,
+		"p_e": true,
+	}
+
+	// Without SchemaInfo: fall back to alphabetical key order.
+	t.Run("no schema info", func(t *testing.T) {
+		var first string
+		for i := 0; i < 50; i++ {
+			q, _, err := CommonBuilder{}.BuildExecute("fn", record, &QueryParts{}, &QueryOptions{}, nil)
+			if err != nil {
+				t.Fatalf("BuildExecute error: %v", err)
+			}
+			if i == 0 {
+				first = q
+				continue
+			}
+			if q != first {
+				t.Fatalf("non-deterministic SQL across runs:\n  first: %s\n  got:   %s", first, q)
+			}
+		}
+		// Alphabetical: p_a, p_b, p_c, p_d, p_e
+		want := `SELECT * FROM "fn"("p_a" := $1, "p_b" := $2, "p_c" := $3, "p_d" := $4, "p_e" := $5) t `
+		if first != want {
+			t.Errorf("expected alphabetical order\n  want: %s\n  got:  %s", want, first)
+		}
+	})
+
+	// With SchemaInfo: use declared signature order.
+	t.Run("with signature", func(t *testing.T) {
+		info := &SchemaInfo{
+			cachedTypes: map[uint32]Type{0: {}},
+			cachedFunctions: map[string]Function{
+				"fn": {
+					Name:   "fn",
+					Schema: "",
+					Arguments: []Argument{
+						{Name: "p_c", Mode: 'i'},
+						{Name: "p_a", Mode: 'i'},
+						{Name: "p_e", Mode: 'i'},
+						{Name: "p_b", Mode: 'i'},
+						{Name: "p_d", Mode: 'i'},
+					},
+				},
+			},
+		}
+		var first string
+		var firstValues []any
+		for i := 0; i < 50; i++ {
+			q, v, err := CommonBuilder{}.BuildExecute("fn", record, &QueryParts{}, &QueryOptions{}, info)
+			if err != nil {
+				t.Fatalf("BuildExecute error: %v", err)
+			}
+			if i == 0 {
+				first = q
+				firstValues = v
+				continue
+			}
+			if q != first {
+				t.Fatalf("non-deterministic SQL across runs:\n  first: %s\n  got:   %s", first, q)
+			}
+			if !compareValues(v, firstValues) {
+				t.Fatalf("non-deterministic values across runs:\n  first: %v\n  got:   %v", firstValues, v)
+			}
+		}
+		// Signature order: p_c, p_a, p_e, p_b, p_d
+		want := `SELECT * FROM "fn"("p_c" := $1, "p_a" := $2, "p_e" := $3, "p_b" := $4, "p_d" := $5) t `
+		if first != want {
+			t.Errorf("expected signature order\n  want: %s\n  got:  %s", want, first)
+		}
+		wantValues := []any{2, 1, true, "hello", 3.14}
+		if !compareValues(firstValues, wantValues) {
+			t.Errorf("values must follow key order\n  want: %v\n  got:  %v", wantValues, firstValues)
+		}
+	})
+
+	// Extra record keys not in signature come after, in alphabetical order.
+	t.Run("extra keys after signature", func(t *testing.T) {
+		info := &SchemaInfo{
+			cachedTypes: map[uint32]Type{0: {}},
+			cachedFunctions: map[string]Function{
+				"fn": {
+					Name:   "fn",
+					Schema: "",
+					Arguments: []Argument{
+						{Name: "p_a", Mode: 'i'},
+						{Name: "p_b", Mode: 'i'},
+					},
+				},
+			},
+		}
+		rec := Record{"p_b": 2, "p_a": 1, "z_extra": 99, "a_extra": 98}
+		var first string
+		for i := 0; i < 50; i++ {
+			q, _, err := CommonBuilder{}.BuildExecute("fn", rec, &QueryParts{}, &QueryOptions{}, info)
+			if err != nil {
+				t.Fatalf("BuildExecute error: %v", err)
+			}
+			if i == 0 {
+				first = q
+				continue
+			}
+			if q != first {
+				t.Fatalf("non-deterministic SQL:\n  first: %s\n  got:   %s", first, q)
+			}
+		}
+		want := `SELECT * FROM "fn"("p_a" := $1, "p_b" := $2, "a_extra" := $3, "z_extra" := $4) t `
+		if first != want {
+			t.Errorf("unexpected order\n  want: %s\n  got:  %s", want, first)
+		}
+	})
+
+	// OUT/TABLE-mode arguments must not be emitted as input params.
+	t.Run("skip out mode args", func(t *testing.T) {
+		info := &SchemaInfo{
+			cachedTypes: map[uint32]Type{0: {}},
+			cachedFunctions: map[string]Function{
+				"fn": {
+					Name:   "fn",
+					Schema: "",
+					Arguments: []Argument{
+						{Name: "p_in", Mode: 'i'},
+						{Name: "p_out", Mode: 'o'},
+						{Name: "p_tbl", Mode: 't'},
+					},
+				},
+			},
+		}
+		rec := Record{"p_in": 1}
+		q, _, err := CommonBuilder{}.BuildExecute("fn", rec, &QueryParts{}, &QueryOptions{}, info)
+		if err != nil {
+			t.Fatalf("BuildExecute error: %v", err)
+		}
+		want := `SELECT * FROM "fn"("p_in" := $1) t `
+		if q != want {
+			t.Errorf("OUT/TABLE args should be skipped\n  want: %s\n  got:  %s", want, q)
+		}
+	})
+}

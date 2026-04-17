@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.6.0 - 2026-04-17
 
 ### Added
 * Configurable JWT token expiry (`TokenExpiry` config, default 24h)
@@ -18,6 +18,8 @@
 * TLS minimum version enforced to TLS 1.2
 * Session keys now use SHA-256 hash instead of raw token strings
 * Removed hardcoded JWT secret from sample config
+* RPC calls now emit named parameters in a deterministic order (function-signature order, falling back to alphabetical), so `pg_stat_statements` aggregates identical calls under a single `queryid` instead of one per JSON key permutation
+* M2M view relationship synthesis now deterministically prefers view junctions over base-table junctions (fixes a flaky "permission denied" error when the base junction lived in a schema the caller lacked USAGE on)
 
 ### Improved
 * Session improvements and tests

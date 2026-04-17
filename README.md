@@ -8,7 +8,7 @@ It is mostly compatible with [PostgREST](https://postgrest.org/en/stable/), with
 
 The main differences are:
 
-* SmoothDB is in development and beta quality. Prefer PostgREST for now, which is rock solid
+* SmoothDB is actively developed and maturing quickly; PostgREST remains the more battle-tested option for critical production workloads
 * SmoothDB is faster and has a lower CPU load 
 * It is written in Go
 * Can be used both stand-alone and as a library (the main motivation for writing this)
@@ -18,6 +18,10 @@ The main differences are:
 
 See [TODO.md](TODO.md) for the many things to be completed.
 Please create issues to let me know your priorities.
+
+## About this project
+
+SmoothDB is not *vibe-coded*. It was started in 2022 as a solid, versatile middleware meant to serve as a reliable building block for data-driven applications. Since 2025 we have been pairing that foundation with strong LLMs to harden, review, and extend the code — aiming to follow the high bar set by PostgREST in correctness, safety, and API fidelity.
 
 ## Getting started
 

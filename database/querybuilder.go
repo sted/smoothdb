@@ -810,6 +810,54 @@ func onConflictClause(table, schema string, fields []string,
 	return s
 }
 
+// orderedRecordKeys returns record's keys in a deterministic order for use
+// when building RPC CALL sites. When a function signature is available and
+// has no unnamed parameters, IN/INOUT/VARIADIC argument names are emitted in
+// declared order; any extra keys (or the whole record when no signature is
+// known) follow in alphabetical order. columnFields, when non-empty,
+// restricts which keys are included.
+func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Function) []string {
+	included := func(key string) bool {
+		if len(columnFields) == 0 {
+			return true
+		}
+		_, ok := columnFields[key]
+		return ok
+	}
+
+	var keys []string
+	seen := map[string]bool{}
+	if f != nil && !f.HasUnnamed {
+		for _, arg := range f.Arguments {
+			// Only IN-like modes are passed as input params.
+			// Mode 0 is the default (IN) when proargmodes is NULL.
+			if arg.Mode != 0 && arg.Mode != 'i' && arg.Mode != 'b' && arg.Mode != 'v' {
+				continue
+			}
+			if _, ok := record[arg.Name]; !ok {
+				continue
+			}
+			if !included(arg.Name) {
+				continue
+			}
+			keys = append(keys, arg.Name)
+			seen[arg.Name] = true
+		}
+	}
+	var extra []string
+	for k := range record {
+		if seen[k] {
+			continue
+		}
+		if !included(k) {
+			continue
+		}
+		extra = append(extra, k)
+	}
+	sort.Strings(extra)
+	return append(keys, extra...)
+}
+
 type CommonBuilder struct{}
 
 func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
@@ -1192,15 +1240,21 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	query string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
+	schema := options.Schema
+
+	var f *Function
+	if info != nil {
+		f = info.GetFunction(_s(name, schema))
+	}
+
+	// Determine a deterministic key order so identical RPC calls generate
+	// identical SQL (pg_stat_statements hashes by normalized query). Prefer
+	// the declared function-signature order; fall back to alphabetical.
+	keys := orderedRecordKeys(record, parts.columnFields, f)
+
 	var pairs string
 	var i int
-	for key := range record {
-		// check if there are specified columns
-		if len(parts.columnFields) > 0 {
-			if _, ok := parts.columnFields[key]; !ok {
-				continue
-			}
-		}
+	for _, key := range keys {
 		if pairs != "" {
 			pairs += ", "
 		}
@@ -1213,11 +1267,9 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 		valueList = append(valueList, record[key])
 	}
 
-	schema := options.Schema
 	// Extract the return type and discover if it is a table.
 	// In that case, we will use its name and schema to compose the select clause
 	var t, s string
-	f := info.GetFunction(_s(name, schema))
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype.IsTable {

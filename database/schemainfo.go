@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"sort"
 
 	"github.com/samber/lo"
 )
@@ -499,8 +500,17 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 	// M2M view relationships: for each existing M2M between base tables,
 	// create M2M rels for view surfaces on both sides and the junction.
 	// Only process each M2M pair once (deduplicate by junction + sorted table pair).
+	// Iterate the relationships map in sorted key order so the deduplication
+	// below (first junction wins) is deterministic across runs, and prefers
+	// view junctions so callers only need privileges on the exposed schema.
 	seen := map[string]bool{}
-	for _, rels := range si.cachedRelationships {
+	relKeys := make([]string, 0, len(si.cachedRelationships))
+	for k := range si.cachedRelationships {
+		relKeys = append(relKeys, k)
+	}
+	sort.Strings(relKeys)
+	for _, k := range relKeys {
+		rels := si.cachedRelationships[k]
 		for _, rel := range rels {
 			if rel.Type != M2M {
 				continue
@@ -522,6 +532,26 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 			tableSurfaces := collectSurfaces(tName, tSchema, rel.Columns)
 			relSurfaces := collectSurfaces(rName, rSchema, rel.RelatedColumns)
 			juncSurfaces := collectSurfaces(jTable, jSchema, append(rel.JColumns, rel.JRelatedColumns...))
+			// Prefer view junctions over base-table junctions so the
+			// synthesized M2M between two view endpoints goes through a
+			// junction exposed in the same (or similarly accessible)
+			// schema, rather than leaking into a hidden base schema the
+			// caller may not have USAGE on. Stable alphabetical tiebreak
+			// keeps the choice deterministic across runs.
+			sortViewsFirst := func(s []surfaceEntry) {
+				sort.SliceStable(s, func(i, j int) bool {
+					if s[i].isView != s[j].isView {
+						return s[i].isView
+					}
+					if s[i].schema != s[j].schema {
+						return s[i].schema < s[j].schema
+					}
+					return s[i].name < s[j].name
+				})
+			}
+			sortViewsFirst(tableSurfaces)
+			sortViewsFirst(relSurfaces)
+			sortViewsFirst(juncSurfaces)
 
 			for _, ts := range tableSurfaces {
 				for _, rs := range relSurfaces {
