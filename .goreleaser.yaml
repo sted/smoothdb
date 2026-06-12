@@ -16,7 +16,7 @@ before:
 builds:
   - id: smoothdb
     ldflags:
-      - -s -w -X main.Version={{ .Version }}
+      - -s -w -X github.com/sted/smoothdb/version.Version={{ .Tag }}
     env:
       - CGO_ENABLED=0
     goarch:

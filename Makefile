@@ -1,7 +1,8 @@
 
-VERSION=$(shell git describe --tags `git rev-list --tags --max-count=1`)
-GO=go
-TEST_FLAGS=-v -count=1 -race
+VERSION := $(shell git describe --tags --always --dirty)
+GO = go
+TEST_FLAGS = -v -count=1 -race
+TAG = v$(patsubst v%,%,$(V))
 
 all: build
 
@@ -24,7 +25,17 @@ prepare-postgrest-tests:
 		psql -U postgres -c "create database pgrest" && \
 		psql -U postgres -f ./test/postgrest/fixtures/load.sql pgrest
 
-clean:
-	go clean
+# Tag a release and push it to GitHub, where the goreleaser workflow
+# builds and publishes the bundles.
+# Usage: make release V=0.7.0
+release:
+	@[ -n "$(V)" ] || { echo "usage: make release V=x.y.z"; exit 1; }
+	@git diff-index --quiet HEAD -- || { echo "error: working tree not clean"; exit 1; }
+	@[ "$$(git branch --show-current)" = "main" ] || { echo "error: not on branch main"; exit 1; }
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin main $(TAG)
 
-.PHONY: all build build-ui build-go clean test
+clean:
+	$(GO) clean
+
+.PHONY: all build build-ui build-go test prepare-postgrest-tests release clean
