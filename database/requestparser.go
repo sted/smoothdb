@@ -126,6 +126,7 @@ type RequestParser interface {
 
 type PostgRestParser struct {
 	tokens []string
+	quoted []bool // for each token, whether it was quoted in the source
 	cur    int
 }
 
@@ -221,6 +222,12 @@ func (p PostgRestParser) filterParameters(filters Filters) Filters {
 	return skipped
 }
 
+// addToken appends a token, remembering if it was quoted in the source
+func (p *PostgRestParser) addToken(t string, quoted bool) {
+	p.tokens = append(p.tokens, t)
+	p.quoted = append(p.quoted, quoted)
+}
+
 // scan splits the string s using the separators and
 // skipping double quoted strings.
 // Returns a slice of substrings and separators.
@@ -253,10 +260,10 @@ outer:
 				}
 				if strings.Compare(lsep, s[i:i+l]) == 0 {
 					if len(normal) != 0 {
-						p.tokens = append(p.tokens, string(normal))
+						p.addToken(string(normal), false)
 						normal = nil
 					}
-					p.tokens = append(p.tokens, lsep)
+					p.addToken(lsep, false)
 					i += l - 1
 					wasSep = true
 					continue outer
@@ -264,7 +271,7 @@ outer:
 			}
 			if cur == '"' || cur == '\'' {
 				if len(normal) != 0 {
-					p.tokens = append(p.tokens, string(normal))
+					p.addToken(string(normal), false)
 					normal = nil
 				}
 				quot = true
@@ -272,10 +279,10 @@ outer:
 				wasSep = false
 			} else if strings.Contains(sep, string(cur)) {
 				if len(normal) != 0 {
-					p.tokens = append(p.tokens, string(normal))
+					p.addToken(string(normal), false)
 					normal = nil
 				}
-				p.tokens = append(p.tokens, string(cur))
+				p.addToken(string(cur), false)
 				wasSep = true
 			} else {
 				normal = append(normal, cur)
@@ -284,7 +291,7 @@ outer:
 		} else if quot && !esc { // quoted
 			if cur == '"' || cur == '\'' {
 				quot = false
-				p.tokens = append(p.tokens, string(quoted))
+				p.addToken(string(quoted), true)
 				wasSep = true
 			} else if cur == '\\' {
 				esc = true
@@ -301,7 +308,7 @@ outer:
 		}
 	}
 	if len(normal) != 0 {
-		p.tokens = append(p.tokens, string(normal))
+		p.addToken(string(normal), false)
 	}
 }
 
@@ -314,6 +321,18 @@ func (p *PostgRestParser) next() string {
 	t := p.tokens[p.cur]
 	p.cur++
 	return t
+}
+
+// nextQuoted returns the next token and whether it was quoted in the source,
+// advancing the cursor.
+func (p *PostgRestParser) nextQuoted() (string, bool) {
+	if p.cur == len(p.tokens) {
+		return "", false
+	}
+	t := p.tokens[p.cur]
+	q := p.quoted[p.cur]
+	p.cur++
+	return t, q
 }
 
 // back takes one step back
@@ -335,6 +354,7 @@ func (p *PostgRestParser) lookAhead() string {
 // reset reinitializes the parser
 func (p *PostgRestParser) reset() {
 	p.tokens = nil
+	p.quoted = nil
 	p.cur = 0
 }
 
@@ -738,22 +758,46 @@ func (p *PostgRestParser) completeIfFloat() string {
 	return ""
 }
 
+// quoteJsonString returns s as a double-quoted JSON string literal,
+// escaping embedded quotes and backslashes
+func quoteJsonString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '"' || c == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(c)
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// jsonPathIsJsonTyped returns true if the json path produces a json value,
+// ie its last extraction operator is -> and not ->>
+func jsonPathIsJsonTyped(path string) bool {
+	return strings.LastIndex(path, "->") != strings.LastIndex(path, "->>")
+}
+
 func (p *PostgRestParser) value(node *WhereConditionNode) error {
-	token := p.next()
-	if token == "" {
+	token, quoted := p.nextQuoted()
+	if token == "" && !quoted {
 		return &ParseError{"value expected"}
 	}
-	if token == ")" { // empty set for IN
+	if token == ")" && !quoted { // empty set for IN
 		p.back()
 		return nil
 	}
 	value := token
 	level := 0
-	if token == "(" || token == "[" { // Range or Composite
+	if !quoted && (token == "(" || token == "[") { // Range, Composite or JSON array
 		level = 1
 		for level > 0 {
-			token := p.next()
-			if token == "(" || token == "[" {
+			token, quoted := p.nextQuoted()
+			if quoted {
+				token = quoteJsonString(token)
+			} else if token == "(" || token == "[" {
 				level++
 			} else if token == ")" || token == "]" {
 				level--
@@ -763,21 +807,31 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			value += token
 			value += p.completeIfFloat()
 		}
-	} else if token == "{" { // Arrays or JSON Object
+	} else if !quoted && token == "{" { // Arrays or JSON Object
 		level = 1
 		for level > 0 {
-			token := p.next()
-			if token == "{" {
+			token, quoted := p.nextQuoted()
+			if quoted {
+				token = quoteJsonString(token)
+			} else if token == "{" {
 				level++
 			} else if token == "}" {
 				level--
 			} else if token == "" {
 				return &ParseError{"'}' expected"}
+			} else if token == "true" || token == "false" || token == "null" {
+				// bare JSON literals stay bare
 			} else if unicode.IsLetter(rune(token[0])) {
-				token = "\"" + token + "\""
+				token = quoteJsonString(token)
 			}
 			value += token
 			value += p.completeIfFloat()
+		}
+	} else if quoted {
+		// quoted values skip keyword normalization;
+		// on json-typed paths (ending with ->) they must stay JSON strings
+		if jsonPathIsJsonTyped(node.field.jsonPath) {
+			value = quoteJsonString(value)
 		}
 	} else {
 		lvalue := strings.ToLower(value)

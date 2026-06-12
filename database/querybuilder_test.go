@@ -138,6 +138,48 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"{\"e\":{\"f\":2,\"g\":[1,2]}}"},
 		},
 		{
+			// jsonb: quoted string value on a json-typed path (issue #19)
+			`?payload->status=eq."red"`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->'status') = $1`,
+			[]any{`"red"`},
+		},
+		{
+			// jsonb: string array containment on a json-typed path (issue #19)
+			`?payload->tags=cs.["red"]`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->'tags') @> $1`,
+			[]any{`["red"]`},
+		},
+		{
+			// jsonb: whole-column equality keeps quoted strings and bare booleans (issue #19)
+			`?payload=eq.{"nums":[1,2,3],"tags":["red","blue"],"mixed":["red",1,true]}`,
+			`SELECT * FROM "table" WHERE "table"."payload" = $1`,
+			[]any{`{"nums":[1,2,3],"tags":["red","blue"],"mixed":["red",1,true]}`},
+		},
+		{
+			// jsonb: quoted "true" is a JSON string, not a boolean
+			`?payload->flag=eq."true"`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->'flag') = $1`,
+			[]any{`"true"`},
+		},
+		{
+			// jsonb: bare boolean on a json-typed path stays bare
+			`?payload->flag=eq.true`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->'flag') = $1`,
+			[]any{"true"},
+		},
+		{
+			// text result with ->> keeps stripping quotes
+			`?payload->>status=eq."red"`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'status') = $1`,
+			[]any{"red"},
+		},
+		{
+			// jsonb: IN with quoted values on a json-typed path
+			`?payload->status=in.("red","blue")`,
+			`SELECT * FROM "table" WHERE ("table"."payload"->'status') IN ($1, $2)`,
+			[]any{`"red"`, `"blue"`},
+		},
+		{
 			// simple aggregate function
 			"?select=amount.sum()",
 			`SELECT SUM("table"."amount") AS "sum" FROM "table"`,
