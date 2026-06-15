@@ -81,10 +81,12 @@ type RecursiveInfo struct {
 	RecurseField string // FK column to follow (e.g. "manager_id")
 	MaxDepth     int    // max depth; -1 = unlimited (capped by server max)
 	ExcludeStart bool   // true when "after" operator is used instead of "start"
-	ViaTable      string              // edge table for multi-table recursion (empty = single-table)
-	ViaFromCol    string              // edge table column matching the start value (e.g. "src_id")
-	ViaToCol      string              // edge table column linking to main table's start field (e.g. "dst_id")
-	ViaConditions *WhereConditionNode // parsed filter tree for the edge table
+	ViaTable         string              // edge table for multi-table recursion (empty = single-table)
+	ViaFromCol       string              // edge table column matching the start value (e.g. "src_id")
+	ViaToCol         string              // edge table column linking to main table's start field (e.g. "dst_id")
+	ViaConditions    *WhereConditionNode // parsed filter tree for the edge table
+	ViaBidirectional bool                // true for via!both(...) — follow edges in either direction
+	WalkConditions   *WhereConditionNode // filters that prune the walk (walk.* prefix); plain filters are result filters
 }
 
 // QueryParts is the root of the AST produced by the request parser
@@ -1153,15 +1155,25 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						return nil, &ParseError{"only one 'recurse' operator is allowed"}
 					}
 					recInfo.RecurseField = k
-				} else if strings.HasPrefix(v, "via(") && strings.HasSuffix(v, ")") {
-					// via(from_col,to_col)
+				} else if (strings.HasPrefix(v, "via(") || strings.HasPrefix(v, "via!")) && strings.HasSuffix(v, ")") {
+					// via(from_col,to_col) — directed (default)
+					// via!both(from_col,to_col) — undirected (follow edges either way).
+					// The "!dir" hint mirrors the embed grammar relationship!fk(cols).
+					// Reverse-only traversal needs no hint: swap the columns, via(to,from).
 					if recInfo == nil {
 						recInfo = &RecursiveInfo{MaxDepth: -1}
 					}
 					if recInfo.ViaTable != "" {
 						return nil, &ParseError{"only one 'via' operator is allowed"}
 					}
-					args := v[4 : len(v)-1] // strip "via(" and ")"
+					open := strings.IndexByte(v, '(')
+					if head := v[:open]; head != "via" {
+						if head[len("via!"):] != "both" {
+							return nil, &ParseError{"via direction must be 'both': via!both(from_col,to_col)"}
+						}
+						recInfo.ViaBidirectional = true
+					}
+					args := v[open+1 : len(v)-1] // strip "via(" / "via!both(" prefix and ")"
 					cols := strings.SplitN(args, ",", 2)
 					if len(cols) != 2 || cols[0] == "" || cols[1] == "" {
 						return nil, &ParseError{"via requires two columns: via(from_col,to_col)"}
@@ -1244,6 +1256,33 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						if err != nil {
 							return nil, err
 						}
+					}
+				}
+			}
+		}
+		// Extract walk.* filters: these prune the traversal (injected inside the
+		// CTE arms), mirroring the via.* extraction above but parsed against the
+		// main table. Plain (non-walk.) filters fall through to the WHERE loop and
+		// become result filters applied to the outer query.
+		walkPrefix := "walk."
+		walkFilters := make(Filters)
+		for k := range filters {
+			if strings.HasPrefix(k, walkPrefix) {
+				walkFilters[k[len(walkPrefix):]] = filters[k]
+				delete(filters, k)
+			}
+		}
+		if len(walkFilters) > 0 {
+			recInfo.WalkConditions = &WhereConditionNode{}
+			walkKeys := make([]string, 0, len(walkFilters))
+			for k := range walkFilters {
+				walkKeys = append(walkKeys, k)
+			}
+			sort.Strings(walkKeys)
+			for _, k := range walkKeys {
+				for _, v := range walkFilters[k] {
+					if err = p.parseWhereCondition(mainTable, k, v, recInfo.WalkConditions); err != nil {
+						return nil, err
 					}
 				}
 			}

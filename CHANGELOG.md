@@ -1,5 +1,25 @@
 # Change Log
 
+## 0.7.0 - 2026-06-15
+
+### Added
+* `__depth` selectable pseudo-column on recursive queries — reports each row's traversal depth (seed = 0); in `via` mode it reports the shallowest depth at which a node is reached
+* `walk.` filter prefix to prune the traversal — skips a non-matching node and everything beyond it
+* Bidirectional graph traversal with `via!both(src,dst)` — follows edges in either direction
+* Resource embedding now composes with single-table recursion (not supported together with `via()` traversal)
+
+### Changed
+* **Breaking:** plain filters on recursive queries now filter the *result* instead of pruning the traversal; the previous prune-the-walk behavior is now opt-in via the `walk.` prefix
+
+## 0.6.1 - 2026-06-12
+
+### Fixed
+* JSONB filter behavior now matches PostgREST (#19): JSON-path filters with quoted string values, containment against JSON string arrays, and whole-column JSONB equality/inequality
+
+### Improved
+* Improved release process (goreleaser config and `make release` target)
+* Updated Go and UI dependencies
+
 ## 0.6.0 - 2026-04-17
 
 ### Added

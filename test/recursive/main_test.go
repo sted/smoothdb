@@ -1,6 +1,7 @@
 package test_recursive
 
 import (
+	"context"
 	"log"
 	"os"
 	"testing"
@@ -106,15 +107,30 @@ func TestMain(m *testing.M) {
 				]
 			}`,
 		},
-		// Relationship table: doc_rel
+		// Child table with an FK to tree_node — lets us embed a related resource while
+		// recursing (single-table recursion composes with embedding).
+		{
+			Method: "POST",
+			Query:  "/recursive_test/tables",
+			Body: `{
+				"name": "node_tag",
+				"columns": [
+					{"name": "id", "type": "int4", "notnull": true, "constraints": ["PRIMARY KEY"]},
+					{"name": "node_id", "type": "int4", "notnull": true, "constraints": ["REFERENCES tree_node (id)"]},
+					{"name": "tag", "type": "text", "notnull": true}
+				]
+			}`,
+		},
+		// Relationship table: doc_rel — FKs to doc make doc<->doc_rel an embeddable
+		// relationship, which the via()+embed rejection test relies on.
 		{
 			Method: "POST",
 			Query:  "/recursive_test/tables",
 			Body: `{
 				"name": "doc_rel",
 				"columns": [
-					{"name": "src_id", "type": "int4", "notnull": true},
-					{"name": "dst_id", "type": "int4", "notnull": true},
+					{"name": "src_id", "type": "int4", "notnull": true, "constraints": ["REFERENCES doc (id)"]},
+					{"name": "dst_id", "type": "int4", "notnull": true, "constraints": ["REFERENCES doc (id)"]},
 					{"name": "rel_type", "type": "text", "notnull": true}
 				]
 			}`,
@@ -168,6 +184,30 @@ func TestMain(m *testing.M) {
 			Query:  "/tree_node",
 			Body:   `[{"id": 5, "name": "Junior Dev", "parent_id": 4, "is_active": true}, {"id": 7, "name": "Sales Rep", "parent_id": 3, "is_active": true}]`,
 		},
+		// Isolated subtree with an ACTIVE node beneath an INACTIVE one. Used to tell
+		// result filters (keep 102) apart from walk-prune filters (102 unreachable).
+		//   100 Region (active) -> 101 Closed Office (inactive) -> 102 Remote Worker (active)
+		{
+			Method: "POST",
+			Query:  "/tree_node",
+			Body:   `[{"id": 100, "name": "Region", "parent_id": null, "is_active": true}]`,
+		},
+		{
+			Method: "POST",
+			Query:  "/tree_node",
+			Body:   `[{"id": 101, "name": "Closed Office", "parent_id": 100, "is_active": false}]`,
+		},
+		{
+			Method: "POST",
+			Query:  "/tree_node",
+			Body:   `[{"id": 102, "name": "Remote Worker", "parent_id": 101, "is_active": true}]`,
+		},
+		// Tags hanging off tree nodes (one tag each, for a deterministic embed payload).
+		{
+			Method: "POST",
+			Query:  "/node_tag",
+			Body:   `[{"id": 1, "node_id": 1, "tag": "exec"}, {"id": 2, "node_id": 2, "tag": "eng"}]`,
+		},
 		// Doc data for CollHub-like pattern
 		{
 			Method: "POST",
@@ -182,6 +222,12 @@ func TestMain(m *testing.M) {
 		},
 	}
 	test.Prepare(dataConfig, dataCommands)
+
+	// Tables and FKs above are created at runtime through the admin API, which does
+	// not refresh the relationship cache. Reload it so embedded resources resolve.
+	if err := s.GetDBE().ReloadDatabaseSchema(context.Background(), "recursive_test"); err != nil {
+		log.Fatal(err)
+	}
 
 	code := m.Run()
 	os.Exit(code)

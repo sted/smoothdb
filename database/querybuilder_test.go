@@ -289,10 +289,25 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"1", 100},
 		},
 		{
-			// recursive with user filters (applied to both base case and recursive step)
+			// plain filters are RESULT filters — applied to the outer query, NOT
+			// inside the CTE (the prune-the-walk behavior moved under the walk. prefix).
 			"?id=start.5&manager_id=recurse.3&is_active=is.true",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive".* FROM "__recursive" WHERE "__recursive"."is_active" IS true`,
+			[]any{"5", 3},
+		},
+		{
+			// walk.* filters prune the traversal — injected inside BOTH CTE arms
+			// (the sibling of the result-filter case above).
+			"?id=start.5&manager_id=recurse.3&walk.is_active=is.true",
 			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 AND "table"."is_active" IS true UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path) AND "table"."is_active" IS true) SELECT "__recursive".* FROM "__recursive"`,
 			[]any{"5", 3},
+		},
+		{
+			// walk-prune AND result-filter together. The result filter (mainWhere) is
+			// built in BuildSelect first, so it claims $1; then walk $2, start $3, depth $4.
+			"?id=start.5&manager_id=recurse.3&walk.name=eq.x&is_active=eq.y",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $3 AND "table"."name" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."manager_id" = "__recursive"."id" WHERE "__recursive".__depth < $4 AND NOT "table"."id" = ANY("__recursive".__path) AND "table"."name" = $2) SELECT "__recursive".* FROM "__recursive" WHERE "__recursive"."is_active" = $1`,
+			[]any{"y", "x", "5", 3},
 		},
 		{
 			// recursive with limit and offset
@@ -318,6 +333,32 @@ func TestQueryBuilder(t *testing.T) {
 			"?id=after.1&id=recurse.3&edge=via(src_id,dst_id)&edge.rel_type=eq.contains",
 			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path) AND "edge"."rel_type" = $1) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
 			[]any{"contains", "1", 3},
+		},
+		// --- __depth selectable + via min-depth dedup ---
+		{
+			// __depth is a selectable pseudo-column; single-table mode keeps a plain SELECT
+			"?id=start.1&parent_id=recurse.all&select=id,name,__depth",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."parent_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive"."id", "__recursive"."name", "__recursive"."__depth" FROM "__recursive"`,
+			[]any{"1", 100},
+		},
+		{
+			// via + __depth: DISTINCT ON (node) ORDER BY node, __depth keeps min depth per node
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,__depth",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive"."id", "__recursive"."__depth" FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup"`,
+			[]any{"1", 100},
+		},
+		{
+			// via + __depth + user order: ORDER BY targets the "__dedup" wrapper alias
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,__depth&order=id",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive"."id", "__recursive"."__depth" FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup" ORDER BY "__dedup"."id"`,
+			[]any{"1", 100},
+		},
+		// --- bidirectional via!both ---
+		{
+			// via!both follows edges in either direction via an OR join predicate
+			"?id=after.1&id=recurse.all&edge=via!both(src_id,dst_id)",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" OR "edge"."src_id" = "table"."id" INNER JOIN "__recursive" ON ("edge"."src_id" = "__recursive"."id" AND "edge"."dst_id" = "table"."id") OR ("edge"."dst_id" = "__recursive"."id" AND "edge"."src_id" = "table"."id") WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			[]any{"1", 100},
 		},
 	}
 
@@ -357,6 +398,7 @@ func TestRecursiveParserErrors(t *testing.T) {
 		{"?id=start.1&manager_id=recurse.3&edge=via(src_id,dst_id)", "'via' requires 'start' and 'recurse' to use the same field"},
 		{"?id=start.1&id=recurse.3&edge=via(src_id)", "via requires two columns: via(from_col,to_col)"},
 		{"?id=start.1&id=recurse.3&edge=via(,dst_id)", "via requires two columns: via(from_col,to_col)"},
+		{"?id=start.1&id=recurse.3&edge=via!sideways(src_id,dst_id)", "via direction must be 'both': via!both(from_col,to_col)"},
 	}
 
 	for i, test := range errorTests {
@@ -365,6 +407,36 @@ func TestRecursiveParserErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = PostgRestParser{}.parse("table", u.Query())
+		if err == nil {
+			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
+			continue
+		}
+		if err.Error() != test.errMsg {
+			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
+		}
+	}
+}
+
+// TestRecursiveBuildErrors covers errors raised while building the recursive
+// SELECT (not during parsing) — e.g. selecting the internal __path array.
+func TestRecursiveBuildErrors(t *testing.T) {
+	errorTests := []struct {
+		query  string
+		errMsg string
+	}{
+		{"?id=start.1&parent_id=recurse.all&select=id,__path", "__path is internal"},
+	}
+
+	for i, test := range errorTests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("%d. unexpected parse error for %q: %v", i, test.query, err)
+		}
+		_, _, err = DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
 		if err == nil {
 			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
 			continue

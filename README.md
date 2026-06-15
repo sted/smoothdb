@@ -397,65 +397,37 @@ When disabled, attempts to use aggregate functions will return an error.
 ### Recursive Queries
 
 > [!NOTE]
-> This is a SmoothDB extension to PostgREST syntax. We plan to propose it upstream to PostgREST.
+> This is a SmoothDB extension to PostgREST syntax. We plan to propose it to PostgREST.
 
-SmoothDB supports recursive queries on self-referential tables and views using the `start` and `recurse` operators. These generate PostgreSQL recursive CTEs with automatic cycle detection.
-
-#### Basic Usage
-
-Given a table with a parent pointer (e.g. `employees.manager_id → employees.id`):
+SmoothDB walks self-referential tables (and separate edge tables) with the `start`/`recurse` operators, generating PostgreSQL recursive CTEs with automatic cycle detection.
 
 ```http
 GET /api/testdb/employees?id=start.1&manager_id=recurse.3 HTTP/1.1
 ```
 
-This returns the row with `id=1` and all descendants up to 3 levels deep, following `manager_id` back to `id`.
+Returns row `id=1` and its descendants up to 3 levels deep, following `manager_id → id`. Use `recurse.all` (or bare `recurse`) for unlimited depth (capped by `MaxRecursiveDepth`), and `after` instead of `start` to exclude the seed row.
 
-Use `recurse.all` (or bare `recurse`) for unlimited depth (capped by `MaxRecursiveDepth`):
-
-```http
-GET /api/testdb/employees?id=start.1&manager_id=recurse.all HTTP/1.1
-```
-
-#### Excluding the Root
-
-Use `after` instead of `start` to exclude the seed row from results:
+**Result vs. traversal filters.** A plain filter restricts the *result*: the whole subtree is walked, then non-matching rows are dropped. Prefix a filter with `walk.` to prune the *traversal* instead — a non-matching node, and everything beyond it, is skipped:
 
 ```http
-GET /api/testdb/employees?id=after.1&manager_id=recurse.all HTTP/1.1
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true       HTTP/1.1   # keep only active rows
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&walk.is_active=is.true  HTTP/1.1   # stop walking at inactive nodes
 ```
 
-#### Combining with Standard Parameters
-
-All standard query parameters work on the recursive result set:
+Standard parameters (`select`, `order`, `limit`, …) apply to the result set. The pseudo-column `__depth` is selectable to get each row's traversal depth (seed = 0), and related resources can be embedded:
 
 ```http
-GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true&select=id,name&order=name.asc&limit=10 HTTP/1.1
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__depth,tasks(title)&order=__depth HTTP/1.1
 ```
 
-Filters are applied at every level of the recursion, pruning entire branches.
-
-#### Multi-Table Traversal with `via`
-
-For graph traversal through a separate edge/relationship table, use the `via` operator. Given a `documents` table and a `relationships` table with `src_id` and `dst_id` columns:
+**Edge tables (`via`).** Traverse a graph through a separate edge table with source/target columns. Add the `!both` hint to follow edges in either direction; filter which edges to follow with the standard `table.column` syntax (`eq`, `in`, `or`, …):
 
 ```http
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id) HTTP/1.1
+GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via!both(src_id,dst_id)&relationships.rel_type=in.(contains,references) HTTP/1.1
 ```
 
-This traverses all documents reachable from document 1 through the `relationships` table, excluding the root.
-
-Filter which edges to follow using the standard PostgREST `table.column` prefix syntax:
-
-```http
-GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id)&relationships.rel_type=eq.contains HTTP/1.1
-```
-
-Full PostgREST filter syntax is supported on the edge table, including `or` and `in`:
-
-```http
-GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id)&relationships.rel_type=in.(contains,references) HTTP/1.1
-```
+Embedding is not supported together with `via` traversal.
 
 ## Example for using SmoothDB in your application
 

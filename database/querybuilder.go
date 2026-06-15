@@ -1046,7 +1046,7 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 const defaultMaxRecursiveDepth = 100
 
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
-	selectClause, mainWhere, orderClause string,
+	selectClause, mainWhere, orderClause, joins string,
 	valueList []any, info *SchemaInfo) (string, []any, error) {
 
 	rec := parts.recursive
@@ -1059,6 +1059,26 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// MaxRecursiveDepth == 0 means recursive queries are disabled.
 	if dbe != nil && dbe.config.MaxRecursiveDepth == 0 {
 		return "", nil, &ParseError{"recursive queries are disabled"}
+	}
+
+	// Embedding (LEFT JOIN LATERAL) composes with single-table recursion only.
+	// Via-mode embedding would fight the DISTINCT/min-depth dedup, so reject it cleanly.
+	if joins != "" && rec.ViaTable != "" {
+		return "", nil, &ParseError{"embedding is not supported with via() recursion"}
+	}
+
+	// Reject __path (internal cycle-tracking array) as a selected field; __depth is selectable.
+	for _, sf := range parts.selectFields {
+		if sf.field.name == "__path" {
+			return "", nil, &ParseError{"__path is internal"}
+		}
+	}
+	depthSelected := false
+	for _, sf := range parts.selectFields {
+		if sf.field.name == "__depth" {
+			depthSelected = true
+			break
+		}
 	}
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
@@ -1085,6 +1105,16 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		nmarker = len(valueList)
 	}
 
+	// Build the walk-prune WHERE (walk.* filters) against the main table.
+	// Marker order stays via -> walk -> start -> depth.
+	var walkWhere string
+	if rec.WalkConditions != nil {
+		var walkValues []any
+		walkWhere, walkValues = whereClause(table, schema, "", rec.WalkConditions, nmarker, BuildStack{info: info})
+		valueList = append(valueList, walkValues...)
+		nmarker = len(valueList)
+	}
+
 	var q strings.Builder
 
 	// --- CTE ---
@@ -1093,15 +1123,15 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	if rec.ViaTable == "" {
 		// --- Single-table mode ---
 
-		// Base case — when ExcludeStart is true (after operator), skip mainWhere on the
-		// seed row so it remains a traversal anchor even if it doesn't match the filter.
+		// Base case — when ExcludeStart is true (after operator), skip walk filters on
+		// the seed row so it remains a traversal anchor even if it doesn't match them.
 		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
 		nmarker++
 		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, rec.StartValue)
-		if mainWhere != "" && !rec.ExcludeStart {
-			q.WriteString(" AND " + mainWhere)
+		if walkWhere != "" && !rec.ExcludeStart {
+			q.WriteString(" AND " + walkWhere)
 		}
 
 		q.WriteString(" UNION ALL ")
@@ -1114,8 +1144,8 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, maxDepth)
 		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
-		if mainWhere != "" {
-			q.WriteString(" AND " + mainWhere)
+		if walkWhere != "" {
+			q.WriteString(" AND " + walkWhere)
 		}
 	} else {
 		// --- Multi-table (via) mode ---
@@ -1127,14 +1157,14 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		viaTo := quote(rec.ViaToCol)
 
 		// Base case: the start node itself — when ExcludeStart is true (after operator),
-		// skip mainWhere so the seed remains a traversal anchor.
+		// skip walk filters so the seed remains a traversal anchor.
 		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
 		nmarker++
 		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, rec.StartValue)
-		if mainWhere != "" && !rec.ExcludeStart {
-			q.WriteString(" AND " + mainWhere)
+		if walkWhere != "" && !rec.ExcludeStart {
+			q.WriteString(" AND " + walkWhere)
 		}
 
 		q.WriteString(" UNION ALL ")
@@ -1142,8 +1172,15 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		// Recursive step: follow edges from previously found docs
 		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
 		q.WriteString(" FROM " + qtable)
-		q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField)
-		q.WriteString(" INNER JOIN " + cteName + " ON " + qvia + "." + viaFrom + " = " + cteName + "." + startField)
+		if rec.ViaBidirectional {
+			// via!both: follow edges in either direction. The new node (qtable) sits on
+			// one end of the edge, the known node (cte) on the opposite end.
+			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField + " OR " + qvia + "." + viaFrom + " = " + qtable + "." + startField)
+			q.WriteString(" INNER JOIN " + cteName + " ON (" + qvia + "." + viaFrom + " = " + cteName + "." + startField + " AND " + qvia + "." + viaTo + " = " + qtable + "." + startField + ") OR (" + qvia + "." + viaTo + " = " + cteName + "." + startField + " AND " + qvia + "." + viaFrom + " = " + qtable + "." + startField + ")")
+		} else {
+			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField)
+			q.WriteString(" INNER JOIN " + cteName + " ON " + qvia + "." + viaFrom + " = " + cteName + "." + startField)
+		}
 		nmarker++
 		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, maxDepth)
@@ -1151,8 +1188,8 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		if viaWhere != "" {
 			q.WriteString(" AND " + viaWhere)
 		}
-		if mainWhere != "" {
-			q.WriteString(" AND " + mainWhere)
+		if walkWhere != "" {
+			q.WriteString(" AND " + walkWhere)
 		}
 	}
 
@@ -1163,12 +1200,8 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	tablePrefix := qtable + "."
 	ctePrefix := cteName + "."
 
-	// In via mode, use DISTINCT to deduplicate nodes reachable by multiple paths
-	selectKeyword := "SELECT "
-	if rec.ViaTable != "" {
-		selectKeyword = "SELECT DISTINCT "
-	}
-
+	// Build the SELECT list (without keyword); remember whether it was "*".
+	var sel string
 	if selectClause == "*" {
 		// Enumerate actual table columns to exclude internal __depth/__path
 		ftable := _s(table, schema)
@@ -1179,25 +1212,72 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 					cols = append(cols, cteName+"."+quote(colName))
 				}
 				sort.Strings(cols)
-				q.WriteString(selectKeyword + strings.Join(cols, ", ") + " FROM " + cteName)
+				sel = strings.Join(cols, ", ")
 			} else {
-				q.WriteString(selectKeyword + cteName + ".* FROM " + cteName)
+				sel = cteName + ".*"
 			}
 		} else {
-			q.WriteString(selectKeyword + cteName + ".* FROM " + cteName)
+			sel = cteName + ".*"
 		}
 	} else {
-		outerSelect := strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
-		q.WriteString(selectKeyword + outerSelect + " FROM " + cteName)
+		sel = strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
 	}
 
-	// Optionally exclude the seed row
+	// Embed joins (LEFT JOIN LATERAL) correlate to the base-table alias; rewrite
+	// the top-level "table". -> "__recursive". correlation. The lateral's own numbered
+	// alias (relationship_1.) is untouched, so the rewrite is surgical. via+embed is
+	// rejected by the guard above, so joinsClause is only ever set in single-table mode.
+	var joinsClause string
+	if joins != "" {
+		joinsClause = " " + strings.ReplaceAll(joins, tablePrefix, ctePrefix)
+	}
+
+	// Plain filters become a result WHERE on the outer query (composed with the
+	// ExcludeStart seed-skip); walk.* filters already pruned the CTE arms above.
+	var outerWhere string
 	if rec.ExcludeStart {
-		q.WriteString(" WHERE __depth > 0")
+		outerWhere = "__depth > 0"
+	}
+	if mainWhere != "" {
+		resultWhere := strings.ReplaceAll(mainWhere, tablePrefix, ctePrefix)
+		if outerWhere != "" {
+			outerWhere += " AND "
+		}
+		outerWhere += resultWhere
+	}
+
+	if depthSelected && rec.ViaTable != "" {
+		// via min-depth dedup: SELECT DISTINCT ON (node) ... ORDER BY node, __depth
+		// reports the shallowest depth per node. Single-table trees skip this — they
+		// can't reach a node at two depths (the __path guard keeps edges unique), so a
+		// plain SELECT below is fine. The wrapper also isolates min-depth selection from
+		// any user ORDER BY appended below.
+		q.WriteString("SELECT * FROM (SELECT DISTINCT ON (" + ctePrefix + startField + ") " + sel + " FROM " + cteName)
+		if outerWhere != "" {
+			q.WriteString(" WHERE " + outerWhere)
+		}
+		q.WriteString(" ORDER BY " + ctePrefix + startField + ", " + cteName + ".__depth) \"__dedup\"")
+	} else {
+		// In via mode, DISTINCT deduplicates nodes reachable by multiple paths.
+		selectKeyword := "SELECT "
+		if rec.ViaTable != "" {
+			selectKeyword = "SELECT DISTINCT "
+		}
+		q.WriteString(selectKeyword + sel + " FROM " + cteName + joinsClause)
+		if outerWhere != "" {
+			q.WriteString(" WHERE " + outerWhere)
+		}
 	}
 
 	if orderClause != "" {
-		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, ctePrefix)
+		// When the min-depth dedup wrapper is in play the outer query selects from the
+		// "__dedup" subquery, so a user ORDER BY must target that alias (and the column
+		// must be in the select list); otherwise it references the CTE directly.
+		orderPrefix := ctePrefix
+		if depthSelected && rec.ViaTable != "" {
+			orderPrefix = quote("__dedup") + "."
+		}
+		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, orderPrefix)
 		q.WriteString(" ORDER BY " + outerOrder)
 	}
 
@@ -1345,7 +1425,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
 		}
 		return buildRecursiveSelect(table, schema, parts, options,
-			selectClause, whereClause, orderClause, valueList, info)
+			selectClause, whereClause, orderClause, joins, valueList, info)
 	}
 
 	query := "SELECT " + selectClause
@@ -1381,7 +1461,7 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
 		}
 		return buildRecursiveSelect(table, schema, parts, options,
-			selectClause, whereClause, orderClause, valueList, info)
+			selectClause, whereClause, orderClause, joins, valueList, info)
 	}
 
 	query := "SELECT "

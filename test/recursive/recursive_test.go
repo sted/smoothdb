@@ -58,9 +58,37 @@ func TestFullRecursion(t *testing.T) {
 func TestRecursionWithFilters(t *testing.T) {
 	tests := []test.Test{
 		{
-			Description: "recurse with is_active filter — prunes inactive branches",
+			// Plain filters are RESULT filters: the whole subtree is walked, then the
+			// filter drops non-matching rows. Here the only inactive node (6) is a leaf,
+			// so the result set matches what pruning would give.
+			Description: "recurse with is_active result filter — drops inactive rows",
 			Query:       "/tree_node?id=start.1&parent_id=recurse.all&is_active=is.true&select=id,name&order=id",
 			Expected:    `[{"id":1,"name":"CEO"},{"id":2,"name":"VP Eng"},{"id":3,"name":"VP Sales"},{"id":4,"name":"Senior Dev"},{"id":5,"name":"Junior Dev"},{"id":7,"name":"Sales Rep"}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestResultVsWalkFilter pins down the difference between a result filter (plain
+// key) and a walk-prune filter (walk. prefix) using the isolated subtree where an
+// active node (102) hangs beneath an inactive one (101).
+func TestResultVsWalkFilter(t *testing.T) {
+	tests := []test.Test{
+		{
+			// Result filter: 100/101/102 are all walked; the filter keeps the active
+			// nodes 100 and 102 even though 102's parent (101) is inactive.
+			Description: "result filter keeps active node under inactive parent",
+			Query:       "/tree_node?id=start.100&parent_id=recurse.all&is_active=is.true&select=id,name&order=id",
+			Expected:    `[{"id":100,"name":"Region"},{"id":102,"name":"Remote Worker"}]`,
+			Status:      200,
+		},
+		{
+			// Walk-prune filter: traversal stops at the inactive node 101, so 102 is
+			// never reached. Only 100 survives.
+			Description: "walk-prune filter stops the walk at the inactive node",
+			Query:       "/tree_node?id=start.100&parent_id=recurse.all&walk.is_active=is.true&select=id,name&order=id",
+			Expected:    `[{"id":100,"name":"Region"}]`,
 			Status:      200,
 		},
 	}
@@ -246,6 +274,86 @@ func TestViaErrors(t *testing.T) {
 		{
 			Description: "via with mismatched start/recurse fields — error",
 			Query:       "/doc?id=start.1&name=recurse.all&doc_rel=via(src_id,dst_id)",
+			Status:      400,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestDepthColumn checks that __depth is a selectable pseudo-column reporting the
+// traversal depth of each node (seed = 0).
+func TestDepthColumn(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "select __depth on a single-table walk",
+			Query:       "/tree_node?id=start.1&parent_id=recurse.all&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1},{"id":4,"__depth":2},{"id":5,"__depth":3},{"id":6,"__depth":2},{"id":7,"__depth":2}]`,
+			Status:      200,
+		},
+		{
+			Description: "__path is internal and cannot be selected",
+			Query:       "/tree_node?id=start.1&parent_id=recurse.all&select=id,__path",
+			Status:      400,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaMinDepth checks that in via mode __depth reports the SHALLOWEST depth at
+// which a node is reachable. Doc 4 is reachable directly (1->4, depth 1) and via a
+// block (1->2->4, depth 2); the min-depth dedup must report 1.
+func TestViaMinDepth(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "via __depth reports min depth for multi-path nodes",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1},{"id":4,"__depth":1},{"id":5,"__depth":2},{"id":6,"__depth":2}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaBidirectional checks via!both traversal. Starting from the leaf CTA Text(6)
+// and following edges in EITHER direction reaches its ancestors and their subtree,
+// without looping (the __path cycle guard blocks back-edges).
+func TestViaBidirectional(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "via!both from a leaf reaches ancestors and the rest of the graph",
+			Query:       "/doc?id=after.6&id=recurse.all&doc_rel=via!both(src_id,dst_id)&select=id,name&order=id",
+			Expected:    `[{"id":1,"name":"Composite"},{"id":2,"name":"Block Hero"},{"id":3,"name":"Block CTA"},{"id":4,"name":"Hero Title"},{"id":5,"name":"Hero Text"}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestRecursionEmbed checks that embedding a related resource composes with
+// single-table recursion: each walked node carries its embedded node_tag rows.
+func TestRecursionEmbed(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "embed node_tag while recursing the tree",
+			Query:       "/tree_node?id=start.2&parent_id=recurse.1&select=id,name,node_tag(tag)&order=id",
+			Expected:    `[{"id":2,"name":"VP Eng","node_tag":[{"tag":"eng"}]},{"id":4,"name":"Senior Dev","node_tag":[]},{"id":6,"name":"Inactive Dev","node_tag":[]}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaEmbedRejected checks that embedding combined with via() recursion is
+// rejected (it would fight the min-depth dedup), rather than emitting wrong SQL.
+func TestViaEmbedRejected(t *testing.T) {
+	tests := []test.Test{
+		{
+			// Assert the message so this stays a guard test: the embed must resolve
+			// (relationship found) and then be rejected by the guard, not 400 for an
+			// unknown relationship.
+			Description: "via() recursion with an embed — rejected",
+			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id,doc_rel!src_id(rel_type)",
+			Expected:    `{"code":"","details":null,"hint":"","message":"embedding is not supported with via() recursion","position":0,"subsystem":"network"}`,
 			Status:      400,
 		},
 	}

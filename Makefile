@@ -18,6 +18,7 @@ test:
 	$(GO) test $(TEST_FLAGS) ./database
 	$(GO) test $(TEST_FLAGS) ./test/api
 	$(GO) test $(TEST_FLAGS) ./test/postgrest
+	$(GO) test $(TEST_FLAGS) ./test/recursive
 
 # This is used to recreate PostgREST fixtures
 prepare-postgrest-tests:
