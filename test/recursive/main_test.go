@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sted/smoothdb/authn"
+	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/server"
 	"github.com/sted/smoothdb/test"
 )
@@ -222,6 +223,32 @@ func TestMain(m *testing.M) {
 		},
 	}
 	test.Prepare(dataConfig, dataCommands)
+
+	// Computed relationship: a function taking a tree_node ROW and returning its
+	// node_tag rows. The admin API can't create functions, so run raw SQL on a
+	// connection. This lets us test that COMPUTED-relationship embeds (function of
+	// the row) compose with recursion — the case the `__row` fix repairs.
+	{
+		db, err := s.GetDBE().GetOrCreateActiveDatabase(context.Background(), "recursive_test")
+		if err != nil {
+			log.Fatal(err)
+		}
+		dbCtx, dbConn, err := database.ContextWithDb(context.Background(), db, "admin")
+		if err != nil {
+			log.Fatal(err)
+		}
+		gi := database.GetSmoothContext(dbCtx)
+		_, err = gi.Conn.Exec(dbCtx, `
+			CREATE FUNCTION node_tags(tree_node)
+			RETURNS SETOF node_tag
+			LANGUAGE sql STABLE
+			AS $$ SELECT * FROM node_tag WHERE node_id = $1.id $$;
+		`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		database.ReleaseConn(dbCtx, dbConn)
+	}
 
 	// Tables and FKs above are created at runtime through the admin API, which does
 	// not refresh the relationship cache. Reload it so embedded resources resolve.

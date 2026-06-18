@@ -343,6 +343,23 @@ func TestRecursionEmbed(t *testing.T) {
 	test.Execute(t, testConfig(), tests)
 }
 
+// TestRecursionComputedEmbed checks that a COMPUTED-relationship embed (a function
+// taking the parent row, like CollHub's labels_objects) composes with single-table
+// recursion. Regression guard for the `__row` rewrite: without it the function's
+// row argument pointed at the base-table alias, which doesn't exist in the recursive
+// outer query, failing with `column "tree_node" does not exist`.
+func TestRecursionComputedEmbed(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "embed computed relationship node_tags while recursing the tree",
+			Query:       "/tree_node?id=start.2&parent_id=recurse.1&select=id,name,node_tags(tag)&order=id",
+			Expected:    `[{"id":2,"name":"VP Eng","node_tags":[{"tag":"eng"}]},{"id":4,"name":"Senior Dev","node_tags":[]},{"id":6,"name":"Inactive Dev","node_tags":[]}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
 // TestViaEmbedRejected checks that embedding combined with via() recursion is
 // rejected (it would fight the min-depth dedup), rather than emitting wrong SQL.
 func TestViaEmbedRejected(t *testing.T) {

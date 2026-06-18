@@ -1055,6 +1055,20 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	recurseField := quote(rec.RecurseField)
 	cteName := quote("__recursive")
 
+	// Computed-relationship embeds call a function with the parent ROW, emitted as
+	// `"table"::schema.table` (an unqualified row ref + cast). The tablePrefix->cte
+	// rewrite below only repoints qualified column refs (`"schema"."table".col`), so
+	// that bare row ref is left dangling — the base-table alias doesn't exist in the
+	// recursive outer query (rows live in the CTE). When such an embed is present we
+	// carry the source row as a composite `__row` column on the CTE and repoint the
+	// embed at it. `via`+embed is rejected below, so this only applies single-table.
+	rowRef := quote(table) + "::" + qtable
+	needsRow := rec.ViaTable == "" && joins != "" && strings.Contains(joins, rowRef)
+	rowCol := ""
+	if needsRow {
+		rowCol = ", " + quote(table) + " AS " + quote("__row")
+	}
+
 	// Determine effective max depth.
 	// MaxRecursiveDepth == 0 means recursive queries are disabled.
 	if dbe != nil && dbe.config.MaxRecursiveDepth == 0 {
@@ -1125,7 +1139,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 
 		// Base case — when ExcludeStart is true (after operator), skip walk filters on
 		// the seed row so it remains a traversal anchor even if it doesn't match them.
-		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
+		q.WriteString("SELECT " + qtable + ".*" + rowCol + ", 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
 		nmarker++
 		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
@@ -1137,7 +1151,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		q.WriteString(" UNION ALL ")
 
 		// Recursive step
-		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
+		q.WriteString("SELECT " + qtable + ".*" + rowCol + ", " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
 		q.WriteString(" FROM " + qtable)
 		q.WriteString(" INNER JOIN " + cteName + " ON " + qtable + "." + recurseField + " = " + cteName + "." + startField)
 		nmarker++
@@ -1230,6 +1244,12 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	var joinsClause string
 	if joins != "" {
 		joinsClause = " " + strings.ReplaceAll(joins, tablePrefix, ctePrefix)
+		if needsRow {
+			// Repoint computed-relationship embeds from the (now absent) base-table row
+			// ref to the CTE's `__row` composite column. `__row` is already the table's
+			// row type, so the original `::schema.table` cast is dropped with the ref.
+			joinsClause = strings.ReplaceAll(joinsClause, rowRef, ctePrefix+quote("__row"))
+		}
 	}
 
 	// Plain filters become a result WHERE on the outer query (composed with the

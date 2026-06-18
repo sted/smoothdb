@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.7.1 - 2026-06-18
+
+### Fixed
+* Computed-relationship embeds (a function of the parent row, e.g. `labels_objects(document)`) now compose with single-table recursion — they previously failed with `column "<table>" does not exist` because the function's row argument wasn't repointed to the recursive CTE. Plain FK and spread embeds were unaffected.
+
 ## 0.7.0 - 2026-06-15
 
 ### Added

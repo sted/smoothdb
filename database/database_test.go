@@ -494,13 +494,16 @@ func TestComputedRelationship(t *testing.T) {
 		CREATE TABLE documents (
 			id serial PRIMARY KEY,
 			name text NOT NULL,
+			parent_id int,
 			read int[] NOT NULL DEFAULT '{}'
 		);
 		INSERT INTO principals (type, name) VALUES ('user', 'Alice'), ('user', 'Bob'), ('team', 'Admins');
-		INSERT INTO documents (name, read) VALUES
-			('Document A', '{1,2}'),
-			('Document B', '{1,3}'),
-			('Document C', '{}');
+		-- A(1) -> B(2) -> C(3): a small containment chain so the computed
+		-- relationship can be embedded while recursing on parent_id.
+		INSERT INTO documents (name, read, parent_id) VALUES
+			('Document A', '{1,2}', NULL),
+			('Document B', '{1,3}', 1),
+			('Document C', '{}', 2);
 
 		CREATE FUNCTION read_principals(documents)
 		RETURNS SETOF principals
@@ -574,6 +577,58 @@ func TestComputedRelationship(t *testing.T) {
 		}
 
 		// Document C has read={} -> empty array
+		principals, ok = rows[2]["read_principals"].([]any)
+		if !ok {
+			t.Fatalf("expected read_principals to be array for Document C, got %T (raw: %s)", rows[2]["read_principals"], raw)
+		}
+		if len(principals) != 0 {
+			t.Fatalf("expected 0 principals for Document C, got %d (raw: %s)", len(principals), raw)
+		}
+	})
+
+	t.Run("computed relationship embed composes with recursion", func(t *testing.T) {
+		// Recurse the A->B->C containment chain while embedding the computed
+		// relationship. Before the __row fix this errored with
+		// `column "documents" does not exist`: the function row-argument
+		// (`"documents"::public.documents`) was left pointing at the base-table
+		// alias, which doesn't exist in the recursive outer query (rows live in
+		// the "__recursive" CTE). The fix carries the row as a "__row" column and
+		// repoints the embed at it.
+		filters := Filters{
+			"id":        {"start.1"},
+			"parent_id": {"recurse.all"},
+			"select":    {"id,name,read_principals(type,name)"},
+			"order":     {"id"},
+		}
+		result, _, err := GetRecords(ctx, "documents", filters)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		raw := string(result)
+		if !json.Valid(result) {
+			t.Fatalf("invalid JSON output: %s", raw)
+		}
+
+		var rows []map[string]any
+		if err := json.Unmarshal(result, &rows); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v (raw: %s)", err, raw)
+		}
+		// The whole subtree rooted at A: A, B, C.
+		if len(rows) != 3 {
+			t.Fatalf("expected 3 rows from the recursive walk, got %d (raw: %s)", len(rows), raw)
+		}
+
+		// Document A has read={1,2} -> Alice, Bob (embed resolved under recursion).
+		principals, ok := rows[0]["read_principals"].([]any)
+		if !ok {
+			t.Fatalf("expected read_principals to be array, got %T (raw: %s)", rows[0]["read_principals"], raw)
+		}
+		if len(principals) != 2 {
+			t.Fatalf("expected 2 principals for Document A, got %d (raw: %s)", len(principals), raw)
+		}
+
+		// Document C has read={} -> empty array.
 		principals, ok = rows[2]["read_principals"].([]any)
 		if !ok {
 			t.Fatalf("expected read_principals to be array for Document C, got %T (raw: %s)", rows[2]["read_principals"], raw)
