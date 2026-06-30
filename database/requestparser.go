@@ -81,6 +81,7 @@ type RecursiveInfo struct {
 	RecurseField string // FK column to follow (e.g. "manager_id")
 	MaxDepth     int    // max depth; -1 = unlimited (capped by server max)
 	ExcludeStart bool   // true when "after" operator is used instead of "start"
+	RecurseUp    bool   // true for recurse!up — follow the FK toward ancestors (single-table only)
 	ViaTable         string              // edge table for multi-table recursion (empty = single-table)
 	ViaFromCol       string              // edge table column matching the start value (e.g. "src_id")
 	ViaToCol         string              // edge table column linking to main table's start field (e.g. "dst_id")
@@ -1146,8 +1147,10 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		for _, v := range vv {
 			prefix, rest, ok := strings.Cut(v, ".")
 			if !ok {
-				if v == "recurse" {
-					// recurse without depth value — treat as "all"
+				if v == "recurse" || v == "recurse!up" {
+					// recurse without depth value — treat as "all". The "!up" hint reverses
+					// the walk to follow the FK toward ancestors (single-table only); mirrors
+					// the via!both grammar.
 					if recInfo == nil {
 						recInfo = &RecursiveInfo{MaxDepth: -1}
 					}
@@ -1155,6 +1158,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						return nil, &ParseError{"only one 'recurse' operator is allowed"}
 					}
 					recInfo.RecurseField = k
+					recInfo.RecurseUp = (v == "recurse!up")
 				} else if (strings.HasPrefix(v, "via(") || strings.HasPrefix(v, "via!")) && strings.HasSuffix(v, ")") {
 					// via(from_col,to_col) — directed (default)
 					// via!both(from_col,to_col) — undirected (follow edges either way).
@@ -1184,6 +1188,17 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 				}
 				continue
 			}
+			// "!up" hint reverses the walk toward ancestors (single-table only). It is
+			// only meaningful on 'recurse'; reject it elsewhere so a typo like
+			// "start!up.5" fails loudly instead of silently parsing as "start.5".
+			recurseUp := false
+			if strings.HasSuffix(prefix, "!up") {
+				prefix = strings.TrimSuffix(prefix, "!up")
+				recurseUp = true
+				if prefix != "recurse" {
+					return nil, &ParseError{"'!up' is only valid on 'recurse'"}
+				}
+			}
 			switch prefix {
 			case "start", "after":
 				if recInfo == nil {
@@ -1203,6 +1218,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 					return nil, &ParseError{"only one 'recurse' operator is allowed"}
 				}
 				recInfo.RecurseField = k
+				recInfo.RecurseUp = recurseUp
 				if rest == "all" {
 					recInfo.MaxDepth = -1
 				} else {
@@ -1224,6 +1240,9 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		}
 		if recInfo.ViaTable != "" && recInfo.StartField != recInfo.RecurseField {
 			return nil, &ParseError{"'via' requires 'start' and 'recurse' to use the same field"}
+		}
+		if recInfo.ViaTable != "" && recInfo.RecurseUp {
+			return nil, &ParseError{"'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns"}
 		}
 		// Remove start/recurse/via from filters so they don't become WHERE clauses
 		delete(filters, recInfo.StartField)

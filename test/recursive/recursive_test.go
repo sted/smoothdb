@@ -376,3 +376,76 @@ func TestViaEmbedRejected(t *testing.T) {
 	}
 	test.Execute(t, testConfig(), tests)
 }
+
+// TestRecurseUp checks recurse!up — the single-table walk reversed to follow the FK
+// toward ANCESTORS. Junior Dev(5) -> Senior Dev(4) -> VP Eng(2) -> CEO(1).
+func TestRecurseUp(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "recurse!up.all from a leaf — the full ancestor chain to the root",
+			Query:       "/tree_node?id=start.5&parent_id=recurse!up.all&select=id,name&order=__depth",
+			Expected:    `[{"id":5,"name":"Junior Dev"},{"id":4,"name":"Senior Dev"},{"id":2,"name":"VP Eng"},{"id":1,"name":"CEO"}]`,
+			Status:      200,
+		},
+		{
+			Description: "recurse!up depth cap — only two levels up",
+			Query:       "/tree_node?id=start.5&parent_id=recurse!up.2&select=id,name&order=__depth",
+			Expected:    `[{"id":5,"name":"Junior Dev"},{"id":4,"name":"Senior Dev"},{"id":2,"name":"VP Eng"}]`,
+			Status:      200,
+		},
+		{
+			Description: "recurse!up from the root — just the root itself",
+			Query:       "/tree_node?id=start.1&parent_id=recurse!up.all&select=id,name",
+			Expected:    `[{"id":1,"name":"CEO"}]`,
+			Status:      200,
+		},
+		{
+			Description: "recurse!up with after — excludes the seed, returns its ancestors",
+			Query:       "/tree_node?id=after.5&parent_id=recurse!up.all&select=id,name&order=__depth",
+			Expected:    `[{"id":4,"name":"Senior Dev"},{"id":2,"name":"VP Eng"},{"id":1,"name":"CEO"}]`,
+			Status:      200,
+		},
+		{
+			// Result filter keeps only active ancestors; the walk still passes THROUGH the
+			// inactive 101 to reach 100. Mirrors the down-walk result-filter test.
+			Description: "recurse!up with is_active result filter keeps active ancestors past an inactive one",
+			Query:       "/tree_node?id=start.102&parent_id=recurse!up.all&is_active=is.true&select=id,name&order=__depth",
+			Expected:    `[{"id":102,"name":"Remote Worker"},{"id":100,"name":"Region"}]`,
+			Status:      200,
+		},
+		{
+			Description: "recurse!up __depth reports distance to each ancestor",
+			Query:       "/tree_node?id=start.5&parent_id=recurse!up.all&select=id,__depth&order=__depth",
+			Expected:    `[{"id":5,"__depth":0},{"id":4,"__depth":1},{"id":2,"__depth":2},{"id":1,"__depth":3}]`,
+			Status:      200,
+		},
+		{
+			Description: "'!up' on start is rejected (only valid on recurse)",
+			Query:       "/tree_node?id=start!up.5&parent_id=recurse.all&select=id",
+			Expected:    `{"code":"","details":null,"hint":"","message":"'!up' is only valid on 'recurse'","position":0,"subsystem":"network"}`,
+			Status:      400,
+		},
+		{
+			Description: "recurse!up is rejected with via (reverse a via walk by swapping its columns)",
+			Query:       "/doc?id=start.1&id=recurse!up.all&doc_rel=via(src_id,dst_id)&select=id",
+			Expected:    `{"code":"","details":null,"hint":"","message":"'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns","position":0,"subsystem":"network"}`,
+			Status:      400,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaOrderByDepthUnselected checks that ordering a via() walk by __depth WITHOUT
+// selecting it works (surfacing __depth in the projection) instead of 500ing with
+// "ORDER BY expressions must appear in select list" from the min-depth SELECT DISTINCT.
+func TestViaOrderByDepthUnselected(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "via order=__depth without selecting __depth — surfaces __depth, no 500",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id&order=__depth,id",
+			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1},{"id":4,"__depth":1},{"id":5,"__depth":2},{"id":6,"__depth":2}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}

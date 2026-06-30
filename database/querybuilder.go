@@ -1094,6 +1094,22 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 			break
 		}
 	}
+	// via's min-depth dedup emits SELECT DISTINCT, whose ORDER BY columns must all appear in
+	// the select list. If the caller orders by __depth without selecting it we surface __depth
+	// in the projection (below) and route through the dedup wrapper — otherwise Postgres 500s
+	// with "ORDER BY expressions must appear in select list". Single-table mode uses a plain
+	// SELECT and can already order by an unselected __depth, so it needs no such handling.
+	depthOrdered := false
+	for _, of := range parts.orderFields {
+		if of.field.name == "__depth" {
+			depthOrdered = true
+			break
+		}
+	}
+	exposeDepth := rec.ViaTable != "" && depthOrdered && !depthSelected
+	if exposeDepth {
+		depthSelected = true
+	}
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
 	if dbe != nil && dbe.config.MaxRecursiveDepth > 0 {
@@ -1150,10 +1166,19 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 
 		q.WriteString(" UNION ALL ")
 
-		// Recursive step
+		// Recursive step. Default (down): join new.recurseField = prev.startField - follow the
+		// FK backwards to descendants (rows whose FK points at a known node). recurse!up reverses
+		// the same two fields to new.startField = prev.recurseField — follow the FK forwards to
+		// ancestors (the row the known node's FK points at). Base case and the __path cycle guard
+		// (keyed on startField) are identical for both directions.
 		q.WriteString("SELECT " + qtable + ".*" + rowCol + ", " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
 		q.WriteString(" FROM " + qtable)
-		q.WriteString(" INNER JOIN " + cteName + " ON " + qtable + "." + recurseField + " = " + cteName + "." + startField)
+		// down: new.recurseField = prev.startField; up swaps the two fields.
+		newField, prevField := recurseField, startField
+		if rec.RecurseUp {
+			newField, prevField = startField, recurseField
+		}
+		q.WriteString(" INNER JOIN " + cteName + " ON " + qtable + "." + newField + " = " + cteName + "." + prevField)
 		nmarker++
 		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, maxDepth)
@@ -1235,6 +1260,17 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		}
 	} else {
 		sel = strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
+	}
+	// Surface __depth for an order-by that didn't select it (see exposeDepth above). The
+	// cteName.* form already carries __depth, so only the enumerated/explicit lists need it.
+	// NOTE: this deliberately leaks __depth into the result projection — a `via(...)` walk
+	// ordered by an unselected __depth (or `select=*`, whose enumeration otherwise excludes
+	// __depth) returns it as an extra column. Single-table mode uses a plain SELECT that can
+	// order by an unselected column without surfacing it, so the two modes are asymmetric
+	// here. The leak is the price of routing via through the min-depth dedup wrapper, which
+	// requires every ORDER BY column to be in the DISTINCT select list.
+	if exposeDepth && sel != cteName+".*" {
+		sel += ", " + ctePrefix + quote("__depth")
 	}
 
 	// Embed joins (LEFT JOIN LATERAL) correlate to the base-table alias; rewrite

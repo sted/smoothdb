@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.7.2 - 2026-06-30
+
+### Added
+* `recurse!up` operator for single-table recursion — walks the FK toward ancestors instead of descendants (e.g. `parent_id=recurse!up.all` returns a node's ancestor chain). Rejected with `via()`, where the same reversal is done by swapping the edge columns.
+
+### Fixed
+* Ordering a `via()` recursive query by `__depth` without selecting it no longer 500s with "ORDER BY expressions must appear in select list"; `__depth` is now surfaced in the projection and routed through the min-depth dedup wrapper.
+
 ## 0.7.1 - 2026-06-18
 
 ### Fixed
