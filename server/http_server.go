@@ -56,6 +56,10 @@ func (s *Server) initHTTPServer() {
 		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, cfg.JWTSecret, cfg.TokenExpiry)
 	}
 
+	if cfg.JQ.Enabled {
+		api.InitJQRoute(s)
+	}
+
 	if cfg.CertFile != "" {
 		// Load certificates
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)

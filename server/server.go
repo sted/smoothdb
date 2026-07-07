@@ -14,6 +14,7 @@ import (
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/jqeval"
 	"github.com/sted/smoothdb/logging"
 	"github.com/sted/smoothdb/plugins"
 )
@@ -54,6 +55,9 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 	if err != nil {
 		return nil, err
 	}
+
+	// jq evaluation
+	jqeval.Configure(&cfg.JQ)
 
 	// Main Server
 	s := &Server{

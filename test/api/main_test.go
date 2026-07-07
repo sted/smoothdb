@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
 		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
+		"JQ.Enabled":          true,
 		"Logging.Level":       "info",
 		"Logging.FileLogging": true,
 		"Logging.FilePath":    "../../smoothdb.log",

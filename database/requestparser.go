@@ -116,6 +116,8 @@ type QueryOptions struct {
 	RangeMin             int64
 	RangeMax             int64
 	Count                string // exact, planned, estimated
+	JQ                   string // jq program from the jq= query parameter
+	JQArgs               string // raw JSON object from the jq_args= query parameter
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -141,6 +143,7 @@ func (e ParseError) Error() string { return e.msg }
 
 var postgRestReservedWords = map[string]struct{}{
 	"select": {}, "column": {}, "order": {}, "limit": {}, "offset": {}, "not": {}, "and": {}, "or": {}, "on_conlict": {},
+	"jq": {}, "jq_args": {},
 }
 
 // From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
@@ -1102,6 +1105,12 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		}
 	}
 
+	// JQ
+	// jq=<program>&jq_args=<json object> are carried on QueryOptions
+	// (see getQueryOptions); remove them so they don't become WHERE conditions
+	delete(filters, "jq")
+	delete(filters, "jq_args")
+
 	// ORDER
 	// order=f1,f2.asc,f3.desc.nullslast
 	for k, v := range filters {
@@ -1391,6 +1400,15 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 				options.RangeMax = -1
 			}
 		}
+	}
+
+	// jq= and jq_args= query parameters (jq-update, response transform).
+	// The parser removes them from the filters (see parse), the executors
+	// pick them up from here.
+	if strings.Contains(req.URL.RawQuery, "jq") {
+		query := req.URL.Query()
+		options.JQ = query.Get("jq")
+		options.JQArgs = query.Get("jq_args")
 	}
 
 	var schemaProfile string

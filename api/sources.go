@@ -27,6 +27,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		sourcename := r.Param("sourcename")
 		json, count, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
+			json, err = database.JQTransformResponse(c, json)
+		}
+		if err == nil {
 			status := SetResponseHeaders(c, w, r, count)
 			if status >= http.StatusBadRequest {
 				return heligo.WriteHeader(w, status)
@@ -61,6 +64,9 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
+		if database.GetQueryOptions(c).JQ != "" || hasJQBody(r) {
+			return jqUpdateHandler(c, w, r, sourcename)
+		}
 		records, status, err := ReadRequest(c, w, r)
 		if err != nil || status != 0 {
 			return status, err
@@ -99,6 +105,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		fname := r.Param("fname")
 		json, count, err := database.ExecFunction(c, fname, nil, r.URL.Query(), true)
 		if err == nil {
+			json, err = database.JQTransformResponse(c, json)
+		}
+		if err == nil {
 			status := SetResponseHeaders(c, w, r, count)
 			if status >= http.StatusBadRequest {
 				return heligo.WriteHeader(w, status)
@@ -119,6 +128,9 @@ func InitSourcesRouter(apiHelper Helper) {
 			return status, err
 		}
 		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query(), false)
+		if err == nil {
+			data, err = database.JQTransformResponse(c, data)
+		}
 		if err == nil {
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {

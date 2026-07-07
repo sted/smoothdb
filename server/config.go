@@ -10,6 +10,7 @@ import (
 
 	"github.com/sted/smoothdb/config"
 	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/jqeval"
 	"github.com/sted/smoothdb/logging"
 )
 
@@ -46,6 +47,7 @@ type Config struct {
 	VerboseErrors        bool            `comment:"Return full database error details (hint, detail) to clients (default: true)"`
 	RequestMaxBytes      int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
 	Database             database.Config `comment:"Database configuration"`
+	JQ                   jqeval.Config   `comment:"jq evaluation configuration"`
 	Logging              logging.Config  `comment:"Logging configuration"`
 }
 
@@ -76,6 +78,7 @@ func defaultConfig() *Config {
 		VerboseErrors:        true,
 		RequestMaxBytes:      1024 * 1024,
 		Database:             *database.DefaultConfig(),
+		JQ:                   *jqeval.DefaultConfig(),
 		Logging:              *logging.DefaultConfig(),
 	}
 }

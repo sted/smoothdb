@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/database"
+	"github.com/sted/smoothdb/jqeval"
 )
 
 var verboseErrors = true
@@ -107,7 +108,7 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 func WriteError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	switch err.(type) {
-	case *database.ParseError, *database.BuildError:
+	case *database.ParseError, *database.BuildError, *jqeval.Error:
 		return WriteBadRequest(w, err)
 	case *database.SerializeError, *database.ContentTypeError:
 		status = http.StatusNotAcceptable

@@ -21,7 +21,7 @@ Please create issues to let me know your priorities.
 
 ## About this project
 
-SmoothDB is not *vibe-coded*. It was started in 2022 as a solid, versatile middleware meant to serve as a reliable building block for data-driven applications. Since 2025 we have been pairing that foundation with strong LLMs to harden, review, and extend the code — aiming to follow the high bar set by PostgREST in correctness, safety, and API fidelity.
+SmoothDB is not *vibe-coded*. It was started in 2022 as a solid, versatile middleware meant to serve as a reliable building block for data-driven applications. Since 2025 we have been pairing that foundation with strong LLMs to harden, review, and extend the code - aiming to follow the high bar set by PostgREST in correctness, safety, and API fidelity.
 
 ## Getting started
 
@@ -407,7 +407,7 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.3 HTTP/1.1
 
 Returns row `id=1` and its descendants up to 3 levels deep, following `manager_id → id`. Use `recurse.all` (or bare `recurse`) for unlimited depth (capped by `MaxRecursiveDepth`), and `after` instead of `start` to exclude the seed row.
 
-**Result vs. traversal filters.** A plain filter restricts the *result*: the whole subtree is walked, then non-matching rows are dropped. Prefix a filter with `walk.` to prune the *traversal* instead — a non-matching node, and everything beyond it, is skipped:
+**Result vs. traversal filters.** A plain filter restricts the *result*: the whole subtree is walked, then non-matching rows are dropped. Prefix a filter with `walk.` to prune the *traversal* instead - a non-matching node, and everything beyond it, is skipped:
 
 ```http
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true       HTTP/1.1   # keep only active rows
@@ -428,6 +428,84 @@ GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via!both(src_i
 ```
 
 Embedding is not supported together with `via` traversal.
+
+### jq Support
+
+> [!NOTE]
+> This is a SmoothDB extension to PostgREST syntax.
+
+SmoothDB can evaluate [jq](https://jqlang.github.io/jq/) programs server-side, via [gojq](https://github.com/itchyny/gojq). The feature is **disabled by default**: set `JQ.Enabled` to `true` in the configuration to use it. Evaluation is strictly bounded - programs have no I/O, run under a timeout (`JQ.Timeout`, default 250ms) and a size cap (`JQ.MaxProgramBytes`), and must produce **exactly one** output value (wrap streams in an array: `[.items[] | ...]`).
+
+There are three surfaces, sharing the same evaluation core:
+
+#### jq updates
+
+`PATCH` with a `jq=` query parameter (and an empty body) performs an atomic read-modify-write of the matched rows, with no client round trip:
+
+```http
+PATCH /api/testdb/products?id=eq.42&jq={"counter": (.counter + 1)} HTTP/1.1
+```
+
+Within the request transaction, the matched rows are selected `FOR UPDATE`; each row (a JSON object with all the columns visible to the role) is fed to the program, whose output must be a JSON object of columns to update - it becomes that row's `UPDATE ... SET` (an empty object `{}` leaves the row untouched). Any error - parse, evaluation, non-object output, unknown column - aborts the whole request: all rows or none. Row level security and triggers apply as in a normal update. At most `JQ.MaxUpdateRows` (default 1000) rows can be updated in one request.
+
+`Prefer: return=representation` returns the resulting rows (all visible columns). Arguments can be passed with `jq_args=` (a URL-encoded JSON object) and are available as jq variables:
+
+```http
+PATCH /api/testdb/products?id=eq.42&jq={"stock": (.stock - $n)}&jq_args={"n": 3} HTTP/1.1
+```
+
+For longer programs, the raw program text can be sent as the request body with `Content-Type: application/vnd.smoothdb.jq` instead of the `jq=` parameter — no URL encoding, newlines and `#` comments allowed (`jq_args=` stays in the query string):
+
+```http
+PATCH /api/testdb/products?id=eq.42&jq_args={"n": 3} HTTP/1.1
+Content-Type: application/vnd.smoothdb.jq
+
+# restock and log
+{
+  "stock": (.stock + $n),
+  "history": (.history + [{restocked: $n}])
+}
+```
+
+#### Response transforms
+
+`jq=` (with optional `jq_args=`) on table reads and on function calls (`GET /rpc/fn`, `POST /rpc/fn`) transforms the JSON response body before it is returned:
+
+```http
+GET /api/testdb/products?category=eq.tools&jq=map(.name) HTTP/1.1
+GET /api/testdb/products?jq={total: (map(.price) | add)} HTTP/1.1
+```
+
+The transform applies after the query: filters, `select`, `order`, `limit` and the `Content-Range`/count headers all reflect the pre-transform result set. Only JSON content types can be transformed (`Accept: text/csv` with `jq=` is an error).
+
+#### POST /jq
+
+A standalone endpoint (behind the normal authentication) evaluates a batch of programs against provided inputs - useful for testing programs and for authoring-time validation with `parse_only`:
+
+```http
+POST /jq HTTP/1.1
+
+{
+  "parse_only": false,
+  "evals": [
+    {"program": ".a + $delta", "input": {"a": 1}, "args": {"delta": 41}}
+  ]
+}
+```
+
+The response is a `200` array with one item per evaluation: `{"output": ...}` or `{"error": "..."}` - errors are reported per item. With `"parse_only": true` each program is only compile-checked (no input needed). The endpoint is not registered when `JQ.Enabled` is false (404).
+
+#### Configuration
+
+```json
+{
+  "JQ": {
+    "Enabled": true
+  }
+}
+```
+
+See the [configuration table](#configuration-file) for `JQ.Timeout`, `JQ.MaxProgramBytes`, `JQ.MaxUpdateRows` and `JQ.CacheEntries`.
 
 ## Example for using SmoothDB in your application
 
@@ -693,6 +771,11 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
+| JQ.Enabled | Enable jq evaluation: /jq route, jq= query parameter | false |
+| JQ.Timeout | Timeout in milliseconds for a single jq evaluation | 250 |
+| JQ.MaxProgramBytes | Maximum size in bytes for a jq program or its arguments | 4096 |
+| JQ.MaxUpdateRows | Maximum number of rows updatable with a single jq update | 1000 |
+| JQ.CacheEntries | Size of the compiled jq program cache | 256 |
 | Logging.Level | Log level: trace, debug, info, warn, error, fatal, panic | "info" |
 | Logging.FileLogging | Enable logging to file | true |
 | Logging.FilePath | File path for file-based logging | "./smoothdb.log" |

@@ -1,5 +1,14 @@
 # Change Log
 
+## 0.8.0 - 2026-07-07
+
+### Added
+* Generic jq support via [gojq](https://github.com/itchyny/gojq), disabled by default (`JQ.Enabled`). Evaluation is bounded: no I/O, per-evaluation timeout (`JQ.Timeout`), program size cap (`JQ.MaxProgramBytes`), compiled-program LRU cache (`JQ.CacheEntries`), and an exactly-one-output convention. Three surfaces over one shared core (new `jqeval` package):
+  * **jq updates**: `PATCH /table?filters&jq=<program>` performs an atomic read-modify-write of the matched rows — rows are selected `FOR UPDATE` inside the request transaction, each row is fed to the program, and its object output becomes that row's `UPDATE ... SET`. All-or-nothing, capped by `JQ.MaxUpdateRows`; RLS and triggers apply unchanged. The program can also be sent as the raw request body with `Content-Type: application/vnd.smoothdb.jq`
+  * **Response transforms**: `jq=` on table reads and RPC calls transforms the JSON response body; `Content-Range`/count headers reflect the pre-transform result set
+  * **`POST /jq`**: standalone batch evaluation endpoint with per-item errors and `parse_only` compile-checking for authoring-time validation
+  * `jq_args=` (URL-encoded JSON object) binds values as jq variables on both updates and transforms
+
 ## 0.7.2 - 2026-06-30
 
 ### Added
