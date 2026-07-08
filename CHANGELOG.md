@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.8.1 - 2026-07-08
 
 ### Security
 * **SQL injection** — closed four sinks where request tokens were interpolated into SQL with bare quotes instead of being escaped/parameterized (a backslash escape in the parser let a client smuggle a literal `'`/`"`): the `select` alias, embedded-resource filter values, full-text-search config arguments, and JSON-path members. Top-level filter values and identifiers were already parameterized and unaffected.
