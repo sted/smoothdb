@@ -72,7 +72,9 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 	s.sessionManager = authn.NewSessionManager(logger, s.Config.SessionMode != "none", s.shutdown)
 
 	// Initialize HTTP Server
-	s.initHTTPServer()
+	if err = s.initHTTPServer(); err != nil {
+		return nil, err
+	}
 
 	// Initializes plugin manager
 	pm := plugins.InitPluginManager(s, s.Config.PluginDir, s.Config.Plugins)

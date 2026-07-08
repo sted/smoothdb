@@ -67,6 +67,23 @@ func TestInjectionFTSConfigQuoting(t *testing.T) {
 	}
 }
 
+// SET ROLE takes the role verbatim from the JWT claim. It is built by
+// concatenation (PrepareConnection needs a live connection, so this locks in the
+// quoting contract that line relies on): a malicious role must stay a single
+// quoted identifier and cannot break out into additional statements.
+func TestInjectionSetRoleQuoting(t *testing.T) {
+	cases := map[string]string{
+		`postgres; DROP TABLE users; --`: `SET ROLE "postgres; DROP TABLE users; --"`,
+		`admin" ; DROP`:                  `SET ROLE "admin"" ; DROP"`,
+	}
+	for role, want := range cases {
+		got := "SET ROLE " + quote(role)
+		if got != want {
+			t.Errorf("role %q not neutralized\n want: %s\n  got: %s", role, want, got)
+		}
+	}
+}
+
 // Finding 1: embedded-resource filter values take the nmarker == -1 branch of
 // appendValue, which interpolated the value with bare single quotes instead of
 // using a $N placeholder. This exercises that branch directly.

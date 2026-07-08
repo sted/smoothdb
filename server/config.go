@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -105,6 +107,12 @@ func getEnvironment(c *Config) {
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 		c.EnableDebugRoute = true
+		// Debug mode enables auth (LoginMode: db) but shouldn't force the operator
+		// to set a secret by hand. Never fall back to the empty (forgeable) key:
+		// generate a strong random secret for this run.
+		if c.JWTSecret == "" {
+			c.JWTSecret = randomSecret()
+		}
 	}
 	allowAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
 	if allowAnon != "" {
@@ -228,13 +236,24 @@ func getConfig(baseConfig map[string]any, configOpts *ConfigOptions) (*Config, e
 	return cfg, nil
 }
 
+// randomSecret returns a 32-byte cryptographically-random secret, hex-encoded.
+func randomSecret() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand should never fail; if it does, refuse to produce a weak key.
+		panic("cannot generate a random JWT secret: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
 func checkConfig(cfg *Config) error {
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
 	}
 	if cfg.LoginMode != "none" && cfg.JWTSecret == "" {
-		fmt.Println("Warning: 'JWTSecret' is empty while authentication is enabled (LoginMode:", cfg.LoginMode+")")
+		return fmt.Errorf("'JWTSecret' is empty while authentication is enabled (LoginMode: %s): "+
+			"an empty secret lets anyone forge tokens for any role; set 'JWTSecret' or SMOOTHDB_JWT_SECRET", cfg.LoginMode)
 	}
 	if cfg.CORSAllowCredentials {
 		for _, origin := range cfg.CORSAllowedOrigins {

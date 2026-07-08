@@ -43,7 +43,9 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 
 	// set role and other configurations only on the first acquire
 	if newAcquire && role != "" {
-		_, err := conn.Exec(ctx, "SET ROLE "+role)
+		// role comes from the JWT claim; quote it as an identifier so it cannot
+		// break out of the SET ROLE statement (it is otherwise unvalidated).
+		_, err := conn.Exec(ctx, "SET ROLE "+quote(role))
 		if err != nil {
 			return err
 		}
