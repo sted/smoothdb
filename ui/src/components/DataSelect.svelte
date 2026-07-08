@@ -29,13 +29,16 @@
 		return [];
 	}
 	let items: NormalizedData = $state([]);
-	if (data instanceof Promise) {
-		data.then((d) => {
-			items = normalizeData(d);
-		});
-	} else {
-		items = normalizeData(data);
-	}
+	$effect(() => {
+		const input = data;
+		if (input instanceof Promise) {
+			input.then((d) => {
+				items = normalizeData(d);
+			});
+		} else {
+			items = normalizeData(input);
+		}
+	});
 </script>
 
 <div class="select-wrapper">

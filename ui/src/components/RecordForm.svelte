@@ -13,7 +13,7 @@
         children: Snippet;
     }
     let { entityName, dataUrl, initialData, currentData, formSubmitted, children }: Props = $props();
-    const isEditing = Boolean(initialData.name);
+    let isEditing = $derived(Boolean(initialData.name));
     let isButtonDisabled = $derived(
         isEditing && JSON.stringify(initialData) === JSON.stringify(currentData));
 

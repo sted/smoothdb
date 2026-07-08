@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import { formData } from "./formdata.svelte";
     import { adminDbUrl } from "../main";
     import { router } from "../routes";
     import { getData } from "../utils";
@@ -18,8 +19,7 @@
         owner: string;
     }
 
-    const initialData: Schema = $state.snapshot(data);
-    let currentData: Schema = $state(data);
+    const { initial: initialData, current: currentData } = formData<Schema>(() => data);
     let nameInput: HTMLInputElement;
 
     const entityName = "schema";

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import { formData } from "./formdata.svelte";
     import RecordForm from "../components/RecordForm.svelte";
 
     interface Props {
@@ -18,8 +19,7 @@
         canbypassrls: boolean;
     }
 
-    const initialData: Role = $state.snapshot(data);
-    let currentData: Role = $state(data);
+    const { initial: initialData, current: currentData } = formData<Role>(() => data);
     let nameInput: HTMLInputElement;
 
     const entityName = "role";

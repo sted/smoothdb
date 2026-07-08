@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { formData } from "./formdata.svelte";
 	import { adminDbUrl } from "../main";
 	import { router } from "../routes";
 	import { getData } from "../utils";
@@ -23,8 +24,7 @@
 		ispartition: boolean;
 	}
 
-	const initialData: Table = $state.snapshot(data);
-	let currentData: Table = $state(data);
+	const { initial: initialData, current: currentData } = formData<Table>(() => data);
 	let nameInput: HTMLInputElement;
 
 	const entityName = "table";

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { formData } from "./formdata.svelte";
 	import { adminDbUrl } from "../main";
 	import { router } from "../routes";
 	import { getData } from "../utils";
@@ -18,8 +19,7 @@
 		//columns: string[];
 	}
 
-	const initialData: Constraint = $state.snapshot(data);
-	let currentData: Constraint = $state(data);
+	const { initial: initialData, current: currentData } = formData<Constraint>(() => data);
 	currentData.type ||= "";
 	let nameInput: HTMLInputElement;
 
