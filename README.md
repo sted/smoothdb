@@ -133,6 +133,9 @@ SmoothDB supports two authentication methods via the `LoginMode` configuration o
 
 - No explicit authorization step is needed beyond providing the JWT token with each request
 - Both authentication methods require email and password for token generation through the `/token` endpoint
+- `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run.
+- When TLS is configured (`CertFile`/`KeyFile`), a certificate that fails to load is a fatal startup error - SmoothDB will not silently fall back to plaintext HTTP.
+- The configuration file holds secrets (the JWT secret and the database URL with its password); it is written with `0600` permissions. Keep it that way and out of version control.
 
 We will omit the Authorization header in the following examples.
 
@@ -406,6 +409,14 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.3 HTTP/1.1
 ```
 
 Returns row `id=1` and its descendants up to 3 levels deep, following `manager_id → id`. Use `recurse.all` (or bare `recurse`) for unlimited depth (capped by `MaxRecursiveDepth`), and `after` instead of `start` to exclude the seed row.
+
+**Walking upward (`recurse!up`).** By default recursion follows the FK toward descendants. Add the `!up` hint to walk toward ancestors instead - the chain from a node up to the root:
+
+```http
+GET /api/testdb/employees?id=start.5&manager_id=recurse!up.all HTTP/1.1   # employee 5 and its manager chain
+```
+
+`recurse!up` is single-table only; it is rejected with `via()`, where the same reversal is expressed by swapping the edge's source/target columns.
 
 **Result vs. traversal filters.** A plain filter restricts the *result*: the whole subtree is walked, then non-matching rows are dropped. Prefix a filter with `walk.` to prune the *traversal* instead - a non-matching node, and everything beyond it, is skipped:
 
