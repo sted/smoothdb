@@ -1,6 +1,6 @@
 module github.com/sted/smoothdb
 
-go 1.26.0
+go 1.26.5
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -23,5 +23,5 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 )

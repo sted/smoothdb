@@ -2,6 +2,7 @@
 VERSION := $(shell git describe --tags --always --dirty)
 GO = go
 TEST_FLAGS = -v -count=1 -race
+PLUGIN_EXAMPLE = plugins/plugins/example
 TAG = v$(patsubst v%,%,$(V))
 
 all: build
@@ -13,6 +14,20 @@ build-ui:
 
 build-go:
 	$(GO) build -trimpath -ldflags "-s -w -X github.com/sted/smoothdb/version.Version=$(VERSION)"
+
+# Update dependencies everywhere: main module, plugin example and UI.
+# Go modules get minor/patch updates plus the latest Go patch release
+# (keeps host and plugin toolchains in sync); majors are manual.
+# The UI gets npm updates within the semver ranges in package.json.
+update: update-go update-ui
+
+update-go:
+	$(GO) get go@patch && $(GO) get -u ./... && $(GO) mod tidy
+	cd $(PLUGIN_EXAMPLE) && $(GO) get go@patch && $(GO) get -u ./... && $(GO) mod tidy
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+update-ui:
+	cd ui && npm update --save
 
 test:
 	$(GO) test $(TEST_FLAGS) ./database
@@ -39,4 +54,4 @@ release:
 clean:
 	$(GO) clean
 
-.PHONY: all build build-ui build-go test prepare-postgrest-tests release clean
+.PHONY: all build build-ui build-go update update-go update-ui test prepare-postgrest-tests release clean
