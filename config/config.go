@@ -96,9 +96,16 @@ func SaveConfig[T any](config T, configFile string) error {
 	if err != nil {
 		return fmt.Errorf("error writing the configuration file (%w)", err)
 	}
-	err = os.WriteFile(configFile, b, 0777)
+	// The config file holds secrets (JWT secret, DB URL with password), so it
+	// must not be group/world readable or writable.
+	err = os.WriteFile(configFile, b, 0600)
 	if err != nil {
 		return fmt.Errorf("error writing the configuration file (%w)", err)
+	}
+	// WriteFile does not change the mode of a pre-existing file, so tighten it
+	// explicitly to remediate files previously created world-accessible.
+	if err = os.Chmod(configFile, 0600); err != nil {
+		return fmt.Errorf("error securing the configuration file (%w)", err)
 	}
 	return nil
 }

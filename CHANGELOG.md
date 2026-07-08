@@ -1,5 +1,14 @@
 # Change Log
 
+## Unreleased
+
+### Security
+* **SQL injection** — closed four sinks where request tokens were interpolated into SQL with bare quotes instead of being escaped/parameterized (a backslash escape in the parser let a client smuggle a literal `'`/`"`): the `select` alias, embedded-resource filter values, full-text-search config arguments, and JSON-path members. Top-level filter values and identifiers were already parameterized and unaffected.
+* **`SET ROLE`** — the JWT `role` claim is now quoted as an identifier so it cannot break out of the statement.
+* **Empty JWT secret** — the server now refuses to start when authentication is enabled and `JWTSecret` is empty (an empty HMAC key lets anyone forge tokens); previously only a warning. Debug mode auto-generates a random secret.
+* **TLS fail-closed** — a configured certificate that fails to load is now a fatal startup error instead of silently serving plaintext HTTP.
+* **Config file permissions** — written `0600` (was `0777`), since it holds the JWT secret and the database password.
+
 ## 0.8.0 - 2026-07-07
 
 ### Added

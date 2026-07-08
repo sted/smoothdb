@@ -10,7 +10,7 @@ import (
 	"github.com/sted/smoothdb/api"
 )
 
-func (s *Server) initHTTPServer() {
+func (s *Server) initHTTPServer() error {
 	s.router = heligo.New()
 	s.router.TrailingSlash = true
 	s.router.Use(heligo.Recover(func(v any) {
@@ -61,16 +61,15 @@ func (s *Server) initHTTPServer() {
 	}
 
 	if cfg.CertFile != "" {
-		// Load certificates
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-		if err == nil {
-			s.tlsConfig = &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				MinVersion:   tls.VersionTLS12,
-			}
-		} else {
-			s.logger.Warn().Err(err)
+		// A configured certificate that fails to load must abort startup: falling
+		// through would serve plaintext HTTP on the port intended for HTTPS,
+		// exposing tokens and credentials on the wire.
+		tlsConfig, err := loadTLSConfig(cfg.CertFile, cfg.KeyFile)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("cannot load TLS certificate")
+			return err
 		}
+		s.tlsConfig = tlsConfig
 	}
 
 	api.InitHealthRoutes(s)
@@ -81,6 +80,21 @@ func (s *Server) initHTTPServer() {
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
 	}
+	return nil
+}
+
+// loadTLSConfig loads a certificate/key pair into a TLS config with a safe
+// minimum version. It returns an error if the pair cannot be loaded, so callers
+// can fail closed rather than serve plaintext.
+func loadTLSConfig(certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }
 
 func (s *Server) startHTTPServer() error {
