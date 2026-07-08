@@ -113,7 +113,7 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 	}
 
 	if sfield.label != "" {
-		fieldPart += " AS \"" + sfield.label + "\""
+		fieldPart += " AS " + quote(sfield.label)
 	}
 	return fieldPart
 }
@@ -578,7 +578,7 @@ func appendValue(where, value string, valueList []any, nmarker int, forceParam b
 		where += "$" + strconv.Itoa(nmarker)
 		valueList = append(valueList, value)
 	} else {
-		where += "'" + value + "'"
+		where += quoteLit(value)
 	}
 	return where, valueList, nmarker
 }
@@ -687,7 +687,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					if ct != nil && ct.Type != "tsvector" {
 						lang := "'english'"
 						if len(node.opArgs) > 0 {
-							lang = "'" + node.opArgs[0] + "'"
+							lang = quoteLit(node.opArgs[0])
 						}
 						where = where[:len(where)-len(fieldname)] + "to_tsvector(" + lang + ", " + fieldname + ")"
 					}
@@ -715,7 +715,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					where += "websearch_to_tsquery("
 				}
 				for _, arg := range node.opArgs {
-					where += "'" + arg + "'"
+					where += quoteLit(arg)
 					where += ", "
 				}
 				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, false)

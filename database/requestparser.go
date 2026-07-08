@@ -424,7 +424,7 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 		if _, err = strconv.Atoi(token); err == nil {
 			f.jsonPath += token
 		} else {
-			f.jsonPath += "'" + token + "'"
+			f.jsonPath += quoteLit(token)
 			f.last = token
 		}
 		token = p.lookAhead()
