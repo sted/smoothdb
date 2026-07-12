@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 type Privilege struct {
@@ -168,49 +169,80 @@ func GetPrivileges(ctx context.Context, targetType string, targetName string) ([
 	return privileges, nil
 }
 
-func CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, error) {
-	conn := GetConn(ctx)
-	create := "GRANT "
+// validPrivilegeTypes is the closed set of GRANT/REVOKE privilege keywords.
+// Privilege verbs and object types cannot be bind parameters and are
+// interpolated verbatim, so they must be whitelisted rather than escaped.
+var validPrivilegeTypes = map[string]struct{}{
+	"SELECT": {}, "INSERT": {}, "UPDATE": {}, "DELETE": {}, "TRUNCATE": {},
+	"REFERENCES": {}, "TRIGGER": {}, "CREATE": {}, "CONNECT": {}, "TEMPORARY": {},
+	"TEMP": {}, "EXECUTE": {}, "USAGE": {}, "SET": {}, "ALTER SYSTEM": {},
+	"MAINTAIN": {}, "ALL": {}, "ALL PRIVILEGES": {},
+}
+
+// validTargetTypes is the closed set of object types that can follow ON in a
+// GRANT/REVOKE ... ON <type> statement.
+var validTargetTypes = map[string]struct{}{
+	"DATABASE": {}, "SCHEMA": {}, "TABLE": {}, "SEQUENCE": {}, "COLUMN": {},
+	"FUNCTION": {}, "PROCEDURE": {}, "ROUTINE": {}, "DOMAIN": {}, "TYPE": {},
+	"TABLESPACE": {}, "LANGUAGE": {}, "LARGE OBJECT": {},
+	"FOREIGN DATA WRAPPER": {}, "FOREIGN SERVER": {},
+}
+
+// buildGrantRevoke assembles a GRANT (grant=true) or REVOKE statement, validating
+// the privilege verbs and target type against fixed whitelists and quoting the
+// target name and grantee. See injection_test.go.
+func buildGrantRevoke(privilege *Privilege, grant bool) (string, error) {
+	var b strings.Builder
+	if grant {
+		b.WriteString("GRANT ")
+	} else {
+		b.WriteString("REVOKE ")
+	}
 	if len(privilege.Types) != 0 {
 		for i, t := range privilege.Types {
-			if i != 0 {
-				create += ", "
+			if _, ok := validPrivilegeTypes[strings.ToUpper(strings.TrimSpace(t))]; !ok {
+				return "", &BuildError{"invalid privilege type: " + t}
 			}
-			create += t
+			if i != 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(t)
 		}
-		create += " ON " + privilege.TargetType + " " + quoteParts(privilege.TargetName)
+		if _, ok := validTargetTypes[strings.ToUpper(strings.TrimSpace(privilege.TargetType))]; !ok {
+			return "", &BuildError{"invalid target type: " + privilege.TargetType}
+		}
+		b.WriteString(" ON " + privilege.TargetType + " " + quoteParts(privilege.TargetName))
 	} else {
-		// grant role to role
-		create += quoteParts(privilege.TargetName)
+		// grant/revoke role to/from role
+		b.WriteString(quoteParts(privilege.TargetName))
 	}
-	create += " TO " + quote(privilege.Grantee)
+	if grant {
+		b.WriteString(" TO " + quote(privilege.Grantee))
+	} else {
+		b.WriteString(" FROM " + quote(privilege.Grantee))
+	}
 	// to implement: with grant option
+	return b.String(), nil
+}
 
-	_, err := conn.Exec(ctx, create)
+func CreatePrivilege(ctx context.Context, privilege *Privilege) (*Privilege, error) {
+	create, err := buildGrantRevoke(privilege, true)
 	if err != nil {
+		return nil, err
+	}
+	conn := GetConn(ctx)
+	if _, err := conn.Exec(ctx, create); err != nil {
 		return nil, err
 	}
 	return privilege, nil
 }
 
 func DeletePrivilege(ctx context.Context, privilege *Privilege) error {
-	conn := GetConn(ctx)
-	delete := "REVOKE "
-	if len(privilege.Types) != 0 {
-		for i, t := range privilege.Types {
-			if i != 0 {
-				delete += ", "
-			}
-			delete += t
-		}
-		delete += " ON " + privilege.TargetType + " " + quoteParts(privilege.TargetName)
-	} else {
-		// revoke role from role
-		delete += quoteParts(privilege.TargetName)
+	revoke, err := buildGrantRevoke(privilege, false)
+	if err != nil {
+		return err
 	}
-	delete += " FROM " + quote(privilege.Grantee)
-	// to implement: with grant option
-
-	_, err := conn.Exec(ctx, delete)
+	conn := GetConn(ctx)
+	_, err = conn.Exec(ctx, revoke)
 	return err
 }

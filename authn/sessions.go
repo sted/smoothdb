@@ -113,6 +113,7 @@ func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struc
 func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.Duration) {
 	now := time.Now()
 	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
 
 	if sm.paused {
 		return
@@ -158,7 +159,6 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 			delete(sm.slots, k)
 		}
 	}
-	sm.mtx.Unlock()
 }
 
 func (sm *SessionManager) sessionWatcher() {

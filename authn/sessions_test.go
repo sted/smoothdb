@@ -16,6 +16,26 @@ func checkStats(t *testing.T, sm *SessionManager, expected SessionStatistics) {
 	}
 }
 
+// watch() acquired the mutex and, when paused, returned without releasing it,
+// permanently deadlocking the session manager. This asserts a paused watch()
+// leaves the lock free for the next acquirer.
+func TestWatchDoesNotLeakLockWhenPaused(t *testing.T) {
+	sm := &SessionManager{slots: map[string]*SessionList{}}
+	sm.pauseWatcher(true)
+	sm.watch(time.Second, time.Second)
+
+	done := make(chan struct{})
+	go func() {
+		sm.Statistics() // acquires sm.mtx; blocks forever if watch() leaked the lock
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watch() leaked the mutex while paused")
+	}
+}
+
 func TestSessionManager(t *testing.T) {
 
 	sm := NewSessionManager(nil, true, nil)

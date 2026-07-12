@@ -206,6 +206,34 @@ func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInf
 	return dbe.getDatabase(ctx, conn.Conn(), name)
 }
 
+// The following builders assemble database-level DDL. Names and roles cannot be
+// bind parameters, so every user-controlled identifier is passed through quote()
+// to keep it a single quoted identifier (see injection_test.go).
+
+func buildCreateDatabase(name, owner string) string {
+	s := "CREATE DATABASE " + quote(name)
+	if owner != "" {
+		s += " OWNER " + quote(owner)
+	}
+	return s
+}
+
+func buildAlterDatabaseOwner(name, owner string) string {
+	return "ALTER DATABASE " + quote(name) + " OWNER TO " + quote(owner)
+}
+
+func buildAlterDatabaseRename(name, newName string) string {
+	return "ALTER DATABASE " + quote(name) + " RENAME TO " + quote(newName)
+}
+
+func buildAlterDatabaseAllowConnections(name string, enable bool) string {
+	enableStr := "false"
+	if enable {
+		enableStr = "true"
+	}
+	return "ALTER DATABASE " + quote(name) + " WITH ALLOW_CONNECTIONS " + enableStr
+}
+
 // CreateDatabase creates a new database
 // Use CreateActiveDatabase to create an active instance of a database
 func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, owner string, getIfExists bool) (*DatabaseInfo, error) {
@@ -213,11 +241,7 @@ func (dbe *DbEngine) CreateDatabase(ctx context.Context, name string, owner stri
 		return nil, fmt.Errorf("database %q not allowed", name)
 	}
 	conn := GetConn(ctx)
-	create := "CREATE DATABASE \"" + name + "\""
-	if owner != "" {
-		create += " OWNER " + owner
-	}
-	_, err := conn.Exec(ctx, create)
+	_, err := conn.Exec(ctx, buildCreateDatabase(name, owner))
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); !ok || !getIfExists || e.Code != "42P04" {
 			return nil, err
@@ -232,12 +256,7 @@ var terminateQuery = `SELECT pg_terminate_backend(pid)
 
 func enableConnections(ctx context.Context, name string, enable bool) error {
 	conn := GetConn(ctx)
-	enableStr := "false"
-	if enable {
-		enableStr = "true"
-	}
-	query := "ALTER DATABASE \"" + name + "\" WITH ALLOW_CONNECTIONS " + enableStr
-	_, err := conn.Exec(ctx, query)
+	_, err := conn.Exec(ctx, buildAlterDatabaseAllowConnections(name, enable))
 	if err != nil {
 		return err
 	}
@@ -289,14 +308,14 @@ func (dbe *DbEngine) UpdateDatabase(ctx context.Context, name string, update *Da
 	defer tx.Rollback(ctx)
 
 	if update.Owner != nil {
-		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" OWNER TO "+*update.Owner)
+		_, err = conn.Exec(ctx, buildAlterDatabaseOwner(name, *update.Owner))
 		if err != nil {
 			return err
 		}
 	}
 	// NAME as the last update
 	if update.Name != nil && *update.Name != name {
-		_, err = conn.Exec(ctx, "ALTER DATABASE "+quote(name)+" RENAME TO "+*update.Name)
+		_, err = conn.Exec(ctx, buildAlterDatabaseRename(name, *update.Name))
 		if err != nil {
 			return err
 		}

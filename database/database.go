@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,7 +25,11 @@ type Database struct {
 	activation    chan struct{}
 	activationErr error
 	pool          *pgxpool.Pool
-	info          *SchemaInfo
+	// info is the schema cache. It is read by every request goroutine and
+	// replaced wholesale on reload, so it is held in an atomic pointer: readers
+	// call info.Load(), the reloader calls info.Store(). Never copy Database by
+	// value (the atomic makes that unsafe).
+	info atomic.Pointer[SchemaInfo]
 }
 
 // activate initializes a database and starts its connection pool
@@ -69,7 +74,11 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				return err
 			}
 		}
-		for _, t := range db.info.cachedComposites {
+		info := db.info.Load()
+		if info == nil {
+			return nil
+		}
+		for _, t := range info.cachedComposites {
 			var fields []pgtype.CompositeCodecField
 			for _, oid := range t.SubTypeIds {
 				dt, ok := conn.TypeMap().TypeForOID(oid)
@@ -90,10 +99,11 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	}
 	defer conn.Close(ctx)
 	c := ContextWithDbConn(context.Background(), db, conn)
-	db.info, err = NewSchemaInfo(c, db)
+	info, err := NewSchemaInfo(c, db)
 	if err != nil {
 		return err
 	}
+	db.info.Store(info)
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -134,7 +144,7 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 	}
 
 	// Atomically replace the old schema info with the new one
-	db.info = newInfo
+	db.info.Store(newInfo)
 	return nil
 }
 

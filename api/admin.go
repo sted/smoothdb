@@ -180,7 +180,7 @@ func InitAdminRouter(apiHelper Helper) {
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, priv)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
 		}
 	}
 	grants.Handle("POST", "", grantsPostHandler)
@@ -208,7 +208,7 @@ func InitAdminRouter(apiHelper Helper) {
 		if err == nil {
 			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
 		}
 	}
 	grants.Handle("DELETE", "/:dbname", grantsDeleteHandler)

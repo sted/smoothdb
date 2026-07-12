@@ -1,5 +1,20 @@
 # Change Log
 
+## Unreleased
+
+### Security
+* **`::cast` injection** — cast targets in `select` are validated at parse time and rejected with 400 otherwise; a cast can't be a bind parameter, so it was interpolated verbatim and could alter the SELECT (reachable by any role that can read).
+* **DDL quoting** — quote the remaining `CREATE`/`ALTER DATABASE` identifiers, and whitelist grant/revoke verbs and object types instead of interpolating them.
+
+### Fixed
+* Schema cache held in an atomic pointer (was a data race on reload).
+* Serializers return an error on a malformed wire buffer or a type/dimension mismatch instead of panicking or silently misparsing.
+* `limit`/`offset` reject non-integer or negative values (was a silent `LIMIT 0`).
+* `*`→`%` wildcard rewrite scoped to `like`/`ilike` (was applied to every value).
+* Boolean-filter nesting capped at 100 levels (stack-overflow DoS).
+* Invalid grant input returns 400 instead of 500.
+* Session watcher no longer deadlocks when paused.
+
 ## 0.8.1 - 2026-07-08
 
 ### Security

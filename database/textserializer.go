@@ -364,45 +364,47 @@ type appendTyper interface {
 	appendType(buf []byte, typ uint32, info *SchemaInfo) error
 }
 
-func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) {
+func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) error {
 	rp := uint32(0)
 	numDims := binary.BigEndian.Uint32(buf[rp:])
-	if numDims != 1 {
-
-	}
-	if numDims == 0 { // @@ this needs to be verified
+	if numDims == 0 {
 		t.WriteString("[]")
-		return
+		return nil
+	}
+	if numDims != 1 {
+		// Multi-dimensional arrays use a different header/element layout that
+		// this flat decoder does not implement: refuse rather than misparse.
+		return &SerializeError{msg: "multi-dimensional arrays are not supported"}
 	}
 	rp += 4
-	// containsNull := binary.BigEndian.Uint32(buf[rp:]) == 1
-	// if containsNull {
-	// }
+	// flags (has-null): unused
 	rp += 4
+	// The element OID comes from the array header, which is authoritative for
+	// the bytes that follow; typ is only the expected subtype.
 	elemOID := binary.BigEndian.Uint32(buf[rp:])
-	if elemOID != typ {
-
-	}
 	rp += 4
 	elemCount := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
-	//elemLowerBound := int32(binary.BigEndian.Uint32(buf[rp:]))
+	// lower bound: unused
 	rp += 4
 	t.WriteByte('[')
 	for i := uint32(0); i < elemCount; i++ {
 		if i > 0 {
 			t.WriteByte(',')
 		}
-		elemLen := (binary.BigEndian.Uint32(buf[rp:]))
+		elemLen := binary.BigEndian.Uint32(buf[rp:])
 		rp += 4
 		if elemLen == 0xFFFFFFFF {
 			t.WriteString("null")
-		} else {
-			at.appendType(buf[rp:rp+elemLen], elemOID, info)
-			rp += elemLen
+			continue
 		}
+		if err := at.appendType(buf[rp:rp+elemLen], elemOID, info); err != nil {
+			return err
+		}
+		rp += elemLen
 	}
 	t.WriteByte(']')
+	return nil
 }
 
 // 0 = ()      = 00000
@@ -422,7 +424,7 @@ const upperInclusiveMask = 4
 const lowerUnboundedMask = 8
 const upperUnboundedMask = 16
 
-func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) {
+func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) error {
 	t.WriteByte('"')
 	rp := 0
 	rangeType := buf[rp]
@@ -438,12 +440,16 @@ func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at a
 	rp += 1
 	valuLen1 := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
-	at.appendType(buf[rp:], typ, info)
+	if err := at.appendType(buf[rp:], typ, info); err != nil {
+		return err
+	}
 	rp += int(valuLen1)
 	t.WriteByte(',')
 	valuLen2 := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
-	at.appendType(buf[rp:], typ, info)
+	if err := at.appendType(buf[rp:], typ, info); err != nil {
+		return err
+	}
 	rp += int(valuLen2)
 	switch {
 	case rangeType&emptyMask > 0,
@@ -455,36 +461,43 @@ func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at a
 		t.WriteByte(')')
 	}
 	t.WriteByte('"')
+	return nil
 }
 
-func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) {
-	rp := 0
-	// nfields := binary.BigEndian.Uint32(buf[rp:])
-	// if nfields := len(t.SubTypeIds) {
-
-	// }
+func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) error {
+	rp := uint32(0)
+	nfields := binary.BigEndian.Uint32(buf[rp:])
 	rp += 4
+	if int(nfields) != len(typ.SubTypeIds) {
+		// The row layout does not match the cached composite definition (e.g. a
+		// stale schema cache): refuse rather than read fields at wrong offsets.
+		return &SerializeError{msg: "composite field count does not match the cached type"}
+	}
 	t.WriteByte('{')
-	for i, tid := range typ.SubTypeIds {
+	for i := range typ.SubTypeIds {
 		if i > 0 {
 			t.WriteByte(',')
 		}
+		// Each field carries its own type OID and length; both are authoritative
+		// for the bytes that follow.
 		oid := binary.BigEndian.Uint32(buf[rp:])
-		if oid != tid {
-
-		}
 		rp += 4
-		len := int(binary.BigEndian.Uint32(buf[rp:]))
-		rp += 4
-
 		t.WriteByte('"')
 		t.WriteString(typ.SubTypeNames[i])
 		t.WriteString("\":")
-		at.appendType(buf[rp:], tid, info)
-		rp += len
+		flen := binary.BigEndian.Uint32(buf[rp:])
+		rp += 4
+		if flen == 0xFFFFFFFF {
+			t.WriteString("null")
+			continue
+		}
+		if err := at.appendType(buf[rp:rp+flen], oid, info); err != nil {
+			return err
+		}
+		rp += flen
 	}
-
 	t.WriteByte('}')
+	return nil
 }
 
 func (t *TextBuilder) appendEnum(buf []byte) {
@@ -538,11 +551,11 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		if ct != nil {
 			switch {
 			case ct.IsArray:
-				j.appendArray(buf, ct.ArraySubType, info, j)
+				return j.appendArray(buf, ct.ArraySubType, info, j)
 			case ct.IsRange:
-				j.appendRange(buf, *ct.RangeSubType, info, j)
+				return j.appendRange(buf, *ct.RangeSubType, info, j)
 			case ct.IsComposite:
-				j.appendComposite(buf, ct, info, j)
+				return j.appendComposite(buf, ct, info, j)
 			case ct.IsEnum:
 				j.WriteByte('"')
 				j.appendEnum(buf)
@@ -562,7 +575,18 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 	return nil
 }
 
-func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+// serializeRecover converts a panic raised while decoding raw pgx wire buffers
+// (a short/truncated/unexpected-format value would otherwise index past the end
+// of a buffer) into a SerializeError, so a single bad value cannot take down the
+// request. It must be deferred with the named return values of a Serialize method.
+func serializeRecover(out *[]byte, n *int64, err *error) {
+	if r := recover(); r != nil {
+		*out, *n, *err = nil, 0, &SerializeError{msg: fmt.Sprintf("malformed value from database: %v", r)}
+	}
+}
+
+func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) (out []byte, n int64, err error) {
+	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	var count int64
 	var _count int64 = -1
@@ -596,7 +620,9 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 				j.appendString([]byte(fd.Name), true)
 				j.WriteString("\":")
 			}
-			j.appendType(buf, fd.DataTypeOID, info)
+			if err := j.appendType(buf, fd.DataTypeOID, info); err != nil {
+				return nil, 0, err
+			}
 		}
 		if !scalar {
 			j.WriteByte('}')
@@ -663,11 +689,11 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		if ct != nil {
 			switch {
 			case ct.IsArray:
-				csv.appendArray(buf, ct.ArraySubType, info, csv)
+				return csv.appendArray(buf, ct.ArraySubType, info, csv)
 			case ct.IsRange:
-				csv.appendRange(buf, *ct.RangeSubType, info, csv)
+				return csv.appendRange(buf, *ct.RangeSubType, info, csv)
 			case ct.IsComposite:
-				csv.appendComposite(buf, ct, info, csv)
+				return csv.appendComposite(buf, ct, info, csv)
 			case ct.IsEnum:
 				csv.appendEnum(buf)
 			default:
@@ -680,7 +706,8 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 	return nil
 }
 
-func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) (out []byte, n int64, err error) {
+	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	var count int64
 	var _count int64 = -1
@@ -709,7 +736,9 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 				}
 				continue
 			}
-			csv.appendType(buf, fd.DataTypeOID, info)
+			if err := csv.appendType(buf, fd.DataTypeOID, info); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
@@ -780,7 +809,8 @@ type BinarySerializer struct {
 	bytes.Buffer
 }
 
-func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
+func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) (out []byte, n int64, err error) {
+	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	if len(fds) != 1 {
 		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
@@ -794,10 +824,20 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 type DatabaseJSONSerializer struct{}
 
 func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
-	rows.Next()
+	if !rows.Next() {
+		// No row at all: the aggregating query is expected to always return one,
+		// so guard the index below rather than panicking on an empty result.
+		if err := rows.Err(); err != nil {
+			return nil, 0, err
+		}
+		return []byte("null"), 0, nil
+	}
 	values := rows.RawValues()
 	if err := rows.Err(); err != nil {
 		return []byte{}, 0, err
+	}
+	if len(values) == 0 {
+		return []byte("null"), 0, nil
 	}
 	return values[0], 0, nil
 }

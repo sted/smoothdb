@@ -25,7 +25,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
 		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
 	}
-	info := gi.Db.info
+	info := gi.Db.info.Load()
 	rows, err := gi.Conn.Query(ctx, query, values...)
 	if err != nil {
 		return nil, 0, err
@@ -50,7 +50,7 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info)
+	query, values, err := gi.QueryBuilder.BuildSelect(table, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -64,7 +64,7 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info)
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -86,7 +86,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info)
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -108,7 +108,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info)
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -148,7 +148,7 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 			}
 		}
 	}
-	info := gi.Db.info
+	info := gi.Db.info.Load()
 	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err

@@ -94,3 +94,99 @@ func TestInjectionEmbeddedValueEscaping(t *testing.T) {
 		t.Errorf("interpolated value not escaped\n want: %s\n  got: %s", want, where)
 	}
 }
+
+// Finding 5: a ::cast is interpolated verbatim into the SELECT list because a
+// cast cannot be a bind parameter. The scanner lets a quoted token carry commas,
+// spaces and parentheses, so an unvalidated cast can add columns or otherwise
+// break out of the select list. Every cast must be rejected unless it is a
+// syntactically valid type name.
+func TestInjectionCastRejected(t *testing.T) {
+	bad := []string{
+		`?select=id::"int4, secret"`,           // smuggles an extra select item
+		`?select=id::"int4 from pg_authid --"`, // breaks out of the select list
+		`?select=id::"text)"`,                  // unbalanced parenthesis
+		`?select=amount.sum()::"x, y"`,         // same, on the aggregate cast
+	}
+	for _, q := range bad {
+		u, err := url.Parse(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (PostgRestParser{}).parse("table", u.Query()); err == nil {
+			t.Errorf("expected parse error for malicious cast %q, got none", q)
+		}
+	}
+}
+
+// The counterpart to TestInjectionCastRejected: legitimate casts (including
+// schema-qualified, array and multi-word SQL types) must still be accepted.
+func TestValidCastsAccepted(t *testing.T) {
+	good := []string{
+		`?select=id::int4`,
+		`?select=id::int8`,
+		`?select=amount::numeric`,
+		`?select=tags::text[]`,
+		`?select=d::double precision`,
+		`?select=t::public.mytype`,
+		`?select=amount.sum()::int8`,
+	}
+	for _, q := range good {
+		u, err := url.Parse(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (PostgRestParser{}).parse("table", u.Query()); err != nil {
+			t.Errorf("valid cast %q rejected: %v", q, err)
+		}
+	}
+}
+
+// Finding (DDL sinks): database names and roles were interpolated into DDL with
+// bare quotes (or none), so a " in a name broke out of the identifier. Every
+// database-level DDL builder must emit the name as a single quoted identifier.
+func TestInjectionDatabaseDDLQuoting(t *testing.T) {
+	evil := `db"; DROP DATABASE x; --`
+	q := `"db""; DROP DATABASE x; --"` // evil, neutralized as one identifier
+	cases := []struct{ got, want string }{
+		{buildCreateDatabase(evil, ""), `CREATE DATABASE ` + q},
+		{buildCreateDatabase("d", evil), `CREATE DATABASE "d" OWNER ` + q},
+		{buildAlterDatabaseOwner("d", evil), `ALTER DATABASE "d" OWNER TO ` + q},
+		{buildAlterDatabaseRename("d", evil), `ALTER DATABASE "d" RENAME TO ` + q},
+		{buildAlterDatabaseAllowConnections(evil, false), `ALTER DATABASE ` + q + ` WITH ALLOW_CONNECTIONS false`},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("DDL not neutralized\n want: %s\n  got: %s", c.want, c.got)
+		}
+	}
+}
+
+// Finding (grant sinks): privilege verbs and the target object type came from
+// client JSON and were interpolated verbatim. They must be whitelisted, while
+// the target name and grantee are quoted.
+func TestInjectionGrantWhitelist(t *testing.T) {
+	// Invalid input must be a *BuildError so the API maps it to 400, not 500.
+	if _, err := buildGrantRevoke(&Privilege{
+		Types: []string{"SELECT; DROP TABLE x"}, TargetType: "table", TargetName: "t", Grantee: "r",
+	}, true); err == nil {
+		t.Error("expected error for injected privilege verb")
+	} else if _, ok := err.(*BuildError); !ok {
+		t.Errorf("expected *BuildError, got %T", err)
+	}
+	if _, err := buildGrantRevoke(&Privilege{
+		Types: []string{"SELECT"}, TargetType: "table; DROP", TargetName: "t", Grantee: "r",
+	}, true); err == nil {
+		t.Error("expected error for injected target type")
+	} else if _, ok := err.(*BuildError); !ok {
+		t.Errorf("expected *BuildError, got %T", err)
+	}
+	got, err := buildGrantRevoke(&Privilege{
+		Types: []string{"SELECT", "INSERT"}, TargetType: "table", TargetName: "public.t", Grantee: "r",
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `GRANT SELECT, INSERT ON table "public"."t" TO "r"`; got != want {
+		t.Errorf("unexpected grant\n want: %s\n  got: %s", want, got)
+	}
+}

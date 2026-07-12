@@ -522,7 +522,7 @@ func TestComputedRelationship(t *testing.T) {
 	}
 
 	t.Run("computed relationship is discovered", func(t *testing.T) {
-		rels := db.info.GetRelationships(_s("documents", "public"))
+		rels := db.info.Load().GetRelationships(_s("documents", "public"))
 		found := false
 		for _, rel := range rels {
 			if rel.Type == Computed && rel.FunctionName == "read_principals" {

@@ -102,7 +102,7 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 		return nil, 0, &ParseError{"recursive filters are not supported in a jq update"}
 	}
 	schema := options.Schema
-	stack := BuildStack{info: gi.Db.info}
+	stack := BuildStack{info: gi.Db.info.Load()}
 	where, values := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
 
 	maxRows := jqeval.MaxUpdateRows()

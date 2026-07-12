@@ -133,6 +133,18 @@ type PostgRestParser struct {
 	tokens []string
 	quoted []bool // for each token, whether it was quoted in the source
 	cur    int
+	depth  int // current boolean-filter recursion depth (see maxFilterDepth)
+}
+
+// maxFilterDepth caps the nesting of boolean filters (and/or) so a crafted query
+// string cannot overflow the goroutine stack through cond -> booleanOp -> cond.
+// Real queries never approach this.
+const maxFilterDepth = 100
+
+// isNonNegativeInt reports whether s is a base-10 non-negative 64-bit integer.
+func isNonNegativeInt(s string) bool {
+	n, err := strconv.ParseInt(s, 10, 64)
+	return err == nil && n >= 0
 }
 
 type ParseError struct {
@@ -188,6 +200,42 @@ func isValidAggregateFunction(fn string) bool {
 	default:
 		return false
 	}
+}
+
+// castTypeRe matches a single-word type name, optionally schema-qualified and
+// with one or more trailing array markers (e.g. int4, public.mytype, text[][]).
+// It deliberately excludes quotes, spaces, commas and parentheses so a cast
+// token cannot break out of the SELECT list — see isValidCastType.
+var castTypeRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?(\[\])*$`)
+
+// multiWordCastTypes is the closed set of SQL-standard type names that contain
+// spaces and are therefore rejected by castTypeRe but are legitimate cast
+// targets. Anything outside this set with a space is refused.
+var multiWordCastTypes = map[string]struct{}{
+	"double precision":            {},
+	"character varying":           {},
+	"bit varying":                 {},
+	"timestamp with time zone":    {},
+	"timestamp without time zone": {},
+	"time with time zone":         {},
+	"time without time zone":      {},
+}
+
+// isValidCastType reports whether s is a syntactically valid cast target. A cast
+// cannot be a bind parameter, so it is interpolated verbatim into the SQL; this
+// is the gate that keeps that interpolation from becoming an injection sink.
+func isValidCastType(s string) bool {
+	if s == "" {
+		return false
+	}
+	base := s
+	for strings.HasSuffix(base, "[]") {
+		base = strings.TrimSuffix(base, "[]")
+	}
+	if _, ok := multiWordCastTypes[strings.ToLower(base)]; ok {
+		return true
+	}
+	return castTypeRe.MatchString(s)
 }
 
 // checkAggregatesEnabled checks if aggregate functions are enabled in the configuration
@@ -362,6 +410,7 @@ func (p *PostgRestParser) reset() {
 	p.tokens = nil
 	p.quoted = nil
 	p.cur = 0
+	p.depth = 0
 }
 
 // General grammar:
@@ -544,6 +593,15 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			// This is a field cast (fallback case)
 			cast = p.next()
 		}
+	}
+	// Casts are interpolated verbatim into the SQL (they cannot be bind
+	// parameters), so reject anything that is not a valid type name before it
+	// can reach the query builder.
+	if cast != "" && !isValidCastType(cast) {
+		return nil, &ParseError{"invalid cast type: " + cast}
+	}
+	if aggCast != "" && !isValidCastType(aggCast) {
+		return nil, &ParseError{"invalid cast type: " + aggCast}
 	}
 	if p.lookAhead() == "!" {
 		p.next()
@@ -854,7 +912,11 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			value += p.completeIfFloat()
 		}
 	}
-	value = strings.ReplaceAll(value, "*", "%")
+	// '*' is the URL-friendly stand-in for the LIKE/ILIKE wildcard; leave it
+	// literal for every other operator.
+	if node.operator == "LIKE" || node.operator == "ILIKE" {
+		value = strings.ReplaceAll(value, "*", "%")
+	}
 	node.values = append(node.values, value)
 	return nil
 }
@@ -894,6 +956,11 @@ func (p *PostgRestParser) booleanOp(table string, node *WhereConditionNode) (err
 }
 
 func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (err error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > maxFilterDepth {
+		return &ParseError{"filter nesting too deep"}
+	}
 	node := &WhereConditionNode{}
 	token := p.lookAhead()
 	if token == "__boolean_later__" {
@@ -1139,12 +1206,18 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	// LIMIT
 	// limit=100
 	if limitFilter, ok := filters["limit"]; ok {
+		if !isNonNegativeInt(limitFilter[0]) {
+			return nil, &ParseError{"limit must be a non-negative integer"}
+		}
 		parts.limit = limitFilter[0]
 		delete(filters, "limit")
 	}
 	// OFFSET
 	// offset=50
 	if offsetFilter, ok := filters["offset"]; ok {
+		if !isNonNegativeInt(offsetFilter[0]) {
+			return nil, &ParseError{"offset must be a non-negative integer"}
+		}
 		parts.offset = offsetFilter[0]
 		delete(filters, "offset")
 	}
