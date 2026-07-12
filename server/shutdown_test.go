@@ -79,6 +79,11 @@ func TestSIGTERMStartsGracefulShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitStopped(t, done, 10*time.Second)
+
+	// Shutdown must also have closed the database pools
+	if _, err := s.DBE.AcquireConnection(context.Background()); err == nil {
+		t.Fatal("expected the main pool to be closed after shutdown")
+	}
 }
 
 func getStatus(t *testing.T, url string) int {

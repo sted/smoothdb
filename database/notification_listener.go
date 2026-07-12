@@ -35,11 +35,11 @@ type NotificationListener struct {
 	config     *ListenerConfig
 	logger     *logging.Logger
 	connString string
-	conn       *pgx.Conn
 	handlers   map[string]NotificationHandler
 	mu         sync.RWMutex
 	running    bool
-	stop       chan struct{}
+	cancel     context.CancelFunc
+	stopped    chan struct{}
 }
 
 // NewNotificationListener creates a new notification listener
@@ -52,7 +52,6 @@ func NewNotificationListener(connString string, config *ListenerConfig, logger *
 		logger:     logger,
 		connString: connString,
 		handlers:   make(map[string]NotificationHandler),
-		stop:       make(chan struct{}),
 	}
 }
 
@@ -78,44 +77,52 @@ func (l *NotificationListener) Start(ctx context.Context) error {
 		return fmt.Errorf("listener is already running")
 	}
 	l.running = true
+	ctx, l.cancel = context.WithCancel(ctx)
+	l.stopped = make(chan struct{})
+	stopped := l.stopped
 	l.mu.Unlock()
 
-	go l.listenLoop(ctx)
+	go func() {
+		defer close(stopped)
+		l.listenLoop(ctx)
+	}()
 	return nil
 }
 
-// Stop stops the listener
+// Stop stops the listener, interrupting a pending WaitForNotification, and
+// waits for the loop to exit, so its dedicated connection is closed when
+// Stop returns — also when racing another Stop. It must not be called from
+// a notification handler, which runs on the loop it would wait for.
 func (l *NotificationListener) Stop() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.running {
-		close(l.stop)
 		l.running = false
+		l.cancel()
+	}
+	stopped := l.stopped
+	l.mu.Unlock()
+	if stopped != nil {
+		<-stopped
 	}
 }
 
 // listenLoop maintains the connection and processes notifications
 func (l *NotificationListener) listenLoop(ctx context.Context) {
 	for {
-		select {
-		case <-ctx.Done():
+		err := l.connectAndListen(ctx)
+		if ctx.Err() != nil {
+			// Stopped: WaitForNotification reports the canceled
+			// context as an error, not worth logging
 			return
-		case <-l.stop:
-			return
-		default:
-			err := l.connectAndListen(ctx)
-			if err != nil {
-				if l.logger != nil {
-					l.logger.Err(err).Msg("Notification listener error")
-				}
-				select {
-				case <-time.After(l.config.ReconnectDelay):
-					continue
-				case <-ctx.Done():
-					return
-				case <-l.stop:
-					return
-				}
+		}
+		if err != nil {
+			if l.logger != nil {
+				l.logger.Err(err).Msg("Notification listener error")
+			}
+			select {
+			case <-time.After(l.config.ReconnectDelay):
+			case <-ctx.Done():
+				return
 			}
 		}
 	}
@@ -127,9 +134,13 @@ func (l *NotificationListener) connectAndListen(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer conn.Close(ctx)
-
-	l.conn = conn
+	defer func() {
+		// Close cleanly even when ctx is already canceled (i.e. during
+		// Stop), so Postgres sees a Terminate message instead of a reset
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		conn.Close(closeCtx)
+	}()
 
 	_, err = conn.Exec(ctx, fmt.Sprintf("LISTEN %s", l.config.Channel))
 	if err != nil {
@@ -141,20 +152,12 @@ func (l *NotificationListener) connectAndListen(ctx context.Context) error {
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-l.stop:
-			return nil
-		default:
-			notification, err := conn.WaitForNotification(ctx)
-			if err != nil {
-				return fmt.Errorf("error waiting for notification: %w", err)
-			}
-
-			if notification != nil {
-				l.handleNotification(ctx, notification.Payload)
-			}
+		notification, err := conn.WaitForNotification(ctx)
+		if err != nil {
+			return fmt.Errorf("error waiting for notification: %w", err)
+		}
+		if notification != nil {
+			l.handleNotification(ctx, notification.Payload)
 		}
 	}
 }

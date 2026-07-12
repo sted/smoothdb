@@ -117,8 +117,24 @@ func (s *Server) Shutdown(ctx context.Context) {
 		}
 		// Close goroutines (for now just the checker in the service manager)
 		close(s.shutdown)
-		// Close database pools - ok, not so graceful
-		// s.DBE.Close() @@ to be fixed, now blocks
+		// Release database resources: the notification listener and all the
+		// connection pools. Handlers have completed by now, so pool Close()
+		// does not wait on acquired connections — unless the graceful window
+		// expired with requests still running, so bound the wait (by ctx,
+		// plus a backstop when ctx has no deadline) rather than hang past
+		// the supervisor's grace period.
+		closed := make(chan struct{})
+		go func() {
+			s.DBE.Close()
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-ctx.Done():
+			s.logger.Warn().Msg("Shutdown context expired while closing database pools")
+		case <-time.After(5 * time.Second):
+			s.logger.Warn().Msg("Timed out closing database pools")
+		}
 		close(s.shutdownCompleted)
 	})
 }
