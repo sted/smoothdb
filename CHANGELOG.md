@@ -15,6 +15,7 @@
 * Invalid grant input returns 400 instead of 500.
 * Session watcher no longer deadlocks when paused.
 * **SIGTERM** — the server now shuts down gracefully on SIGTERM (the default stop signal of Docker, Kubernetes and systemd), not only on SIGINT/Ctrl-C. A raw SIGTERM previously terminated the process immediately, cutting in-flight requests and resetting database connections.
+* **Exit status** — a graceful shutdown now exits with status 0; it previously exited 1, which supervisors interpret as a crash.
 
 ## 0.8.1 - 2026-07-08
 

@@ -130,7 +130,10 @@ func (s *Server) Run() {
 	err := s.Start()
 	if err != nil {
 		if err == http.ErrServerClosed {
+			// Graceful shutdown is a clean exit: supervisors (systemd, k8s)
+			// treat a non-zero status as a crash.
 			fmt.Println("Stopped.")
+			return
 		} else if errors.Is(err, syscall.EADDRINUSE) {
 			fmt.Printf("EndPoint address already in use. Is there another smoothdb running? (%s)\n", err)
 		} else {
