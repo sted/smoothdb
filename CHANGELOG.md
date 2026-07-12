@@ -8,6 +8,7 @@
 
 ### Added
 * Shutdown now waits for in-flight requests to complete; the wait was previously hardcoded to 1 second, so every restart killed any request slower than that. The new `GracefulShutdownTimeout` config key (seconds, default 0 = wait until done) bounds the wait for deployments that want a hard cap below their supervisor's stop grace period. A second signal during the wait forces an immediate exit, and `Shutdown()` is now idempotent.
+* `/ready` now reports `503 {"status":"draining"}` as soon as a graceful shutdown begins, while `/live` keeps answering 200 until the process exits — the standard probe contract for zero-downtime rolling deploys. The new `DrainDelay` config key (seconds, default 0 = disabled) keeps the listener serving for that long after readiness flips, giving load balancers time to deregister the instance before it stops accepting connections. The delay applies to SIGTERM only; an interactive Ctrl-C (SIGINT) shuts down immediately, and a second signal during the window skips it.
 
 ### Fixed
 * Schema cache held in an atomic pointer (was a data race on reload).

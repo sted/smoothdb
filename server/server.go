@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,6 +32,7 @@ type Server struct {
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
 	shutdownOnce      sync.Once
+	draining          atomic.Bool
 	OnBeforeStart     func(*Server)
 	OnBeforeShutdown  func(*Server)
 }
@@ -105,6 +107,7 @@ func (s *Server) Start() error {
 // and an embedder may both call it.
 func (s *Server) Shutdown(ctx context.Context) {
 	s.shutdownOnce.Do(func() {
+		s.draining.Store(true)
 		if s.OnBeforeShutdown != nil {
 			s.OnBeforeShutdown(s)
 		}
@@ -126,8 +129,20 @@ func (s *Server) Shutdown(ctx context.Context) {
 // still takes the default disposition (immediate termination).
 func (s *Server) stopHandler(c chan os.Signal) {
 	defer signal.Stop(c)
-	<-c
+	sig := <-c
 	fmt.Println("\nStarting shutdown...")
+	// Flip readiness first: /ready reports 503 while the listener is still
+	// accepting, giving load balancers a window (DrainDelay) to deregister
+	// the instance before it stops serving. The window only makes sense for
+	// orchestrated stops (SIGTERM): an interactive Ctrl-C skips it, and a
+	// second signal cuts it short.
+	s.draining.Store(true)
+	if delay := time.Duration(s.Config.DrainDelay) * time.Second; delay > 0 && sig == syscall.SIGTERM {
+		select {
+		case <-time.After(delay):
+		case <-c:
+		}
+	}
 	// No deadline by default: in-flight requests are already bounded by
 	// ReadTimeout/WriteTimeout, and the supervisor's stop grace period is
 	// the final backstop.
@@ -147,8 +162,13 @@ func (s *Server) stopHandler(c chan os.Signal) {
 	select {
 	case <-done:
 	case <-c:
-		fmt.Println("\nShutdown forced")
-		os.Exit(1)
+		// A signal racing shutdown completion is not a force request
+		select {
+		case <-done:
+		default:
+			fmt.Println("\nShutdown forced")
+			os.Exit(1)
+		}
 	}
 }
 
@@ -206,6 +226,11 @@ func (s *Server) BaseAPIURL() string {
 
 func (s *Server) HasShortAPIURL() bool {
 	return s.Config.ShortAPIURL
+}
+
+// IsDraining reports whether a graceful shutdown has begun
+func (s *Server) IsDraining() bool {
+	return s.draining.Load()
 }
 
 func (s *Server) RequestMaxBytes() int64 {

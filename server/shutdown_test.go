@@ -81,6 +81,92 @@ func TestSIGTERMStartsGracefulShutdown(t *testing.T) {
 	waitStopped(t, done, 10*time.Second)
 }
 
+func getStatus(t *testing.T, url string) int {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// During the drain window (DrainDelay) /ready must report 503 so load
+// balancers deregister the instance, while /live stays 200 and the listener
+// keeps serving; only afterwards does the server stop accepting connections.
+func TestReadyReportsDrainingDuringShutdown(t *testing.T) {
+	s := newTestServer(t, map[string]any{
+		"Address":    "localhost:8093",
+		"DrainDelay": int64(2),
+	})
+	done := startTestServer(t, s)
+	base := "http://localhost:8093"
+
+	if got := getStatus(t, base+"/ready"); got != http.StatusOK {
+		t.Fatalf("expected 200 from /ready before shutdown, got %d", got)
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	// Readiness flips before the drain sleep starts, so the 503 must show up
+	// almost immediately — poll briefly, then check /live in the same breath,
+	// well inside the 2s drain window.
+	deadline := time.Now().Add(1 * time.Second)
+	for getStatus(t, base+"/ready") != http.StatusServiceUnavailable {
+		if time.Now().After(deadline) {
+			t.Fatal("/ready did not report draining within the drain window")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := getStatus(t, base+"/live"); got != http.StatusOK {
+		t.Fatalf("expected 200 from /live while draining, got %d", got)
+	}
+	waitStopped(t, done, 10*time.Second)
+}
+
+// The drain window is for orchestrated stops: an interactive Ctrl-C (SIGINT)
+// must skip DrainDelay and shut down immediately.
+func TestSIGINTSkipsDrainDelay(t *testing.T) {
+	s := newTestServer(t, map[string]any{
+		"Address":    "localhost:8094",
+		"DrainDelay": int64(30),
+	})
+	done := startTestServer(t, s)
+
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	waitStopped(t, done, 5*time.Second)
+}
+
+// A second signal during the drain window must cut it short and proceed with
+// the graceful shutdown right away.
+func TestSecondSignalSkipsDrainWindow(t *testing.T) {
+	s := newTestServer(t, map[string]any{
+		"Address":    "localhost:8095",
+		"DrainDelay": int64(30),
+	})
+	done := startTestServer(t, s)
+
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	// Wait until the handler has consumed the first signal (readiness flips
+	// right after) — a second signal sent while the first still sits in the
+	// channel's one-slot buffer would be dropped, not queued.
+	deadline := time.Now().Add(1 * time.Second)
+	for getStatus(t, "http://localhost:8095/ready") != http.StatusServiceUnavailable {
+		if time.Now().After(deadline) {
+			t.Fatal("/ready did not report draining")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	waitStopped(t, done, 5*time.Second)
+}
+
 // Shutdown must wait for in-flight requests up to GracefulShutdownTimeout.
 // With the previous hardcoded 1s window this request (2s) was cut off with a
 // connection reset instead of completing.
