@@ -122,7 +122,7 @@ func getEnvironment(c *Config) {
 	if enableAdminRoute != "" {
 		c.EnableAdminRoute = strings.ToLower(enableAdminRoute) == "true"
 	}
-	
+
 	// CORS configuration
 	corsAllowedOrigins := os.Getenv("SMOOTHDB_CORS_ALLOWED_ORIGINS")
 	if corsAllowedOrigins != "" {

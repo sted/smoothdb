@@ -111,9 +111,11 @@ func (s *Server) Shutdown(ctx context.Context) {
 	close(s.shutdownCompleted)
 }
 
-func (s *Server) stopHandler() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+// stopHandler waits for a shutdown signal on c and stops the server. The
+// channel must already be registered with signal.Notify: registering it here,
+// in a goroutine racing the listener, would leave a window where a signal
+// still takes the default disposition (immediate termination).
+func (s *Server) stopHandler(c chan os.Signal) {
 	<-c
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
 	defer cancel()
@@ -122,7 +124,9 @@ func (s *Server) stopHandler() {
 }
 
 func (s *Server) Run() {
-	go s.stopHandler()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go s.stopHandler(c)
 	err := s.Start()
 	if err != nil {
 		if err == http.ErrServerClosed {
