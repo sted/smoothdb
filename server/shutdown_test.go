@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/test"
 )
 
@@ -75,6 +77,50 @@ func TestSIGTERMStartsGracefulShutdown(t *testing.T) {
 
 	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
 		t.Fatal(err)
+	}
+	waitStopped(t, done, 10*time.Second)
+}
+
+// Shutdown must wait for in-flight requests up to GracefulShutdownTimeout.
+// With the previous hardcoded 1s window this request (2s) was cut off with a
+// connection reset instead of completing.
+func TestShutdownWaitsForInflightRequests(t *testing.T) {
+	s := newTestServer(t, map[string]any{
+		"Address":                 "localhost:8092",
+		"GracefulShutdownTimeout": int64(10),
+	})
+	s.GetRouter().Handle("GET", "/slow", func(ctx context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		time.Sleep(2 * time.Second)
+		return heligo.WriteJSON(w, http.StatusOK, map[string]string{"status": "done"})
+	})
+	done := startTestServer(t, s)
+
+	type result struct {
+		status int
+		err    error
+	}
+	resCh := make(chan result, 1)
+	go func() {
+		resp, err := http.Get("http://localhost:8092/slow")
+		if err != nil {
+			resCh <- result{0, err}
+			return
+		}
+		resp.Body.Close()
+		resCh <- result{resp.StatusCode, nil}
+	}()
+	// Let the slow request reach its handler before stopping the server.
+	time.Sleep(300 * time.Millisecond)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+
+	res := <-resCh
+	if res.err != nil {
+		t.Fatalf("in-flight request failed during shutdown: %v", res.err)
+	}
+	if res.status != http.StatusOK {
+		t.Fatalf("expected status 200 for in-flight request, got %d", res.status)
 	}
 	waitStopped(t, done, 10*time.Second)
 }

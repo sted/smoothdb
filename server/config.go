@@ -24,64 +24,66 @@ type ConfigOptions struct {
 
 // Config holds the current configuration
 type Config struct {
-	Address              string          `comment:"Server address and port (default: 0.0.0.0:4000)"`
-	CertFile             string          `comment:"TLS certificate file (default: '')"`
-	KeyFile              string          `comment:"TLS certificate key file (default: '')"`
-	LoginMode            string          `comment:"Login mode: none, db, gotrue (default: none)"`
-	AuthURL              string          `comment:"URL of the external AuthN service (default: '')"`
-	AllowAnon            bool            `comment:"Allow unauthenticated connections (default: false)"`
-	JWTSecret            string          `comment:"Secret for JWT tokens"`
-	SessionMode          string          `comment:"Session mode: none, role (default: role)"`
-	EnableAdminRoute     bool            `comment:"Enable administration of databases and tables (default: false)"`
-	EnableAdminUI        bool            `comment:"Enable Admin dashboard (default: false)"`
-	EnableAPIRoute       bool            `comment:"Enable API access (default: true)"`
-	BaseAPIURL           string          `comment:"Base URL for the API (default: /api)"`
-	ShortAPIURL          bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
-	BaseAdminURL         string          `comment:"Base URL for the Admin API (default: /admin)"`
-	CORSAllowedOrigins   []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
-	CORSAllowCredentials bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
-	EnableDebugRoute     bool            `comment:"Enable debug access (default: false)"`
-	PluginDir            string          `comment:"Plugins' directory (default: ./_plugins)"`
-	Plugins              []string        `comment:"Ordered list of plugins (default: [])"`
-	ReadTimeout          int64           `comment:"The maximum duration (seconds) for reading the entire request, including the body (default: 60)"`
-	WriteTimeout         int64           `comment:"The maximum duration before timing out writes of the response (default: 60)"`
-	TokenExpiry          int64           `comment:"JWT token expiry in seconds (default: 86400 = 24h, 0 for no expiry)"`
-	VerboseErrors        bool            `comment:"Return full database error details (hint, detail) to clients (default: true)"`
-	RequestMaxBytes      int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
-	Database             database.Config `comment:"Database configuration"`
-	JQ                   jqeval.Config   `comment:"jq evaluation configuration"`
-	Logging              logging.Config  `comment:"Logging configuration"`
+	Address                 string          `comment:"Server address and port (default: 0.0.0.0:4000)"`
+	CertFile                string          `comment:"TLS certificate file (default: '')"`
+	KeyFile                 string          `comment:"TLS certificate key file (default: '')"`
+	LoginMode               string          `comment:"Login mode: none, db, gotrue (default: none)"`
+	AuthURL                 string          `comment:"URL of the external AuthN service (default: '')"`
+	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
+	JWTSecret               string          `comment:"Secret for JWT tokens"`
+	SessionMode             string          `comment:"Session mode: none, role (default: role)"`
+	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
+	EnableAdminUI           bool            `comment:"Enable Admin dashboard (default: false)"`
+	EnableAPIRoute          bool            `comment:"Enable API access (default: true)"`
+	BaseAPIURL              string          `comment:"Base URL for the API (default: /api)"`
+	ShortAPIURL             bool            `comment:"Avoid database name in API URL (needs a single allowed database)"`
+	BaseAdminURL            string          `comment:"Base URL for the Admin API (default: /admin)"`
+	CORSAllowedOrigins      []string        `comment:"CORS Access-Control-Allow-Origin (default: [*] for all)"`
+	CORSAllowCredentials    bool            `comment:"CORS Access-Control-Allow-Credentials (default: false)"`
+	EnableDebugRoute        bool            `comment:"Enable debug access (default: false)"`
+	PluginDir               string          `comment:"Plugins' directory (default: ./_plugins)"`
+	Plugins                 []string        `comment:"Ordered list of plugins (default: [])"`
+	ReadTimeout             int64           `comment:"The maximum duration (seconds) for reading the entire request, including the body (default: 60)"`
+	WriteTimeout            int64           `comment:"The maximum duration before timing out writes of the response (default: 60)"`
+	GracefulShutdownTimeout int64           `comment:"The maximum duration (seconds) to wait for in-flight requests to complete on shutdown (default: 0, wait until done)"`
+	TokenExpiry             int64           `comment:"JWT token expiry in seconds (default: 86400 = 24h, 0 for no expiry)"`
+	VerboseErrors           bool            `comment:"Return full database error details (hint, detail) to clients (default: true)"`
+	RequestMaxBytes         int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
+	Database                database.Config `comment:"Database configuration"`
+	JQ                      jqeval.Config   `comment:"jq evaluation configuration"`
+	Logging                 logging.Config  `comment:"Logging configuration"`
 }
 
 func defaultConfig() *Config {
 	return &Config{
-		Address:              "0.0.0.0:4000",
-		CertFile:             "",
-		KeyFile:              "",
-		LoginMode:            "none",
-		AuthURL:              "",
-		AllowAnon:            false,
-		JWTSecret:            "",
-		SessionMode:          "role",
-		EnableAdminRoute:     false,
-		EnableAdminUI:        false,
-		EnableAPIRoute:       true,
-		BaseAPIURL:           "/api",
-		ShortAPIURL:          false,
-		BaseAdminURL:         "/admin",
-		CORSAllowedOrigins:   []string{},
-		CORSAllowCredentials: false,
-		EnableDebugRoute:     false,
-		PluginDir:            "./_plugins",
-		Plugins:              []string{},
-		ReadTimeout:          60,
-		WriteTimeout:         60,
-		TokenExpiry:          86400,
-		VerboseErrors:        true,
-		RequestMaxBytes:      1024 * 1024,
-		Database:             *database.DefaultConfig(),
-		JQ:                   *jqeval.DefaultConfig(),
-		Logging:              *logging.DefaultConfig(),
+		Address:                 "0.0.0.0:4000",
+		CertFile:                "",
+		KeyFile:                 "",
+		LoginMode:               "none",
+		AuthURL:                 "",
+		AllowAnon:               false,
+		JWTSecret:               "",
+		SessionMode:             "role",
+		EnableAdminRoute:        false,
+		EnableAdminUI:           false,
+		EnableAPIRoute:          true,
+		BaseAPIURL:              "/api",
+		ShortAPIURL:             false,
+		BaseAdminURL:            "/admin",
+		CORSAllowedOrigins:      []string{},
+		CORSAllowCredentials:    false,
+		EnableDebugRoute:        false,
+		PluginDir:               "./_plugins",
+		Plugins:                 []string{},
+		ReadTimeout:             60,
+		WriteTimeout:            60,
+		GracefulShutdownTimeout: 0,
+		TokenExpiry:             86400,
+		VerboseErrors:           true,
+		RequestMaxBytes:         1024 * 1024,
+		Database:                *database.DefaultConfig(),
+		JQ:                      *jqeval.DefaultConfig(),
+		Logging:                 *logging.DefaultConfig(),
 	}
 }
 

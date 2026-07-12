@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +30,7 @@ type Server struct {
 	sessionManager    *authn.SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
+	shutdownOnce      sync.Once
 	OnBeforeStart     func(*Server)
 	OnBeforeShutdown  func(*Server)
 }
@@ -98,17 +100,24 @@ func (s *Server) Start() error {
 	return err
 }
 
+// Shutdown stops the server gracefully, waiting for in-flight requests
+// within ctx's deadline. It is idempotent: the signal path installed by Run
+// and an embedder may both call it.
 func (s *Server) Shutdown(ctx context.Context) {
-	if s.OnBeforeShutdown != nil {
-		s.OnBeforeShutdown(s)
-	}
-	// HTTP server shutdown
-	s.HTTP.Shutdown(ctx)
-	// Close goroutines (for now just the checker in the service manager)
-	close(s.shutdown)
-	// Close database pools - ok, not so graceful
-	// s.DBE.Close() @@ to be fixed, now blocks
-	close(s.shutdownCompleted)
+	s.shutdownOnce.Do(func() {
+		if s.OnBeforeShutdown != nil {
+			s.OnBeforeShutdown(s)
+		}
+		// HTTP server shutdown
+		if err := s.HTTP.Shutdown(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("Graceful window expired, forcing remaining connections closed")
+		}
+		// Close goroutines (for now just the checker in the service manager)
+		close(s.shutdown)
+		// Close database pools - ok, not so graceful
+		// s.DBE.Close() @@ to be fixed, now blocks
+		close(s.shutdownCompleted)
+	})
 }
 
 // stopHandler waits for a shutdown signal on c and stops the server. The
@@ -116,11 +125,31 @@ func (s *Server) Shutdown(ctx context.Context) {
 // in a goroutine racing the listener, would leave a window where a signal
 // still takes the default disposition (immediate termination).
 func (s *Server) stopHandler(c chan os.Signal) {
+	defer signal.Stop(c)
 	<-c
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
-	defer cancel()
 	fmt.Println("\nStarting shutdown...")
-	s.Shutdown(ctx)
+	// No deadline by default: in-flight requests are already bounded by
+	// ReadTimeout/WriteTimeout, and the supervisor's stop grace period is
+	// the final backstop.
+	ctx := context.Background()
+	if timeout := time.Duration(s.Config.GracefulShutdownTimeout) * time.Second; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	// A second signal during the graceful wait forces an immediate exit,
+	// so a stuck drain can always be cut short without resorting to SIGKILL.
+	done := make(chan struct{})
+	go func() {
+		s.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-c:
+		fmt.Println("\nShutdown forced")
+		os.Exit(1)
+	}
 }
 
 func (s *Server) Run() {

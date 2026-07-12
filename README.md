@@ -772,6 +772,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Plugins | Ordered list of plugins | [] |
 | ReadTimeout | The maximum duration for reading the entire request, including the body (seconds) | 60 |
 | WriteTimeout | The maximum duration before timing out writes of the response (seconds) | 60 |
+| GracefulShutdownTimeout | The maximum duration to wait for in-flight requests to complete on shutdown (seconds, 0 to wait until done) | 0 |
 | RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
