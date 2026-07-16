@@ -29,12 +29,21 @@ type Command struct {
 
 // We don't embed Command to simplify tests writing
 type Test struct {
-	Description     string
-	Method          string
-	Query           string
-	Body            string
-	Headers         Headers
-	Expected        string
+	Description string
+	Method      string
+	Query       string
+	Body        string
+	Headers     Headers
+	// Expected is the response body to compare against, JSON-normalized.
+	// An empty Expected means "no expectation" and the body is NOT checked —
+	// so it cannot express PostgREST's `shouldRespondWith ""`. Use
+	// ExpectedEmpty for that.
+	Expected string
+	// ExpectedEmpty asserts the response body is empty. Needed because many
+	// ported PostgREST tests expect exactly that (writes default to
+	// `Prefer: return=minimal`), and encoding it as `Expected: ""` silently
+	// degraded those tests to status-only checks.
+	ExpectedEmpty   bool
 	ExpectedHeaders map[string]string
 	Status          int
 }
@@ -134,6 +143,12 @@ func Execute(t *testing.T, config Config, tests []Test) {
 		body, headers, status, err := Exec(client, config, command)
 		if err != nil {
 			t.Errorf("Error: %v", err)
+		} else if test.ExpectedEmpty {
+			if len(bytes.TrimSpace(body)) != 0 {
+				t.Errorf("\n\n%d. %v\nExpected an empty body, \ngot \n\t\"%v\" \n\n(query string -> \"%v\")", i,
+					test.Description, string(body), test.Query)
+				break
+			}
 		} else if test.Expected != "" {
 			if v, ok := test.Headers["Accept"]; ok && strings.Contains(v[0], "text/csv") {
 				s1 = test.Expected

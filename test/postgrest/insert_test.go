@@ -31,9 +31,9 @@ func TestPostgREST_Insert(t *testing.T) {
 				 		, "boolean": false, "date": "1900-01-01", "money": "$3.99"
 				 		, "enum": "foo"
 				 	}`,
-			Headers:  nil,
-			Expected: ``,
-			Status:   201,
+			Headers:       nil,
+			ExpectedEmpty: true,
+			Status:        201,
 		},
 		// 	  it "filters columns in result using &select" $
 		// 		request methodPost "/menagerie?select=integer,varchar" [("Prefer", "return=representation")]
@@ -80,9 +80,9 @@ func TestPostgREST_Insert(t *testing.T) {
 				 		 , "boolean": false, "date": "1900-01-01", "money": "$3.99"
 				 		 , "enum": "foo"
 				 	}]`,
-			Headers:  nil,
-			Expected: ``,
-			Status:   201,
+			Headers:       nil,
+			ExpectedEmpty: true,
+			Status:        201,
 		},
 		// 		request methodPost "/menagerie?select=integer,varchar"
 		// 			[("Prefer", "return=minimal")]
@@ -105,9 +105,9 @@ func TestPostgREST_Insert(t *testing.T) {
 				 		 , "boolean": false, "date": "1900-01-01", "money": "$3.99"
 				 		 , "enum": "foo"
 				 	}]`,
-			Headers:  test.Headers{"Prefer": {"return=minimal"}},
-			Expected: ``,
-			Status:   201,
+			Headers:       test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty: true,
+			Status:        201,
 		},
 		// 	context "non uniform json array" $ do
 		// 	  it "rejects json array that isn't exclusivily composed of objects" $
