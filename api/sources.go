@@ -53,7 +53,13 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err == nil {
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {
-				return heligo.WriteJSON(w, http.StatusCreated, count)
+				// No representation requested (the default, `return=minimal`):
+				// PostgREST answers 201 with no body and no Content-Type, so a
+				// client can rely on "2xx write => body only if I asked for it".
+				// We used to write the affected-row count here, which is both
+				// non-standard and redundant — the count already travels in
+				// Content-Range via SetResponseHeaders above.
+				return heligo.WriteHeader(w, http.StatusCreated)
 			} else {
 				return WriteContent(c, w, http.StatusCreated, data)
 			}
