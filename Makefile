@@ -31,6 +31,7 @@ update-ui:
 
 test:
 	$(GO) test $(TEST_FLAGS) ./database
+	$(GO) test $(TEST_FLAGS) ./server
 	$(GO) test $(TEST_FLAGS) ./test/api
 	$(GO) test $(TEST_FLAGS) ./test/postgrest
 	$(GO) test $(TEST_FLAGS) ./test/recursive

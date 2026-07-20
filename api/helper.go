@@ -21,6 +21,7 @@ type Helper interface {
 	BaseAdminURL() string
 	BaseAPIURL() string
 	HasShortAPIURL() bool
+	IsDraining() bool
 
 	SessionStatistics() authn.SessionStatistics
 }

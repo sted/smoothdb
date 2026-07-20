@@ -6,6 +6,10 @@
 * **`::cast` injection** — cast targets in `select` are validated at parse time and rejected with 400 otherwise; a cast can't be a bind parameter, so it was interpolated verbatim and could alter the SELECT (reachable by any role that can read).
 * **DDL quoting** — quote the remaining `CREATE`/`ALTER DATABASE` identifiers, and whitelist grant/revoke verbs and object types instead of interpolating them.
 
+### Added
+* Shutdown now waits for in-flight requests to complete; the wait was previously hardcoded to 1 second, so every restart killed any request slower than that. The new `GracefulShutdownTimeout` config key (seconds, default 0 = wait until done) bounds the wait for deployments that want a hard cap below their supervisor's stop grace period. A second signal during the wait forces an immediate exit, and `Shutdown()` is now idempotent.
+* `/ready` now reports `503 {"status":"draining"}` as soon as a graceful shutdown begins, while `/live` keeps answering 200 until the process exits — the standard probe contract for zero-downtime rolling deploys. The new `DrainDelay` config key (seconds, default 0 = disabled) keeps the listener serving for that long after readiness flips, giving load balancers time to deregister the instance before it stops accepting connections. The delay applies to SIGTERM only; an interactive Ctrl-C (SIGINT) shuts down immediately, and a second signal during the window skips it.
+
 ### Fixed
 * Schema cache held in an atomic pointer (was a data race on reload).
 * Serializers return an error on a malformed wire buffer or a type/dimension mismatch instead of panicking or silently misparsing.
@@ -14,6 +18,9 @@
 * Boolean-filter nesting capped at 100 levels (stack-overflow DoS).
 * Invalid grant input returns 400 instead of 500.
 * Session watcher no longer deadlocks when paused.
+* **SIGTERM** — the server now shuts down gracefully on SIGTERM (the default stop signal of Docker, Kubernetes and systemd), not only on SIGINT/Ctrl-C. A raw SIGTERM previously terminated the process immediately, cutting in-flight requests and resetting database connections.
+* **Exit status** — a graceful shutdown now exits with status 0; it previously exited 1, which supervisors interpret as a crash.
+* **Database connections on shutdown** — connection pools and the notification listener's dedicated connection are now closed after the HTTP server drains, so Postgres sees clean disconnects instead of connection resets on every stop. `NotificationListener.Stop()` now interrupts a pending `WaitForNotification` and waits for the listener goroutine to exit before returning.
 
 ## 0.8.1 - 2026-07-08
 
