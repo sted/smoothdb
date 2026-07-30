@@ -909,6 +909,17 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 2" }]`,
 			Status:      200,
 		},
+		// @@ added: regression for 42702 "column reference is ambiguous" — with select=*
+		// plus an embed, the fk column must not be added twice to the RETURNING clause
+		{
+			Description: "star select with embed does not duplicate the fk in returning",
+			Method:      "PATCH",
+			Query:       "/projects?id=eq.3&select=*,clients(id,name)",
+			Body:        `{"name":"IOS v2"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":3,"name":"IOS v2","client_id":2,"clients":{"id":2,"name":"Apple"}}]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

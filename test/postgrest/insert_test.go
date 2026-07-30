@@ -1002,6 +1002,35 @@ func TestPostgREST_Insert(t *testing.T) {
 			Expected:    `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
 			Status:      201,
 		},
+		// @@ added: regression for 42702 "column reference is ambiguous" — with select=*
+		// plus an embed, the fk column must not be added twice to the RETURNING clause
+		{
+			Description: "star select with embed does not duplicate the fk in returning",
+			Method:      "POST",
+			Query:       "/projects?select=*,clients(id,name)",
+			Body:        `{"id":8,"name":"Star Embed","client_id":2}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":8,"name":"Star Embed","client_id":2,"clients":{"id":2,"name":"Apple"}}]`,
+			Status:      201,
+		},
+		{
+			Description: "casted fk select with embed does not duplicate the fk in returning",
+			Method:      "POST",
+			Query:       "/projects?select=id,name,client_id::text,clients(id,name)",
+			Body:        `{"id":9,"name":"Cast Embed","client_id":2}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":9,"name":"Cast Embed","client_id":"2","clients":{"id":2,"name":"Apple"}}]`,
+			Status:      201,
+		},
+		{
+			Description: "aliased fk select with embed still returns the embed",
+			Method:      "POST",
+			Query:       "/projects?select=id,name,cid:client_id,clients(id,name)",
+			Body:        `{"id":10,"name":"Alias Embed","client_id":2}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":10,"name":"Alias Embed","cid":2,"clients":{"id":2,"name":"Apple"}}]`,
+			Status:      201,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

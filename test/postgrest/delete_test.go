@@ -338,6 +338,16 @@ func TestPostgREST_Delete(t *testing.T) {
 		// 		{ "id": 1, "name": "item-1" }
 		// 	  , { "id": 3, "name": "item-3" }
 		// 	  ]|]
+		// @@ added: regression for 42702 "column reference is ambiguous" — with select=*
+		// plus an embed, the fk column must not be added twice to the RETURNING clause
+		{
+			Description: "star select with embed does not duplicate the fk in returning",
+			Method:      "DELETE",
+			Query:       "/tasks?id=eq.8&select=*,projects(id,name)",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":8,"name":"Code OSX","project_id":4,"projects":{"id":4,"name":"OSX"}}]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

@@ -430,11 +430,10 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			} else {
 				joins += " TRUE"
 			}
-			// No FK columns needed for computed relationships
+			// No FK columns needed for computed relationships.
+			// Keys are bare column names: the caller qualifies them as needed.
 			if join.rel.Type != Computed {
-				for i := range join.rel.Columns {
-					keys = append(keys, quoteParts(join.rel.Table)+"."+quote(join.rel.Columns[i]))
-				}
+				keys = append(keys, join.rel.Columns...)
 			}
 		}
 	}
@@ -734,39 +733,75 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 	ret += " RETURNING "
 	if len(parts.selectFields) == 0 {
 		ret += "*"
-	} else {
-		var f, fields string
-		var fieldMap = make(map[string]struct{})
-		var hasResourceEmbed bool
+		return
+	}
+	var hasResourceEmbed bool
+	for _, sfield := range parts.selectFields {
+		if sfield.relation != nil {
+			hasResourceEmbed = true
+			break
+		}
+	}
+	if !hasResourceEmbed {
+		// The RETURNING clause is the final response: use the formatted
+		// fields, with casts and aliases.
+		var fields string
 		for _, sfield := range parts.selectFields {
-			if sfield.relation != nil {
-				hasResourceEmbed = true
-			} else {
-				if fields != "" {
-					fields += ", "
-				}
-				f = prepareField(table, schema, sfield, info)
-				fields += f
-				fieldMap[f] = struct{}{}
+			if fields != "" {
+				fields += ", "
 			}
+			fields += prepareField(table, schema, sfield, info)
 		}
 		ret += fields
-		if hasResourceEmbed {
-			sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
-			// add foreign keys to Returning clause if they are not already present
-			for _, k := range keys {
-				if _, exists := fieldMap[k]; !exists {
-					if ret != "" {
-						ret += ", "
-					}
-					ret += k
-				}
-			}
-			sel = "SELECT " + sc + " FROM _source"
-			if joins != "" {
-				sel += " " + joins
-			}
+		return
+	}
+	// With embeds the RETURNING clause only feeds the _source CTE, which the
+	// outer select and its lateral joins read by column name (casts, aliases
+	// and json paths are applied there). So it must expose each base column
+	// once, raw and deduplicated by name: a formatted or duplicated fk column
+	// would make _source references ambiguous (42702).
+	sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
+	var fields string
+	var hasStar bool
+	var colMap = make(map[string]struct{})
+	addColumn := func(name string) {
+		if _, exists := colMap[name]; exists {
+			return
 		}
+		colMap[name] = struct{}{}
+		if fields != "" {
+			fields += ", "
+		}
+		fields += _sq(table, schema) + "." + quote(name)
+	}
+	for _, sfield := range parts.selectFields {
+		if sfield.relation != nil {
+			continue
+		}
+		if isStar(sfield.field.name) {
+			hasStar = true
+			break
+		}
+	}
+	if hasStar {
+		// a star subsumes every column, including the fk keys for the joins
+		fields = _sq(table, schema) + ".*"
+	} else {
+		for _, sfield := range parts.selectFields {
+			if sfield.relation != nil {
+				continue
+			}
+			addColumn(sfield.field.name)
+		}
+		// add the foreign keys needed by the embed joins
+		for _, k := range keys {
+			addColumn(k)
+		}
+	}
+	ret += fields
+	sel = "SELECT " + sc + " FROM _source"
+	if joins != "" {
+		sel += " " + joins
 	}
 	return
 }
