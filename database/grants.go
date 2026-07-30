@@ -85,8 +85,10 @@ func parsePrivilege(s string, priv *Privilege) error {
 			privilegeType = "SET"
 		case 'A':
 			privilegeType = "ALTER SYSTEM"
+		case 'm': // PostgreSQL 17+
+			privilegeType = "MAINTAIN"
 		default:
-			return fmt.Errorf("invalid privilege string")
+			return fmt.Errorf("invalid privilege string %q: unknown privilege %q", s, l)
 		}
 		priv.Types = append(priv.Types, privilegeType)
 	}

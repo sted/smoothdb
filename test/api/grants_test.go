@@ -1,12 +1,40 @@
 package test_api
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/sted/smoothdb/test"
 )
 
+// ownerTablePrivileges returns the expected privilege types and ACL letters
+// for a table owner: PostgreSQL 17+ adds the MAINTAIN privilege ('m').
+func ownerTablePrivileges(t *testing.T) (types string, acl string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, testDatabaseURL)
+	if err != nil {
+		t.Fatalf("cannot connect to the test database: %v", err)
+	}
+	defer conn.Close(ctx)
+	var version int
+	if err := conn.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&version); err != nil {
+		t.Fatalf("cannot read server_version_num: %v", err)
+	}
+	types = `["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"]`
+	acl = "admin=arwdDxt/admin"
+	if version >= 170000 {
+		types = `["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER","MAINTAIN"]`
+		acl = "admin=arwdDxtm/admin"
+	}
+	return types, acl
+}
+
 func TestGrants(t *testing.T) {
+
+	ownerTypes, ownerACL := ownerTablePrivileges(t)
 
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin/databases",
@@ -105,12 +133,12 @@ func TestGrants(t *testing.T) {
 			Description: "verify grants",
 			Method:      "GET",
 			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
-			Expected: `[
+			Expected: fmt.Sprintf(`[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
-					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},
+					"types":%s,"acl":"%s","grantee":"admin","grantor":"admin"},
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT","SELECT"],"acl":"user1=ar/admin","grantee":"user1","grantor":"admin"}
-				]`,
+				]`, ownerTypes, ownerACL),
 			Status: 200,
 		},
 		{
@@ -159,14 +187,14 @@ func TestGrants(t *testing.T) {
 			Description: "verify grants",
 			Method:      "GET",
 			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
-			Expected: `[
+			Expected: fmt.Sprintf(`[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
-					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},
+					"types":%s,"acl":"%s","grantee":"admin","grantor":"admin"},
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT","SELECT"],"acl":"user1=ar/admin","grantee":"user1","grantor":"admin"},
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["UPDATE","DELETE"],"acl":"user2=wd/admin","grantee":"user2","grantor":"admin"}
-				]`,
+				]`, ownerTypes, ownerACL),
 			Status: 200,
 		},
 		{
@@ -197,14 +225,14 @@ func TestGrants(t *testing.T) {
 			Description: "verify grants",
 			Method:      "GET",
 			Query:       "http://localhost:8082/admin/grants/dbtest/table/table_grants",
-			Expected: `[
+			Expected: fmt.Sprintf(`[
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
-					"types":["INSERT","SELECT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER"],"acl":"admin=arwdDxt/admin","grantee":"admin","grantor":"admin"},
+					"types":%s,"acl":"%s","grantee":"admin","grantor":"admin"},
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["INSERT"],"acl":"user1=a/admin","grantee":"user1","grantor":"admin"},
 				{"targetname":"table_grants","targetschema":"public","targettype":"table",
 					"types":["DELETE"],"acl":"user2=d/admin","grantee":"user2","grantor":"admin"}
-				]`,
+				]`, ownerTypes, ownerACL),
 			Status: 200,
 		},
 	}

@@ -56,7 +56,12 @@ JOIN LATERAL (
 JOIN pg_namespace ns1 ON ns1.oid = c.connamespace
 JOIN pg_class cls1 ON cls1.oid = c.conrelid
 LEFT JOIN pg_class cls2 ON cls2.oid = c.confrelid
-LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace`
+LEFT JOIN pg_namespace ns2 ON ns2.oid = cls2.relnamespace
+WHERE c.contype <> 'n'`
+
+// contype 'n': PostgreSQL 18 materializes NOT NULL constraints as pg_constraint
+// rows; they are excluded above because nullability is already reported by the
+// column's "notnull" field, keeping introspection identical across PG versions.
 
 func fillTableConstraints(table *Table, constraints []Constraint) {
 	table.Constraints = nil
@@ -83,10 +88,10 @@ func GetConstraints(ctx context.Context, tablename string) ([]Constraint, error)
 	query := constraintsQuery
 	var args []any
 	if tablename != "" {
-		query += " WHERE cls1.relname = $1 AND ns1.nspname = $2"
+		query += " AND cls1.relname = $1 AND ns1.nspname = $2"
 		args = append(args, tablename, schemaname)
 	} else {
-		query += " WHERE ns1.nspname NOT IN ('pg_catalog', 'information_schema')"
+		query += " AND ns1.nspname NOT IN ('pg_catalog', 'information_schema')"
 	}
 	query += " ORDER BY cls1.relname"
 

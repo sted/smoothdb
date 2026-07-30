@@ -10,6 +10,8 @@ import (
 	"github.com/sted/smoothdb/test"
 )
 
+const testDatabaseURL = "postgresql://postgres:postgres@localhost:5432/postgres"
+
 var (
 	srv        *server.Server
 	adminToken string
@@ -22,7 +24,7 @@ func TestMain(m *testing.M) {
 		"Address":             "localhost:8082",
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
-		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
+		"Database.URL":        testDatabaseURL,
 		"JQ.Enabled":          true,
 		"Logging.Level":       "info",
 		"Logging.FileLogging": true,
