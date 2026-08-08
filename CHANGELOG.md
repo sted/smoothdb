@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.8.2 - 2026-08-08
 
 ### Security
 * **`::cast` injection** — cast targets in `select` are validated at parse time and rejected with 400 otherwise; a cast can't be a bind parameter, so it was interpolated verbatim and could alter the SELECT (reachable by any role that can read).
