@@ -8,9 +8,11 @@
 
 ### Added
 * Shutdown now waits for in-flight requests to complete; the wait was previously hardcoded to 1 second, so every restart killed any request slower than that. The new `GracefulShutdownTimeout` config key (seconds, default 0 = wait until done) bounds the wait for deployments that want a hard cap below their supervisor's stop grace period. A second signal during the wait forces an immediate exit, and `Shutdown()` is now idempotent.
+* `/ready` now also answers for the database, not just for the process: it takes a connection from the main pool and pings it, bounded at 2 seconds, and reports `503 {"status":"unavailable","reason":"database"}` when it cannot. An instance whose pool hands out no connection serves nothing, yet previously still reported ready, so no orchestrator ever replaced it. `/live` stays unconditional — a database outage must not get the process killed.
 * `/ready` now reports `503 {"status":"draining"}` as soon as a graceful shutdown begins, while `/live` keeps answering 200 until the process exits — the standard probe contract for zero-downtime rolling deploys. The new `DrainDelay` config key (seconds, default 0 = disabled) keeps the listener serving for that long after readiness flips, giving load balancers time to deregister the instance before it stops accepting connections. The delay applies to SIGTERM only; an interactive Ctrl-C (SIGINT) shuts down immediately, and a second signal during the window skips it.
 
 ### Fixed
+* **Connection leak on a failed acquire** — a request that failed after taking a pool connection returned without giving it back, because the release runs only on the success path. The ordinary way in is a client hanging up while the role is being set, which fails `SET ROLE` with a canceled context. Each occurrence lost a pool slot for good and left the session marked in use, so after `MaxPoolConnections` such requests the instance served nothing at all: every further request waited in `Acquire` until its own deadline while Postgres sat idle.
 * Schema cache held in an atomic pointer (was a data race on reload).
 * Serializers return an error on a malformed wire buffer or a type/dimension mismatch instead of panicking or silently misparsing.
 * `limit`/`offset` reject non-integer or negative values (was a silent `LIMIT 0`).

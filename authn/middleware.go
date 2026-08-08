@@ -50,6 +50,22 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 	h := sha256.Sum256([]byte(keyInput))
 	key := hex.EncodeToString(h[:])
 	session, isNewSession := m.SessionManager().getSession(key)
+	// Every failure from here on returns before Middleware can call releaseSession,
+	// so this is the only place that can hand back what the call took. A connection
+	// left behind is a pool slot lost for good, and a session left in use is never
+	// revisited by the session watcher. The way in is ordinary: a client that hangs
+	// up during SET ROLE fails PrepareConnection with a canceled context.
+	acquired := false
+	defer func() {
+		if acquired {
+			return
+		}
+		if newAcquire && dbconn != nil {
+			dbconn.Release()
+			session.DbConn = nil
+		}
+		m.SessionManager().leaveSession(session)
+	}()
 	if isNewSession {
 		if tokenString != "" {
 			claims, err = authenticate(tokenString, m.JWTSecret())
@@ -91,6 +107,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		return nil, nil, http.StatusInternalServerError, err
 	}
 	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
+	acquired = true
 	return ctx, session, http.StatusOK, nil
 }
 
