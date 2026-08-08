@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // A configured-but-unloadable TLS certificate must be a hard error, not a silent
 // fall-through to plaintext HTTP (which would expose Bearer tokens and login
@@ -14,6 +17,9 @@ func TestLoadTLSConfigFailsClosed(t *testing.T) {
 
 // The dev certificate in the repo root should load into a usable TLS config.
 func TestLoadTLSConfigValidCert(t *testing.T) {
+	if _, err := os.Stat("../localhost.pem"); os.IsNotExist(err) {
+		t.Skip("dev certificate not present (generate with mkcert localhost)")
+	}
 	cfg, err := loadTLSConfig("../localhost.pem", "../localhost-key.pem")
 	if err != nil {
 		t.Fatalf("expected valid cert to load, got: %v", err)

@@ -17,6 +17,10 @@ func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()
 	config.URL = "postgresql://postgres:postgres@0.0.0.0:5432/postgres"
+	// Same override the server honors, already exported by CI
+	if url := os.Getenv("SMOOTHDB_DATABASE_URL"); url != "" {
+		config.URL = url
+	}
 	dbe, err = InitDbEngine(config, nil)
 	if err != nil {
 		fmt.Println(err.Error())

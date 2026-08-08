@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -29,6 +31,8 @@ type Server struct {
 	sessionManager    *authn.SessionManager
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
+	shutdownOnce      sync.Once
+	draining          atomic.Bool
 	OnBeforeStart     func(*Server)
 	OnBeforeShutdown  func(*Server)
 }
@@ -98,35 +102,103 @@ func (s *Server) Start() error {
 	return err
 }
 
+// Shutdown stops the server gracefully, waiting for in-flight requests
+// within ctx's deadline. It is idempotent: the signal path installed by Run
+// and an embedder may both call it.
 func (s *Server) Shutdown(ctx context.Context) {
-	if s.OnBeforeShutdown != nil {
-		s.OnBeforeShutdown(s)
-	}
-	// HTTP server shutdown
-	s.HTTP.Shutdown(ctx)
-	// Close goroutines (for now just the checker in the service manager)
-	close(s.shutdown)
-	// Close database pools - ok, not so graceful
-	// s.DBE.Close() @@ to be fixed, now blocks
-	close(s.shutdownCompleted)
+	s.shutdownOnce.Do(func() {
+		s.draining.Store(true)
+		if s.OnBeforeShutdown != nil {
+			s.OnBeforeShutdown(s)
+		}
+		// HTTP server shutdown
+		if err := s.HTTP.Shutdown(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("Graceful window expired, forcing remaining connections closed")
+		}
+		// Close goroutines (for now just the checker in the service manager)
+		close(s.shutdown)
+		// Release database resources: the notification listener and all the
+		// connection pools. Handlers have completed by now, so pool Close()
+		// does not wait on acquired connections — unless the graceful window
+		// expired with requests still running, so bound the wait (by ctx,
+		// plus a backstop when ctx has no deadline) rather than hang past
+		// the supervisor's grace period.
+		closed := make(chan struct{})
+		go func() {
+			s.DBE.Close()
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-ctx.Done():
+			s.logger.Warn().Msg("Shutdown context expired while closing database pools")
+		case <-time.After(5 * time.Second):
+			s.logger.Warn().Msg("Timed out closing database pools")
+		}
+		close(s.shutdownCompleted)
+	})
 }
 
-func (s *Server) stopHandler() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	<-c
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
-	defer cancel()
+// stopHandler waits for a shutdown signal on c and stops the server. The
+// channel must already be registered with signal.Notify: registering it here,
+// in a goroutine racing the listener, would leave a window where a signal
+// still takes the default disposition (immediate termination).
+func (s *Server) stopHandler(c chan os.Signal) {
+	defer signal.Stop(c)
+	sig := <-c
 	fmt.Println("\nStarting shutdown...")
-	s.Shutdown(ctx)
+	// Flip readiness first: /ready reports 503 while the listener is still
+	// accepting, giving load balancers a window (DrainDelay) to deregister
+	// the instance before it stops serving. The window only makes sense for
+	// orchestrated stops (SIGTERM): an interactive Ctrl-C skips it, and a
+	// second signal cuts it short.
+	s.draining.Store(true)
+	if delay := time.Duration(s.Config.DrainDelay) * time.Second; delay > 0 && sig == syscall.SIGTERM {
+		select {
+		case <-time.After(delay):
+		case <-c:
+		}
+	}
+	// No deadline by default: in-flight requests are already bounded by
+	// ReadTimeout/WriteTimeout, and the supervisor's stop grace period is
+	// the final backstop.
+	ctx := context.Background()
+	if timeout := time.Duration(s.Config.GracefulShutdownTimeout) * time.Second; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	// A second signal during the graceful wait forces an immediate exit,
+	// so a stuck drain can always be cut short without resorting to SIGKILL.
+	done := make(chan struct{})
+	go func() {
+		s.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-c:
+		// A signal racing shutdown completion is not a force request
+		select {
+		case <-done:
+		default:
+			fmt.Println("\nShutdown forced")
+			os.Exit(1)
+		}
+	}
 }
 
 func (s *Server) Run() {
-	go s.stopHandler()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go s.stopHandler(c)
 	err := s.Start()
 	if err != nil {
 		if err == http.ErrServerClosed {
+			// Graceful shutdown is a clean exit: supervisors (systemd, k8s)
+			// treat a non-zero status as a crash.
 			fmt.Println("Stopped.")
+			return
 		} else if errors.Is(err, syscall.EADDRINUSE) {
 			fmt.Printf("EndPoint address already in use. Is there another smoothdb running? (%s)\n", err)
 		} else {
@@ -170,6 +242,11 @@ func (s *Server) BaseAPIURL() string {
 
 func (s *Server) HasShortAPIURL() bool {
 	return s.Config.ShortAPIURL
+}
+
+// IsDraining reports whether a graceful shutdown has begun
+func (s *Server) IsDraining() bool {
+	return s.draining.Load()
 }
 
 func (s *Server) RequestMaxBytes() int64 {
