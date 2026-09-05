@@ -7,10 +7,10 @@
     <div class="logo"><a href="/"><b>smoothdb</b></a></div>
     <ol>
         <li>
-            <a href="/ui/databases"><img class="remixicon" src={RiDatabase2Line} /> Databases</a>
+            <a href="/ui/databases"><img class="remixicon" src={RiDatabase2Line} alt="" /> Databases</a>
         </li>
         <li>
-            <a href="/ui/roles"><img class="remixicon" src={RiGroupLine} /> Roles</a>
+            <a href="/ui/roles"><img class="remixicon" src={RiGroupLine} alt="" /> Roles</a>
         </li>
     </ol>
 </aside>

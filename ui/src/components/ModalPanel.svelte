@@ -25,8 +25,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="overlay" onclick={close}></div>
     <div class="panel" transition:slide={{ duration: 200, axis: "x" }}>
-        <button class="close-btn" onclick={close}>
-            <img class="remixicon" src={RiCloseLine} />
+        <button class="close-btn" aria-label="Close" onclick={close}>
+            <img class="remixicon" src={RiCloseLine} alt="" />
         </button>
         <div class="content">
             <router.component {data} {formSubmitted}></router.component>

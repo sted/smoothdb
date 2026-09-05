@@ -48,7 +48,7 @@
 		{/each}
 	</select>
 	<div class="expand-widget">
-		<img class="remixicon" src={RiExpandUpDownLine} />
+		<img class="remixicon" src={RiExpandUpDownLine} alt="" />
 	</div>
 </div>
 

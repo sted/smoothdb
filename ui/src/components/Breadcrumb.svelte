@@ -73,6 +73,14 @@
 		router.navigate(newPath);
 		closeDropdown();
 	}
+
+	// keyboard activation for list items that act as menu entries
+	function activateOnKey(event: KeyboardEvent, action: () => void) {
+		if (event.key === "Enter" || event.key === " ") {
+			event.preventDefault();
+			action();
+		}
+	}
 </script>
 
 <svelte:window on:click={handleClickOutside} />
@@ -90,19 +98,21 @@
 				{#if hasMultipleChoices}
 					<button
 						tabindex="0"
+						aria-label="Show alternatives"
 						onclick={(event) => handleDropdownClick(event, path, index)}
 					>
-						<img class="remixicon" src={RiExpandUpDownLine} />
+						<img class="remixicon" src={RiExpandUpDownLine} alt="" />
 					</button>
 				{/if}
 				{#if index === activeDropdownIndex}
-					<ol class="dropdown">
+					<ol class="dropdown" role="menu">
 						{#each dropdownRoutes as route}
 							<li
 								class="dropdown-item"
-								role="button"
+								role="menuitem"
 								tabindex="0"
 								onclick={() => navigateFromDropdown(path, route)}
+								onkeydown={(event) => activateOnKey(event, () => navigateFromDropdown(path, route))}
 							>
 								{route}
 							</li>
@@ -113,8 +123,8 @@
 			</li>
 		{/each}
 		<li>
-			<button tabindex="0" onclick={rowAdd}>
-				<img class="remixicon" src={RiAddLine} />
+			<button tabindex="0" aria-label="Add" onclick={rowAdd}>
+				<img class="remixicon" src={RiAddLine} alt="" />
 			</button>
 		</li>
 	</ol>
