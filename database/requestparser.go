@@ -1112,6 +1112,15 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 
 // QUERY
 func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryParts, err error) {
+	// The source name is schema-qualified and quoted by splitting on dots
+	// (see normalize/quoteParts), so a dotted segment in the URL would reach
+	// Postgres as extra qualified names: doc.derived.member_choices became
+	// "public"."doc"."derived"."member_choices" and failed with 42601 as a 500,
+	// after a prepare, a query and a rollback. Refuse it here, before any SQL.
+	if strings.Contains(mainTable, ".") {
+		return nil, &ParseError{"invalid source name " + strconv.Quote(mainTable) +
+			": a table or function name cannot contain a dot; select the schema with the Accept-Profile or Content-Profile header"}
+	}
 	parts = &QueryParts{}
 
 	// SELECT

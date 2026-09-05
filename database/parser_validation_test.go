@@ -69,3 +69,31 @@ func TestLikeWildcardScoping(t *testing.T) {
 		t.Errorf("eq: expected [a*b] (literal), got %v", vals)
 	}
 }
+
+// The source segment of the URL is quoted by splitting on dots (the schema is
+// prepended and each part quoted), so a dotted name such as
+// doc.derived.member_choices reached Postgres as
+// "sources"."doc"."derived"."member_choices" and failed with 42601 (too many
+// dotted names) as a 500 — after a prepare, a query and a rollback. A name
+// that is not a single identifier must be refused by the parser, before SQL.
+func TestParserRejectsDottedSourceName(t *testing.T) {
+	bad := []string{"doc.derived.member_choices", "schema.table", "a.", ".a", "."}
+	for _, name := range bad {
+		_, err := PostgRestParser{}.parse(name, url.Values{})
+		if err == nil {
+			t.Errorf("%q: expected a parse error, got nil", name)
+			continue
+		}
+		if _, ok := err.(*ParseError); !ok {
+			t.Errorf("%q: expected a *ParseError (400), got %T: %v", name, err, err)
+		}
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("%q: expected the error to name the source, got %q", name, err.Error())
+		}
+	}
+	for _, name := range []string{"member_choices", "MixedCase", "with space", "tab-le"} {
+		if _, err := (PostgRestParser{}).parse(name, url.Values{}); err != nil {
+			t.Errorf("%q: unexpected error: %v", name, err)
+		}
+	}
+}

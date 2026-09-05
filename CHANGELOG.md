@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Dotted source names** — a request whose table or function segment contains a dot (`GET /api/db/doc.derived.member_choices`) is now refused by the request parser with a 400 before any SQL runs. The name is schema-qualified and quoted by splitting on dots, so it reached Postgres as `"public"."doc"."derived"."member_choices"` and came back as a 500 (`42601`, improper qualified name) after a prepare, a query and a rollback per request — a misbehaving client on devtest produced 25,000 of them in four days. The error names the offending segment and points at the `Accept-Profile`/`Content-Profile` header for schema selection.
+
 ## 0.8.2 - 2026-08-08
 
 ### Security
