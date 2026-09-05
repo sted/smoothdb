@@ -133,6 +133,7 @@ SmoothDB supports two authentication methods via the `LoginMode` configuration o
 
 - No explicit authorization step is needed beyond providing the JWT token with each request
 - Both authentication methods require email and password for token generation through the `/token` endpoint
+- `/token` is the one route reachable without credentials, so it is rate limited per client address (`LoginRateLimit` attempts per minute, answered `429` with a `Retry-After` header beyond that; proxy headers are not trusted for the address) and its body is capped by `RequestMaxBytes` like every other route
 - `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run. With `LoginMode: "none"` the secret may stay empty, and then every bearer token is refused with 401 rather than verified against the empty key.
 - When TLS is configured (`CertFile`/`KeyFile`), a certificate that fails to load is a fatal startup error - SmoothDB will not silently fall back to plaintext HTTP.
 - The configuration file holds secrets (the JWT secret and the database URL with its password); it is written with `0600` permissions. Keep it that way and out of version control.
@@ -756,6 +757,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | KeyFile | TLS certificate key file | "" |
 | LoginMode | Login mode: "none", "db", "gotrue" | none |
 | AuthURL | URL of the external AuthN service | "" |
+| LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
 | AllowAnon | Allow unauthenticated connections | false |
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none", "role" | "role" |
@@ -790,6 +792,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | JQ.MaxProgramBytes | Maximum size in bytes for a jq program or its arguments | 4096 |
 | JQ.MaxUpdateRows | Maximum number of rows updatable with a single jq update | 1000 |
 | JQ.CacheEntries | Size of the compiled jq program cache | 256 |
+| JQ.MaxOutputBytes | Maximum size in bytes of a single jq evaluation output | 1048576 |
+| JQ.BatchTimeout | Wall-clock budget in milliseconds for a whole POST /jq batch | 2000 |
 | Logging.Level | Log level: trace, debug, info, warn, error, fatal, panic | "info" |
 | Logging.FileLogging | Enable logging to file | true |
 | Logging.FilePath | File path for file-based logging | "./smoothdb.log" |

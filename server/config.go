@@ -29,6 +29,7 @@ type Config struct {
 	KeyFile                 string          `comment:"TLS certificate key file (default: '')"`
 	LoginMode               string          `comment:"Login mode: none, db, gotrue (default: none)"`
 	AuthURL                 string          `comment:"URL of the external AuthN service (default: '')"`
+	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret               string          `comment:"Secret for JWT tokens"`
 	SessionMode             string          `comment:"Session mode: none, role (default: role)"`
@@ -62,6 +63,7 @@ func defaultConfig() *Config {
 		KeyFile:                 "",
 		LoginMode:               "none",
 		AuthURL:                 "",
+		LoginRateLimit:          30,
 		AllowAnon:               false,
 		JWTSecret:               "",
 		SessionMode:             "role",

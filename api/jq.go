@@ -54,9 +54,13 @@ func InitJQRoute(apiHelper Helper) {
 		if len(req.Evals) > maxJQBatchEvals {
 			return WriteBadRequest(w, fmt.Errorf("too many evals in a single call (max %d)", maxJQBatchEvals))
 		}
+		// One wall-clock budget for the whole batch: without it 200 evals at the
+		// per-eval timeout could hold a request for 50 seconds by design.
+		bctx, cancel := context.WithTimeout(c, jqeval.BatchTimeout())
+		defer cancel()
 		results := make([]any, 0, len(req.Evals))
 		for _, item := range req.Evals {
-			results = append(results, jqEvalOne(c, &item, req.ParseOnly))
+			results = append(results, jqEvalOne(bctx, &item, req.ParseOnly))
 		}
 		return heligo.WriteJSON(w, http.StatusOK, results)
 	})
@@ -105,6 +109,9 @@ func jqUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Request,
 }
 
 func jqEvalOne(ctx context.Context, item *jqEvalItem, parseOnly bool) any {
+	if ctx.Err() != nil {
+		return jqErrorItem{"jq batch budget exceeded: evaluation skipped"}
+	}
 	if parseOnly {
 		if err := jqeval.Parse(item.Program, item.Args); err != nil {
 			return jqErrorItem{err.Error()}

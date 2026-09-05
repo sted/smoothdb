@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,11 +50,21 @@ type AccessTokenResponse struct {
 
 func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string, tokenExpiry int64) {
 	api := apiHelper.GetRouter()
+	// /token is reachable without credentials and sits outside MiddlewareStd, so
+	// it gets its own per-client rate limit and the same body cap as every
+	// other route.
+	limiter := newIPLimiter(apiHelper.LoginRateLimit(), time.Now)
 
 	api.Handle("POST", "/token", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var credentials Credentials
 		var resp AccessTokenResponse
 
+		if ok, wait := limiter.Allow(clientIP(r.RemoteAddr)); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+			return heligo.WriteJSON(w, http.StatusTooManyRequests,
+				SmoothError{Subsystem: "auth", Message: "too many login attempts, retry later"})
+		}
+		r.Body = authn.LimitBody(w, r.Body, apiHelper.RequestMaxBytes())
 		err := r.ReadJSON(&credentials)
 		if err != nil {
 			return WriteBadRequest(w, err)

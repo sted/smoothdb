@@ -22,6 +22,8 @@ type Helper interface {
 	BaseAPIURL() string
 	HasShortAPIURL() bool
 	IsDraining() bool
+	RequestMaxBytes() int64
+	LoginRateLimit() int
 
 	SessionStatistics() authn.SessionStatistics
 }

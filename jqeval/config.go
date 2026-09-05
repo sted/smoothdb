@@ -1,5 +1,7 @@
 package jqeval
 
+import "time"
+
 // Config holds the jq evaluation settings.
 // It appears as the "JQ" section in the server configuration.
 type Config struct {
@@ -8,6 +10,8 @@ type Config struct {
 	MaxProgramBytes int  `comment:"Maximum size in bytes for a jq program or its arguments (default: 4096)"`
 	MaxUpdateRows   int  `comment:"Maximum number of rows updatable with a single jq update (default: 1000)"`
 	CacheEntries    int  `comment:"Size of the compiled jq program cache (default: 256)"`
+	MaxOutputBytes  int  `comment:"Maximum size in bytes of a single jq evaluation output (default: 1048576)"`
+	BatchTimeout    int  `comment:"Wall-clock budget in milliseconds for a whole POST /jq batch (default: 2000)"`
 }
 
 func DefaultConfig() *Config {
@@ -17,6 +21,8 @@ func DefaultConfig() *Config {
 		MaxProgramBytes: 4096,
 		MaxUpdateRows:   1000,
 		CacheEntries:    256,
+		MaxOutputBytes:  1 << 20,
+		BatchTimeout:    2000,
 	}
 }
 
@@ -67,4 +73,21 @@ func cacheEntries() int {
 		return cfg.CacheEntries
 	}
 	return DefaultConfig().CacheEntries
+}
+
+// MaxOutputBytes returns the maximum serialized size of one evaluation output
+func MaxOutputBytes() int {
+	if cfg.MaxOutputBytes > 0 {
+		return cfg.MaxOutputBytes
+	}
+	return DefaultConfig().MaxOutputBytes
+}
+
+// BatchTimeout returns the wall-clock budget of a whole POST /jq batch
+func BatchTimeout() time.Duration {
+	ms := cfg.BatchTimeout
+	if ms <= 0 {
+		ms = DefaultConfig().BatchTimeout
+	}
+	return time.Duration(ms) * time.Millisecond
 }

@@ -236,3 +236,41 @@ func TestUnmarshal(t *testing.T) {
 		}
 	})
 }
+
+// The per-evaluation timeout bounds CPU, not memory: a program can build a huge
+// value well within 250 ms. The serialized output is capped so a single
+// evaluation cannot hand the caller an arbitrarily large payload.
+func TestMarshalOutputCap(t *testing.T) {
+	c := DefaultConfig()
+	c.MaxOutputBytes = 64
+	Configure(c)
+	defer Configure(DefaultConfig())
+
+	if _, err := Marshal(strings.Repeat("a", 32)); err != nil {
+		t.Fatalf("output under the cap must marshal, got %v", err)
+	}
+	_, err := Marshal(strings.Repeat("a", 65))
+	if err == nil || !strings.Contains(err.Error(), "output") {
+		t.Fatalf("expected an output-cap error, got %v", err)
+	}
+	if MaxOutputBytes() != 64 {
+		t.Errorf("MaxOutputBytes() = %d, want 64", MaxOutputBytes())
+	}
+	Configure(DefaultConfig())
+	if MaxOutputBytes() != 1<<20 {
+		t.Errorf("default MaxOutputBytes() = %d, want 1 MiB", MaxOutputBytes())
+	}
+}
+
+// Eval runs under the caller's context so a request-wide budget (the POST /jq
+// batch) bounds the sum of the evaluations, not just each one. When that
+// budget is already spent the error must say so instead of blaming the
+// per-evaluation timeout.
+func TestEvalAbortsOnParentDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, err := Eval(ctx, ".", 1, nil)
+	if err == nil || !strings.Contains(err.Error(), "budget") {
+		t.Fatalf("expected a budget error from an expired parent context, got %v", err)
+	}
+}

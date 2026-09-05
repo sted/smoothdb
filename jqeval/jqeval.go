@@ -154,6 +154,11 @@ func Eval(ctx context.Context, program string, input any, args map[string]any) (
 	for i, name := range entry.vars {
 		values[i] = norm[name]
 	}
+	// The caller's context carries the request-wide budget (a POST /jq batch);
+	// once spent, do not start and do not blame the per-evaluation timeout.
+	if err := ctx.Err(); err != nil {
+		return nil, &Error{"jq evaluation aborted: request budget exceeded (" + err.Error() + ")"}
+	}
 	dur := time.Duration(timeout()) * time.Millisecond
 	tctx, cancel := context.WithTimeout(ctx, dur)
 	defer cancel()
@@ -167,6 +172,9 @@ func Eval(ctx context.Context, program string, input any, args map[string]any) (
 		}
 		if err, isErr := v.(error); isErr {
 			if errors.Is(err, context.DeadlineExceeded) {
+				if ctx.Err() != nil {
+					return nil, &Error{"jq evaluation aborted: request budget exceeded"}
+				}
 				return nil, &Error{"jq timeout: evaluation exceeded " + dur.String()}
 			}
 			return nil, &Error{"jq error: " + err.Error()}
@@ -201,6 +209,11 @@ func Marshal(v any) ([]byte, error) {
 	b, err := gojq.Marshal(v)
 	if err != nil {
 		return nil, &Error{"cannot serialize jq output: " + err.Error()}
+	}
+	// The timeout bounds CPU, not memory: a program can build a huge value
+	// well within it. Cap what one evaluation may hand back.
+	if max := MaxOutputBytes(); len(b) > max {
+		return nil, &Error{"jq output of " + strconv.Itoa(len(b)) + " bytes exceeds the maximum allowed size of " + strconv.Itoa(max) + " bytes"}
 	}
 	return b, nil
 }

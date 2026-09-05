@@ -253,6 +253,10 @@ func (s *Server) RequestMaxBytes() int64 {
 	return s.Config.RequestMaxBytes
 }
 
+func (s *Server) LoginRateLimit() int {
+	return s.Config.LoginRateLimit
+}
+
 func (s *Server) SessionManager() *authn.SessionManager {
 	return s.sessionManager
 }
