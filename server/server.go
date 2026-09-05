@@ -74,6 +74,8 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 
 	// Initialize session manager
 	s.sessionManager = authn.NewSessionManager(logger, s.Config.SessionMode != "none", s.shutdown)
+	s.sessionManager.SetRetainConnections(s.Config.SessionMode == "role")
+	s.sessionManager.SetMaxSessions(s.Config.MaxSessions)
 
 	// Initialize HTTP Server
 	if err = s.initHTTPServer(); err != nil {

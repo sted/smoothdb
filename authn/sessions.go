@@ -19,8 +19,11 @@ type Session struct {
 	DbConn     *database.DbPoolConn
 	key        string
 	inUse      atomic.Bool
-	prev       *Session
-	next       *Session
+	// transient sessions are handed out beyond MaxSessions (or after a drop):
+	// they are never stored, so leaving or dropping them is a no-op
+	transient bool
+	prev      *Session
+	next      *Session
 }
 
 type SessionList struct {
@@ -95,14 +98,25 @@ type SessionManager struct {
 	paused   bool
 	count    int
 	inUse    int
+	// total is the live number of stored sessions (count is refreshed by watch)
+	total       int
+	maxSessions int
+	// retainConnections keeps the prepared connection attached to the session
+	// between requests ("role" mode); "claims" mode caches only the claims
+	retainConnections bool
 }
+
+// DefaultMaxSessions bounds the session map when no MaxSessions is configured
+const DefaultMaxSessions = 10000
 
 func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
 	sm := &SessionManager{
-		slots:    map[string]*SessionList{},
-		logger:   logger,
-		enabled:  enabled,
-		shutdown: shutdown,
+		slots:             map[string]*SessionList{},
+		logger:            logger,
+		enabled:           enabled,
+		shutdown:          shutdown,
+		maxSessions:       DefaultMaxSessions,
+		retainConnections: true,
 	}
 	if enabled {
 		go sm.sessionWatcher()
@@ -142,6 +156,7 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 				// Delete the session
 				list.remove(session)
 				sm.count -= 1
+				sm.total -= 1
 
 			} else if spentTime > connTimeout && session.DbConn != nil {
 
@@ -193,6 +208,7 @@ func (sm *SessionManager) newSession(key string) *Session {
 		list = &SessionList{}
 		sm.slots[key] = list
 	}
+	sm.total += 1
 	list.append(session)
 	return session
 }
@@ -205,19 +221,19 @@ func (sm *SessionManager) getSession(key string) (*Session, bool) {
 	defer sm.mtx.Unlock()
 	list := sm.slots[key]
 	if list == nil || list.isEmpty() {
-		return sm.newSession(key), true
+		return sm.newSessionOrTransient(key), true
 	}
 	session := list.head
 	swapped := session.inUse.CompareAndSwap(false, true)
 	if !swapped {
-		return sm.newSession(key), true
+		return sm.newSessionOrTransient(key), true
 	}
 	list.frontToBack()
 	return session, false
 }
 
 func (sm *SessionManager) leaveSession(session *Session) bool {
-	if !sm.enabled {
+	if !sm.enabled || session.transient {
 		return true
 	}
 	sm.mtx.Lock()
@@ -245,4 +261,67 @@ func (sm *SessionManager) Statistics() SessionStatistics {
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 	return SessionStatistics{sm.count, sm.inUse, len(sm.slots)}
+}
+
+// newSessionOrTransient stores a new session unless the manager is at its cap,
+// in which case it hands out a transient one: the request runs as if sessions
+// were disabled, and the map cannot grow without bound under a scan of tokens.
+// Must be called with the lock held.
+func (sm *SessionManager) newSessionOrTransient(key string) *Session {
+	if sm.total >= sm.maxSessions {
+		s := &Session{key: key, transient: true}
+		s.inUse.Store(true)
+		return s
+	}
+	return sm.newSession(key)
+}
+
+// dropSession removes a session from the manager for good. It is used for a
+// half-built session (its request failed before claims or database were set)
+// and for a session whose token has expired: the next request with the same
+// token must build a new one and verify the token again.
+func (sm *SessionManager) dropSession(session *Session) {
+	if !sm.enabled || session.transient {
+		return
+	}
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	if list := sm.slots[session.key]; list != nil {
+		list.remove(session)
+		sm.total -= 1
+		if list.isEmpty() {
+			delete(sm.slots, session.key)
+		}
+	}
+	session.transient = true // later leave/drop calls are no-ops
+}
+
+// SetMaxSessions bounds the number of stored sessions (non-positive: default)
+func (sm *SessionManager) SetMaxSessions(n int) {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	if n <= 0 {
+		n = DefaultMaxSessions
+	}
+	sm.maxSessions = n
+}
+
+// SetRetainConnections selects between "role" mode (true: the prepared
+// connection stays attached to the session between requests) and "claims"
+// mode (false: only the verified claims are cached, the connection goes back
+// to the pool at the end of every request).
+func (sm *SessionManager) SetRetainConnections(retain bool) {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	sm.retainConnections = retain
+}
+
+// claimsExpired reports whether cached claims are past their exp, with the
+// same rule as the jwt validator (exp == now is expired). A session hit skips
+// token verification, so this is the one check that must be repeated.
+func claimsExpired(c *Claims, now time.Time) bool {
+	if c == nil || c.ExpiresAt == nil {
+		return false
+	}
+	return !now.Before(c.ExpiresAt.Time)
 }

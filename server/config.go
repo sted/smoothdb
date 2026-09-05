@@ -32,7 +32,8 @@ type Config struct {
 	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret               string          `comment:"Secret for JWT tokens"`
-	SessionMode             string          `comment:"Session mode: none, role (default: role)"`
+	SessionMode             string          `comment:"Session mode: none, role, claims (default: role)"`
+	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
 	EnableAdminUI           bool            `comment:"Enable Admin dashboard (default: false)"`
 	EnableAPIRoute          bool            `comment:"Enable API access (default: true)"`
@@ -67,6 +68,7 @@ func defaultConfig() *Config {
 		AllowAnon:               false,
 		JWTSecret:               "",
 		SessionMode:             "role",
+		MaxSessions:             10000,
 		EnableAdminRoute:        false,
 		EnableAdminUI:           false,
 		EnableAPIRoute:          true,
@@ -253,6 +255,11 @@ func randomSecret() string {
 }
 
 func checkConfig(cfg *Config) error {
+	switch cfg.SessionMode {
+	case "none", "role", "claims":
+	default:
+		return fmt.Errorf("invalid 'SessionMode' %q: must be none, role or claims", cfg.SessionMode)
+	}
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false

@@ -2,6 +2,7 @@ package authn
 
 import (
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -353,4 +354,73 @@ func BenchmarkSessionWithWatcher(b *testing.B) {
 			i++
 		}
 	})
+}
+
+// A session is created before the token is verified. When verification (or the
+// database lookup) fails, the half-built session must not stay in the manager:
+// the next request with the same token would find it, skip verification, and
+// run with nil claims or a nil database.
+func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
+	sm := NewSessionManager(nil, true, nil)
+	s, isNew := sm.getSession("k")
+	if !isNew {
+		t.Fatal("expected a new session")
+	}
+	sm.dropSession(s)
+	sm.watch(time.Hour, time.Hour)
+	checkStats(t, sm, SessionStatistics{0, 0, 0})
+	if _, isNew := sm.getSession("k"); !isNew {
+		t.Fatal("a dropped session must not be found again")
+	}
+}
+
+// The session map grows by one entry per distinct token; a scan of random
+// bearer tokens would grow it without bound. Beyond MaxSessions the manager
+// hands out transient sessions that are never stored, and leaving or dropping
+// one is a no-op instead of a nil-list panic.
+func TestSessionCapHandsOutTransientSessions(t *testing.T) {
+	sm := NewSessionManager(nil, true, nil)
+	sm.SetMaxSessions(2)
+	a, _ := sm.getSession("a")
+	b, _ := sm.getSession("b")
+	c, isNew := sm.getSession("c")
+	if !isNew || !c.transient {
+		t.Fatalf("expected a transient session beyond the cap, got new=%v transient=%v", isNew, c.transient)
+	}
+	if a.transient || b.transient {
+		t.Fatal("sessions within the cap must be stored")
+	}
+	sm.leaveSession(c)
+	sm.dropSession(c)
+	sm.watch(time.Hour, time.Hour)
+	checkStats(t, sm, SessionStatistics{2, 2, 2})
+	// once a stored session is gone, the slot is available again
+	sm.dropSession(a)
+	if d, _ := sm.getSession("d"); d.transient {
+		t.Fatal("expected a stored session once below the cap")
+	}
+}
+
+// A session hit skips token verification, so the one thing verification would
+// have caught meanwhile must be checked by hand: the expiry.
+func TestClaimsExpired(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if claimsExpired(&Claims{}, now) {
+		t.Error("claims without exp never expire")
+	}
+	past := &Claims{}
+	past.ExpiresAt = jwt.NewNumericDate(now.Add(-time.Second))
+	if !claimsExpired(past, now) {
+		t.Error("exp in the past must be expired")
+	}
+	edge := &Claims{}
+	edge.ExpiresAt = jwt.NewNumericDate(now)
+	if !claimsExpired(edge, now) {
+		t.Error("exp == now is expired, as in the jwt validator")
+	}
+	future := &Claims{}
+	future.ExpiresAt = jwt.NewNumericDate(now.Add(time.Second))
+	if claimsExpired(future, now) {
+		t.Error("exp in the future is valid")
+	}
 }

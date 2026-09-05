@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/database"
@@ -65,7 +66,14 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			dbconn.Release()
 			session.DbConn = nil
 		}
-		m.SessionManager().leaveSession(session)
+		if isNewSession {
+			// A half-built session (no claims, or no database) must not be found by
+			// the next request with the same token: it would skip verification and
+			// run with nil claims, or against the main database.
+			m.SessionManager().dropSession(session)
+		} else {
+			m.SessionManager().leaveSession(session)
+		}
 	}()
 	if isNewSession {
 		if tokenString != "" {
@@ -85,6 +93,12 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			session.Db = db
 		}
 	} else {
+		// A hit skips token verification; the expiry is the one thing that
+		// verification would have caught since the session was built.
+		if claimsExpired(session.Claims, time.Now()) {
+			m.SessionManager().dropSession(session)
+			return nil, nil, http.StatusUnauthorized, fmt.Errorf("token is expired")
+		}
 		db = session.Db
 	}
 	if session.DbConn == nil || session.DbConn.Conn().PgConn().IsClosed() {
@@ -119,8 +133,14 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 	// - the sessionmanager is not enabled
 	// - the connection has an open transaction
 	// Otherwise it will be released in the sessionmanager after a cer
-	if !m.SessionManager().enabled {
-		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
+	sm := m.SessionManager()
+	if !sm.enabled || session.transient || !sm.retainConnections {
+		// no sessions, a transient session (over the cap) or "claims" mode: the
+		// connection goes back to the pool at the end of every request
+		if session.DbConn != nil {
+			err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
+			session.DbConn = nil
+		}
 	} else if session.DbConn != nil && database.HasTX(session.DbConn) {
 		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, false)
 		session.DbConn = nil

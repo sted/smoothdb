@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 		"LoginMode":           "db",
 		"JWTSecret":           "smoothdb-test-suite-secret",
 		"LoginRateLimit":      5,
+		"SessionMode":         "role",
 		"Database.URL":        testDatabaseURL,
 		"JQ.Enabled":          true,
 		"JQ.MaxOutputBytes":   65536,

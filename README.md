@@ -134,6 +134,8 @@ SmoothDB supports two authentication methods via the `LoginMode` configuration o
 - No explicit authorization step is needed beyond providing the JWT token with each request
 - Both authentication methods require email and password for token generation through the `/token` endpoint
 - `/token` is the one route reachable without credentials, so it is rate limited per client address (`LoginRateLimit` attempts per minute, answered `429` with a `Retry-After` header beyond that; proxy headers are not trusted for the address) and its body is capped by `RequestMaxBytes` like every other route
+- With `SessionMode` other than `none`, a session keyed by the token caches the verified claims, so a repeated token is not re-verified; its expiry is still checked on every request, and a session left half-built by a failed request is discarded. `role` also keeps the prepared database connection attached to the session for about a second after each request, so the pool must be sized for active sessions rather than in-flight queries; `claims` avoids that retention.
+- Choosing a `SessionMode`: `role` is the fastest, `claims` the safest for the pool, `none` the simplest. Measured on localhost with `go test ./server -run '^$' -bench BenchmarkSessionModeRequest -benchtime=2000x` (a table-list request repeated with the same token, catalog query included): `role` ≈ 455 µs per request, `claims` ≈ 595 µs, `none` ≈ 625 µs. `role` saves the two round trips that prepare the connection (`SET ROLE`, `set_config` of the claims) on every hit, `claims` saves only the JWT verification. Pick `role` when the pool can hold one connection per active session (roughly one per distinct token in use, released about a second after its last request), `claims` when many distinct tokens share a small pool, `none` when requests must be fully independent.
 - `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run. With `LoginMode: "none"` the secret may stay empty, and then every bearer token is refused with 401 rather than verified against the empty key.
 - When TLS is configured (`CertFile`/`KeyFile`), a certificate that fails to load is a fatal startup error - SmoothDB will not silently fall back to plaintext HTTP.
 - The configuration file holds secrets (the JWT secret and the database URL with its password); it is written with `0600` permissions. Keep it that way and out of version control.
@@ -760,7 +762,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
 | AllowAnon | Allow unauthenticated connections | false |
 | JWTSecret | Secret for JWT tokens | "" |
-| SessionMode | Session mode: "none", "role" | "role" |
+| SessionMode | Session mode: "none" (no cache), "role" (cache the verified claims and keep the prepared connection attached to the session between requests), "claims" (cache the verified claims only; the connection returns to the pool after every request) | "role" |
+| MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
 | EnableAdminRoute | Enable administration of databases and tables | false |
 | EnableAdminUI | Enable Admin dashboard | false |
 | EnableAPIRoute | Enable API access | true |

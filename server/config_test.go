@@ -48,3 +48,22 @@ func TestVerboseErrorsDefaultsToFalse(t *testing.T) {
 		t.Fatal("VerboseErrors must default to false")
 	}
 }
+
+// SessionMode selects how much a session caches: nothing ("none"), the verified
+// claims and the prepared connection ("role"), or the claims only ("claims").
+// Anything else is a configuration error, caught before the JWT secret check.
+func TestCheckConfigValidatesSessionMode(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.LoginMode = "jwt"
+	cfg.JWTSecret = ""
+	cfg.SessionMode = "bogus"
+	err := checkConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "SessionMode") {
+		t.Fatalf("expected a SessionMode error, got %v", err)
+	}
+	cfg.SessionMode = "claims"
+	err = checkConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "JWTSecret") {
+		t.Fatalf("\"claims\" must pass the mode check and reach the secret check, got %v", err)
+	}
+}
