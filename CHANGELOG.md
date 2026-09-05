@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+* **`is.null` on a JSON path** — `?col->>k=is.null` (and `is.not_null`, `is.true`, `is.false`, `is.unknown`, `not.is.*`) reached Postgres as `col->>'k' IS $1` and failed with 42601 as a 500, because the keyword literal was bound as a parameter whenever the field carried a JSON path. The `IS` keywords now stay literal on JSON paths too; every other operator on a JSON path keeps binding its value, so `->>k=eq.null` still compares against the string, as PostgREST does. The operand of `is` is also checked when quoted: `is."foo"` (and `is."null"`) used to skip the keyword check and reach Postgres as `IS foo`; like PostgREST, it is now a 400.
 * **Dotted source names** — a request whose table or function segment contains a dot (`GET /api/db/doc.derived.member_choices`) is now refused by the request parser with a 400 before any SQL runs. The name is schema-qualified and quoted by splitting on dots, so it reached Postgres as `"public"."doc"."derived"."member_choices"` and came back as a 500 (`42601`, improper qualified name) after a prepare, a query and a rollback per request — a misbehaving client on devtest produced 25,000 of them in four days. The error names the offending segment and points at the `Accept-Profile`/`Content-Profile` header for schema selection.
 
 ## 0.8.2 - 2026-08-08

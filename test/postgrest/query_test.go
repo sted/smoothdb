@@ -141,6 +141,39 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"a":null,"b":null}]`,
 			Status:      200,
 		},
+		// smoothdb: IS on a JSON path used to bind the keyword (`... IS $1`, a
+		// syntax error -> 500). jsonb_test rows 2,3,4 have no "a" key (row 3 is
+		// an array); json_arr rows 7,8 are the only objects with a "c" key.
+		{
+			Description: "matches nulls on a jsonb ->> path",
+			Query:       "/jsonb_test?select=id&data->>a=is.null&order=id",
+			Expected:    `[{"id":2},{"id":3},{"id":4}]`,
+			Status:      200,
+		},
+		{
+			Description: "matches not_null on a jsonb ->> path",
+			Query:       "/jsonb_test?select=id&data->>a=is.not_null&order=id",
+			Expected:    `[{"id":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "matches nulls using not operator on a jsonb ->> path",
+			Query:       "/jsonb_test?select=id&data->>a=not.is.null&order=id",
+			Expected:    `[{"id":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "matches nulls on a jsonb -> path",
+			Query:       "/jsonb_test?select=id&data->a=is.null&order=id",
+			Expected:    `[{"id":2},{"id":3},{"id":4}]`,
+			Status:      200,
+		},
+		{
+			Description: "matches not_null on a json ->> path",
+			Query:       "/json_arr?select=id&data->>c=is.not_null&order=id",
+			Expected:    `[{"id":7},{"id":8}]`,
+			Status:      200,
+		},
 
 		// it "matches with null and not_null values in upper or mixed case" $ do
 		//   get "/no_pk?a=is.NULL" `shouldRespondWith`

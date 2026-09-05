@@ -97,3 +97,36 @@ func TestParserRejectsDottedSourceName(t *testing.T) {
 		}
 	}
 }
+
+// PostgREST parses the operand of `is` as a grammar token, not as a value: only
+// null, not_null, true, false and unknown are accepted, case-insensitively, and
+// never in quotes. A quoted operand used to skip the keyword check and reach
+// Postgres as `IS foo` (42601 → 500); it must be a 400 like the bare form.
+func TestParserRejectsNonKeywordIsOperand(t *testing.T) {
+	bad := []string{
+		`?a=is.foo`,
+		`?a=is."foo"`,
+		`?a=is."null"`,
+		`?a=not.is."true"`,
+		`?data->>k=is."null"`,
+		`?a=is.`,
+	}
+	for _, q := range bad {
+		u, _ := url.Parse(q)
+		_, err := PostgRestParser{}.parse("t", u.Query())
+		if err == nil {
+			t.Errorf("%s: expected a parse error, got nil", q)
+			continue
+		}
+		if _, ok := err.(*ParseError); !ok {
+			t.Errorf("%s: expected a *ParseError, got %T: %v", q, err, err)
+		}
+	}
+	valid := []string{`?a=is.null`, `?a=is.NULL`, `?a=is.Not_Null`, `?a=not.is.true`, `?a=is.unknown`, `?data->>k=is.false`}
+	for _, q := range valid {
+		u, _ := url.Parse(q)
+		if _, err := (PostgRestParser{}).parse("t", u.Query()); err != nil {
+			t.Errorf("%s: unexpected error: %v", q, err)
+		}
+	}
+}

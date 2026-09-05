@@ -173,6 +173,95 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT * FROM "table" WHERE ("table"."payload"->>'status') = $1`,
 			[]any{"red"},
 		},
+		// --- IS on JSON paths: the keyword operand can never be a bind parameter
+		//     (`x IS $1` is a syntax error), whatever the path type. ---
+		{
+			// is.null on a ->> path
+			"?payload->>k=is.null",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'k') IS null`,
+			nil,
+		},
+		{
+			// is.not_null on a ->> path
+			"?payload->>k=is.not_null",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'k') IS NOT NULL`,
+			nil,
+		},
+		{
+			// not.is.null on a ->> path
+			"?payload->>k=not.is.null",
+			`SELECT * FROM "table" WHERE NOT ("table"."payload"->>'k') IS null`,
+			nil,
+		},
+		{
+			// is.true / is.false / is.unknown on a ->> path
+			"?payload->>i=is.true&payload->>j=is.false&payload->>k=is.unknown",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'i') IS true AND ("table"."payload"->>'j') IS false AND ("table"."payload"->>'k') IS unknown`,
+			nil,
+		},
+		{
+			// is.null on a -> (json-typed) path
+			"?payload->k=is.null",
+			`SELECT * FROM "table" WHERE ("table"."payload"->'k') IS null`,
+			nil,
+		},
+		{
+			// is.not_null on a -> path
+			"?payload->k=is.not_null",
+			`SELECT * FROM "table" WHERE ("table"."payload"->'k') IS NOT NULL`,
+			nil,
+		},
+		{
+			// not.is.null on a -> path
+			"?payload->k=not.is.null",
+			`SELECT * FROM "table" WHERE NOT ("table"."payload"->'k') IS null`,
+			nil,
+		},
+		{
+			// is.true on a -> path
+			"?payload->k=is.true",
+			`SELECT * FROM "table" WHERE ("table"."payload"->'k') IS true`,
+			nil,
+		},
+		{
+			// plain column: IS keywords stay verbatim (unchanged)
+			"?a=is.null&b=not.is.null&c=is.not_null",
+			`SELECT * FROM "table" WHERE "table"."a" IS null AND NOT "table"."b" IS null AND "table"."c" IS NOT NULL`,
+			nil,
+		},
+		{
+			// every other operator on a JSON path keeps binding the value: with ->>
+			// eq.null / eq.true compare against the strings 'null' / 'true' (PostgREST)
+			"?payload->>j=eq.null&payload->>k=eq.true",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'j') = $1 AND ("table"."payload"->>'k') = $2`,
+			[]any{"null", "true"},
+		},
+		{
+			// jsonb containment on a -> path still binds
+			"?payload->k=cs.{a:1}",
+			`SELECT * FROM "table" WHERE ("table"."payload"->'k') @> $1`,
+			[]any{`{"a":1}`},
+		},
+		{
+			// isdistinct is not IS: PostgREST parses its operand as a plain value
+			// and binds it (IS DISTINCT FROM $1 is valid SQL), so null is bound
+			// on a JSON path
+			"?payload->>k=isdistinct.null",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'k') IS DISTINCT FROM $1`,
+			[]any{"null"},
+		},
+		{
+			// isdistinct.null on a plain column: unchanged (keyword)
+			"?a=isdistinct.null",
+			`SELECT * FROM "table" WHERE "table"."a" IS DISTINCT FROM null`,
+			nil,
+		},
+		{
+			// IN on a ->> path keeps binding keyword-looking values
+			"?payload->>k=in.(null,true)",
+			`SELECT * FROM "table" WHERE ("table"."payload"->>'k') IN ($1, $2)`,
+			[]any{"null", "true"},
+		},
 		{
 			// jsonb: IN with quoted values on a json-typed path
 			`?payload->status=in.("red","blue")`,

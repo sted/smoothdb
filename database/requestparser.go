@@ -892,6 +892,12 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			value += p.completeIfFloat()
 		}
 	} else if quoted {
+		// PostgREST parses the operand of IS as a grammar token: the five keywords,
+		// never quoted. A quoted operand would otherwise skip the check below and
+		// reach Postgres as `IS foo` (42601).
+		if node.operator == "IS" {
+			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
+		}
 		// quoted values skip keyword normalization;
 		// on json-typed paths (ending with ->) they must stay JSON strings
 		if jsonPathIsJsonTyped(node.field.jsonPath) {

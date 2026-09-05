@@ -655,6 +655,12 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			fieldname = "(" + toJson(table, schema, node.field.name, fieldname, stack.info) +
 				node.field.jsonPath + ")"
 		}
+		// On a JSON path every value is bound, so `->>k=eq.null` compares against
+		// the string 'null' as in PostgREST. The IS operator is the exception:
+		// its operand is one of the keywords null/not_null/true/false/unknown
+		// (enforced by the parser) and `x IS $1` is a syntax error, so the
+		// keyword is written verbatim whatever the field.
+		forceParam := node.field.jsonPath != "" && node.operator != "IS"
 		if node.opModifier != "" {
 			// any/all modifier: expand to (field OP v1 OR/AND field OP v2 ...)
 			var boolOp string
@@ -669,7 +675,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					where += boolOp
 				}
 				where += fieldname + " " + node.operator + " "
-				where, valueList, nmarker = appendValue(where, value, valueList, nmarker, node.field.jsonPath != "")
+				where, valueList, nmarker = appendValue(where, value, valueList, nmarker, forceParam)
 			}
 			where += ")"
 		} else {
@@ -699,7 +705,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					if i != 0 {
 						where += ", "
 					}
-					where, valueList, nmarker = appendValue(where, value, valueList, nmarker, node.field.jsonPath != "")
+					where, valueList, nmarker = appendValue(where, value, valueList, nmarker, forceParam)
 				}
 				where += ")"
 			} else if node.operator == "@@" {
@@ -721,7 +727,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 				where += ")"
 
 			} else {
-				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, node.field.jsonPath != "")
+				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, forceParam)
 			}
 		}
 	}
