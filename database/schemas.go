@@ -54,13 +54,20 @@ func GetSchema(ctx context.Context, name string) (*Schema, error) {
 	return schema, nil
 }
 
+// buildCreateSchema emits CREATE SCHEMA with the name and the optional owner as
+// single quoted identifiers: both come from client JSON and used to be a
+// DDL injection sink when the owner was interpolated verbatim.
+func buildCreateSchema(name, owner string) string {
+	create := "CREATE SCHEMA " + quote(name)
+	if owner != "" {
+		create += " AUTHORIZATION " + quote(owner)
+	}
+	return create
+}
+
 func CreateSchema(ctx context.Context, schema *Schema) (*Schema, error) {
 	conn := GetConn(ctx)
-	create := "CREATE SCHEMA " + quote(schema.Name)
-	if schema.Owner != "" {
-		create += " AUTHORIZATION " + schema.Owner
-	}
-	_, err := conn.Exec(ctx, create)
+	_, err := conn.Exec(ctx, buildCreateSchema(schema.Name, schema.Owner))
 	if err != nil {
 		return nil, err
 	}

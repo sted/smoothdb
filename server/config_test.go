@@ -40,3 +40,11 @@ func TestDebugModeGeneratesJWTSecret(t *testing.T) {
 		t.Errorf("auto-generated secret too short (%d chars); want a strong random value", len(cfg.JWTSecret))
 	}
 }
+
+// Verbose database errors (hint, detail) are a fingerprinting aid for an
+// attacker. The safe default is off; development opts in.
+func TestVerboseErrorsDefaultsToFalse(t *testing.T) {
+	if defaultConfig().VerboseErrors {
+		t.Fatal("VerboseErrors must default to false")
+	}
+}

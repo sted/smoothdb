@@ -133,7 +133,7 @@ SmoothDB supports two authentication methods via the `LoginMode` configuration o
 
 - No explicit authorization step is needed beyond providing the JWT token with each request
 - Both authentication methods require email and password for token generation through the `/token` endpoint
-- `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run.
+- `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run. With `LoginMode: "none"` the secret may stay empty, and then every bearer token is refused with 401 rather than verified against the empty key.
 - When TLS is configured (`CertFile`/`KeyFile`), a certificate that fails to load is a fatal startup error - SmoothDB will not silently fall back to plaintext HTTP.
 - The configuration file holds secrets (the JWT secret and the database URL with its password); it is written with `0600` permissions. Keep it that way and out of version control.
 
@@ -774,6 +774,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | WriteTimeout | The maximum duration before timing out writes of the response (seconds) | 60 |
 | GracefulShutdownTimeout | The maximum duration to wait for in-flight requests to complete on shutdown (seconds, 0 to wait until done) | 0 |
 | DrainDelay | Seconds to keep serving after /ready starts reporting 503 on a SIGTERM shutdown, so load balancers can deregister the instance; SIGINT skips the delay (0 to disable) | 0 |
+| VerboseErrors | Return full database error details (hint, detail) to clients; off by default because they help fingerprint the schema | false |
 | RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |

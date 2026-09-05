@@ -19,13 +19,14 @@ var (
 func TestMain(m *testing.M) {
 	c := map[string]any{
 		"Address":             "localhost:8083",
-		"AllowAnon":          false,
-		"EnableAdminRoute":   true,
-		"Database.URL":       "postgresql://postgres:postgres@localhost:5432/postgres",
-		"Logging.Level":      "info",
+		"VerboseErrors":       true, // the suites assert hint/details in error bodies
+		"AllowAnon":           false,
+		"EnableAdminRoute":    true,
+		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
+		"Logging.Level":       "info",
 		"Logging.FileLogging": true,
-		"Logging.FilePath":   "../../smoothdb.log",
-		"Logging.StdOut":     false,
+		"Logging.FilePath":    "../../smoothdb.log",
+		"Logging.StdOut":      false,
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{

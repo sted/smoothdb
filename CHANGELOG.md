@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+### Security
+* **Schema owner quoting** — `CREATE SCHEMA … AUTHORIZATION <owner>` interpolated the owner verbatim; it is now quoted as an identifier like every other DDL name. Reachable only by a caller who already holds DDL privileges, but it was the last unquoted DDL sink from the last review.
+* **Bearer tokens with no secret** — with `LoginMode: "none"` the server may run without a `JWTSecret`, and a bearer token was then verified against the empty HMAC key, which anyone can sign with. Such a token is now refused with 401.
+* **`VerboseErrors` defaults to false** — database error hints and details help fingerprint the schema, so they are now opt-in. Deployments that relied on the old default must set `VerboseErrors: true` explicitly.
+
 ### Fixed
+* **`RequestMaxBytes: 0`** did the opposite of its documentation: `MaxBytesReader(0)` fails on the first byte, so 0 blocked every request body instead of lifting the limit. A non-positive value now means unlimited, as the comment, the README and the startup warning already said.
 * **`is.null` on a JSON path** — `?col->>k=is.null` (and `is.not_null`, `is.true`, `is.false`, `is.unknown`, `not.is.*`) reached Postgres as `col->>'k' IS $1` and failed with 42601 as a 500, because the keyword literal was bound as a parameter whenever the field carried a JSON path. The `IS` keywords now stay literal on JSON paths too; every other operator on a JSON path keeps binding its value, so `->>k=eq.null` still compares against the string, as PostgREST does. The operand of `is` is also checked when quoted: `is."foo"` (and `is."null"`) used to skip the keyword check and reach Postgres as `IS foo`; like PostgREST, it is now a 400.
 * **Dotted source names** — a request whose table or function segment contains a dot (`GET /api/db/doc.derived.member_choices`) is now refused by the request parser with a 400 before any SQL runs. The name is schema-qualified and quoted by splitting on dots, so it reached Postgres as `"public"."doc"."derived"."member_choices"` and came back as a 500 (`42601`, improper qualified name) after a prepare, a query and a rollback per request — a misbehaving client on devtest produced 25,000 of them in four days. The error names the offending segment and points at the `Accept-Profile`/`Content-Profile` header for schema selection.
 

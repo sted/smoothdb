@@ -22,8 +22,11 @@ var (
 func TestMain(m *testing.M) {
 	c := map[string]any{
 		"Address":             "localhost:8082",
+		"VerboseErrors":       true, // the suites assert hint/details in error bodies
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
+		"LoginMode":           "db",
+		"JWTSecret":           "smoothdb-test-suite-secret",
 		"Database.URL":        testDatabaseURL,
 		"JQ.Enabled":          true,
 		"Logging.Level":       "info",

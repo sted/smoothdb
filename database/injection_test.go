@@ -190,3 +190,22 @@ func TestInjectionGrantWhitelist(t *testing.T) {
 		t.Errorf("unexpected grant\n want: %s\n  got: %s", want, got)
 	}
 }
+
+// Finding (schema DDL sink): CREATE SCHEMA quoted the schema name but
+// interpolated the AUTHORIZATION owner verbatim, so a `"` in the owner broke
+// out of the identifier. The builder must emit both as single quoted
+// identifiers, and omit AUTHORIZATION when no owner is given.
+func TestInjectionSchemaDDLQuoting(t *testing.T) {
+	evil := `r"; DROP SCHEMA x; --`
+	q := `"r""; DROP SCHEMA x; --"` // evil, neutralized as one identifier
+	cases := []struct{ got, want string }{
+		{buildCreateSchema("s", ""), `CREATE SCHEMA "s"`},
+		{buildCreateSchema("s", evil), `CREATE SCHEMA "s" AUTHORIZATION ` + q},
+		{buildCreateSchema(evil, "o"), `CREATE SCHEMA ` + q + ` AUTHORIZATION "o"`},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("DDL not neutralized\n want: %s\n  got: %s", c.want, c.got)
+		}
+	}
+}

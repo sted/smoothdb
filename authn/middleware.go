@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/sted/heligo"
@@ -134,7 +135,7 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 	m := middleware{cfg}
 	return func(next heligo.Handler) heligo.Handler {
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-			r.Body = http.MaxBytesReader(w, r.Body, cfg.RequestMaxBytes())
+			r.Body = LimitBody(w, r.Body, cfg.RequestMaxBytes())
 			defer r.Body.Close()
 			if version.Version != "" {
 				w.Header().Set("Server", "smoothdb/"+version.Version)
@@ -152,4 +153,14 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 			return status, err
 		}
 	}
+}
+
+// LimitBody caps the request body at max bytes. A non-positive max means
+// unlimited, as RequestMaxBytes documents: MaxBytesReader(0) would instead
+// fail on the first byte and block every request with a body.
+func LimitBody(w http.ResponseWriter, body io.ReadCloser, max int64) io.ReadCloser {
+	if max <= 0 {
+		return body
+	}
+	return http.MaxBytesReader(w, body, max)
 }

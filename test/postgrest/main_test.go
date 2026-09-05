@@ -15,6 +15,7 @@ var testConfig test.Config
 func TestMain(m *testing.M) {
 	c := map[string]any{
 		"Address":                   "localhost:8084",
+		"VerboseErrors":             true, // the suites assert hint/details in error bodies
 		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 		"AllowAnon":                 false,
 		"EnableAdminRoute":          true,

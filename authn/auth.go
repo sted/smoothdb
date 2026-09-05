@@ -70,6 +70,12 @@ func GenerateToken(role, secret string, expiry ...time.Duration) (string, error)
 }
 
 func authenticate(tokenString string, jwtSecret string) (*Claims, error) {
+	// With no secret configured (possible when LoginMode is "none") a bearer
+	// token would be verified against the empty HMAC key, which anyone can
+	// sign with. Fail closed: no secret, no bearer authentication.
+	if jwtSecret == "" {
+		return nil, fmt.Errorf("bearer token refused: no JWTSecret is configured")
+	}
 	claims, err := parseAuthHeader(tokenString, jwtSecret)
 	if err != nil {
 		return nil, err
