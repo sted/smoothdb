@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.8.3 - 2026-09-05
 
 ### Security
 * **Schema owner quoting** — `CREATE SCHEMA … AUTHORIZATION <owner>` interpolated the owner verbatim; it is now quoted as an identifier like every other DDL name. Reachable only by a caller who already holds DDL privileges, but it was the last unquoted DDL sink from the last review.
