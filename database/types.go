@@ -16,6 +16,7 @@ type Type struct {
 	ArraySubType  uint32   `json:"arraysubtype"`
 	RangeSubType  *uint32  `json:"rangesubtype"`
 	DomainSubType string   `json:"domainsubtype"`
+	DomainBaseId  uint32   `json:"domainbaseid"` // typbasetype, the type a domain is over (0 otherwise)
 	SubTypeIds    []uint32 `json:"subtypeids"`
 	SubTypeNames  []string `json:"subtypenames"`
 }
@@ -40,6 +41,7 @@ const typesQuery = `
 	t.typelem arraysubtype,
 	r.rngsubtype rangesubtype,
 	CASE WHEN t.typtype = 'd' THEN base_type.typname ELSE '' END AS domainsubtype,
+	t.typbasetype::int4 domainbaseid,
 	COALESCE(array_agg(a.atttypid::int4) filter (where a.atttypid is not null), '{}') subtypeids,
 	COALESCE(array_agg(a.attname) filter (where a.attname is not null), '{}') subtypenames
 	FROM pg_type t
@@ -49,7 +51,7 @@ const typesQuery = `
 	JOIN pg_namespace n ON n.oid = t.typnamespace
 	LEFT JOIN pg_type base_type ON base_type.oid = t.typbasetype
 	LEFT JOIN pg_class base_c ON base_c.oid = base_type.typrelid
-	GROUP BY t.oid, n.nspname, c.relkind, r.rngsubtype, base_type.typcategory, base_type.typname, base_c.relkind;
+	GROUP BY t.oid, n.nspname, c.relkind, r.rngsubtype, base_type.typcategory, base_type.typname, base_c.relkind, t.typbasetype;
 `
 
 func GetTypes(ctx context.Context) ([]Type, error) {
@@ -65,7 +67,7 @@ func GetTypes(ctx context.Context) ([]Type, error) {
 	for rows.Next() {
 		err := rows.Scan(&typ.Id, &typ.Name, &typ.Schema,
 			&typ.IsArray, &typ.IsRange, &typ.IsMultirange, &typ.IsComposite, &typ.IsTable, &typ.IsEnum, &typ.IsDomain,
-			&typ.ArraySubType, &typ.RangeSubType, &typ.DomainSubType,
+			&typ.ArraySubType, &typ.RangeSubType, &typ.DomainSubType, &typ.DomainBaseId,
 			&typ.SubTypeIds, &typ.SubTypeNames)
 		if err != nil {
 			return types, err

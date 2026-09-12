@@ -531,6 +531,9 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		ct := info.GetTypeById(typ)
 		if ct != nil {
 			switch {
+			case ct.IsDomain && ct.DomainBaseId != 0:
+				// the wire carries the domain's oid over the base type's bytes
+				return j.appendType(buf, ct.DomainBaseId, info)
 			case ct.IsArray:
 				return j.appendArray(buf, ct.ArraySubType, info, j)
 			case ct.IsComposite:
@@ -696,6 +699,8 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		ct := info.GetTypeById(typ)
 		if ct != nil {
 			switch {
+			case ct.IsDomain && ct.DomainBaseId != 0:
+				return csv.appendType(buf, ct.DomainBaseId, info)
 			case ct.IsArray:
 				return csv.appendArray(buf, ct.ArraySubType, info, csv)
 			case ct.IsComposite:
@@ -827,7 +832,21 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
 	}
 	for rows.Next() {
-		b.Write(rows.RawValues()[0])
+		raw := rows.RawValues()[0]
+		if fds[0].Format == pgtype.TextFormatCode && fds[0].DataTypeOID == pgtype.ByteaOID {
+			// bytea is requested in text (textFormatOnlyTypes): a download
+			// wants the bytes, so decode the \x hex form PostgreSQL sends
+			if len(raw) < 2 || raw[0] != '\\' || raw[1] != 'x' {
+				return nil, 0, &SerializeError{msg: "bytea is not in hex format (set bytea_output to hex)"}
+			}
+			decoded := make([]byte, hex.DecodedLen(len(raw)-2))
+			if _, err := hex.Decode(decoded, raw[2:]); err != nil {
+				return nil, 0, &SerializeError{msg: "malformed bytea hex: " + err.Error()}
+			}
+			b.Write(decoded)
+			continue
+		}
+		b.Write(raw)
 	}
 	return b.Bytes(), int64(b.Len()), nil
 }

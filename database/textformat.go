@@ -35,9 +35,16 @@ func (j *JSONSerializer) appendText(buf []byte, typ uint32, info *SchemaInfo) er
 		} else {
 			j.appendQuoted(buf)
 		}
+	case pgtype.TimestampOID, pgtype.TimestamptzOID:
+		j.WriteByte('"')
+		j.appendTimestampText(buf)
+		j.WriteByte('"')
 	default:
 		ct := info.GetTypeById(typ)
 		switch {
+		case ct != nil && ct.IsDomain && ct.DomainBaseId != 0:
+			// a domain prints as its base type (a domain over int is a number)
+			return j.appendText(buf, ct.DomainBaseId, info)
 		case ct != nil && ct.IsArray:
 			return j.appendTextArray(buf, ct.ArraySubType, info)
 		case ct != nil && ct.IsComposite:
@@ -47,6 +54,29 @@ func (j *JSONSerializer) appendText(buf []byte, typ uint32, info *SchemaInfo) er
 		}
 	}
 	return nil
+}
+
+// appendTimestampText writes a timestamp or timestamptz in PostgreSQL's text
+// form the way to_json prints it: a T between date and time, and a full
+// hh:mm offset ('2024-01-01 11:00:00+01' is "2024-01-01T11:00:00+01:00").
+// Anything else (infinity, BC dates, fractional seconds) passes through.
+func (j *JSONSerializer) appendTimestampText(buf []byte) {
+	if len(buf) < 11 || buf[10] != ' ' {
+		j.appendString(buf, true)
+		return
+	}
+	j.appendString(buf[:10], true)
+	j.WriteByte('T')
+	rest := buf[11:]
+	j.appendString(rest, true)
+	// an offset of whole hours is printed as +hh: to_json spells it +hh:00
+	if n := len(rest); n >= 3 && (rest[n-3] == '+' || rest[n-3] == '-') && isDigit(rest[n-2]) && isDigit(rest[n-1]) {
+		j.WriteString(":00")
+	}
+}
+
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
 
 func (j *JSONSerializer) appendQuoted(buf []byte) {

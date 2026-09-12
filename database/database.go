@@ -53,6 +53,12 @@ var textFormatOnlyTypes = []uint32{
 	pgtype.CIDOID, pgtype.CIDArrayOID,
 	pgtype.XID8OID, pgtype.XID8ArrayOID,
 	pgtype.TSVectorOID, pgtype.TSVectorArrayOID,
+	// xml prefers text on its own, but pgx's array and composite codecs pick
+	// binary whenever the element supports it, and the serializers have no
+	// binary xml decoder (its binary form is the text, but the switch does
+	// not know that): listed so xml[] and composites with an xml field stay
+	// in text.
+	pgtype.XMLOID, pgtype.XMLArrayOID,
 	// The builtin ranges: a range is one JSON string, range_out's text with
 	// its quoting of the bounds (only those with a bracket, a comma, a quote,
 	// a backslash or whitespace in them, a quote doubled) and PostgreSQL's
