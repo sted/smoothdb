@@ -1172,38 +1172,26 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	}
 
 	// Embedding (LEFT JOIN LATERAL) composes with single-table recursion only.
-	// Via-mode embedding would fight the DISTINCT/min-depth dedup, so reject it cleanly.
+	// Via-mode embedding would fight the min-depth dedup, so reject it cleanly.
 	if joins != "" && rec.ViaTable != "" {
 		return "", nil, &ParseError{"embedding is not supported with via() recursion"}
 	}
 
-	// Reject __path (internal cycle-tracking array) as a selected field; __depth is selectable.
+	// __depth and __path are selectable (and orderable) pseudo-columns. Single-table
+	// mode always carries the path array — one path per node on an FK tree, it costs
+	// nothing. Via mode carries it only when __path is asked for: it is what makes the
+	// CTE enumerate paths instead of nodes (see the via branch below).
+	withPath := false
 	for _, sf := range parts.selectFields {
 		if sf.field.name == "__path" {
-			return "", nil, &ParseError{"__path is internal"}
+			withPath = true
 		}
 	}
-	depthSelected := false
-	for _, sf := range parts.selectFields {
-		if sf.field.name == "__depth" {
-			depthSelected = true
-			break
-		}
-	}
-	// via's min-depth dedup wraps the walk in a DISTINCT ON subquery, and a user ORDER BY
-	// runs on that wrapper, so it can only see the wrapper's select list. If the caller
-	// orders by __depth without selecting it we surface __depth in the projection (below) —
-	// otherwise Postgres fails with "column __dedup.__depth does not exist". Single-table
-	// mode uses a plain SELECT and can already order by an unselected __depth, so it needs
-	// no such handling.
-	depthOrdered := false
 	for _, of := range parts.orderFields {
-		if of.field.name == "__depth" {
-			depthOrdered = true
-			break
+		if of.field.name == "__path" {
+			withPath = true
 		}
 	}
-	exposeDepth := rec.ViaTable != "" && depthOrdered && !depthSelected
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
 	if dbe != nil && dbe.config.MaxRecursiveDepth > 0 {
@@ -1285,57 +1273,131 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		// doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)
 		// Base case is the start node itself (depth 0), same as single-table.
 		// The edge table join happens in the recursive step.
+		//
+		// The CTE carries only (__node, __depth): a whole-row CTE with a per-path cycle
+		// guard (NOT key = ANY(__path)) enumerates every simple path of the graph, which
+		// is exponential in depth — a 650-node DAG of depth 12 materialised 797,161 rows
+		// for 490 nodes. With UNION on the narrow row the set dedup bounds the work to one
+		// row per (node, depth): a node reached again through a cycle only re-enters at a
+		// larger depth, so a cyclic graph is walked up to the depth cap, at most one row
+		// per node per level. The seed is never re-entered — a walk back into it only
+		// repeats a shorter walk — which is also what lets `after` drop it as the only
+		// node at depth 0. The set of nodes and the shallowest depth per node are the same
+		// as with the per-path guard: every walk to a node contains a simple path to it of
+		// no greater length. The table is joined back in the outer query.
+		//
+		// When __path is asked for the array is carried again (UNION ALL, per-path guard):
+		// it is the only way to have a path, and it costs the enumeration of every simple
+		// path — the README documents it as exponential.
 		qvia := _sq(rec.ViaTable, schema)
 		viaFrom := quote(rec.ViaFromCol)
 		viaTo := quote(rec.ViaToCol)
+		edgeName := quote("__edge")
 
 		// Base case: the start node itself — when ExcludeStart is true (after operator),
 		// skip walk filters so the seed remains a traversal anchor.
-		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
+		q.WriteString("SELECT " + qtable + "." + startField + " AS __node, 0 AS __depth")
+		if withPath {
+			q.WriteString(", ARRAY[" + qtable + "." + startField + "] AS __path")
+		}
 		q.WriteString(" FROM " + qtable)
 		nmarker++
-		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
+		startMarker := "$" + strconv.Itoa(nmarker)
+		q.WriteString(" WHERE " + qtable + "." + startField + " = " + startMarker)
 		valueList = append(valueList, rec.StartValue)
 		if walkWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + walkWhere)
 		}
 
-		q.WriteString(" UNION ALL ")
-
-		// Recursive step: follow edges from previously found docs
-		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
-		q.WriteString(" FROM " + qtable)
-		if rec.ViaBidirectional {
-			// via!both: follow edges in either direction. The new node (qtable) sits on
-			// one end of the edge, the known node (cte) on the opposite end.
-			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField + " OR " + qvia + "." + viaFrom + " = " + qtable + "." + startField)
-			q.WriteString(" INNER JOIN " + cteName + " ON (" + qvia + "." + viaFrom + " = " + cteName + "." + startField + " AND " + qvia + "." + viaTo + " = " + qtable + "." + startField + ") OR (" + qvia + "." + viaTo + " = " + cteName + "." + startField + " AND " + qvia + "." + viaFrom + " = " + qtable + "." + startField + ")")
+		if withPath {
+			q.WriteString(" UNION ALL ")
 		} else {
-			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField)
-			q.WriteString(" INNER JOIN " + cteName + " ON " + qvia + "." + viaFrom + " = " + cteName + "." + startField)
+			q.WriteString(" UNION ")
 		}
+
+		// Recursive step: follow edges from previously found nodes. The edge table is
+		// wrapped in a derived table of (__from, __to) pairs — for via!both both
+		// orientations, UNION ALL — so the planner drives each arm with an index on the
+		// known node rather than the OR join it could not index (which scanned every edge
+		// per working-table row). Edge filters go inside the arms, where the edge table
+		// is in scope; their markers are simply reused by the second arm.
+		edges := "SELECT " + qvia + "." + viaFrom + " AS __from, " + qvia + "." + viaTo + " AS __to FROM " + qvia
+		if viaWhere != "" {
+			edges += " WHERE " + viaWhere
+		}
+		if rec.ViaBidirectional {
+			edges += " UNION ALL SELECT " + qvia + "." + viaTo + ", " + qvia + "." + viaFrom + " FROM " + qvia
+			if viaWhere != "" {
+				edges += " WHERE " + viaWhere
+			}
+		}
+		q.WriteString("SELECT " + qtable + "." + startField + ", " + cteName + ".__depth + 1")
+		if withPath {
+			q.WriteString(", " + cteName + ".__path || " + qtable + "." + startField)
+		}
+		q.WriteString(" FROM " + cteName)
+		q.WriteString(" INNER JOIN (" + edges + ") " + edgeName + " ON " + edgeName + ".__from = " + cteName + ".__node")
+		q.WriteString(" INNER JOIN " + qtable + " ON " + qtable + "." + startField + " = " + edgeName + ".__to")
 		nmarker++
 		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, maxDepth)
-		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
-		if viaWhere != "" {
-			q.WriteString(" AND " + viaWhere)
+		if withPath {
+			q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
+		} else {
+			q.WriteString(" AND " + qtable + "." + startField + " <> " + startMarker)
 		}
 		if walkWhere != "" {
 			q.WriteString(" AND " + walkWhere)
 		}
 	}
 
-	q.WriteString(") ")
+	q.WriteString(")")
+
+	// via node dedup: one row per node reachable by multiple paths (or at several
+	// depths), at its shallowest depth — with __path, the shortest path, ties broken by
+	// the path itself. Keying on the node needs an equality operator on the start field
+	// only; DISTINCT over the whole row would fail on json, xml or point columns, which
+	// have none. Single-table trees skip this — they can't reach a node at two depths
+	// (the __path guard keeps edges unique), so a plain SELECT below is fine.
+	dedupName := quote("__dedup")
+	if rec.ViaTable != "" {
+		q.WriteString(", " + dedupName + " AS (SELECT DISTINCT ON (__node) __node, __depth")
+		if withPath {
+			q.WriteString(", __path")
+		}
+		q.WriteString(" FROM " + cteName + " ORDER BY __node, __depth")
+		if withPath {
+			q.WriteString(", __path")
+		}
+		q.WriteString(")")
+	}
+	q.WriteString(" ")
 
 	// --- Outer query ---
-	// Rewrite table references to CTE name for the outer query
 	tablePrefix := qtable + "."
 	ctePrefix := cteName + "."
+	// outer rewrites a clause built against the table (select list, result filters,
+	// ORDER BY) for the outer query. Single-table mode selects from the CTE, which
+	// carries the rows, so every table reference moves to the CTE name. Via mode joins
+	// the table back onto "__dedup", so its columns are read from the table itself and
+	// only the pseudo-columns move, "table"."__depth" to "__dedup"."__depth".
+	outer := func(clause string) string {
+		if rec.ViaTable == "" {
+			return strings.ReplaceAll(clause, tablePrefix, ctePrefix)
+		}
+		for _, col := range []string{"__depth", "__path"} {
+			clause = strings.ReplaceAll(clause, tablePrefix+quote(col), dedupName+"."+quote(col))
+		}
+		return clause
+	}
 
-	// Build the SELECT list (without keyword); remember whether it was "*".
+	// Build the SELECT list (without keyword).
 	var sel string
-	if selectClause == "*" {
+	if selectClause != "*" {
+		sel = outer(selectClause)
+	} else if rec.ViaTable != "" {
+		sel = qtable + ".*"
+	} else {
 		// Enumerate actual table columns to exclude internal __depth/__path
 		ftable := _s(table, schema)
 		if info != nil {
@@ -1352,19 +1414,6 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		} else {
 			sel = cteName + ".*"
 		}
-	} else {
-		sel = strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
-	}
-	// Surface __depth for an order-by that didn't select it (see exposeDepth above). The
-	// cteName.* form already carries __depth, so only the enumerated/explicit lists need it.
-	// NOTE: this deliberately leaks __depth into the result projection — a `via(...)` walk
-	// ordered by an unselected __depth (or `select=*`, whose enumeration otherwise excludes
-	// __depth) returns it as an extra column. Single-table mode uses a plain SELECT that can
-	// order by an unselected column without surfacing it, so the two modes are asymmetric
-	// here. The leak is the price of routing via through the min-depth dedup wrapper, whose
-	// outer ORDER BY can only reference the wrapper's select list.
-	if exposeDepth && sel != cteName+".*" {
-		sel += ", " + ctePrefix + quote("__depth")
 	}
 
 	// Embed joins (LEFT JOIN LATERAL) correlate to the base-table alias; rewrite
@@ -1386,46 +1435,32 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// ExcludeStart seed-skip); walk.* filters already pruned the CTE arms above.
 	var outerWhere string
 	if rec.ExcludeStart {
-		outerWhere = "__depth > 0"
+		if rec.ViaTable != "" {
+			outerWhere = dedupName + ".__depth > 0"
+		} else {
+			outerWhere = "__depth > 0"
+		}
 	}
 	if mainWhere != "" {
-		resultWhere := strings.ReplaceAll(mainWhere, tablePrefix, ctePrefix)
 		if outerWhere != "" {
 			outerWhere += " AND "
 		}
-		outerWhere += resultWhere
+		outerWhere += outer(mainWhere)
 	}
 
 	if rec.ViaTable != "" {
-		// via node dedup: SELECT DISTINCT ON (node) ... ORDER BY node, __depth keeps one
-		// row per node reachable by multiple paths, at its shallowest depth. Keying on the
-		// node needs an equality operator on the start field only — DISTINCT over the whole
-		// row would fail on json, xml or point columns, which have none. Single-table trees
-		// skip this — they can't reach a node at two depths (the __path guard keeps edges
-		// unique), so a plain SELECT below is fine. The wrapper also isolates min-depth
-		// selection from any user ORDER BY appended below.
-		q.WriteString("SELECT * FROM (SELECT DISTINCT ON (" + ctePrefix + startField + ") " + sel + " FROM " + cteName)
-		if outerWhere != "" {
-			q.WriteString(" WHERE " + outerWhere)
-		}
-		q.WriteString(" ORDER BY " + ctePrefix + startField + ", " + cteName + ".__depth) \"__dedup\"")
+		// The table joined back onto the deduplicated nodes. A plain SELECT, so a user
+		// ORDER BY can name a column that is not selected, __depth included.
+		q.WriteString("SELECT " + sel + " FROM " + dedupName + " INNER JOIN " + qtable + " ON " + qtable + "." + startField + " = " + dedupName + ".__node")
 	} else {
 		q.WriteString("SELECT " + sel + " FROM " + cteName + joinsClause)
-		if outerWhere != "" {
-			q.WriteString(" WHERE " + outerWhere)
-		}
+	}
+	if outerWhere != "" {
+		q.WriteString(" WHERE " + outerWhere)
 	}
 
 	if orderClause != "" {
-		// In via mode the outer query selects from the "__dedup" wrapper, so a user
-		// ORDER BY must target that alias (and the column must be in the select list);
-		// otherwise it references the CTE directly.
-		orderPrefix := ctePrefix
-		if rec.ViaTable != "" {
-			orderPrefix = quote("__dedup") + "."
-		}
-		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, orderPrefix)
-		q.WriteString(" ORDER BY " + outerOrder)
+		q.WriteString(" ORDER BY " + outer(orderClause))
 	}
 
 	// Limit

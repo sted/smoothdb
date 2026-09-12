@@ -428,10 +428,11 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true   
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&walk.is_active=is.true  HTTP/1.1   # stop walking at inactive nodes
 ```
 
-Standard parameters (`select`, `order`, `limit`, …) apply to the result set. The pseudo-column `__depth` is selectable to get each row's traversal depth (seed = 0), and related resources can be embedded:
+Standard parameters (`select`, `order`, `limit`, …) apply to the result set. Two pseudo-columns can be selected or ordered by: `__depth`, each row's traversal depth (seed = 0), and `__path`, the array of keys from the seed to the row (ordering by `__path` gives a depth-first order). Related resources can be embedded:
 
 ```http
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__depth,tasks(title)&order=__depth HTTP/1.1
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__path&order=__path HTTP/1.1
 ```
 
 **Edge tables (`via`).** Traverse a graph through a separate edge table with source/target columns. Add the `!both` hint to follow edges in either direction; filter which edges to follow with the standard `table.column` syntax (`eq`, `in`, `or`, …):
@@ -440,6 +441,10 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__dep
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id) HTTP/1.1
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via!both(src_id,dst_id)&relationships.rel_type=in.(contains,references) HTTP/1.1
 ```
+
+A node reachable along several paths is returned once, at its shortest depth. The walk visits nodes, not paths: its cost is bounded by the number of nodes times the depth, whatever the number of paths between them. A cycle only re-enters a node at a greater depth, so on a cyclic graph (and on every `via!both` walk, where each edge can be followed back) the traversal runs until the depth cap - `recurse.N` or `MaxRecursiveDepth` - which is what bounds it; the seed itself is never re-entered.
+
+Selecting or ordering by `__path` on a `via` walk is different: to carry a path the traversal has to enumerate every simple path of the graph, whose number grows exponentially with the depth (on a layered DAG of 650 nodes and 1800 edges: 797,161 paths for 490 reachable nodes, a walk of 1.2 s against 1 ms without `__path`). Ask for it on small graphs or with a small `recurse.N`. In single-table walks each node has one path, so `__path` costs nothing there.
 
 Embedding is not supported together with `via` traversal.
 
