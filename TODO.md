@@ -38,7 +38,7 @@
 ## Functions / Types
 * [ ] variadic function
 * [ ] Computed fields
-* [ ] More types: Multirange, Domain
+* [ ] Domains in RPC arguments and return types (querybuilder.go, the function return and OUT argument resolution); output needs nothing, PostgreSQL reports the base type on the wire
 * [ ] $ in table/column names
 
 ## Infrastructure

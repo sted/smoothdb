@@ -8,6 +8,7 @@ type Type struct {
 	Schema        string   `json:"schema"`
 	IsArray       bool     `json:"isarray"`
 	IsRange       bool     `json:"isrange"`
+	IsMultirange  bool     `json:"ismultirange"`
 	IsComposite   bool     `json:"iscomposite"`
 	IsTable       bool     `json:"istable"`
 	IsEnum        bool     `json:"isenum"`
@@ -19,13 +20,17 @@ type Type struct {
 	SubTypeNames  []string `json:"subtypenames"`
 }
 
+// A range and a multirange are told apart by typtype ('r' and 'm'): both are
+// category 'R', but only the range has a pg_range row of its own, and so a
+// subtype (the multirange is in that row as rngmultitypid).
 const typesQuery = `
 	SELECT
 	t.oid::int4 oid,
 	t.typname name,
 	n.nspname schema,
 	(t.typcategory = 'A') AS isarray,
-	(t.typcategory = 'R') AS isrange,
+	(t.typtype = 'r') AS isrange,
+	(t.typtype = 'm') AS ismultirange,
 	((t.typcategory = 'C' AND COALESCE(c.relkind = 'c', false)) OR 
 	(t.typtype = 'd' AND COALESCE(base_type.typcategory = 'C' AND base_c.relkind = 'c', false))) AS iscomposite,
 	((t.typcategory = 'C' AND COALESCE(c.relkind IN ('r','v','p'), false)) OR
@@ -59,7 +64,7 @@ func GetTypes(ctx context.Context) ([]Type, error) {
 	typ := Type{}
 	for rows.Next() {
 		err := rows.Scan(&typ.Id, &typ.Name, &typ.Schema,
-			&typ.IsArray, &typ.IsRange, &typ.IsComposite, &typ.IsTable, &typ.IsEnum, &typ.IsDomain,
+			&typ.IsArray, &typ.IsRange, &typ.IsMultirange, &typ.IsComposite, &typ.IsTable, &typ.IsEnum, &typ.IsDomain,
 			&typ.ArraySubType, &typ.RangeSubType, &typ.DomainSubType,
 			&typ.SubTypeIds, &typ.SubTypeNames)
 		if err != nil {

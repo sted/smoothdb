@@ -462,7 +462,7 @@ func TestSerializeTextFormat(t *testing.T) {
 		boxArrOID:  {Id: boxArrOID, Name: "_box", IsArray: true, ArraySubType: pgtype.BoxOID},
 		unknownOID: {Id: unknownOID, Name: "mystery"},
 		rangeOID:   {Id: rangeOID, Name: "daterange", IsRange: true, RangeSubType: &dateOID},
-		multiOID:   {Id: multiOID, Name: "int4multirange"},
+		multiOID:   {Id: multiOID, Name: "int4multirange", IsMultirange: true},
 	}}
 	cases := []struct {
 		name string
@@ -772,7 +772,7 @@ func TestSerializeMultirange(t *testing.T) {
 		}
 		for _, name := range []string{"int4range", "textrange"} {
 			ct, ok := byName[name]
-			if !ok || !ct.IsRange || ct.RangeSubType == nil {
+			if !ok || !ct.IsRange || ct.RangeSubType == nil || ct.IsMultirange {
 				t.Errorf("%s: expected a range with a subtype, got %+v", name, ct)
 			}
 		}
@@ -782,6 +782,8 @@ func TestSerializeMultirange(t *testing.T) {
 				t.Errorf("%s: not in the schema cache", name)
 			} else if ct.IsRange {
 				t.Errorf("%s: classified as a range, subtype %v", name, ct.RangeSubType)
+			} else if !ct.IsMultirange {
+				t.Errorf("%s: not classified as a multirange", name)
 			}
 		}
 		for _, ct := range info.cachedTypes {
