@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,7 +44,11 @@ type Test struct {
 	// ported PostgREST tests expect exactly that (writes default to
 	// `Prefer: return=minimal`), and encoding it as `Expected: ""` silently
 	// degraded those tests to status-only checks.
-	ExpectedEmpty   bool
+	ExpectedEmpty bool
+	// ExpectedBase64 says that Expected is the base64 encoding of a binary
+	// body (an application/octet-stream download): the body is compared to
+	// its decoding, byte by byte.
+	ExpectedBase64  bool
 	ExpectedHeaders map[string]string
 	Status          int
 }
@@ -150,7 +155,20 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				break
 			}
 		} else if test.Expected != "" {
-			if v, ok := test.Headers["Accept"]; ok && strings.Contains(v[0], "text/csv") {
+			accept := ""
+			if v, ok := test.Headers["Accept"]; ok {
+				accept = v[0]
+			}
+			if test.ExpectedBase64 {
+				want, err := base64.StdEncoding.DecodeString(test.Expected)
+				if err != nil {
+					t.Fatalf("%d. %v: ExpectedBase64 is not base64: %v", i, test.Description, err)
+				}
+				s1 = string(want)
+				s2 = string(body)
+			} else if strings.Contains(accept, "text/csv") || strings.Contains(accept, "application/octet-stream") {
+				// not JSON: compared as they are (decoding both as JSON made
+				// every non-JSON pair equal, null against null)
 				s1 = test.Expected
 				s2 = string(body)
 			} else {

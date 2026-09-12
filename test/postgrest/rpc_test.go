@@ -1802,10 +1802,11 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         }
 		{
 			Description:     "binary output: Proc that returns scalar can query without selecting column",
-			Method:          "GET", // @@ POST -> GET
+			Method:          "GET", // @@ POST -> GET; ret_image returns the bytea itself (the spec's ret_base64_bin its base64), hence ExpectedBase64
 			Query:           "/rpc/ret_image",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			ExpectedBase64:  true,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
 			Status:          200,
 		},
