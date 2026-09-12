@@ -378,6 +378,15 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
+		// @@ added: the upstream cases only filter on the range column, never
+		// select it; a range is returned as the string to_json prints for it
+		{
+			Description: "can return a range column",
+			Query:       "/ranges?select=id,range&order=id",
+			Expected:    `[{"id":1,"range":"[1,3]"},{"id":2,"range":"[3,6]"},{"id":3,"range":"[6,9]"},{"id":4,"range":"[9,12]"},{"id":5,"range":null}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 
 		// ARRAYS
 

@@ -175,15 +175,14 @@ func TestSerializeSurfacesDecoderError(t *testing.T) {
 	}
 }
 
-// A range on the wire is a flag byte followed only by the bounds that exist:
-// 'empty' and '(,)' carry no bound at all, a half-unbounded range carries just
-// the one. The serializer must read the bounds the flags announce and nothing
-// more, and print what PostgreSQL's to_json prints for the same value (the
-// server canonicalizes int4range/int8range to the [) form). The bounded rows
-// are the positive controls: they already serialize, so a failure there is a
-// broken probe, not the defect. Integer and numeric subtypes are used because
-// their bounds are printed bare, so the text is valid JSON independently of
-// how the bounds are quoted.
+// 'empty', '[10,)', '(,10)' and '(,)' used to crash the binary range decoder,
+// which read both bounds unconditionally; a range now arrives in text
+// (textFormatOnlyTypes) and every shape must print what PostgreSQL's to_json
+// prints for the same value (the server canonicalizes int4range/int8range to
+// the [) form). The bounded rows are the positive controls: they already
+// serialized, so a failure there is a broken probe, not the defect. Integer
+// and numeric subtypes are used because their bounds are printed bare, so the
+// text is valid JSON independently of how the bounds are quoted.
 func TestSerializeRangeBounds(t *testing.T) {
 	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
 	if err != nil {
@@ -230,9 +229,7 @@ func TestSerializeRangeBounds(t *testing.T) {
 		{5, "(,10)", `[{"r4":"(,10)","r8":"(,10)","rn":"(,10)"}]`, "r4,r8,rn\n\"(,10)\",\"(,10)\",\"(,10)\""},
 		{6, "(,)", `[{"r4":"(,)","r8":"(,)","rn":"(,)"}]`, "r4,r8,rn\n\"(,)\",\"(,)\",\"(,)\""},
 		// PostgreSQL's record text (what PostgREST returns as CSV) leaves
-		// 'empty' unquoted, having no separator in it; the CSV value is
-		// compared without its optional quotes so that this test pins the
-		// bound reading, not the quoting of the range.
+		// 'empty' unquoted, having no separator in it.
 		{7, "empty", `[{"r4":"empty","r8":"empty","rn":"empty"}]`, "r4,r8,rn\nempty,empty,empty"},
 	}
 	for _, c := range cases {
@@ -264,14 +261,10 @@ func TestSerializeRangeBounds(t *testing.T) {
 			}
 			out, _, err = (&CSVSerializer{}).Serialize(rows, false, false, info)
 			rows.Close()
-			got := string(out)
-			if c.in == "empty" {
-				got = strings.ReplaceAll(got, `"`, "")
-			}
 			if err != nil {
 				t.Errorf("CSV: unexpected error: %v", err)
-			} else if got != c.csv {
-				t.Errorf("CSV: expected %q, got %q", c.csv, got)
+			} else if string(out) != c.csv {
+				t.Errorf("CSV: expected %q, got %q", c.csv, out)
 			}
 		})
 	}
@@ -456,7 +449,9 @@ func TestSerializeTextFormat(t *testing.T) {
 		int4ArrOID = pgtype.Int4ArrayOID
 		boxArrOID  = pgtype.BoxArrayOID
 		unknownOID = 900005
+		rangeOID   = pgtype.DaterangeOID
 	)
+	dateOID := uint32(pgtype.DateOID)
 	info := &SchemaInfo{cachedTypes: map[uint32]Type{
 		enumOID:    {Id: enumOID, Name: "mood", IsEnum: true},
 		enumArrOID: {Id: enumArrOID, Name: "_mood", IsArray: true, ArraySubType: enumOID},
@@ -465,6 +460,7 @@ func TestSerializeTextFormat(t *testing.T) {
 		int4ArrOID: {Id: int4ArrOID, Name: "_int4", IsArray: true, ArraySubType: pgtype.Int4OID},
 		boxArrOID:  {Id: boxArrOID, Name: "_box", IsArray: true, ArraySubType: pgtype.BoxOID},
 		unknownOID: {Id: unknownOID, Name: "mystery"},
+		rangeOID:   {Id: rangeOID, Name: "daterange", IsRange: true, RangeSubType: &dateOID},
 	}}
 	cases := []struct {
 		name string
@@ -482,6 +478,9 @@ func TestSerializeTextFormat(t *testing.T) {
 		{"NaN", pgtype.Float8OID, `NaN`, `"NaN"`},
 		{"-Infinity", pgtype.NumericOID, `-Infinity`, `"-Infinity"`},
 		{"enum", enumOID, `a b`, `"a b"`},
+		// a range is one JSON string, range_out's quotes escaped
+		{"range", pgtype.DaterangeOID, `[2024-01-01,2024-06-01)`, `"[2024-01-01,2024-06-01)"`},
+		{"range with quoted bounds", pgtype.TsrangeOID, `["2024-01-01 10:00:00","2024-06-01 12:00:00")`, `"[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")"`},
 		{"empty array", enumArrOID, `{}`, `[]`},
 		{"array", enumArrOID, `{sad,"a b","c\"d","e\\f","NULL",NULL,"{x}"}`, `["sad","a b","c\"d","e\\f","NULL",null,"{x}"]`},
 		{"int array with dimension prefix", int4ArrOID, `[0:1]={1,2}`, `[1,2]`},
@@ -521,9 +520,11 @@ func TestSerializeTextFormat(t *testing.T) {
 
 	// A binary value of a type the serializer has no decoder for must be a
 	// SerializeError naming the type, never a copy-through as if it were text.
-	// The text-format case above is the positive control for the same OID.
+	// The text-format case above is the positive control for the same OID. A
+	// range is one of them: it has no binary decoder, since only PostgreSQL
+	// prints its bounds as range_out does, and arrives in text.
 	t.Run("unknown binary type fails loudly", func(t *testing.T) {
-		for _, oid := range []uint32{unknownOID, pgtype.RecordOID} {
+		for _, oid := range []uint32{unknownOID, pgtype.RecordOID, rangeOID} {
 			cr := &CustomRows{
 				FieldDescriptions_: []pgconn.FieldDescription{{Name: "x", DataTypeOID: oid, Format: pgtype.BinaryFormatCode}},
 				RawValues_:         [][][]byte{{{0x00, 0x00, 0x00, 0x01}}},
@@ -542,4 +543,147 @@ func TestSerializeTextFormat(t *testing.T) {
 			}
 		}
 	})
+}
+
+// A range prints as PostgreSQL's range_out text, which to_json (and so
+// PostgREST) returns as one JSON string: a bound is quoted only when its text
+// contains a bracket, a parenthesis, a comma, a quote, a backslash or
+// whitespace, or is empty, and a quote inside it is doubled. int4range,
+// int8range and numrange print their bounds bare, so they were valid JSON by
+// luck and are the positive controls here; a daterange is unquoted too but
+// was emitted with quoted bounds, and tsrange, tstzrange and a range over
+// text carry quotes that must be escaped in the JSON string, at the top level
+// and inside arrays and composites alike. The oracle is row_to_json, as in
+// TestSerializeWireFormats, on the creating connection (pgx knows no custom
+// type) and on a fresh one after a schema cache reload, where the composites
+// are registered: one of them pairs the custom range, which pgx does not
+// know, with an int, and must still come out as PostgreSQL prints it.
+func TestSerializeRangeQuoting(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "test_range_quoting")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_range_quoting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gi := GetSmoothContext(ctx)
+
+	ddl := []string{
+		`create type textrange as range (subtype = text)`,
+		`create type period as (n int, days daterange, span tsrange)`,
+		`create type labelled as (label textrange, nested period)`,
+		// a custom range, unknown to pgx, next to a field it decodes in binary
+		`create type tagged as (n int, label textrange)`,
+		`create table ranges (
+			id int primary key,
+			n int, r4 int4range, r8 int8range, rn numrange,
+			rd daterange, rts tsrange, rtz tstzrange, rt textrange,
+			rd_arr daterange[], rts_arr tsrange[], rt_arr textrange[],
+			pd period, pd_arr period[], lb labelled, tg tagged
+		)`,
+		`insert into ranges values (
+			1,
+			42, '[1,10)', '[1,10]', '[1.5,2.5]',
+			'[2024-01-01,2024-06-01)', '[2024-01-01 10:00:00,2024-06-01 12:00:00)', '[2024-01-01 10:00:00+00,)', '["a,b","c\"d"]',
+			'{"[2024-01-01,2024-06-01)","[2024-02-01,)"}', '{"[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")",NULL}', '{"[\"a,b\",\"c\\\"d\"]"}',
+			'(1,"[2024-01-01,2024-06-01)","[""2024-01-01 10:00:00"",""2024-06-01 12:00:00"")")',
+			'{"(2,\"[2024-02-01,)\",empty)"}',
+			'("[""a,b"",""c""""d""]","(3,\"[2024-03-01,2024-04-01)\",\"[\"\"2024-03-01 00:00:00\"\",)\")")',
+			'(7,"[""a,b"",""c""""d""]")'
+		)`,
+		`insert into ranges (id) values (2)`,
+		// the shapes with no bound to quote, an empty-string bound, and a
+		// bound with a fractional second
+		`insert into ranges (id, rd, rts, rtz, rt, rd_arr, pd, tg) values (
+			3, 'empty', '(,"2024-06-01 12:00:00.5")', '(,)', '["",z]', '{}', '(,,)', '(,)'
+		)`,
+	}
+	for _, q := range ddl {
+		if _, err := gi.Conn.Exec(ctx, q); err != nil {
+			t.Fatalf("%v\n%s", err, q)
+		}
+	}
+	if err := db.ReloadSchemaCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	projections := []struct{ name, columns string }{
+		{"controls", "id, n, r4, r8, rn"},
+		{"quoted subtypes", "rd, rts, rtz, rt"},
+		{"arrays", "rd_arr, rts_arr, rt_arr"},
+		{"composites", "pd, pd_arr, lb, tg"},
+		{"whole row", "*"},
+	}
+	expected := map[string]string{}
+	for _, pr := range projections {
+		for _, id := range []int{1, 2, 3} {
+			var row string
+			q := fmt.Sprintf("select row_to_json(t)::text from (select %s from ranges where id = %d) t", pr.columns, id)
+			if err := gi.Conn.QueryRow(ctx, q).Scan(&row); err != nil {
+				t.Fatal(err)
+			}
+			expected[fmt.Sprintf("%s/row%d", pr.name, id)] = "[" + row + "]"
+		}
+	}
+
+	check := func(t *testing.T, ctx context.Context) {
+		gi := GetSmoothContext(ctx)
+		info := gi.Db.info.Load()
+		for _, pr := range projections {
+			for _, id := range []int{1, 2, 3} {
+				name := fmt.Sprintf("%s/row%d", pr.name, id)
+				t.Run(name, func(t *testing.T) {
+					rows, err := gi.Conn.Query(ctx, fmt.Sprintf("select %s from ranges where id = %d", pr.columns, id))
+					if err != nil {
+						t.Fatal(err)
+					}
+					out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+					rows.Close()
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if got := unescapeHTML(string(out)); got != expected[name] {
+						t.Errorf("expected %s\n     got %s", expected[name], got)
+					}
+				})
+			}
+		}
+		// The CSV value is PostgreSQL's text for the range, quoted for its
+		// commas and quotes as PostgREST's CSV (the record text) quotes it.
+		t.Run("csv", func(t *testing.T) {
+			rows, err := gi.Conn.Query(ctx, "select rd, rts, rt, rn from ranges where id = 1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err := (&CSVSerializer{}).Serialize(rows, false, false, info)
+			rows.Close()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			want := "rd,rts,rt,rn\n" +
+				`"[2024-01-01,2024-06-01)","[""2024-01-01 10:00:00"",""2024-06-01 12:00:00"")","[""a,b"",""c""""d""]","[1.5,2.5]"`
+			if string(out) != want {
+				t.Errorf("expected %q\n     got %q", want, out)
+			}
+		})
+	}
+
+	t.Run("types unknown to the connection", func(t *testing.T) { check(t, ctx) })
+	ReleaseConn(ctx, conn)
+
+	db.pool.Reset()
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	t.Run("composites registered", func(t *testing.T) { check(t, ctx) })
 }

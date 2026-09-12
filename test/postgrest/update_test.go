@@ -628,6 +628,18 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[{ "bit": "00000", "char": "zzzyy" }]`,
 			Status:      200,
 		},
+		// @@ added: no upstream case selects a range column whose bounds
+		// PostgreSQL quotes (contract.time is a tsrange); the body is the
+		// range_out text as to_json prints it, with the quotes escaped
+		{
+			Description: "should return a tsrange column with its quoted bounds escaped",
+			Method:      "PATCH",
+			Query:       "/contract?id=eq.1&select=tournament,time",
+			Body:        `{"time": "[2024-01-01 10:00:00,2024-06-01 12:00:00)"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "tournament": "tournament_1", "time": "[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")" }]`,
+			Status:      200,
+		},
 		//   context "tables with self reference foreign keys" $ do
 		//     it "embeds children after update" $
 		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name)"
