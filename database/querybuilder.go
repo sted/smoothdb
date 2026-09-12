@@ -1135,11 +1135,12 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 			break
 		}
 	}
-	// via's min-depth dedup emits SELECT DISTINCT, whose ORDER BY columns must all appear in
-	// the select list. If the caller orders by __depth without selecting it we surface __depth
-	// in the projection (below) and route through the dedup wrapper — otherwise Postgres 500s
-	// with "ORDER BY expressions must appear in select list". Single-table mode uses a plain
-	// SELECT and can already order by an unselected __depth, so it needs no such handling.
+	// via's min-depth dedup wraps the walk in a DISTINCT ON subquery, and a user ORDER BY
+	// runs on that wrapper, so it can only see the wrapper's select list. If the caller
+	// orders by __depth without selecting it we surface __depth in the projection (below) —
+	// otherwise Postgres fails with "column __dedup.__depth does not exist". Single-table
+	// mode uses a plain SELECT and can already order by an unselected __depth, so it needs
+	// no such handling.
 	depthOrdered := false
 	for _, of := range parts.orderFields {
 		if of.field.name == "__depth" {
@@ -1148,9 +1149,6 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		}
 	}
 	exposeDepth := rec.ViaTable != "" && depthOrdered && !depthSelected
-	if exposeDepth {
-		depthSelected = true
-	}
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
 	if dbe != nil && dbe.config.MaxRecursiveDepth > 0 {
@@ -1308,8 +1306,8 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// ordered by an unselected __depth (or `select=*`, whose enumeration otherwise excludes
 	// __depth) returns it as an extra column. Single-table mode uses a plain SELECT that can
 	// order by an unselected column without surfacing it, so the two modes are asymmetric
-	// here. The leak is the price of routing via through the min-depth dedup wrapper, which
-	// requires every ORDER BY column to be in the DISTINCT select list.
+	// here. The leak is the price of routing via through the min-depth dedup wrapper, whose
+	// outer ORDER BY can only reference the wrapper's select list.
 	if exposeDepth && sel != cteName+".*" {
 		sel += ", " + ctePrefix + quote("__depth")
 	}
@@ -1343,35 +1341,32 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		outerWhere += resultWhere
 	}
 
-	if depthSelected && rec.ViaTable != "" {
-		// via min-depth dedup: SELECT DISTINCT ON (node) ... ORDER BY node, __depth
-		// reports the shallowest depth per node. Single-table trees skip this — they
-		// can't reach a node at two depths (the __path guard keeps edges unique), so a
-		// plain SELECT below is fine. The wrapper also isolates min-depth selection from
-		// any user ORDER BY appended below.
+	if rec.ViaTable != "" {
+		// via node dedup: SELECT DISTINCT ON (node) ... ORDER BY node, __depth keeps one
+		// row per node reachable by multiple paths, at its shallowest depth. Keying on the
+		// node needs an equality operator on the start field only — DISTINCT over the whole
+		// row would fail on json, xml or point columns, which have none. Single-table trees
+		// skip this — they can't reach a node at two depths (the __path guard keeps edges
+		// unique), so a plain SELECT below is fine. The wrapper also isolates min-depth
+		// selection from any user ORDER BY appended below.
 		q.WriteString("SELECT * FROM (SELECT DISTINCT ON (" + ctePrefix + startField + ") " + sel + " FROM " + cteName)
 		if outerWhere != "" {
 			q.WriteString(" WHERE " + outerWhere)
 		}
 		q.WriteString(" ORDER BY " + ctePrefix + startField + ", " + cteName + ".__depth) \"__dedup\"")
 	} else {
-		// In via mode, DISTINCT deduplicates nodes reachable by multiple paths.
-		selectKeyword := "SELECT "
-		if rec.ViaTable != "" {
-			selectKeyword = "SELECT DISTINCT "
-		}
-		q.WriteString(selectKeyword + sel + " FROM " + cteName + joinsClause)
+		q.WriteString("SELECT " + sel + " FROM " + cteName + joinsClause)
 		if outerWhere != "" {
 			q.WriteString(" WHERE " + outerWhere)
 		}
 	}
 
 	if orderClause != "" {
-		// When the min-depth dedup wrapper is in play the outer query selects from the
-		// "__dedup" subquery, so a user ORDER BY must target that alias (and the column
-		// must be in the select list); otherwise it references the CTE directly.
+		// In via mode the outer query selects from the "__dedup" wrapper, so a user
+		// ORDER BY must target that alias (and the column must be in the select list);
+		// otherwise it references the CTE directly.
 		orderPrefix := ctePrefix
-		if depthSelected && rec.ViaTable != "" {
+		if rec.ViaTable != "" {
 			orderPrefix = quote("__dedup") + "."
 		}
 		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, orderPrefix)
