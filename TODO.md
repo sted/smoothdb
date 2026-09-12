@@ -1,8 +1,6 @@
 # TODO
 
 ## Bugs
-* [ ] Fix: dots in filter values without quoting (e.g. eq.autoexec.bat)
-* [ ] Fix: empty value after operator (eq. for empty string search)
 * [ ] Fix: embedded filter on non-selected resource should return 400
 * [ ] Fix: PATCH on non-existent table returns 500 instead of 404
 * [ ] Fix: RPC with FTS language operator (fts(english)) type cast

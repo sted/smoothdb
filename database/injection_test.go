@@ -7,8 +7,9 @@ import (
 
 // These are regression tests for SQL-injection sinks where user-controlled
 // tokens were interpolated into SQL text with bare quotes instead of being
-// escaped/parameterized. The request parser lets a client smuggle a literal
-// ' or " (and even separators) into a token via a backslash escape, so every
+// escaped/parameterized. The request parser lets a client put a literal ' or
+// " into a token (a quote that does not start a token is an ordinary
+// character) and even separators (inside a quoted token), so every
 // interpolation site must quote/escape its input.
 //
 // Each case asserts the SAFE (properly escaped) SQL: the doubled quote is the
@@ -34,8 +35,8 @@ func buildFromQuery(t *testing.T, query string) (string, []any) {
 // Finding 4: the select alias (AS "...") was built with raw quotes, so a "
 // smuggled into the label broke out of the identifier into the SELECT list.
 func TestInjectionSelectAliasQuoting(t *testing.T) {
-	// label token becomes: x"    (the \" is an escaped literal double-quote)
-	sql, _ := buildFromQuery(t, `?select=x\":a`)
+	// label token becomes: x"    (a quote inside a token is literal)
+	sql, _ := buildFromQuery(t, `?select=x":a`)
 	want := `SELECT "table"."a" AS "x""" FROM "table"`
 	if sql != want {
 		t.Errorf("alias not escaped\n want: %s\n  got: %s", want, sql)
@@ -46,7 +47,7 @@ func TestInjectionSelectAliasQuoting(t *testing.T) {
 // smuggled into a path member broke out of the string literal.
 func TestInjectionJSONPathQuoting(t *testing.T) {
 	// path member token becomes: x'y
-	sql, _ := buildFromQuery(t, `?select=data->>x\'y`)
+	sql, _ := buildFromQuery(t, `?select=data->>x'y`)
 	want := `SELECT ("table"."data"->>'x''y') AS "x'y" FROM "table"`
 	if sql != want {
 		t.Errorf("json path member not escaped\n want: %s\n  got: %s", want, sql)
@@ -57,7 +58,7 @@ func TestInjectionJSONPathQuoting(t *testing.T) {
 // single quotes, so a ' in the fts(config) argument broke out of the literal.
 func TestInjectionFTSConfigQuoting(t *testing.T) {
 	// fts config token becomes: en'x
-	sql, values := buildFromQuery(t, `?body=fts(en\'x).cat`)
+	sql, values := buildFromQuery(t, `?body=fts(en'x).cat`)
 	want := `SELECT * FROM "table" WHERE "table"."body" @@ to_tsquery('en''x', $1)`
 	if sql != want {
 		t.Errorf("fts config not escaped\n want: %s\n  got: %s", want, sql)

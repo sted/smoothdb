@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Filter values with dots, commas and quotes** — a filter value was cut at the second dot, or at the first comma, colon, parenthesis or quote, and the query ran on what was left: `?ver=eq.1.2.3` filtered on `1.2`, `?mail=eq.a.b@c.com` on `a.b@c`, `?name=eq.a,b` on `a`, `?name=eq.O'Brien` on `O`, answering 200 with the wrong rows. As in PostgREST, a top-level value now runs to the end of the query parameter; inside `in.()`, `any`/`all` lists and `and`/`or` trees it ends at the next separator unless quoted, and a quote is a quote only at the start of a value and when followed by a separator, otherwise it is an ordinary character (`in.(")` and `in.(Double"Quote"McGraw")` are the literal values, as in the PostgREST spec); a backslash escapes only inside quotes. `?col=eq.` (empty value) now matches the empty string, `?col=eq` without the delimiter is a 400 instead of a recovered panic, and the operand of `is` is checked whole (`is.null.x` is refused). Quoting a top-level value (`eq."a,b"`) keeps working: a smoothdb leniency, PostgREST takes those quotes literally.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
