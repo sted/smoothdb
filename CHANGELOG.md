@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Generated columns** — a `GENERATED ALWAYS AS … STORED` column (or `VIRTUAL`, the default kind on PostgreSQL 18) was introspected as an ordinary one, and writing it was answered with a 500. The ordinary way in is a `select=*` or CSV export posted back, which any import or seeding workflow does. `pg_attribute.attgenerated` is now read with the columns, so `$info` and the admin column listing report such a column with `"generated": "stored"` (or `"virtual"`), `"readonly": true` and no default, and a client can build a form or a code generator without discovering it by trial. The write itself is handled as PostgREST does: the column is not dropped from the statement, PostgreSQL refuses it and the refusal (`428C9`) is a 400 carrying PostgreSQL's message.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
