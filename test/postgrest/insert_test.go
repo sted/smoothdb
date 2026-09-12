@@ -135,16 +135,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			 { matchStatus  = 400
 		// 			 , matchHeaders = [matchContentTypeJson]
 		// 			 }
-		// @@ we accept this for now (so 201 status instead of 400)
-		// {
-		// 	Description: "rejects json array that has objects with different keys",
-		// 	Method:      "POST",
-		// 	Query:       "/articles",
-		// 	Body:        `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
-		// 	Headers:     nil,
-		// 	Expected:    ``,
-		// 	Status:      400,
-		// },
+		{
+			Description: "rejects json array that has objects with different keys",
+			Method:      "POST",
+			Query:       "/articles",
+			Body:        `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
 		// 	context "requesting full representation" $ do
 		// 	  it "includes related data after insert" $
 		// 		request methodPost "/projects?select=id,name,clients(id,name)"
