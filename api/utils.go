@@ -59,31 +59,13 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	var dberr *pgconn.PgError
 	if errors.As(err, &dberr) {
-		switch dberr.Code {
-		case "42501":
-			status = http.StatusUnauthorized
-		case "42P01", // undefined_table
-			"42883": // undefined_function
-			status = http.StatusNotFound
-		case "42P04", // duplicate database
-			"42P06", // duplicate schema
-			"42P07", // duplicate table
-			"23505", // unique constraint violation
-			"42710": // duplicated role
-			status = http.StatusConflict
-		case "22P02", // invalid_text_representation
-			"42703", // undefined_column
-			"428C9": // generated_always
-			status = http.StatusBadRequest
-		case "25006": // read_only_sql_transaction: a write reached by a GET/HEAD, or by a STABLE/IMMUTABLE function
-			// PostgREST maps it to 405 (Error.hs mapSQLtoHTTP) without an Allow
-			// header; RFC 9110 requires one, and POST is the method every resource
-			// that can raise this accepts (functions are called with it, tables
-			// and views are inserted into with it).
-			status = http.StatusMethodNotAllowed
+		status = pgErrorStatus(dberr)
+		if status == http.StatusMethodNotAllowed {
+			// 25006 read_only_sql_transaction: a write reached by a GET/HEAD, or
+			// by a STABLE/IMMUTABLE function. PostgREST answers 405 without an
+			// Allow header; RFC 9110 requires one, and POST is the method every
+			// resource that can raise this accepts.
 			w.Header().Set("Allow", "POST")
-		default:
-			status = http.StatusInternalServerError
 		}
 		smoothErr := SmoothError{
 			Subsystem: "database",
