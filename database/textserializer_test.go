@@ -1011,3 +1011,27 @@ func TestSerializeTextShapes(t *testing.T) {
 	defer ReleaseConn(ctx, conn)
 	t.Run("composites registered", func(t *testing.T) { check(t, ctx) })
 }
+
+func TestIsoDateStyle(t *testing.T) {
+	tests := []struct {
+		params map[string]string
+		want   string
+	}{
+		{map[string]string{}, "ISO"},
+		{map[string]string{"DateStyle": "ISO"}, "ISO"},
+		{map[string]string{"datestyle": "SQL, DMY"}, "ISO, DMY"},
+		{map[string]string{"DateStyle": "German"}, "ISO"},
+		{map[string]string{"DATESTYLE": "ymd,postgres"}, "ISO, YMD"},
+	}
+	for _, test := range tests {
+		got := isoDateStyle(test.params)
+		if got != test.want {
+			t.Errorf("%v: expected %q, got %q", test.params, test.want, got)
+		}
+		for key := range test.params {
+			if strings.EqualFold(key, "datestyle") {
+				t.Errorf("%v: the old key %q is still there", test.params, key)
+			}
+		}
+	}
+}

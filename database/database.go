@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
@@ -86,6 +87,30 @@ var textFormatOnlyTypes = []uint32{
 	pgtype.TstzmultirangeOID, pgtype.TstzmultirangeArrayOID,
 }
 
+// isoDateStyle returns the DateStyle to ask the server for: ISO output, plus
+// the field order (MDY, DMY, YMD) of a DateStyle already in the connection
+// parameters (from the URL), whatever the case of its key. The other keys
+// spelling it are dropped, so one value reaches the server.
+func isoDateStyle(params map[string]string) string {
+	order := ""
+	for key, value := range params {
+		if !strings.EqualFold(key, "datestyle") {
+			continue
+		}
+		for _, part := range strings.Split(value, ",") {
+			switch p := strings.ToUpper(strings.TrimSpace(part)); p {
+			case "MDY", "DMY", "YMD":
+				order = p
+			}
+		}
+		delete(params, key)
+	}
+	if order == "" {
+		return "ISO"
+	}
+	return "ISO, " + order
+}
+
 type Database struct {
 	DatabaseInfo
 	activation    chan struct{}
@@ -124,9 +149,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	if config.ConnConfig.RuntimeParams == nil {
 		config.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	if _, ok := config.ConnConfig.RuntimeParams["DateStyle"]; !ok {
-		config.ConnConfig.RuntimeParams["DateStyle"] = "ISO"
-	}
+	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
