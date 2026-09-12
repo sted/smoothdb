@@ -30,7 +30,7 @@
 * [ ] location header
 * [ ] return=headers-only
 * [ ] PUT for upsert
-* [ ] Reject JSON arrays with mismatched object keys on bulk insert
+* [x] Reject JSON arrays with mismatched object keys on bulk insert
 * [ ] prefer single-object (now just unnamed functions)
 * [ ] Generate OpenAPI
 * [ ] OPTIONS support

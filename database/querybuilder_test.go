@@ -683,3 +683,93 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 		}
 	})
 }
+
+// TestBuildInsertKeys guards the column list of a bulk INSERT. Without
+// ?columns= it is the key set shared by every object, so an array whose objects
+// differ is refused ("All object keys must match", as PostgREST) instead of
+// being built from the first object alone, which dropped the keys the others
+// added. With ?columns= it is exactly the listed set for every row: an absent
+// key is a NULL parameter, a key not listed is ignored. Columns are emitted in
+// alphabetical order so the SQL text is stable across runs.
+func TestBuildInsertKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		records []Record
+		wantSQL string
+		wantVal []any
+		wantErr string
+	}{
+		{
+			name:    "key present only in a later object",
+			records: []Record{{"id": 1}, {"id": 2, "body": "y"}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "key missing from a later object",
+			records: []Record{{"id": 1, "body": "x"}, {"id": 2}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "a null-valued key is still a key",
+			records: []Record{{"id": 1, "body": nil}, {"id": 2}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "an empty object among non-empty ones",
+			records: []Record{{}, {"id": 1}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "same keys in a different order",
+			records: []Record{{"id": 1, "body": "x"}, {"body": "y", "id": 2}},
+			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
+			wantVal: []any{"x", 1, "y", 2},
+		},
+		{
+			name:    "?columns= inserts the listed columns for every row",
+			query:   "?columns=id,body",
+			records: []Record{{"id": 1}, {"id": 2, "body": "y", "extra": true}},
+			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
+			wantVal: []any{nil, 1, "y", 2},
+		},
+		{
+			name:    "?columns= ignores the keys not listed",
+			query:   "?columns=id",
+			records: []Record{{"id": 1, "body": "x"}, {"id": 2}},
+			wantSQL: `INSERT INTO "t" ("id") VALUES ($1), ($2)`,
+			wantVal: []any{1, 2},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u, err := url.Parse(test.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts, err := PostgRestParser{}.parse("t", u.Query())
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+			q, v, err := CommonBuilder{}.BuildInsert("t", test.records, parts, &QueryOptions{}, nil)
+			if test.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil (SQL: %s)", test.wantErr, q)
+				}
+				if _, ok := err.(*BuildError); !ok || err.Error() != test.wantErr {
+					t.Fatalf("expected *BuildError %q, got %T %q", test.wantErr, err, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildInsert error: %v", err)
+			}
+			if q != test.wantSQL {
+				t.Errorf("SQL\n  want: %s\n  got:  %s", test.wantSQL, q)
+			}
+			if !compareValues(v, test.wantVal) {
+				t.Errorf("values\n  want: %v\n  got:  %v", test.wantVal, v)
+			}
+		})
+	}
+}

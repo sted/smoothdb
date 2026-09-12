@@ -899,6 +899,19 @@ func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Funct
 	return append(keys, extra...)
 }
 
+// sameKeys reports whether two records have the same set of keys.
+func sameKeys(a, b Record) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 type CommonBuilder struct{}
 
 func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
@@ -911,20 +924,30 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	// if len(records) == 0 {
 	// 	return "", nil, fmt.Errorf("no records to insert")
 	// }
-	var n int
-	for key := range records[0] {
-		// check if there are specified columns
-		if len(parts.columnFields) > 0 {
-			if _, ok := parts.columnFields[key]; !ok {
-				continue
+	// The column list. With ?columns= it is exactly the listed set, for every
+	// row: a key absent from an object is inserted as NULL, a key not listed is
+	// ignored (PostgREST passes such a body to json_to_recordset untouched).
+	// Otherwise it is the key set of the first object, which every other object
+	// must share: taking it from the first object alone silently dropped the
+	// keys the others added, so a non-uniform array is refused as PostgREST does.
+	if len(parts.columnFields) > 0 {
+		fieldList = lo.Keys(parts.columnFields)
+	} else {
+		for i := 1; i < len(records); i++ {
+			if !sameKeys(records[0], records[i]) {
+				return "", nil, &BuildError{"All object keys must match"}
 			}
 		}
-		n += 1
+		fieldList = lo.Keys(records[0])
+	}
+	// alphabetical, so the SQL text is stable across runs (see orderedRecordKeys)
+	sort.Strings(fieldList)
+	n := len(fieldList)
+	for _, key := range fieldList {
 		if fields != "" {
 			fields += ", "
 		}
 		fields += quote(key)
-		fieldList = append(fieldList, key)
 	}
 	var j int
 	for i, record := range records {

@@ -78,9 +78,12 @@ func TestBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		CreateRecords(ctx, "b1", []Record{
+		_, _, err := CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true, "float4": 3.1},
-			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}}, nil)
+			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false, "float4": nil}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Run("Select1", func(t *testing.T) {
