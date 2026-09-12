@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Bulk insert with mismatched keys** — `POST /t` with `[{"id":1},{"id":2,"body":"y"}]` inserted two rows and discarded `"y"`, answering 201: the column list was taken from the first object, so a key missing there was dropped for every row and a key present only in a later object never reached the INSERT. Like PostgREST, an array whose objects do not share one key set is now refused with a 400 (`All object keys must match`). `?columns=` stays the explicit opt-in and now means what it says: the listed columns are inserted for every row, a key absent from an object as NULL (it used to get the column default, and a listed column absent from the first object was dropped even where later objects carried it), and the keys not listed are ignored. The INSERT column list is also emitted in alphabetical order, so the SQL text is stable across requests.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
