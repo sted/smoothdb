@@ -91,8 +91,8 @@ func TestMultirange(t *testing.T) {
 				 "md": "{[2024-01-01,2024-02-01),[2024-03-01,)}", "mts": "{[2024-01-01 10:00:00,2024-06-01 12:00:00)}",
 				 "mt": "{[\"a,b\",\"c\\\"d\"],[x,y)}",
 				 "m4_arr": "{\"{[1,3)}\",\"{}\",NULL}"},
-				{"id": 2},
-				{"id": 3, "r4": "empty", "m4": "{}", "md": "{}", "mt": "{}", "m4_arr": "{}"}
+				{"id": 2, "r4": null, "m4": null, "mn": null, "md": null, "mts": null, "mt": null, "m4_arr": null},
+				{"id": 3, "r4": "empty", "m4": "{}", "mn": null, "md": "{}", "mts": null, "mt": "{}", "m4_arr": "{}"}
 			]`,
 			Status: 201,
 		},
