@@ -412,16 +412,25 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		// --- Via (multi-table) recursive queries ---
 		{
-			// basic via — base case is start node, edges followed in recursive step
+			// basic via — base case is start node, edges followed in recursive step.
+			// Node dedup is DISTINCT ON (node): DISTINCT over the whole row would need an
+			// equality operator on every column (none for json, xml, point).
 			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive".* FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup"`,
 			[]any{"1", 100},
 		},
 		{
 			// via with edge filter — via values shifted by offset
 			"?id=after.1&id=recurse.3&edge=via(src_id,dst_id)&edge.rel_type=eq.contains",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path) AND "edge"."rel_type" = $1) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path) AND "edge"."rel_type" = $1) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive".* FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup"`,
 			[]any{"contains", "1", 3},
+		},
+		{
+			// via + user order + limit, no __depth: the same DISTINCT ON wrapper, the
+			// ORDER BY targeting the "__dedup" alias and LIMIT applied after it
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,name&order=name.desc&limit=10",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive"."id", "__recursive"."name" FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup" ORDER BY "__dedup"."name" DESC LIMIT $3`,
+			[]any{"1", 100, int64(10)},
 		},
 		// --- __depth selectable + via min-depth dedup ---
 		{
@@ -446,7 +455,7 @@ func TestQueryBuilder(t *testing.T) {
 		{
 			// via!both follows edges in either direction via an OR join predicate
 			"?id=after.1&id=recurse.all&edge=via!both(src_id,dst_id)",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" OR "edge"."src_id" = "table"."id" INNER JOIN "__recursive" ON ("edge"."src_id" = "__recursive"."id" AND "edge"."dst_id" = "table"."id") OR ("edge"."dst_id" = "__recursive"."id" AND "edge"."src_id" = "table"."id") WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" OR "edge"."src_id" = "table"."id" INNER JOIN "__recursive" ON ("edge"."src_id" = "__recursive"."id" AND "edge"."dst_id" = "table"."id") OR ("edge"."dst_id" = "__recursive"."id" AND "edge"."src_id" = "table"."id") WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive".* FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup"`,
 			[]any{"1", 100},
 		},
 	}

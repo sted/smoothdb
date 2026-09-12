@@ -139,6 +139,35 @@ func TestMain(m *testing.M) {
 				]
 			}`,
 		},
+		// Node table carrying columns whose types have NO equality operator (json,
+		// xml, point). A via() walk over it must dedup nodes on the key: any whole-row
+		// DISTINCT (or a UNION) fails with "could not identify an equality operator".
+		{
+			Method: "POST",
+			Query:  "/recursive_test/tables",
+			Body: `{
+				"name": "page",
+				"columns": [
+					{"name": "id", "type": "int4", "notnull": true, "constraints": ["PRIMARY KEY"]},
+					{"name": "title", "type": "text", "notnull": true},
+					{"name": "meta", "type": "json"},
+					{"name": "body", "type": "xml"},
+					{"name": "pos", "type": "point"}
+				]
+			}`,
+		},
+		// Edge table for page — via() takes the column names, no FK needed.
+		{
+			Method: "POST",
+			Query:  "/recursive_test/tables",
+			Body: `{
+				"name": "page_link",
+				"columns": [
+					{"name": "src_id", "type": "int4", "notnull": true},
+					{"name": "dst_id", "type": "int4", "notnull": true}
+				]
+			}`,
+		},
 	}
 	test.Prepare(tableConfig, tableCommands)
 
@@ -223,6 +252,18 @@ func TestMain(m *testing.M) {
 			Method: "POST",
 			Query:  "/doc_rel",
 			Body:   `[{"src_id": 1, "dst_id": 2, "rel_type": "contains"}, {"src_id": 1, "dst_id": 3, "rel_type": "contains"}, {"src_id": 2, "dst_id": 4, "rel_type": "contains"}, {"src_id": 2, "dst_id": 5, "rel_type": "contains"}, {"src_id": 3, "dst_id": 6, "rel_type": "contains"}, {"src_id": 1, "dst_id": 4, "rel_type": "references"}]`,
+		},
+		// Pages: Home(1) -> About(2), Home(1) -> Contact(3), About(2) -> Contact(3).
+		// Contact is reachable by two paths (depth 1 and 2), so it exercises the dedup.
+		{
+			Method: "POST",
+			Query:  "/page",
+			Body:   `[{"id": 1, "title": "Home", "meta": {"k": 1}, "body": "<p>home</p>", "pos": "(1,1)"}, {"id": 2, "title": "About", "meta": {"k": 2}, "body": "<p>about</p>", "pos": "(2,2)"}, {"id": 3, "title": "Contact", "meta": {"k": 3}, "body": "<p>contact</p>", "pos": "(3,3)"}]`,
+		},
+		{
+			Method: "POST",
+			Query:  "/page_link",
+			Body:   `[{"src_id": 1, "dst_id": 2}, {"src_id": 1, "dst_id": 3}, {"src_id": 2, "dst_id": 3}]`,
 		},
 	}
 	test.Prepare(dataConfig, dataCommands)
