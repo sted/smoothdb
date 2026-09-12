@@ -592,6 +592,42 @@ func TestPostgREST_Update(t *testing.T) {
 		// 	Expected: ``,
 		// 	Status:   404, //@@ returns 500
 		// },
+		//     -- https://github.com/PostgREST/postgrest/issues/2861
+		//     context "bit and char columns with length" $ do
+		//       it "should update a bit column with length" $
+		//         request methodPatch "/bitchar_with_length?select=bit,char&char=eq.aaaaa"
+		//             [("Prefer", "return=representation")]
+		//             [json|{"bit": "11100"}|]
+		//           `shouldRespondWith` [json|[{ "bit": "11100", "char": "aaaaa" }]|]
+		//             { matchStatus  = 200
+		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
+		//             }
+		{
+			Description: "bit and char columns with length: should update a bit column with length",
+			Method:      "PATCH",
+			Query:       "/bitchar_with_length?select=bit,char&char=eq.aaaaa",
+			Body:        `{"bit": "11100"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "bit": "11100", "char": "aaaaa" }]`,
+			Status:      200,
+		},
+		//       it "should update a char column with length" $
+		//         request methodPatch "/bitchar_with_length?select=bit,char&bit=eq.00000"
+		//             [("Prefer", "return=representation")]
+		//             [json|{"char": "zzzyy"}|]
+		//           `shouldRespondWith` [json|[{ "bit": "00000", "char": "zzzyy" }]|]
+		//             { matchStatus  = 200
+		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
+		//             }
+		{
+			Description: "bit and char columns with length: should update a char column with length",
+			Method:      "PATCH",
+			Query:       "/bitchar_with_length?select=bit,char&bit=eq.00000",
+			Body:        `{"char": "zzzyy"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "bit": "00000", "char": "zzzyy" }]`,
+			Status:      200,
+		},
 		//   context "tables with self reference foreign keys" $ do
 		//     it "embeds children after update" $
 		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name)"

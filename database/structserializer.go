@@ -37,6 +37,11 @@ var typeMap = map[uint32]any{
 // This function is about twice as fast as rowsToStructsWithPointers, but it has some usage inconveniences.
 func rowsToDynStructs(rows pgx.Rows) ([]any, error) {
 	fds := rows.FieldDescriptions()
+	for _, fd := range fds {
+		if err := binaryFormat(fd); err != nil {
+			return nil, err
+		}
+	}
 	var structFields []reflect.StructField
 	var newField reflect.StructField
 	for i := range fds {
@@ -113,6 +118,11 @@ func rowsToDynStructs(rows pgx.Rows) ([]any, error) {
 // This function is two times slower than rowsToStructs, but it is more straightforward to use.
 func rowsToDynStructsWithPointers(rows pgx.Rows) ([]any, error) {
 	fds := rows.FieldDescriptions()
+	for _, fd := range fds {
+		if err := binaryFormat(fd); err != nil {
+			return nil, err
+		}
+	}
 	var structFields []reflect.StructField
 	var newField reflect.StructField
 	for i := range fds {
