@@ -101,6 +101,10 @@ func isoDateStyle(params map[string]string) string {
 			switch p := strings.ToUpper(strings.TrimSpace(part)); p {
 			case "MDY", "DMY", "YMD":
 				order = p
+			case "GERMAN", "EURO", "EUROPEAN": // German implies day first, as the aliases do
+				order = "DMY"
+			case "US", "NONEURO", "NONEUROPEAN":
+				order = "MDY"
 			}
 		}
 		delete(params, key)
