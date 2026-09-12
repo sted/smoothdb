@@ -22,6 +22,7 @@ type Function struct {
 	HasUnnamed   bool       `json:"hasunnamed"` // has unnamed parameters
 	HasOut       bool       `json:"hasout"`     // has OUT, INOUT, TABLE parameters
 	IsVariadic   bool       `json:"isvariadic"`
+	Volatility   string     `json:"volatility"` // provolatile: i IMMUTABLE, s STABLE, v VOLATILE
 }
 
 const functionsQuery = `
@@ -37,7 +38,8 @@ const functionsQuery = `
 		prorows retrows,
 		BOOL_OR(_.name is null) AND pronargs > 0 hasunnamed,
 		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout,
-		p.provariadic != 0 isvariadic
+		p.provariadic != 0 isvariadic,
+		p.provolatile::text volatility
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -70,7 +72,8 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 			&f.ReturnRows,
 			&f.HasUnnamed,
 			&f.HasOut,
-			&f.IsVariadic)
+			&f.IsVariadic,
+			&f.Volatility)
 		if err != nil {
 			return nil, err
 		}

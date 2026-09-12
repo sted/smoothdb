@@ -131,7 +131,11 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		dbconn = session.DbConn
 	}
 	claimsString = session.Claims.RawClaims
-	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire)
+	// GET and HEAD are safe methods: like PostgREST, run them READ ONLY, so a
+	// function or view that writes fails (25006 -> 405) instead of mutating on
+	// a request that proxies, prefetchers and caches replay at will.
+	readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
+	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire, readOnly)
 	if err != nil {
 		return nil, nil, http.StatusInternalServerError, err
 	}

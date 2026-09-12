@@ -75,6 +75,13 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 			"42703", // undefined_column
 			"428C9": // generated_always
 			status = http.StatusBadRequest
+		case "25006": // read_only_sql_transaction: a write reached by a GET/HEAD, or by a STABLE/IMMUTABLE function
+			// PostgREST maps it to 405 (Error.hs mapSQLtoHTTP) without an Allow
+			// header; RFC 9110 requires one, and POST is the method every resource
+			// that can raise this accepts (functions are called with it, tables
+			// and views are inserted into with it).
+			status = http.StatusMethodNotAllowed
+			w.Header().Set("Allow", "POST")
 		default:
 			status = http.StatusInternalServerError
 		}

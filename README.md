@@ -309,6 +309,24 @@ You can nest relationships on multiple levels.
 GET /api/testdb/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design* HTTP/1.1
 ```
 
+### Functions
+
+Functions are called on `/rpc/<name>`, with the arguments in the body of a `POST` or in the query string of a `GET` (or `HEAD`), as in [PostgREST functions](https://postgrest.org/en/stable/references/api/functions.html). Any other method on `/rpc/` answers `405` with an `Allow` header.
+
+As in PostgREST, the access mode of a request follows the HTTP method and, for functions, their volatility: `GET` and `HEAD` run **read-only** (tables, views and functions alike), `POST`, `PATCH` and `DELETE` run read-write, except that a `POST` calling a `STABLE` or `IMMUTABLE` function runs read-only too. Anything that tries to write in a read-only request — a `VOLATILE` function that inserts, a view whose expression calls `nextval()`, a `STABLE` function that writes despite its marker — fails inside PostgreSQL with SQLSTATE `25006` (`cannot execute INSERT in a read-only transaction`), answered as `405 Method Not Allowed` with `Allow: POST`; nothing is written. Volatility itself is not a gate: a `VOLATILE` function that only reads is callable with `GET`.
+
+```http
+GET /api/testdb/rpc/delete_everything HTTP/1.1
+```
+```http
+HTTP/1.1 405 Method Not Allowed
+Allow: POST
+
+{"subsystem":"database","message":"cannot execute DELETE in a read-only transaction","code":"25006", ...}
+```
+
+With `Database.TransactionMode` other than `none` the request transaction is begun `READ ONLY`; with `none` (the default, one implicit transaction per statement) the session setting `default_transaction_read_only` is switched for the request, and switched back before the next write on the same connection.
+
 ### Aggregate Functions
 
 SmoothDB supports aggregate functions for performing calculations on data sets, compatible with [PostgREST aggregate queries](https://postgrest.org/en/stable/references/api/aggregate_functions.html).
@@ -792,7 +810,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.AnonRole | Role for anonymous requests when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
-| Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
+| Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
 | JQ.Enabled | Enable jq evaluation: /jq route, jq= query parameter | false |
