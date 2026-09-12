@@ -901,6 +901,10 @@ func TestSerializeTextShapes(t *testing.T) {
 		`insert into shapes values (1, 7, '\x4142', '{<a/>,<b/>}', '(42,hi,t)',
 			'("2024-01-01 10:00:00.25","2024-01-01 10:00:00+00","[1,3)")', '(<c/>,7)', '<d/>')`,
 		`insert into shapes (id, wd, wt) values (2, '(,,)', '(infinity,,empty)')`,
+		// a BC timestamp, a half-hour zone, a five-digit year
+		`insert into shapes (id, wt) values (3, '("0044-03-15 12:00:00 BC","2024-01-01 15:30:00+05:30","[1,2)")')`,
+		`insert into shapes (id, wt) values (4, '("10000-01-01 10:00:00","2024-01-01 10:00:00-03","[1,2)")')`,
+		`insert into shapes (id, by) values (5, NULL)`,
 	}
 	for _, q := range ddl {
 		if _, err := gi.Conn.Exec(ctx, q); err != nil {
@@ -914,7 +918,7 @@ func TestSerializeTextShapes(t *testing.T) {
 	columns := []string{"pi", "xa", "x", "wd", "wt", "wx"}
 	expected := map[string]string{}
 	for _, c := range columns {
-		for _, id := range []int{1, 2} {
+		for _, id := range []int{1, 2, 3, 4} {
 			var row string
 			q := fmt.Sprintf("select row_to_json(t)::text from (select %s from shapes where id = %d) t", c, id)
 			if err := gi.Conn.QueryRow(ctx, q).Scan(&row); err != nil {
@@ -928,7 +932,7 @@ func TestSerializeTextShapes(t *testing.T) {
 		gi := GetSmoothContext(ctx)
 		info := gi.Db.info.Load()
 		for _, c := range columns {
-			for _, id := range []int{1, 2} {
+			for _, id := range []int{1, 2, 3, 4} {
 				name := fmt.Sprintf("%s/row%d", c, id)
 				t.Run(name, func(t *testing.T) {
 					rows, err := gi.Conn.Query(ctx, fmt.Sprintf("select %s from shapes where id = %d", c, id))
@@ -958,6 +962,29 @@ func TestSerializeTextShapes(t *testing.T) {
 			}
 			if string(out) != "AB" {
 				t.Errorf("expected the bytes AB, got %q", out)
+			}
+			// a NULL adds nothing, the escape output format decodes too
+			rows, err = gi.Conn.Query(ctx, "select by from shapes where id in (1, 5) order by id")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err = (&BinarySerializer{}).Serialize(rows, true, false, info)
+			rows.Close()
+			if err != nil || string(out) != "AB" {
+				t.Errorf("with a NULL row: expected the bytes AB, got %q (%v)", out, err)
+			}
+			if _, err := gi.Conn.Exec(ctx, "set bytea_output = escape"); err != nil {
+				t.Fatal(err)
+			}
+			rows, err = gi.Conn.Query(ctx, `select '\x41005c42'::bytea`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err = (&BinarySerializer{}).Serialize(rows, true, true, info)
+			rows.Close()
+			gi.Conn.Exec(ctx, "reset bytea_output")
+			if err != nil || string(out) != "A\x00\\B" {
+				t.Errorf("escape format: expected A, NUL, backslash, B, got %q (%v)", out, err)
 			}
 		})
 	}
