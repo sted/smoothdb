@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,105 @@ type DatabaseInfo struct {
 type DatabaseUpdate struct {
 	Name  *string `json:"name"`
 	Owner *string `json:"owner"`
+}
+
+// textFormatOnlyTypes are the types pgx would request in binary format but
+// the serializers only read as text (the wire-format rule is documented on
+// JSONSerializer). AfterConnect re-registers each of them on every connection
+// with a TextFormatOnlyCodec around its default codec, so the server sends
+// PostgreSQL's text form of the value and the serializer passes it through as
+// to_json would print it; Scan keeps working through the text path of the
+// original codec. The array of each type is listed too: an array codec
+// captures its element type when pgx builds its default map, so it keeps
+// preferring binary otherwise. A type that is neither here nor decoded by the
+// serializers' binary switch fails loudly at serialization: that is where a
+// new entry starts.
+var textFormatOnlyTypes = []uint32{
+	pgtype.ByteaOID, pgtype.ByteaArrayOID,
+	pgtype.QCharOID, pgtype.QCharArrayOID, // "char"
+	pgtype.InetOID, pgtype.InetArrayOID,
+	pgtype.CIDROID, pgtype.CIDRArrayOID,
+	pgtype.MacaddrOID, pgtype.MacaddrArrayOID,
+	pgtype.Macaddr8OID, // pgx has no codec for macaddr8[]: it is text already
+	pgtype.TimeOID, pgtype.TimeArrayOID,
+	pgtype.PointOID, pgtype.PointArrayOID,
+	pgtype.LineOID, pgtype.LineArrayOID,
+	pgtype.LsegOID, pgtype.LsegArrayOID,
+	pgtype.BoxOID, pgtype.BoxArrayOID,
+	pgtype.PathOID, pgtype.PathArrayOID,
+	pgtype.PolygonOID, pgtype.PolygonArrayOID,
+	pgtype.CircleOID, pgtype.CircleArrayOID,
+	pgtype.BitOID, pgtype.BitArrayOID,
+	pgtype.VarbitOID, pgtype.VarbitArrayOID,
+	pgtype.TIDOID, pgtype.TIDArrayOID,
+	pgtype.XIDOID, pgtype.XIDArrayOID,
+	pgtype.CIDOID, pgtype.CIDArrayOID,
+	pgtype.XID8OID, pgtype.XID8ArrayOID,
+	pgtype.TSVectorOID, pgtype.TSVectorArrayOID,
+	// xml prefers text on its own, but pgx's array and composite codecs pick
+	// binary whenever the element supports it, and the serializers have no
+	// binary xml decoder (its binary form is the text, but the switch does
+	// not know that): listed so xml[] and composites with an xml field stay
+	// in text.
+	pgtype.XMLOID, pgtype.XMLArrayOID,
+	// The builtin ranges: a range is one JSON string, range_out's text with
+	// its quoting of the bounds (only those with a bracket, a comma, a quote,
+	// a backslash or whitespace in them, a quote doubled) and PostgreSQL's
+	// own text for each bound (a space between date and time, the session
+	// time zone for tstzrange), which a decoder of the binary bounds would
+	// have to reproduce for every subtype. A custom range type is unknown to
+	// pgx and text already.
+	pgtype.Int4rangeOID, pgtype.Int4rangeArrayOID,
+	pgtype.Int8rangeOID, pgtype.Int8rangeArrayOID,
+	pgtype.NumrangeOID, pgtype.NumrangeArrayOID,
+	pgtype.DaterangeOID, pgtype.DaterangeArrayOID,
+	pgtype.TsrangeOID, pgtype.TsrangeArrayOID,
+	pgtype.TstzrangeOID, pgtype.TstzrangeArrayOID,
+	// The builtin multiranges, one JSON string each like the ranges
+	// (multirange_out's braces around range_out's text of each range, '{}'
+	// for the empty one). pgx's multirange codec follows the range codec it
+	// captured when its default map was built, so the range entries above do
+	// not reach them. pgx registers no codec for their arrays, text already;
+	// listed so that a pgx that does keeps them in text.
+	pgtype.Int4multirangeOID, pgtype.Int4multirangeArrayOID,
+	pgtype.Int8multirangeOID, pgtype.Int8multirangeArrayOID,
+	pgtype.NummultirangeOID, pgtype.NummultirangeArrayOID,
+	pgtype.DatemultirangeOID, pgtype.DatemultirangeArrayOID,
+	pgtype.TsmultirangeOID, pgtype.TsmultirangeArrayOID,
+	pgtype.TstzmultirangeOID, pgtype.TstzmultirangeArrayOID,
+}
+
+// isoDateStyle returns the DateStyle to ask the server for: ISO output, plus
+// the field order (MDY, DMY, YMD) of a DateStyle already in the connection
+// parameters (from the URL), whatever the case of its key. The other keys
+// spelling it are dropped, so one value reaches the server.
+func isoDateStyle(params map[string]string) string {
+	order, implied := "", ""
+	for key, value := range params {
+		if !strings.EqualFold(key, "datestyle") {
+			continue
+		}
+		for _, part := range strings.Split(value, ",") {
+			switch p := strings.ToUpper(strings.TrimSpace(part)); p {
+			case "MDY", "DMY", "YMD":
+				order = p
+			case "EURO", "EUROPEAN":
+				order = "DMY"
+			case "US", "NONEURO", "NONEUROPEAN":
+				order = "MDY"
+			case "GERMAN": // implies day first, unless an order is given
+				implied = "DMY"
+			}
+		}
+		delete(params, key)
+	}
+	if order == "" {
+		order = implied
+	}
+	if order == "" {
+		return "ISO"
+	}
+	return "ISO, " + order
 }
 
 type Database struct {
@@ -50,14 +150,32 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
+	// The text form of a timestamp or a date (a field of a composite that
+	// arrives in text) is converted to what to_json prints on the assumption
+	// that it is ISO, the output style pgx assumes as well: pin it at startup
+	// (only the output style: the order part, MDY/DMY, that reads ambiguous
+	// input, keeps the server's setting).
+	if config.ConnConfig.RuntimeParams == nil {
+		config.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		// Force text format for tsvector — pgx v5.9+ defaults to binary,
-		// but we decode RawValues() as text.
-		conn.TypeMap().RegisterType(&pgtype.Type{
-			Name:  "tsvector",
-			OID:   pgtype.TSVectorOID,
-			Codec: &pgtype.TextFormatOnlyCodec{Codec: pgtype.TSVectorCodec{}},
-		})
+		// Force text format for the types the serializers do not decode in
+		// binary (pgx v5.9+ defaults to binary for them). Registered before
+		// the composites below, so that a composite with such a field is
+		// requested in text too (its codec supports binary only when every
+		// field does).
+		for _, oid := range textFormatOnlyTypes {
+			dt, ok := conn.TypeMap().TypeForOID(oid)
+			if !ok {
+				continue
+			}
+			conn.TypeMap().RegisterType(&pgtype.Type{
+				Name:  dt.Name,
+				OID:   oid,
+				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
+			})
+		}
 		var set string
 		var err error
 		if len(dbe.config.SchemaSearchPath) != 0 {
@@ -80,13 +198,23 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		}
 		for _, t := range info.cachedComposites {
 			var fields []pgtype.CompositeCodecField
+			known := true
 			for _, oid := range t.SubTypeIds {
 				dt, ok := conn.TypeMap().TypeForOID(oid)
 				if !ok {
-					//return fmt.Errorf("unknown composite type field OID: %v", oid)
-					continue
+					known = false
+					break
 				}
 				fields = append(fields, pgtype.CompositeCodecField{Name: dt.Name, Type: dt})
+			}
+			if !known {
+				// A field of a type pgx does not know (a custom range, a
+				// domain, a composite not registered yet): left unregistered,
+				// the composite is requested in text, which the serializers
+				// parse at any nesting. Registered without the field, it
+				// would be requested in binary and carry that field in a
+				// format the serializers cannot decode.
+				continue
 			}
 			conn.TypeMap().RegisterType(&pgtype.Type{Name: t.Name, OID: t.Id, Codec: &pgtype.CompositeCodec{Fields: fields}})
 		}

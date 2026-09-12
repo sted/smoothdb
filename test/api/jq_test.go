@@ -166,8 +166,8 @@ func TestJQUpdate(t *testing.T) {
 			Query:       "/jqtab",
 			Body: `[
 				{"id": 1, "counter": 10, "name": "a", "tags": ["x"]},
-				{"id": 2, "counter": 20, "name": "b"},
-				{"id": 3, "counter": 30, "name": "c"}]`,
+				{"id": 2, "counter": 20, "name": "b", "tags": null},
+				{"id": 3, "counter": 30, "name": "c", "tags": null}]`,
 			Status: 201,
 		},
 		{

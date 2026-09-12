@@ -17,6 +17,11 @@ func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()
 	config.URL = "postgresql://postgres:postgres@0.0.0.0:5432/postgres"
+	// The suite activates a database per topic (test_base, test_ranges,
+	// test_formats, ...), each with its own pool: at the default of 10 idle
+	// connections per pool they add up to the server's max_connections.
+	config.MinPoolConnections = 1
+	config.MaxPoolConnections = 10
 	// Same override the server honors, already exported by CI
 	if url := os.Getenv("SMOOTHDB_DATABASE_URL"); url != "" {
 		config.URL = url
@@ -78,9 +83,12 @@ func TestBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		CreateRecords(ctx, "b1", []Record{
+		_, _, err := CreateRecords(ctx, "b1", []Record{
 			{"name": "Morpheus😆", "number": 42, "date": "2022-10-11T19:00", "bool": true, "float4": 3.1},
-			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false}}, nil)
+			{"name": "Sted😆", "number": 43, "date": "2022-10-11T06:00", "bool": false, "float4": nil}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Run("Select1", func(t *testing.T) {

@@ -309,6 +309,24 @@ You can nest relationships on multiple levels.
 GET /api/testdb/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design* HTTP/1.1
 ```
 
+### Functions
+
+Functions are called on `/rpc/<name>`, with the arguments in the body of a `POST` or in the query string of a `GET` (or `HEAD`), as in [PostgREST functions](https://postgrest.org/en/stable/references/api/functions.html). Any other method on `/rpc/` answers `405` with an `Allow` header.
+
+As in PostgREST, the access mode of a request follows the HTTP method and, for functions, their volatility: `GET` and `HEAD` run **read-only** (tables, views and functions alike), `POST`, `PATCH` and `DELETE` run read-write, except that a `POST` calling a `STABLE` or `IMMUTABLE` function runs read-only too. Anything that tries to write in a read-only request — a `VOLATILE` function that inserts, a view whose expression calls `nextval()`, a `STABLE` function that writes despite its marker — fails inside PostgreSQL with SQLSTATE `25006` (`cannot execute INSERT in a read-only transaction`), answered as `405 Method Not Allowed` with `Allow: POST`; nothing is written. Volatility itself is not a gate: a `VOLATILE` function that only reads is callable with `GET`.
+
+```http
+GET /api/testdb/rpc/delete_everything HTTP/1.1
+```
+```http
+HTTP/1.1 405 Method Not Allowed
+Allow: POST
+
+{"subsystem":"database","message":"cannot execute DELETE in a read-only transaction","code":"25006", ...}
+```
+
+With `Database.TransactionMode` other than `none` the request transaction is begun `READ ONLY`; with `none` (the default, one implicit transaction per statement) the session setting `default_transaction_read_only` is switched for the request, and switched back before the next write on the same connection.
+
 ### Aggregate Functions
 
 SmoothDB supports aggregate functions for performing calculations on data sets, compatible with [PostgREST aggregate queries](https://postgrest.org/en/stable/references/api/aggregate_functions.html).
@@ -428,10 +446,11 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.all&is_active=is.true   
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&walk.is_active=is.true  HTTP/1.1   # stop walking at inactive nodes
 ```
 
-Standard parameters (`select`, `order`, `limit`, …) apply to the result set. The pseudo-column `__depth` is selectable to get each row's traversal depth (seed = 0), and related resources can be embedded:
+Standard parameters (`select`, `order`, `limit`, …) apply to the result set. Two pseudo-columns can be selected or ordered by: `__depth`, each row's traversal depth (seed = 0), and `__path`, the array of keys from the seed to the row (ordering by `__path` gives a depth-first order). Related resources can be embedded:
 
 ```http
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__depth,tasks(title)&order=__depth HTTP/1.1
+GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__path&order=__path HTTP/1.1
 ```
 
 **Edge tables (`via`).** Traverse a graph through a separate edge table with source/target columns. Add the `!both` hint to follow edges in either direction; filter which edges to follow with the standard `table.column` syntax (`eq`, `in`, `or`, …):
@@ -440,6 +459,10 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__dep
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id) HTTP/1.1
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via!both(src_id,dst_id)&relationships.rel_type=in.(contains,references) HTTP/1.1
 ```
+
+A node reachable along several paths is returned once, at its shortest depth. The walk visits nodes, not paths: its cost is bounded by the number of nodes times the depth, whatever the number of paths between them. A cycle only re-enters a node at a greater depth, so on a cyclic graph (and on every `via!both` walk, where each edge can be followed back) the traversal runs until the depth cap - `recurse.N` or `MaxRecursiveDepth` - which is what bounds it; the seed itself is never re-entered.
+
+Selecting or ordering by `__path` on a `via` walk is different: to carry a path the traversal has to enumerate every simple path of the graph, whose number grows exponentially with the depth (on a layered DAG of 650 nodes and 1800 edges: 797,161 paths for 490 reachable nodes, a walk of 1.2 s against 1 ms without `__path`). Ask for it on small graphs or with a small `recurse.N`. In single-table walks each node has one path, so `__path` costs nothing there.
 
 Embedding is not supported together with `via` traversal.
 
@@ -760,7 +783,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | LoginMode | Login mode: "none", "db", "gotrue" | none |
 | AuthURL | URL of the external AuthN service | "" |
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
-| AllowAnon | Allow unauthenticated connections | false |
+| AllowAnon | Allow unauthenticated connections; also requires a non-empty Database.AnonRole, otherwise anonymous requests are refused (401) | false |
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none" (no cache), "role" (cache the verified claims and keep the prepared connection attached to the session between requests), "claims" (cache the verified claims only; the connection returns to the pool after every request) | "role" |
 | MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
@@ -784,10 +807,10 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
-| Database.AnonRole | Anonymous role | "" |
+| Database.AnonRole | Role for anonymous requests when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
-| Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
+| Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
 | JQ.Enabled | Enable jq evaluation: /jq route, jq= query parameter | false |

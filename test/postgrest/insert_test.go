@@ -135,16 +135,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 			 { matchStatus  = 400
 		// 			 , matchHeaders = [matchContentTypeJson]
 		// 			 }
-		// @@ we accept this for now (so 201 status instead of 400)
-		// {
-		// 	Description: "rejects json array that has objects with different keys",
-		// 	Method:      "POST",
-		// 	Query:       "/articles",
-		// 	Body:        `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
-		// 	Headers:     nil,
-		// 	Expected:    ``,
-		// 	Status:      400,
-		// },
+		{
+			Description: "rejects json array that has objects with different keys",
+			Method:      "POST",
+			Query:       "/articles",
+			Body:        `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
 		// 	context "requesting full representation" $ do
 		// 	  it "includes related data after insert" $
 		// 		request methodPost "/projects?select=id,name,clients(id,name)"
@@ -590,6 +589,38 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  `shouldRespondWith` [json|[{ id: 20 }]|]
 		// 			{ matchStatus  = 201 }
 
+		// 	-- https://github.com/PostgREST/postgrest/issues/2861
+		// 	context "bit and char columns with length" $ do
+		// 	  it "should insert to a bit column with length" $
+		// 		request methodPost "/bitchar_with_length?select=bit"
+		// 			[("Prefer", "return=representation")]
+		// 			[json|{"bit": "10101"}|]
+		// 		  `shouldRespondWith` [json|[{ "bit": "10101" }]|]
+		// 			{ matchStatus  = 201 }
+		{
+			Description: "bit and char columns with length: should insert to a bit column with length",
+			Method:      "POST",
+			Query:       "/bitchar_with_length?select=bit",
+			Body:        `{"bit": "10101"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "bit": "10101" }]`,
+			Status:      201,
+		},
+		// 	  it "should insert to a char column with length" $
+		// 		request methodPost "/bitchar_with_length?select=char"
+		// 			[("Prefer", "return=representation")]
+		// 			[json|{"char": "abcde"}|]
+		// 		  `shouldRespondWith` [json|[{ "char": "abcde" }]|]
+		// 			{ matchStatus  = 201 }
+		{
+			Description: "bit and char columns with length: should insert to a char column with length",
+			Method:      "POST",
+			Query:       "/bitchar_with_length?select=char",
+			Body:        `{"char": "abcde"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "char": "abcde" }]`,
+			Status:      201,
+		},
 		// 	context "POST with ?columns parameter" $ do
 		// 	  it "ignores json keys not included in ?columns" $ do
 		// 		request methodPost "/articles?columns=id,body" [("Prefer", "return=representation")]
@@ -691,6 +722,36 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  { matchStatus  = 400
 		// 		  , matchHeaders = []
 		// 		  }
+
+		// 	  context "apply defaults on missing values" $ do
+		// 		it "fails with a good error message on generated always columns" $
+		// 		  request methodPost "/foo?columns=a,b" [("Prefer", "return=representation"), ("Prefer", "missing=default")]
+		// 			  [json| [
+		// 				{"a": "val"},
+		// 				{"a": "val", "b": "val"}
+		// 			  ]|]
+		// 			`shouldRespondWith`
+		// 			  [json| {
+		// 				"code": "428C9",
+		// 				"details": "Column \"b\" is a generated column.",
+		// 				"hint": null,
+		// 				"message": "cannot insert a non-DEFAULT value into column \"b\""
+		// 			  }|]
+		// 			  { matchStatus  = 400 }
+		// @@ missing=default is not implemented: with ?columns= a key absent from an
+		// object is inserted as NULL, which the generated column refuses all the same
+		{
+			Description: "fails with a good error message on generated always columns",
+			Method:      "POST",
+			Query:       "/foo?columns=a,b",
+			Body: `[
+				{"a": "val"},
+				{"a": "val", "b": "val"}
+			]`,
+			Headers:  test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected: `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`,
+			Status:   400,
+		},
 
 		// 	context "with unicode values" $ do
 		// 	  it "succeeds and returns full representation" $
@@ -1029,6 +1090,18 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:        `{"id":10,"name":"Alias Embed","client_id":2}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{"id":10,"name":"Alias Embed","cid":2,"clients":{"id":2,"name":"Apple"}}]`,
+			Status:      201,
+		},
+		// @@ added: order= applies to the representation of a POST too (PostgREST
+		// 13.0.0, #3013 "Fix order= with POST, PATCH, PUT and DELETE requests"); the
+		// spec only covers it through the batch upsert in upsert_test.go
+		{
+			Description: "order applies to the representation of a POST",
+			Method:      "POST",
+			Query:       "/no_pk?order=a.desc",
+			Body:        `[{ "a": "8", "b": "x" }, { "a": "9", "b": "x" }]`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "a": "9", "b": "x" }, { "a": "8", "b": "x" }]`,
 			Status:      201,
 		},
 	}

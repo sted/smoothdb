@@ -50,7 +50,9 @@ func TestMain(m *testing.M) {
 	}
 
 	go s.Start()
-	test.WaitForServer("http://localhost:8084")
+	if err := test.WaitForServer("http://localhost:8084"); err != nil {
+		log.Fatal(err)
+	}
 
 	// Tear-up
 

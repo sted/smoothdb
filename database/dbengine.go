@@ -91,6 +91,17 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if err != nil {
 		return nil, err
 	}
+	// One server serves every database: the version cached with the main
+	// schema is the version of them all, checked once here like PostgREST's
+	// minimumPgVersion, before anything can trip on it.
+	version := db.info.Load().ServerVersion
+	err = checkServerVersion(version)
+	if err != nil {
+		return nil, err
+	}
+	if logger != nil {
+		logger.Info().Msgf("Connected to PostgreSQL %s", formatServerVersion(version))
+	}
 	dbe.activeDatabases.Store(configDbName, db)
 	dbe.mainDb = db
 

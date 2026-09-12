@@ -1240,9 +1240,21 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 405
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		{
+			Description: "unsupported method: DELETE fails",
+			Method:      "DELETE",
+			Query:       "/rpc/sayhello",
+			Status:      405,
+		},
 		//   it "PATCH fails" $
 		//     request methodPatch "/rpc/sayhello" [] ""
 		//       `shouldRespondWith` 405
+		{
+			Description: "unsupported method: PATCH fails",
+			Method:      "PATCH",
+			Query:       "/rpc/sayhello",
+			Status:      405,
+		},
 
 		// it "executes the proc exactly once per request" $ do
 		//   -- callcounter is persistent even with rollback, because it uses a sequence
@@ -1790,10 +1802,11 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         }
 		{
 			Description:     "binary output: Proc that returns scalar can query without selecting column",
-			Method:          "GET", // @@ POST -> GET
+			Method:          "GET", // @@ POST -> GET; ret_image returns the bytea itself (the spec's ret_base64_bin its base64), hence ExpectedBase64
 			Query:           "/rpc/ret_image",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			ExpectedBase64:  true,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
 			Status:          200,
 		},
@@ -1881,6 +1894,18 @@ func TestPostgREST_RPC(t *testing.T) {
 		//   it "should fail on mutating procs" $ do
 		//     get "/rpc/callcounter" `shouldRespondWith` 405
 		//     get "/rpc/setprojects?id_l=1&id_h=5&name=FreeBSD" `shouldRespondWith` 405
+		{
+			Description: "only for GET rpc: should fail on mutating procs (callcounter)",
+			Method:      "GET",
+			Query:       "/rpc/callcounter",
+			Status:      405,
+		},
+		{
+			Description: "only for GET rpc: should fail on mutating procs (setprojects)",
+			Method:      "GET",
+			Query:       "/rpc/setprojects?id_l=1&id_h=5&name=FreeBSD",
+			Status:      405,
+		},
 
 		//   it "should filter a proc that has arg name = filter name" $
 		//     get "/rpc/get_projects_below?id=5&id=gt.2&select=id" `shouldRespondWith`

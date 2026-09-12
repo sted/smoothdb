@@ -407,63 +407,6 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 	return nil
 }
 
-// 0 = ()      = 00000
-// 1 = empty   = 00001
-// 2 = [)      = 00010
-// 4 = (]      = 00100
-// 6 = []      = 00110
-// 8 = )       = 01000
-// 12 = ]      = 01100
-// 16 = (      = 10000
-// 18 = [      = 10010
-// 24 =        = 11000
-
-const emptyMask = 1
-const lowerInclusiveMask = 2
-const upperInclusiveMask = 4
-const lowerUnboundedMask = 8
-const upperUnboundedMask = 16
-
-func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) error {
-	t.WriteByte('"')
-	rp := 0
-	rangeType := buf[rp]
-	switch {
-	case rangeType&emptyMask > 0,
-		rangeType&lowerUnboundedMask > 0:
-		// nothing to do
-	case rangeType&lowerInclusiveMask > 0:
-		t.WriteByte('[')
-	default:
-		t.WriteByte('(')
-	}
-	rp += 1
-	valuLen1 := binary.BigEndian.Uint32(buf[rp:])
-	rp += 4
-	if err := at.appendType(buf[rp:], typ, info); err != nil {
-		return err
-	}
-	rp += int(valuLen1)
-	t.WriteByte(',')
-	valuLen2 := binary.BigEndian.Uint32(buf[rp:])
-	rp += 4
-	if err := at.appendType(buf[rp:], typ, info); err != nil {
-		return err
-	}
-	rp += int(valuLen2)
-	switch {
-	case rangeType&emptyMask > 0,
-		rangeType&upperUnboundedMask > 0:
-		// nothing to do
-	case rangeType&upperInclusiveMask > 0:
-		t.WriteByte(']')
-	default:
-		t.WriteByte(')')
-	}
-	t.WriteByte('"')
-	return nil
-}
-
 func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) error {
 	rp := uint32(0)
 	nfields := binary.BigEndian.Uint32(buf[rp:])
@@ -504,10 +447,42 @@ func (t *TextBuilder) appendEnum(buf []byte) {
 	t.Write(buf)
 }
 
+// JSONSerializer writes the rows as a JSON array of objects, decoding the raw
+// wire values itself.
+//
+// The wire-format rule. pgx asks the server for each result column in the
+// format its type map prefers: binary for the types it has a binary codec
+// for, text for everything else (enums, custom and extension types, and the
+// types re-registered as text-only in textFormatOnlyTypes).
+// FieldDescription.Format says which one arrived, and the serializers
+// dispatch on it, never assuming:
+//
+//   - Binary (appendType): the OID switch decodes the builtin scalars, and
+//     the schema cache classifies arrays, composites and enums, whose
+//     elements are decoded recursively, in binary too. A binary value of any
+//     other type is a SerializeError naming the type: it is never copied
+//     through as if it were text. The fix for such a type is a decoder in
+//     the switch or an entry in textFormatOnlyTypes.
+//   - Text (appendText): PostgreSQL's own output for the value, converted by
+//     the shape of its type the way to_json converts the value: json and
+//     jsonb verbatim, bool t/f as true/false, int2/int4/int8/float4/float8/
+//     numeric bare (NaN and the infinities quoted), an array literal parsed
+//     into a JSON array and a record literal into a JSON object with the
+//     elements converted by the same rule, and any other type a JSON string
+//     (a range or a multirange is one: range_out's text, its quotes escaped).
+//     Every other type serializes correctly in text format with no code of
+//     its own; the one difference from to_json is that a timestamp keeps
+//     PostgreSQL's space between date and time, which only shows inside a
+//     composite that arrives in text.
+//
+// The CSV serializer shares the binary decoders and writes a text-format
+// value as the text it is, which for an array or a composite is the literal
+// PostgREST's CSV carries too.
 type JSONSerializer struct {
 	TextBuilder
 }
 
+// appendType decodes a value in binary format.
 func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) error {
 	if buf == nil {
 		j.WriteString("null")
@@ -526,7 +501,7 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.appendFloat8(buf)
 	case pgtype.BoolOID:
 		j.appendBool(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID, 3614 /*text search*/ :
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID:
 		j.WriteByte('"')
 		j.appendString(buf, true)
 		j.WriteByte('"')
@@ -538,8 +513,14 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.WriteByte('"')
 		j.appendTimestamp(buf)
 		j.WriteByte('"')
-	case pgtype.JSONOID, pgtype.JSONBOID:
+	case pgtype.JSONOID:
 		j.appendJSON(buf)
+	case pgtype.JSONBOID:
+		text, err := jsonbText(buf)
+		if err != nil {
+			return err
+		}
+		j.appendJSON(text)
 	case pgtype.IntervalOID:
 		j.appendInterval(buf)
 	case pgtype.UUIDOID:
@@ -550,10 +531,11 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		ct := info.GetTypeById(typ)
 		if ct != nil {
 			switch {
+			case ct.IsDomain && ct.DomainBaseId != 0:
+				// the wire carries the domain's oid over the base type's bytes
+				return j.appendType(buf, ct.DomainBaseId, info)
 			case ct.IsArray:
 				return j.appendArray(buf, ct.ArraySubType, info, j)
-			case ct.IsRange:
-				return j.appendRange(buf, *ct.RangeSubType, info, j)
 			case ct.IsComposite:
 				return j.appendComposite(buf, ct, info, j)
 			case ct.IsEnum:
@@ -561,18 +543,34 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 				j.appendEnum(buf)
 				j.WriteByte('"')
 			default:
-				// Unknown scalar types (e.g. ltree): serialize as text
-				j.WriteByte('"')
-				j.appendString(buf, true)
-				j.WriteByte('"')
+				return noBinaryDecoder(typ, ct)
 			}
 		} else {
-			j.WriteByte('"')
-			j.appendString(buf, true)
-			j.WriteByte('"')
+			return noBinaryDecoder(typ, nil)
 		}
 	}
 	return nil
+}
+
+// noBinaryDecoder is the error for a binary value of a type the serializers
+// cannot decode; see the wire-format rule on JSONSerializer.
+func noBinaryDecoder(typ uint32, ct *Type) error {
+	name := "unknown"
+	if ct != nil {
+		name = ct.Name
+	}
+	return &SerializeError{msg: fmt.Sprintf("no binary decoder for type %s (oid %d): add one or list it in textFormatOnlyTypes", name, typ)}
+}
+
+// jsonbText strips the version byte of a binary jsonb value. A jsonb column
+// arrives in text format (pgx prefers it), but an element of a binary array
+// or a field of a binary composite comes in binary, which is the text
+// prefixed by its version, 1.
+func jsonbText(buf []byte) ([]byte, error) {
+	if len(buf) == 0 || buf[0] != 1 {
+		return nil, &SerializeError{msg: "unsupported binary jsonb version"}
+	}
+	return buf[1:], nil
 }
 
 // serializeRecover converts a panic raised while decoding raw pgx wire buffers
@@ -620,7 +618,13 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 				j.appendString([]byte(fd.Name), true)
 				j.WriteString("\":")
 			}
-			if err := j.appendType(buf, fd.DataTypeOID, info); err != nil {
+			var err error
+			if fd.Format == pgtype.BinaryFormatCode {
+				err = j.appendType(buf, fd.DataTypeOID, info)
+			} else {
+				err = j.appendText(buf, fd.DataTypeOID, info)
+			}
+			if err != nil {
 				return nil, 0, err
 			}
 		}
@@ -652,6 +656,7 @@ type CSVSerializer struct {
 	TextBuilder
 }
 
+// appendType decodes a value in binary format.
 func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) error {
 	if buf == nil {
 		csv.WriteString("")
@@ -670,14 +675,20 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendFloat8(buf)
 	case pgtype.BoolOID:
 		csv.appendBool(buf)
-	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID, 3614 /*text search*/ :
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID:
 		csv.appendField(buf) //
 	case pgtype.DateOID:
 		csv.appendDate(buf)
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		csv.appendTimestamp(buf)
-	case pgtype.JSONOID, pgtype.JSONBOID:
+	case pgtype.JSONOID:
 		csv.appendField(buf) //
+	case pgtype.JSONBOID:
+		text, err := jsonbText(buf)
+		if err != nil {
+			return err
+		}
+		csv.appendField(text)
 	case pgtype.IntervalOID:
 		csv.appendInterval(buf)
 	case pgtype.UUIDOID:
@@ -688,19 +699,19 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		ct := info.GetTypeById(typ)
 		if ct != nil {
 			switch {
+			case ct.IsDomain && ct.DomainBaseId != 0:
+				return csv.appendType(buf, ct.DomainBaseId, info)
 			case ct.IsArray:
 				return csv.appendArray(buf, ct.ArraySubType, info, csv)
-			case ct.IsRange:
-				return csv.appendRange(buf, *ct.RangeSubType, info, csv)
 			case ct.IsComposite:
 				return csv.appendComposite(buf, ct, info, csv)
 			case ct.IsEnum:
 				csv.appendEnum(buf)
 			default:
-				csv.appendField(buf)
+				return noBinaryDecoder(typ, ct)
 			}
 		} else {
-			csv.appendField(buf)
+			return noBinaryDecoder(typ, nil)
 		}
 	}
 	return nil
@@ -736,8 +747,13 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 				}
 				continue
 			}
-			if err := csv.appendType(buf, fd.DataTypeOID, info); err != nil {
-				return nil, 0, err
+			if fd.Format == pgtype.BinaryFormatCode {
+				if err := csv.appendType(buf, fd.DataTypeOID, info); err != nil {
+					return nil, 0, err
+				}
+			} else {
+				// PostgreSQL's text for the value, as PostgREST's CSV carries it
+				csv.appendField(buf)
 			}
 		}
 	}
@@ -816,9 +832,59 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
 	}
 	for rows.Next() {
-		b.Write(rows.RawValues()[0])
+		raw := rows.RawValues()[0]
+		if raw == nil { // NULL
+			continue
+		}
+		if fds[0].Format == pgtype.TextFormatCode && fds[0].DataTypeOID == pgtype.ByteaOID {
+			// bytea is requested in text (textFormatOnlyTypes): a download
+			// wants the bytes, so decode the text form PostgreSQL sends
+			decoded, err := decodeByteaText(raw)
+			if err != nil {
+				return nil, 0, err
+			}
+			b.Write(decoded)
+			continue
+		}
+		b.Write(raw)
 	}
 	return b.Bytes(), int64(b.Len()), nil
+}
+
+// decodeByteaText decodes bytea_out's text: the hex form (\x0102, the
+// default bytea_output) or the escape form (\ooo for a non-printable byte,
+// \\ for a backslash, every other byte as itself).
+func decodeByteaText(raw []byte) ([]byte, error) {
+	if len(raw) >= 2 && raw[0] == '\\' && raw[1] == 'x' {
+		decoded := make([]byte, hex.DecodedLen(len(raw)-2))
+		if _, err := hex.Decode(decoded, raw[2:]); err != nil {
+			return nil, &SerializeError{msg: "malformed bytea hex: " + err.Error()}
+		}
+		return decoded, nil
+	}
+	decoded := make([]byte, 0, len(raw))
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' {
+			decoded = append(decoded, raw[i])
+			continue
+		}
+		if i+1 < len(raw) && raw[i+1] == '\\' {
+			decoded = append(decoded, '\\')
+			i++
+			continue
+		}
+		if i+3 < len(raw) && isOctal(raw[i+1]) && isOctal(raw[i+2]) && isOctal(raw[i+3]) {
+			decoded = append(decoded, (raw[i+1]-'0')<<6|(raw[i+2]-'0')<<3|(raw[i+3]-'0'))
+			i += 3
+			continue
+		}
+		return nil, &SerializeError{msg: "malformed bytea escape text"}
+	}
+	return decoded, nil
+}
+
+func isOctal(b byte) bool {
+	return b >= '0' && b <= '7'
 }
 
 type DatabaseJSONSerializer struct{}

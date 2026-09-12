@@ -70,11 +70,19 @@ func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
 }
 
 func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) string {
+	return prepareFieldAs(table, schema, table, schema, sfield, info)
+}
+
+// prepareFieldAs builds the select-list item of a field read through an alias
+// (a label, a nesting level, the _source CTE of a mutation) while the column
+// type is still looked up on the real table: the json path of an array or
+// composite column needs its to_jsonb wrapper whatever the prefix.
+func prepareFieldAs(alias, aliasSchema, table, schema string, sfield SelectField, info *SchemaInfo) string {
 	var fieldPart string
 
 	if sfield.aggregate == "" {
 		// Regular field without aggregate
-		fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+		fieldname := _sq(alias, aliasSchema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 		if sfield.field.jsonPath != "" {
 			fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 			fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
@@ -90,7 +98,7 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 			fieldPart = "COUNT(*)"
 		} else {
 			// For aggregates with specific fields
-			fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+			fieldname := _sq(alias, aliasSchema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 			if sfield.field.jsonPath != "" {
 				fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 				fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
@@ -379,13 +387,13 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 					if label == "" {
 						fieldPart = prepareField(table, schema, sfield, stack.info)
 					} else {
-						fieldPart = prepareField(label, "", sfield, stack.info)
+						fieldPart = prepareFieldAs(label, "", table, schema, sfield, stack.info)
 					}
 				} else {
-					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield, stack.info)
+					fieldPart = prepareFieldAs(labelWithNumber(table, stack.level), "", table, schema, sfield, stack.info)
 				}
 			} else {
-				fieldPart = prepareField("_source", "", sfield, stack.info)
+				fieldPart = prepareFieldAs("_source", "", table, schema, sfield, stack.info)
 			}
 			selClause += fieldPart
 		}
@@ -734,11 +742,24 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 	return where, valueList
 }
 
-// returningClause
-func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string) {
+// returningClause builds the RETURNING clause of a mutation and, when the
+// representation needs an outer select (embeds, or an order to apply), the
+// select over the _source CTE the callers wrap the mutation in.
+func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string, err error) {
 	ret += " RETURNING "
+	// order= applies to the returned representation (PostgREST 13.0.0, #3013):
+	// it is built against the _source CTE the outer select reads. limit and
+	// offset are ignored on mutations, as in PostgREST since the same release
+	// dropped limited updates/deletes: every matching row is written.
+	order, err := orderClause(table, schema, quote("_source"), 0, parts.orderFields, parts.selectFields, info)
+	if err != nil {
+		return "", "", err
+	}
 	if len(parts.selectFields) == 0 {
 		ret += "*"
+		if order != "" {
+			sel = "SELECT * FROM _source ORDER BY " + order
+		}
 		return
 	}
 	var hasResourceEmbed bool
@@ -748,7 +769,7 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 			break
 		}
 	}
-	if !hasResourceEmbed {
+	if !hasResourceEmbed && order == "" {
 		// The RETURNING clause is the final response: use the formatted
 		// fields, with casts and aliases.
 		var fields string
@@ -761,11 +782,11 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		ret += fields
 		return
 	}
-	// With embeds the RETURNING clause only feeds the _source CTE, which the
-	// outer select and its lateral joins read by column name (casts, aliases
-	// and json paths are applied there). So it must expose each base column
-	// once, raw and deduplicated by name: a formatted or duplicated fk column
-	// would make _source references ambiguous (42702).
+	// With embeds (or an order) the RETURNING clause only feeds the _source
+	// CTE, which the outer select and its lateral joins read by column name
+	// (casts, aliases and json paths are applied there). So it must expose
+	// each base column once, raw and deduplicated by name: a formatted or
+	// duplicated fk column would make _source references ambiguous (42702).
 	sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
 	var fields string
 	var hasStar bool
@@ -803,11 +824,21 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		for _, k := range keys {
 			addColumn(k)
 		}
+		// and the columns of the order, which the outer ORDER BY must see even
+		// when they are not selected (a related order reads the join instead)
+		for _, o := range parts.orderFields {
+			if o.relation == "" && o.field.tablename == table {
+				addColumn(o.field.name)
+			}
+		}
 	}
 	ret += fields
 	sel = "SELECT " + sc + " FROM _source"
 	if joins != "" {
 		sel += " " + joins
+	}
+	if order != "" {
+		sel += " ORDER BY " + order
 	}
 	return
 }
@@ -899,6 +930,19 @@ func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Funct
 	return append(keys, extra...)
 }
 
+// sameKeys reports whether two records have the same set of keys.
+func sameKeys(a, b Record) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 type CommonBuilder struct{}
 
 func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
@@ -911,20 +955,30 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	// if len(records) == 0 {
 	// 	return "", nil, fmt.Errorf("no records to insert")
 	// }
-	var n int
-	for key := range records[0] {
-		// check if there are specified columns
-		if len(parts.columnFields) > 0 {
-			if _, ok := parts.columnFields[key]; !ok {
-				continue
+	// The column list. With ?columns= it is exactly the listed set, for every
+	// row: a key absent from an object is inserted as NULL, a key not listed is
+	// ignored (PostgREST passes such a body to json_to_recordset untouched).
+	// Otherwise it is the key set of the first object, which every other object
+	// must share: taking it from the first object alone silently dropped the
+	// keys the others added, so a non-uniform array is refused as PostgREST does.
+	if len(parts.columnFields) > 0 {
+		fieldList = lo.Keys(parts.columnFields)
+	} else {
+		for i := 1; i < len(records); i++ {
+			if !sameKeys(records[0], records[i]) {
+				return "", nil, &BuildError{"All object keys must match"}
 			}
 		}
-		n += 1
+		fieldList = lo.Keys(records[0])
+	}
+	// alphabetical, so the SQL text is stable across runs (see orderedRecordKeys)
+	sort.Strings(fieldList)
+	n := len(fieldList)
+	for _, key := range fieldList {
 		if fields != "" {
 			fields += ", "
 		}
 		fields += quote(key)
-		fieldList = append(fieldList, key)
 	}
 	var j int
 	for i, record := range records {
@@ -953,7 +1007,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		insert += onConflict
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		insert += ret
 		if sel != "" {
 			insert = "WITH _source AS (" + insert + ") " + sel
@@ -991,7 +1048,10 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		update += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		update += ret
 		if sel != "" {
 			update = "WITH _source AS (" + update + ") " + sel
@@ -1011,7 +1071,10 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		delete += ret
 		if sel != "" {
 			delete = "WITH _source AS (" + delete + ") " + sel
@@ -1086,6 +1149,23 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 
 const defaultMaxRecursiveDepth = 100
 
+// referencesField reports whether a where-condition tree filters on the named
+// field, at any depth of its and/or/not nesting.
+func referencesField(node *WhereConditionNode, name string) bool {
+	if node == nil {
+		return false
+	}
+	if node.field.name == name {
+		return true
+	}
+	for _, child := range node.children {
+		if referencesField(child, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
 	selectClause, mainWhere, orderClause, joins string,
 	valueList []any, info *SchemaInfo) (string, []any, error) {
@@ -1117,39 +1197,29 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	}
 
 	// Embedding (LEFT JOIN LATERAL) composes with single-table recursion only.
-	// Via-mode embedding would fight the DISTINCT/min-depth dedup, so reject it cleanly.
+	// Via-mode embedding would fight the min-depth dedup, so reject it cleanly.
 	if joins != "" && rec.ViaTable != "" {
 		return "", nil, &ParseError{"embedding is not supported with via() recursion"}
 	}
 
-	// Reject __path (internal cycle-tracking array) as a selected field; __depth is selectable.
+	// __depth and __path are selectable (and orderable) pseudo-columns. Single-table
+	// mode always carries the path array — one path per node on an FK tree, it costs
+	// nothing. Via mode carries it only when __path is asked for: it is what makes the
+	// CTE enumerate paths instead of nodes (see the via branch below).
+	withPath := false
 	for _, sf := range parts.selectFields {
 		if sf.field.name == "__path" {
-			return "", nil, &ParseError{"__path is internal"}
+			withPath = true
 		}
 	}
-	depthSelected := false
-	for _, sf := range parts.selectFields {
-		if sf.field.name == "__depth" {
-			depthSelected = true
-			break
-		}
-	}
-	// via's min-depth dedup emits SELECT DISTINCT, whose ORDER BY columns must all appear in
-	// the select list. If the caller orders by __depth without selecting it we surface __depth
-	// in the projection (below) and route through the dedup wrapper — otherwise Postgres 500s
-	// with "ORDER BY expressions must appear in select list". Single-table mode uses a plain
-	// SELECT and can already order by an unselected __depth, so it needs no such handling.
-	depthOrdered := false
 	for _, of := range parts.orderFields {
-		if of.field.name == "__depth" {
-			depthOrdered = true
-			break
+		if of.field.name == "__path" {
+			withPath = true
 		}
 	}
-	exposeDepth := rec.ViaTable != "" && depthOrdered && !depthSelected
-	if exposeDepth {
-		depthSelected = true
+	// a result filter on __path (`__path=cs.{1,2}`) reads it from the CTE too
+	if referencesField(parts.whereConditionsTree, "__path") {
+		withPath = true
 	}
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
@@ -1232,57 +1302,131 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		// doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)
 		// Base case is the start node itself (depth 0), same as single-table.
 		// The edge table join happens in the recursive step.
+		//
+		// The CTE carries only (__node, __depth): a whole-row CTE with a per-path cycle
+		// guard (NOT key = ANY(__path)) enumerates every simple path of the graph, which
+		// is exponential in depth — a 650-node DAG of depth 12 materialised 797,161 rows
+		// for 490 nodes. With UNION on the narrow row the set dedup bounds the work to one
+		// row per (node, depth): a node reached again through a cycle only re-enters at a
+		// larger depth, so a cyclic graph is walked up to the depth cap, at most one row
+		// per node per level. The seed is never re-entered — a walk back into it only
+		// repeats a shorter walk — which is also what lets `after` drop it as the only
+		// node at depth 0. The set of nodes and the shallowest depth per node are the same
+		// as with the per-path guard: every walk to a node contains a simple path to it of
+		// no greater length. The table is joined back in the outer query.
+		//
+		// When __path is asked for the array is carried again (UNION ALL, per-path guard):
+		// it is the only way to have a path, and it costs the enumeration of every simple
+		// path — the README documents it as exponential.
 		qvia := _sq(rec.ViaTable, schema)
 		viaFrom := quote(rec.ViaFromCol)
 		viaTo := quote(rec.ViaToCol)
+		edgeName := quote("__edge")
 
 		// Base case: the start node itself — when ExcludeStart is true (after operator),
 		// skip walk filters so the seed remains a traversal anchor.
-		q.WriteString("SELECT " + qtable + ".*, 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
+		q.WriteString("SELECT " + qtable + "." + startField + " AS __node, 0 AS __depth")
+		if withPath {
+			q.WriteString(", ARRAY[" + qtable + "." + startField + "] AS __path")
+		}
 		q.WriteString(" FROM " + qtable)
 		nmarker++
-		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
+		startMarker := "$" + strconv.Itoa(nmarker)
+		q.WriteString(" WHERE " + qtable + "." + startField + " = " + startMarker)
 		valueList = append(valueList, rec.StartValue)
 		if walkWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + walkWhere)
 		}
 
-		q.WriteString(" UNION ALL ")
-
-		// Recursive step: follow edges from previously found docs
-		q.WriteString("SELECT " + qtable + ".*, " + cteName + ".__depth + 1, " + cteName + ".__path || " + qtable + "." + startField)
-		q.WriteString(" FROM " + qtable)
-		if rec.ViaBidirectional {
-			// via!both: follow edges in either direction. The new node (qtable) sits on
-			// one end of the edge, the known node (cte) on the opposite end.
-			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField + " OR " + qvia + "." + viaFrom + " = " + qtable + "." + startField)
-			q.WriteString(" INNER JOIN " + cteName + " ON (" + qvia + "." + viaFrom + " = " + cteName + "." + startField + " AND " + qvia + "." + viaTo + " = " + qtable + "." + startField + ") OR (" + qvia + "." + viaTo + " = " + cteName + "." + startField + " AND " + qvia + "." + viaFrom + " = " + qtable + "." + startField + ")")
+		if withPath {
+			q.WriteString(" UNION ALL ")
 		} else {
-			q.WriteString(" INNER JOIN " + qvia + " ON " + qvia + "." + viaTo + " = " + qtable + "." + startField)
-			q.WriteString(" INNER JOIN " + cteName + " ON " + qvia + "." + viaFrom + " = " + cteName + "." + startField)
+			q.WriteString(" UNION ")
 		}
+
+		// Recursive step: follow edges from previously found nodes. The edge table is
+		// wrapped in a derived table of (__from, __to) pairs — for via!both both
+		// orientations, UNION ALL — so the planner drives each arm with an index on the
+		// known node rather than the OR join it could not index (which scanned every edge
+		// per working-table row). Edge filters go inside the arms, where the edge table
+		// is in scope; their markers are simply reused by the second arm.
+		edges := "SELECT " + qvia + "." + viaFrom + " AS __from, " + qvia + "." + viaTo + " AS __to FROM " + qvia
+		if viaWhere != "" {
+			edges += " WHERE " + viaWhere
+		}
+		if rec.ViaBidirectional {
+			edges += " UNION ALL SELECT " + qvia + "." + viaTo + ", " + qvia + "." + viaFrom + " FROM " + qvia
+			if viaWhere != "" {
+				edges += " WHERE " + viaWhere
+			}
+		}
+		q.WriteString("SELECT " + qtable + "." + startField + ", " + cteName + ".__depth + 1")
+		if withPath {
+			q.WriteString(", " + cteName + ".__path || " + qtable + "." + startField)
+		}
+		q.WriteString(" FROM " + cteName)
+		q.WriteString(" INNER JOIN (" + edges + ") " + edgeName + " ON " + edgeName + ".__from = " + cteName + ".__node")
+		q.WriteString(" INNER JOIN " + qtable + " ON " + qtable + "." + startField + " = " + edgeName + ".__to")
 		nmarker++
 		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, maxDepth)
-		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
-		if viaWhere != "" {
-			q.WriteString(" AND " + viaWhere)
+		if withPath {
+			q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
+		} else {
+			q.WriteString(" AND " + qtable + "." + startField + " <> " + startMarker)
 		}
 		if walkWhere != "" {
 			q.WriteString(" AND " + walkWhere)
 		}
 	}
 
-	q.WriteString(") ")
+	q.WriteString(")")
+
+	// via node dedup: one row per node reachable by multiple paths (or at several
+	// depths), at its shallowest depth — with __path, the shortest path, ties broken by
+	// the path itself. Keying on the node needs an equality operator on the start field
+	// only; DISTINCT over the whole row would fail on json, xml or point columns, which
+	// have none. Single-table trees skip this — they can't reach a node at two depths
+	// (the __path guard keeps edges unique), so a plain SELECT below is fine.
+	dedupName := quote("__dedup")
+	if rec.ViaTable != "" {
+		q.WriteString(", " + dedupName + " AS (SELECT DISTINCT ON (__node) __node, __depth")
+		if withPath {
+			q.WriteString(", __path")
+		}
+		q.WriteString(" FROM " + cteName + " ORDER BY __node, __depth")
+		if withPath {
+			q.WriteString(", __path")
+		}
+		q.WriteString(")")
+	}
+	q.WriteString(" ")
 
 	// --- Outer query ---
-	// Rewrite table references to CTE name for the outer query
 	tablePrefix := qtable + "."
 	ctePrefix := cteName + "."
+	// outer rewrites a clause built against the table (select list, result filters,
+	// ORDER BY) for the outer query. Single-table mode selects from the CTE, which
+	// carries the rows, so every table reference moves to the CTE name. Via mode joins
+	// the table back onto "__dedup", so its columns are read from the table itself and
+	// only the pseudo-columns move, "table"."__depth" to "__dedup"."__depth".
+	outer := func(clause string) string {
+		if rec.ViaTable == "" {
+			return strings.ReplaceAll(clause, tablePrefix, ctePrefix)
+		}
+		for _, col := range []string{"__depth", "__path"} {
+			clause = strings.ReplaceAll(clause, tablePrefix+quote(col), dedupName+"."+quote(col))
+		}
+		return clause
+	}
 
-	// Build the SELECT list (without keyword); remember whether it was "*".
+	// Build the SELECT list (without keyword).
 	var sel string
-	if selectClause == "*" {
+	if selectClause != "*" {
+		sel = outer(selectClause)
+	} else if rec.ViaTable != "" {
+		sel = qtable + ".*"
+	} else {
 		// Enumerate actual table columns to exclude internal __depth/__path
 		ftable := _s(table, schema)
 		if info != nil {
@@ -1299,19 +1443,6 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		} else {
 			sel = cteName + ".*"
 		}
-	} else {
-		sel = strings.ReplaceAll(selectClause, tablePrefix, ctePrefix)
-	}
-	// Surface __depth for an order-by that didn't select it (see exposeDepth above). The
-	// cteName.* form already carries __depth, so only the enumerated/explicit lists need it.
-	// NOTE: this deliberately leaks __depth into the result projection — a `via(...)` walk
-	// ordered by an unselected __depth (or `select=*`, whose enumeration otherwise excludes
-	// __depth) returns it as an extra column. Single-table mode uses a plain SELECT that can
-	// order by an unselected column without surfacing it, so the two modes are asymmetric
-	// here. The leak is the price of routing via through the min-depth dedup wrapper, which
-	// requires every ORDER BY column to be in the DISTINCT select list.
-	if exposeDepth && sel != cteName+".*" {
-		sel += ", " + ctePrefix + quote("__depth")
 	}
 
 	// Embed joins (LEFT JOIN LATERAL) correlate to the base-table alias; rewrite
@@ -1333,49 +1464,32 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// ExcludeStart seed-skip); walk.* filters already pruned the CTE arms above.
 	var outerWhere string
 	if rec.ExcludeStart {
-		outerWhere = "__depth > 0"
+		if rec.ViaTable != "" {
+			outerWhere = dedupName + ".__depth > 0"
+		} else {
+			outerWhere = "__depth > 0"
+		}
 	}
 	if mainWhere != "" {
-		resultWhere := strings.ReplaceAll(mainWhere, tablePrefix, ctePrefix)
 		if outerWhere != "" {
 			outerWhere += " AND "
 		}
-		outerWhere += resultWhere
+		outerWhere += outer(mainWhere)
 	}
 
-	if depthSelected && rec.ViaTable != "" {
-		// via min-depth dedup: SELECT DISTINCT ON (node) ... ORDER BY node, __depth
-		// reports the shallowest depth per node. Single-table trees skip this — they
-		// can't reach a node at two depths (the __path guard keeps edges unique), so a
-		// plain SELECT below is fine. The wrapper also isolates min-depth selection from
-		// any user ORDER BY appended below.
-		q.WriteString("SELECT * FROM (SELECT DISTINCT ON (" + ctePrefix + startField + ") " + sel + " FROM " + cteName)
-		if outerWhere != "" {
-			q.WriteString(" WHERE " + outerWhere)
-		}
-		q.WriteString(" ORDER BY " + ctePrefix + startField + ", " + cteName + ".__depth) \"__dedup\"")
+	if rec.ViaTable != "" {
+		// The table joined back onto the deduplicated nodes. A plain SELECT, so a user
+		// ORDER BY can name a column that is not selected, __depth included.
+		q.WriteString("SELECT " + sel + " FROM " + dedupName + " INNER JOIN " + qtable + " ON " + qtable + "." + startField + " = " + dedupName + ".__node")
 	} else {
-		// In via mode, DISTINCT deduplicates nodes reachable by multiple paths.
-		selectKeyword := "SELECT "
-		if rec.ViaTable != "" {
-			selectKeyword = "SELECT DISTINCT "
-		}
-		q.WriteString(selectKeyword + sel + " FROM " + cteName + joinsClause)
-		if outerWhere != "" {
-			q.WriteString(" WHERE " + outerWhere)
-		}
+		q.WriteString("SELECT " + sel + " FROM " + cteName + joinsClause)
+	}
+	if outerWhere != "" {
+		q.WriteString(" WHERE " + outerWhere)
 	}
 
 	if orderClause != "" {
-		// When the min-depth dedup wrapper is in play the outer query selects from the
-		// "__dedup" subquery, so a user ORDER BY must target that alias (and the column
-		// must be in the select list); otherwise it references the CTE directly.
-		orderPrefix := ctePrefix
-		if depthSelected && rec.ViaTable != "" {
-			orderPrefix = quote("__dedup") + "."
-		}
-		outerOrder := strings.ReplaceAll(orderClause, tablePrefix, orderPrefix)
-		q.WriteString(" ORDER BY " + outerOrder)
+		q.WriteString(" ORDER BY " + outer(orderClause))
 	}
 
 	// Limit

@@ -6,6 +6,24 @@ import (
 	"time"
 )
 
+// ensureAnonRole creates a NOLOGIN, non-superuser role to use as the anonymous
+// role, switched into from the pool's own (here superuser) role.
+func ensureAnonRole(t *testing.T, s *Server, name string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := s.DBE.AcquireConnection(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "DROP ROLE IF EXISTS "+name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "CREATE ROLE "+name+" NOLOGIN"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // acquireWithin reports whether the main pool hands out a connection within d.
 func acquireWithin(t *testing.T, s *Server, d time.Duration) bool {
 	t.Helper()
@@ -36,11 +54,16 @@ func TestSessionModeConnectionRetention(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.mode, func(t *testing.T) {
 			s := newSingleConnectionServer(t, map[string]any{
-				"Address":          "localhost:" + c.port,
-				"AllowAnon":        true,
-				"SessionMode":      c.mode,
-				"EnableAdminRoute": false,
+				"Address":           "localhost:" + c.port,
+				"AllowAnon":         true,
+				"Database.AnonRole": "sessmode_anon",
+				"SessionMode":       c.mode,
+				"EnableAdminRoute":  false,
 			})
+			// The anonymous request below must acquire a connection to exercise
+			// retention; an empty AnonRole is now refused before any connection
+			// is taken, so configure a non-superuser role to switch into.
+			ensureAnonRole(t, s, "sessmode_anon")
 			done := startTestServer(t, s)
 			defer func() {
 				s.Shutdown(context.Background())

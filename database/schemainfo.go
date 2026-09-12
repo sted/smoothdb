@@ -34,6 +34,10 @@ type Relationship struct {
 }
 
 type SchemaInfo struct {
+	// ServerVersion is the PostgreSQL version as server_version_num (160015 is
+	// 16.15), read with the rest of the cache and so refreshed on every schema
+	// reload. Gate a feature on it with ServerAtLeast, see its convention.
+	ServerVersion           int
 	cachedTypes             map[uint32]Type
 	cachedComposites        []Type
 	cachedTables            map[string]Table
@@ -58,6 +62,12 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	dbi.cachedRelationships = map[string][]Relationship{}
 	dbi.cachedFunctions = map[string]Function{}
 
+	// Server version, first: an introspection query below may branch on it
+	version, err := GetServerVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dbi.ServerVersion = version
 	// Types
 	types, err := GetTypes(ctx)
 	if err != nil {
@@ -207,6 +217,9 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 }
 
 func (si *SchemaInfo) GetTypeById(id uint32) *Type {
+	if si == nil {
+		return nil
+	}
 	t, ok := si.cachedTypes[id]
 	if !ok {
 		return nil

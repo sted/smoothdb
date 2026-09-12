@@ -10,7 +10,7 @@
 * [ ] drop materialized views
 * [x] support for numeric
 * [ ] support for duration
-* [ ] support for multirange
+* [x] support for multirange
 * [ ] resource embedding: support views
 * [ ] problems with constraint definition (eg ">" -> \u003e)
 

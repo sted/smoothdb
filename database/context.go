@@ -57,7 +57,7 @@ func ContextWithDb(parent context.Context, db *Database, role string) (context.C
 	if err != nil {
 		return nil, nil, err
 	}
-	err = PrepareConnection(parent, conn, role, "", true)
+	err = PrepareConnection(parent, conn, role, "", true, false)
 	if err != nil {
 		return nil, nil, err
 	}

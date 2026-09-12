@@ -130,8 +130,10 @@ type RequestParser interface {
 }
 
 type PostgRestParser struct {
+	src    string // the string scanned last (see scan)
 	tokens []string
 	quoted []bool // for each token, whether it was quoted in the source
+	ends   []int  // for each token, the offset in src just past it
 	cur    int
 	depth  int // current boolean-filter recursion depth (see maxFilterDepth)
 }
@@ -276,10 +278,12 @@ func (p PostgRestParser) filterParameters(filters Filters) Filters {
 	return skipped
 }
 
-// addToken appends a token, remembering if it was quoted in the source
-func (p *PostgRestParser) addToken(t string, quoted bool) {
+// addToken appends a token, remembering if it was quoted in the source and
+// where it ends there
+func (p *PostgRestParser) addToken(t string, quoted bool, end int) {
 	p.tokens = append(p.tokens, t)
 	p.quoted = append(p.quoted, quoted)
+	p.ends = append(p.ends, end)
 }
 
 // scan splits the string s using the separators and
@@ -287,23 +291,51 @@ func (p *PostgRestParser) addToken(t string, quoted bool) {
 // Returns a slice of substrings and separators.
 // sep is the set of single char separators.
 // longSep is the set of multi char separators (put longest first!)
+// As in PostgREST (pQuotedValue with notFollowedBy), a quote opens a quoted
+// token only at the start of a token and the token must end at a separator,
+// a space or the end: otherwise, or when unterminated, the quote is an
+// ordinary character. A backslash escapes only inside quotes. The end offset
+// of each token is recorded, so that a filter value can be read back verbatim
+// from s (see rawValue).
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
 	//state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+	p.src = s
 	var quot bool
+	var qchar byte // the quote character that opened the quoted token
+	var qstart int // and its offset
 	var esc bool
 	var normal []byte
 	var quoted []byte
 	var cur byte
 	wasSep := true
-outer:
-	for i := 0; i < len(s); i++ {
-		cur = s[i]
-		if !quot && !esc { // normal
-			if wasSep && cur == ' ' {
-				continue
+	// endsToken reports whether a quoted token may end at the quote at i
+	endsToken := func(i int) bool {
+		if i+1 == len(s) || s[i+1] == ' ' || strings.IndexByte(sep, s[i+1]) >= 0 {
+			return true
+		}
+		for _, lsep := range longSep {
+			if strings.HasPrefix(s[i+1:], lsep) {
+				return true
 			}
-			if cur == '\\' {
-				esc = true
+		}
+		return false
+	}
+outer:
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) {
+			if !quot {
+				break
+			}
+			// unterminated quote: rescan from it as an ordinary character
+			quot, esc = false, false
+			i = qstart
+			normal = append(normal, s[i])
+			wasSep = false
+			continue
+		}
+		cur = s[i]
+		if !quot { // normal
+			if wasSep && cur == ' ' {
 				continue
 			}
 			// Manage long separators
@@ -314,55 +346,58 @@ outer:
 				}
 				if strings.Compare(lsep, s[i:i+l]) == 0 {
 					if len(normal) != 0 {
-						p.addToken(string(normal), false)
+						p.addToken(string(normal), false, i)
 						normal = nil
 					}
-					p.addToken(lsep, false)
+					p.addToken(lsep, false, i+l)
 					i += l - 1
 					wasSep = true
 					continue outer
 				}
 			}
-			if cur == '"' || cur == '\'' {
-				if len(normal) != 0 {
-					p.addToken(string(normal), false)
-					normal = nil
-				}
+			if (cur == '"' || cur == '\'') && len(normal) == 0 {
 				quot = true
+				qchar = cur
+				qstart = i
 				quoted = nil
 				wasSep = false
 			} else if strings.Contains(sep, string(cur)) {
 				if len(normal) != 0 {
-					p.addToken(string(normal), false)
+					p.addToken(string(normal), false, i)
 					normal = nil
 				}
-				p.addToken(string(cur), false)
+				p.addToken(string(cur), false, i+1)
 				wasSep = true
 			} else {
 				normal = append(normal, cur)
 				wasSep = false
 			}
-		} else if quot && !esc { // quoted
-			if cur == '"' || cur == '\'' {
+		} else if !esc { // quoted
+			if cur == qchar {
 				quot = false
-				p.addToken(string(quoted), true)
-				wasSep = true
+				if endsToken(i) {
+					p.addToken(string(quoted), true, i+1)
+					wasSep = true
+				} else {
+					// the quotes are ordinary characters: rescan from the opening
+					// one (bounded: no quote opens again before the next separator,
+					// so a region is rescanned at most twice)
+					i = qstart
+					normal = append(normal, s[i])
+					wasSep = false
+				}
 			} else if cur == '\\' {
 				esc = true
 			} else {
 				quoted = append(quoted, cur)
 			}
-		} else if esc { // escaped
+		} else { // escaped
 			esc = false
-			if quot {
-				quoted = append(quoted, cur)
-			} else {
-				normal = append(normal, cur)
-			}
+			quoted = append(quoted, cur)
 		}
 	}
 	if len(normal) != 0 {
-		p.addToken(string(normal), false)
+		p.addToken(string(normal), false, len(s))
 	}
 }
 
@@ -407,8 +442,10 @@ func (p *PostgRestParser) lookAhead() string {
 
 // reset reinitializes the parser
 func (p *PostgRestParser) reset() {
+	p.src = ""
 	p.tokens = nil
 	p.quoted = nil
+	p.ends = nil
 	p.cur = 0
 	p.depth = 0
 }
@@ -822,6 +859,44 @@ func (p *PostgRestParser) completeIfFloat() string {
 	return ""
 }
 
+// rawValue returns the source text that follows the last consumed token, up
+// to the first byte in stop or to the end of the source when stop is empty,
+// and moves the cursor past the tokens it covers. A plain filter value is read
+// this way: verbatim, whatever the scanner made of its dots, commas, colons,
+// quotes or spaces.
+func (p *PostgRestParser) rawValue(stop string) string {
+	var start int
+	if p.cur > 0 {
+		start = p.ends[p.cur-1]
+	}
+	end := len(p.src)
+	if i := strings.IndexAny(p.src[start:], stop); i >= 0 {
+		end = start + i
+	}
+	for p.cur < len(p.tokens) && p.ends[p.cur] <= end {
+		p.cur++
+	}
+	return p.src[start:end]
+}
+
+// atValueEnd reports whether the last consumed token is followed by the end
+// of the source or by one of the stop bytes.
+func (p *PostgRestParser) atValueEnd(stop string) bool {
+	end := p.ends[p.cur-1]
+	return end == len(p.src) || strings.IndexByte(stop, p.src[end]) >= 0
+}
+
+// skipSpaces moves the start of the next value past the spaces that follow
+// the last consumed token (the lexeme after the parenthesis of a list in
+// PostgREST).
+func (p *PostgRestParser) skipSpaces() {
+	end := p.ends[p.cur-1]
+	for end < len(p.src) && (p.src[end] == ' ' || p.src[end] == '\t') {
+		end++
+	}
+	p.ends[p.cur-1] = end
+}
+
 // quoteJsonString returns s as a double-quoted JSON string literal,
 // escaping embedded quotes and backslashes
 func quoteJsonString(s string) string {
@@ -844,16 +919,26 @@ func jsonPathIsJsonTyped(path string) bool {
 	return strings.LastIndex(path, "->") != strings.LastIndex(path, "->>")
 }
 
-func (p *PostgRestParser) value(node *WhereConditionNode) error {
-	token, quoted := p.nextQuoted()
-	if token == "" && !quoted {
+// value parses one filter value and appends it to node.values. stop is the
+// set of bytes that end the value: none for a top-level filter, whose value
+// runs to the end of the parameter as in PostgREST (pSingleVal), the
+// separators inside in.(), any/all lists and logic trees (pListElement,
+// pLogicSingleVal). A quoted value or a bracketed literal (range, composite,
+// array, JSON) is recognized only when it spans the whole value; anything
+// else is taken verbatim from the source, so the dots, commas, colons, quotes
+// and spaces inside a value survive. Unquoting a top-level value is a
+// deliberate smoothdb leniency: PostgREST takes the quotes literally there
+// and only unquotes inside lists and logic trees.
+func (p *PostgRestParser) value(node *WhereConditionNode, stop string) error {
+	start := p.cur
+	vstart := p.ends[p.cur-1] // where the value begins in the source
+	if strings.Contains(stop, "}") && p.atValueEnd(stop) {
+		// eq(any).{}
 		return &ParseError{"value expected"}
 	}
-	if token == ")" && !quoted { // empty set for IN
-		p.back()
-		return nil
-	}
+	token, quoted := p.nextQuoted()
 	value := token
+	literal := false // a quoted value or a bracketed literal spanning the whole value
 	level := 0
 	if !quoted && (token == "(" || token == "[") { // Range, Composite or JSON array
 		level = 1
@@ -866,11 +951,12 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			} else if token == ")" || token == "]" {
 				level--
 			} else if token == "" {
-				return &ParseError{"')' or ']' expected"}
+				break
 			}
 			value += token
 			value += p.completeIfFloat()
 		}
+		literal = level == 0
 	} else if !quoted && token == "{" { // Arrays or JSON Object
 		level = 1
 		for level > 0 {
@@ -882,7 +968,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			} else if token == "}" {
 				level--
 			} else if token == "" {
-				return &ParseError{"'}' expected"}
+				break
 			} else if token == "true" || token == "false" || token == "null" {
 				// bare JSON literals stay bare
 			} else if unicode.IsLetter(rune(token[0])) {
@@ -891,7 +977,22 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 			value += token
 			value += p.completeIfFloat()
 		}
+		literal = level == 0
 	} else if quoted {
+		literal = true
+	}
+	// a literal spans the whole value: from its beginning (the scanner skips
+	// the spaces after a separator) to a stop byte or the end
+	if literal && (p.src[vstart] == ' ' || !p.atValueEnd(stop)) {
+		literal = false
+	}
+	if !literal {
+		// plain value, verbatim
+		p.cur = start
+		quoted = false
+		value = p.rawValue(stop)
+	}
+	if quoted {
 		// PostgREST parses the operand of IS as a grammar token: the five keywords,
 		// never quoted. A quoted operand would otherwise skip the check below and
 		// reach Postgres as `IS foo` (42601).
@@ -903,19 +1004,19 @@ func (p *PostgRestParser) value(node *WhereConditionNode) error {
 		if jsonPathIsJsonTyped(node.field.jsonPath) {
 			value = quoteJsonString(value)
 		}
-	} else {
+	} else if !literal {
 		lvalue := strings.ToLower(value)
 		if lvalue == "null" ||
 			lvalue == "true" ||
 			lvalue == "false" ||
-			lvalue == "unknown" {
+			lvalue == "unknown" ||
+			lvalue == "not_null" {
 			value = lvalue
-		} else if lvalue == "not_null" {
-			value = "not_null"
 		} else if node.operator == "IS" {
+			// the whole operand must be a keyword: PostgREST matches it by prefix
+			// (its parser does not check for the end of input), so is.null.x and
+			// is.nullx pass as IS NULL there; smoothdb refuses them
 			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
-		} else {
-			value += p.completeIfFloat()
 		}
 	}
 	// '*' is the URL-friendly stand-in for the LIKE/ILIKE wildcard; leave it
@@ -1068,47 +1169,60 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 				token = p.next()
 			}
 		}
-		if token == "." { // value
-			if node.operator == "IN" {
-				if p.next() != "(" {
-					return &ParseError{"'(' expected"}
-				}
-				for {
-					err = p.value(node)
-					if err != nil {
-						return err
-					}
-					token = p.next()
-					if token != "," {
-						break
-					}
-				}
-				if token != ")" {
-					return &ParseError{"')' expected"}
-				}
-			} else if node.opModifier != "" {
-				// Parse {v1,v2,...} for any/all modifiers
-				if p.next() != "{" {
-					return &ParseError{"'{' expected"}
-				}
-				for {
-					err = p.value(node)
-					if err != nil {
-						return err
-					}
-					token = p.next()
-					if token != "," {
-						break
-					}
-				}
-				if token != "}" {
-					return &ParseError{"'}' expected"}
-				}
-			} else {
-				err = p.value(node)
+		if token != "." {
+			return &ParseError{"'.' expected"}
+		}
+		// value
+		if node.operator == "IN" {
+			if p.next() != "(" {
+				return &ParseError{"'(' expected"}
+			}
+			p.skipSpaces()
+			for {
+				err = p.value(node, ",)")
 				if err != nil {
 					return err
 				}
+				token = p.next()
+				if token != "," {
+					break
+				}
+			}
+			if token != ")" {
+				return &ParseError{"')' expected"}
+			}
+			if len(node.values) == 1 && node.values[0] == "" { // in.() is the empty set
+				node.values = nil
+			}
+		} else if node.opModifier != "" {
+			// Parse {v1,v2,...} for any/all modifiers
+			if p.next() != "{" {
+				return &ParseError{"'{' expected"}
+			}
+			for {
+				err = p.value(node, ",}")
+				if err != nil {
+					return err
+				}
+				token = p.next()
+				if token != "," {
+					break
+				}
+			}
+			if token != "}" {
+				return &ParseError{"'}' expected"}
+			}
+		} else {
+			// a top-level value runs to the end of the parameter (PostgREST
+			// pSingleVal); inside a logic tree it ends at the next separator
+			// (pLogicSingleVal)
+			stop := ",)"
+			if parent.isRootNode() {
+				stop = ""
+			}
+			err = p.value(node, stop)
+			if err != nil {
+				return err
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,7 +44,11 @@ type Test struct {
 	// ported PostgREST tests expect exactly that (writes default to
 	// `Prefer: return=minimal`), and encoding it as `Expected: ""` silently
 	// degraded those tests to status-only checks.
-	ExpectedEmpty   bool
+	ExpectedEmpty bool
+	// ExpectedBase64 says that Expected is the base64 encoding of a binary
+	// body (an application/octet-stream download): the body is compared to
+	// its decoding, byte by byte.
+	ExpectedBase64  bool
 	ExpectedHeaders map[string]string
 	Status          int
 }
@@ -112,17 +117,33 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, *http.Heade
 	return ReadResponse(resp)
 }
 
-func WaitForServer(baseURL string) {
+// WaitForServer polls baseURL/live until smoothdb answers. Any listener would
+// not do: when the port is already taken by an unrelated process, Start()
+// fails with a bind error while the squatter happily answers the probe, and
+// the suite then runs against the wrong server with baffling failures. The
+// /live body is the fingerprint — the Server header would not do, /live is
+// registered outside the middleware that sets it.
+func WaitForServer(baseURL string) error {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
+	var lastErr error
 	for i := 0; i < 40; i++ {
 		resp, err := client.Get(baseURL + "/live")
 		if err == nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
-			return
+			var live struct {
+				Status string `json:"status"`
+			}
+			if resp.StatusCode == http.StatusOK && json.Unmarshal(body, &live) == nil && live.Status == "ok" {
+				return nil
+			}
+			return fmt.Errorf("%s/live is answered by something other than smoothdb (HTTP %d, Server %q, body %.80q): is the port taken by another process?",
+				baseURL, resp.StatusCode, resp.Header.Get("Server"), body)
 		}
+		lastErr = err
 		time.Sleep(50 * time.Millisecond)
 	}
-	fmt.Println("Warning: server did not become ready")
+	return fmt.Errorf("server at %s did not become ready: %v", baseURL, lastErr)
 }
 
 func Prepare(config Config, commands []Command) {
@@ -150,7 +171,20 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				break
 			}
 		} else if test.Expected != "" {
-			if v, ok := test.Headers["Accept"]; ok && strings.Contains(v[0], "text/csv") {
+			accept := ""
+			if v, ok := test.Headers["Accept"]; ok {
+				accept = v[0]
+			}
+			if test.ExpectedBase64 {
+				want, err := base64.StdEncoding.DecodeString(test.Expected)
+				if err != nil {
+					t.Fatalf("%d. %v: ExpectedBase64 is not base64: %v", i, test.Description, err)
+				}
+				s1 = string(want)
+				s2 = string(body)
+			} else if strings.Contains(accept, "text/csv") || strings.Contains(accept, "application/octet-stream") {
+				// not JSON: compared as they are (decoding both as JSON made
+				// every non-JSON pair equal, null against null)
 				s1 = test.Expected
 				s2 = string(body)
 			} else {

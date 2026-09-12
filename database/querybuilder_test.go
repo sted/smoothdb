@@ -364,6 +364,129 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT "table"."name"::text, "table"."age"::integer FROM "table"`,
 			nil,
 		},
+		// --- Filter values: a top-level value runs to the end of the parameter
+		//     (PostgREST pSingleVal); inside in.(), any/all lists and logic
+		//     trees it ends at the next separator unless quoted (pListElement,
+		//     pLogicSingleVal). Before the fix at most one extra dot survived
+		//     (completeIfFloat) and the rest was silently dropped. ---
+		{
+			// more than one dot
+			"?ver=eq.1.2.3",
+			`SELECT * FROM "table" WHERE "table"."ver" = $1`,
+			[]any{"1.2.3"},
+		},
+		{
+			// dots and an at sign
+			"?mail=eq.a.b@c.com",
+			`SELECT * FROM "table" WHERE "table"."mail" = $1`,
+			[]any{"a.b@c.com"},
+		},
+		{
+			// comma
+			"?name=eq.a,b",
+			`SELECT * FROM "table" WHERE "table"."name" = $1`,
+			[]any{"a,b"},
+		},
+		{
+			// one dot (worked before: positive control)
+			"?name=eq.autoexec.bat",
+			`SELECT * FROM "table" WHERE "table"."name" = $1`,
+			[]any{"autoexec.bat"},
+		},
+		{
+			// negated operator
+			"?ver=not.eq.1.2.3",
+			`SELECT * FROM "table" WHERE NOT "table"."ver" = $1`,
+			[]any{"1.2.3"},
+		},
+		{
+			// like: the star rewrite applies to the whole value
+			"?name=like.*a.b*",
+			`SELECT * FROM "table" WHERE "table"."name" LIKE $1`,
+			[]any{"%a.b%"},
+		},
+		{
+			// regex: the spec case "imatch..*YY.*" used to bind "."
+			"?k=imatch..*YY.*",
+			`SELECT * FROM "table" WHERE "table"."k" ~* $1`,
+			[]any{".*YY.*"},
+		},
+		{
+			// full text search with a language
+			"?x=fts(english).a.b",
+			`SELECT * FROM "table" WHERE "table"."x" @@ to_tsquery('english', $1)`,
+			[]any{"a.b"},
+		},
+		{
+			// colon, space after a dot, apostrophe, unbalanced double quote,
+			// arrow, equals sign: all ordinary characters in a value
+			"?a=eq.10:30&b=eq.Sidney K. Meier&c=eq.O'Brien&d=eq.5\" display&e=eq.a->b&f=eq.a=b",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" = $2 AND "table"."c" = $3 AND "table"."d" = $4 AND "table"."e" = $5 AND "table"."f" = $6`,
+			[]any{"10:30", "Sidney K. Meier", "O'Brien", "5\" display", "a->b", "a=b"},
+		},
+		{
+			// a bracket or a quote that does not span the whole value is literal
+			"?a=eq.[draft] v2&b=eq.(1,2)x&c=eq.\"a\"b",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" = $2 AND "table"."c" = $3`,
+			[]any{"[draft] v2", "(1,2)x", "\"a\"b"},
+		},
+		{
+			// keyword followed by more: not a keyword
+			"?x=eq.null.x",
+			`SELECT * FROM "table" WHERE "table"."x" = $1`,
+			[]any{"null.x"},
+		},
+		{
+			// empty value (PostgREST: searching for an empty string)
+			"?x=eq.",
+			`SELECT * FROM "table" WHERE "table"."x" = $1`,
+			[]any{""},
+		},
+		{
+			// in: dotted elements, quoted element with a comma, empty set
+			"?a=in.(a.b,c.d)&b=in.(1.2.3,x)&c=in.(\"a,b\",c.d)&d=in.()",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1, $2) AND "table"."b" IN ($3, $4) AND "table"."c" IN ($5, $6) AND "table"."d" = ANY('{}')`,
+			[]any{"a.b", "c.d", "1.2.3", "x", "a,b", "c.d"},
+		},
+		{
+			// any/all list: dotted elements
+			"?x=eq(any).{a.b,c.d.e}",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."x" = $2)`,
+			[]any{"a.b", "c.d.e"},
+		},
+		{
+			// logic tree: a value ends at the next separator unless quoted
+			"?or=(x.eq.a.b.c,y.eq.\"c,d\",z.in.(1.2.3,e.f))",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."y" = $2 OR "table"."z" IN ($3, $4))`,
+			[]any{"a.b.c", "c,d", "1.2.3", "e.f"},
+		},
+		{
+			// logic tree: an empty value
+			"?or=(x.eq.,y.eq.1)",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."y" = $2)`,
+			[]any{"", "1"},
+		},
+		{
+			// a quoted value closes on the same quote character; a quote not at
+			// the start of a value, or not followed by a separator, or left
+			// open, is an ordinary character (PostgREST pQuotedValue)
+			"?a=eq.\"O'Brien\"&b=in.(O'Brien,Smith)&c=in.(\")&d=eq.\"foo&e=in.(\"a\"b,c)&f=in.(\"a,b\"c,d)",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" IN ($2, $3) AND "table"."c" IN ($4) AND "table"."d" = $5 AND "table"."e" IN ($6, $7) AND "table"."f" IN ($8, $9, $10)`,
+			[]any{"O'Brien", "O'Brien", "Smith", "\"", "\"foo", "\"a\"b", "c", "\"a", "b\"c", "d"},
+		},
+		{
+			// a backslash escapes only inside quotes
+			"?a=in.(\\)&b=eq.a\\.b&c=eq.\"a\\\"b\"",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1) AND "table"."b" = $2 AND "table"."c" = $3`,
+			[]any{"\\", "a\\.b", "a\"b"},
+		},
+		{
+			// spaces: stripped after the parenthesis of a list (in.(  ) is the
+			// empty set), kept anywhere else; an empty element is a value
+			"?a=in.( \"a\")&b=in.(a, \"b\")&c=in.(  )&d=in.(a,)&e=in.( ,3)&f=eq. a",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1) AND "table"."b" IN ($2, $3) AND "table"."c" = ANY('{}') AND "table"."d" IN ($4, $5) AND "table"."e" IN ($6, $7) AND "table"."f" = $8`,
+			[]any{"a", "a", " \"b\"", "a", "", "", "3", " a"},
+		},
 		// --- Recursive queries ---
 		{
 			// basic recursive query
@@ -411,17 +534,40 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"5", 3},
 		},
 		// --- Via (multi-table) recursive queries ---
+		// The CTE carries only (node key, depth) and dedups with UNION: a whole-row CTE with
+		// a per-path cycle guard enumerates every simple path of the graph, exponential in
+		// depth. The seed is excluded from re-entry (any walk through it has a shorter
+		// suffix, and `after` relies on it being at depth 0 only); a "__dedup" CTE keeps one
+		// row per node at its shallowest depth (DISTINCT ON the key — no whole-row equality,
+		// which json, xml or point columns lack); the table is joined back onto it. The edge
+		// table is wrapped in a derived table of (__from, __to) pairs so each arm can use an
+		// index on the known node.
 		{
-			// basic via — base case is start node, edges followed in recursive step
+			// basic via — base case is the start node, edges followed in the recursive step
 			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table".* FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0`,
 			[]any{"1", 100},
 		},
 		{
-			// via with edge filter — via values shifted by offset
+			// via with edge filter — inside the edge derived table, where the edge table is
+			// in scope; via values shifted by offset
 			"?id=after.1&id=recurse.3&edge=via(src_id,dst_id)&edge.rel_type=eq.contains",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path) AND "edge"."rel_type" = $1) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $2 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge" WHERE "edge"."rel_type" = $1) "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $3 AND "table"."id" <> $2), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table".* FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0`,
 			[]any{"contains", "1", 3},
+		},
+		{
+			// via + user order + limit, no __depth: ORDER BY and LIMIT apply to the joined
+			// result, after the dedup
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,name&order=name.desc&limit=10",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table"."id", "table"."name" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0 ORDER BY "table"."name" DESC LIMIT $3`,
+			[]any{"1", 100, int64(10)},
+		},
+		{
+			// via + walk-prune filter (both CTE arms) + result filter (outer query). The
+			// result filter is built first in BuildSelect and claims $1; then start $2, depth $3.
+			"?id=start.1&id=recurse.all&edge=via(src_id,dst_id)&walk.is_active=is.true&name=eq.x",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $2 AND "table"."is_active" IS true UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $3 AND "table"."id" <> $2 AND "table"."is_active" IS true), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table".* FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "table"."name" = $1`,
+			[]any{"x", "1", 100},
 		},
 		// --- __depth selectable + via min-depth dedup ---
 		{
@@ -431,23 +577,66 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"1", 100},
 		},
 		{
-			// via + __depth: DISTINCT ON (node) ORDER BY node, __depth keeps min depth per node
+			// via + __depth: read from the "__dedup" CTE, which keeps the min depth per node
 			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,__depth",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive"."id", "__recursive"."__depth" FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup"`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table"."id", "__dedup"."__depth" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0`,
 			[]any{"1", 100},
 		},
 		{
-			// via + __depth + user order: ORDER BY targets the "__dedup" wrapper alias
+			// via + __depth + user order: the ORDER BY targets the joined table directly
 			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,__depth&order=id",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" INNER JOIN "__recursive" ON "edge"."src_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT * FROM (SELECT DISTINCT ON ("__recursive"."id") "__recursive"."id", "__recursive"."__depth" FROM "__recursive" WHERE __depth > 0 ORDER BY "__recursive"."id", "__recursive".__depth) "__dedup" ORDER BY "__dedup"."id"`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table"."id", "__dedup"."__depth" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0 ORDER BY "table"."id"`,
 			[]any{"1", 100},
+		},
+		{
+			// via ordered by an unselected __depth: a plain ORDER BY on the "__dedup" column,
+			// nothing surfaces in the projection (as in single-table mode)
+			"?id=start.1&id=recurse.all&edge=via(src_id,dst_id)&select=id&order=__depth.desc",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table"."id" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node ORDER BY "__dedup"."__depth" DESC`,
+			[]any{"1", 100},
+		},
+		// --- __path: the path array, on request only ---
+		{
+			// single-table: the CTE always carries __path (one path per node on an FK tree),
+			// selecting it just projects the column
+			"?id=start.1&parent_id=recurse.all&select=id,__path",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "__recursive" ON "table"."parent_id" = "__recursive"."id" WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT "__recursive"."id", "__recursive"."__path" FROM "__recursive"`,
+			[]any{"1", 100},
+		},
+		{
+			// via + __path: the path-carrying shape — UNION ALL with the per-path cycle guard,
+			// which enumerates every simple path (exponential in depth) — and the dedup keeps
+			// the shallowest path per node, ties broken by the path itself
+			"?id=start.1&id=recurse.all&edge=via(src_id,dst_id)&select=id,__depth,__path",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table"."id", "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth, __path FROM "__recursive" ORDER BY __node, __depth, __path) SELECT "table"."id", "__dedup"."__depth", "__dedup"."__path" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node`,
+			[]any{"1", 100},
+		},
+		{
+			// via ordered by __path without selecting it also carries the path
+			"?id=after.1&id=recurse.all&edge=via(src_id,dst_id)&select=id&order=__path",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table"."id", "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth, __path FROM "__recursive" ORDER BY __node, __depth, __path) SELECT "table"."id" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0 ORDER BY "__dedup"."__path"`,
+			[]any{"1", 100},
+		},
+		{
+			// a result filter on __path reads it from the CTE, so it carries the path too
+			// (found in review: without it the outer WHERE named a column the CTE lacked)
+			"?id=start.1&id=recurse.all&edge=via(src_id,dst_id)&select=id&__path=cs.{1,2}",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table"."id", "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path)), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth, __path FROM "__recursive" ORDER BY __node, __depth, __path) SELECT "table"."id" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup"."__path" @> $1`,
+			[]any{"{1,2}", "1", 100},
 		},
 		// --- bidirectional via!both ---
 		{
-			// via!both follows edges in either direction via an OR join predicate
+			// via!both: the edge derived table carries both orientations (UNION ALL), so
+			// each arm is driven by an index on the known node instead of an OR join
 			"?id=after.1&id=recurse.all&edge=via!both(src_id,dst_id)",
-			`WITH RECURSIVE "__recursive" AS (SELECT "table".*, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table".*, "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "table" INNER JOIN "edge" ON "edge"."dst_id" = "table"."id" OR "edge"."src_id" = "table"."id" INNER JOIN "__recursive" ON ("edge"."src_id" = "__recursive"."id" AND "edge"."dst_id" = "table"."id") OR ("edge"."dst_id" = "__recursive"."id" AND "edge"."src_id" = "table"."id") WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)) SELECT DISTINCT "__recursive".* FROM "__recursive" WHERE __depth > 0`,
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $1 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge" UNION ALL SELECT "edge"."dst_id", "edge"."src_id" FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND "table"."id" <> $1), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table".* FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0`,
 			[]any{"1", 100},
+		},
+		{
+			// via!both with an edge filter: the filter is repeated in both arms (same marker)
+			"?id=after.1&id=recurse.all&edge=via!both(src_id,dst_id)&edge.rel_type=eq.contains",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth FROM "table" WHERE "table"."id" = $2 UNION SELECT "table"."id", "__recursive".__depth + 1 FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge" WHERE "edge"."rel_type" = $1 UNION ALL SELECT "edge"."dst_id", "edge"."src_id" FROM "edge" WHERE "edge"."rel_type" = $1) "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $3 AND "table"."id" <> $2), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth FROM "__recursive" ORDER BY __node, __depth) SELECT "table".* FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0`,
+			[]any{"contains", "1", 100},
 		},
 	}
 
@@ -458,11 +647,13 @@ func TestQueryBuilder(t *testing.T) {
 		}
 		parts, err := PostgRestParser{}.parse("table", url.Query())
 		if err != nil {
-			t.Error(err)
+			t.Errorf("\n%d. Unexpected parse error %q \n(query string -> \"%v\")", i, err, test.query)
+			continue
 		}
 		query, values, err := DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
 		if err != nil {
-			t.Error(err)
+			t.Errorf("\n%d. Unexpected build error %q \n(query string -> \"%v\")", i, err, test.query)
+			continue
 		}
 		if query != test.expectedSQL {
 			t.Errorf("\n%d. Expected \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.expectedSQL, query, test.query)
@@ -506,14 +697,45 @@ func TestRecursiveParserErrors(t *testing.T) {
 	}
 }
 
+// TestFilterValueErrors: a comma inside a logic tree separates filters and a
+// filter operator needs its delimiter, as in PostgREST; the operand of IS is
+// checked whole.
+func TestFilterValueErrors(t *testing.T) {
+	errorTests := []struct {
+		query  string
+		errMsg string
+	}{
+		{"?or=(x.eq.a,b)", "'=' expected"},
+		{"?x=eq", "'.' expected"},
+		{"?x=in", "'.' expected"},
+		{"?x=is.null.x", "IS operator requires null, not_null, true, false or unknown"},
+		{"?x=in.(a", "')' expected"},
+	}
+
+	for i, test := range errorTests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = PostgRestParser{}.parse("table", u.Query())
+		if err == nil {
+			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
+			continue
+		}
+		if err.Error() != test.errMsg {
+			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
+		}
+	}
+}
+
 // TestRecursiveBuildErrors covers errors raised while building the recursive
-// SELECT (not during parsing) — e.g. selecting the internal __path array.
+// SELECT (not during parsing) — e.g. aggregating over a walk.
 func TestRecursiveBuildErrors(t *testing.T) {
 	errorTests := []struct {
 		query  string
 		errMsg string
 	}{
-		{"?id=start.1&parent_id=recurse.all&select=id,__path", "__path is internal"},
+		{"?id=start.1&parent_id=recurse.all&select=parent_id,id.count()", "aggregate functions cannot be used with recursive queries"},
 	}
 
 	for i, test := range errorTests {
@@ -682,4 +904,254 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 			t.Errorf("OUT/TABLE args should be skipped\n  want: %s\n  got:  %s", want, q)
 		}
 	})
+}
+
+// TestBuildInsertKeys guards the column list of a bulk INSERT. Without
+// ?columns= it is the key set shared by every object, so an array whose objects
+// differ is refused ("All object keys must match", as PostgREST) instead of
+// being built from the first object alone, which dropped the keys the others
+// added. With ?columns= it is exactly the listed set for every row: an absent
+// key is a NULL parameter, a key not listed is ignored. Columns are emitted in
+// alphabetical order so the SQL text is stable across runs.
+func TestBuildInsertKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		records []Record
+		wantSQL string
+		wantVal []any
+		wantErr string
+	}{
+		{
+			name:    "key present only in a later object",
+			records: []Record{{"id": 1}, {"id": 2, "body": "y"}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "key missing from a later object",
+			records: []Record{{"id": 1, "body": "x"}, {"id": 2}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "a null-valued key is still a key",
+			records: []Record{{"id": 1, "body": nil}, {"id": 2}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "an empty object among non-empty ones",
+			records: []Record{{}, {"id": 1}},
+			wantErr: "All object keys must match",
+		},
+		{
+			name:    "same keys in a different order",
+			records: []Record{{"id": 1, "body": "x"}, {"body": "y", "id": 2}},
+			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
+			wantVal: []any{"x", 1, "y", 2},
+		},
+		{
+			name:    "?columns= inserts the listed columns for every row",
+			query:   "?columns=id,body",
+			records: []Record{{"id": 1}, {"id": 2, "body": "y", "extra": true}},
+			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
+			wantVal: []any{nil, 1, "y", 2},
+		},
+		{
+			name:    "?columns= ignores the keys not listed",
+			query:   "?columns=id",
+			records: []Record{{"id": 1, "body": "x"}, {"id": 2}},
+			wantSQL: `INSERT INTO "t" ("id") VALUES ($1), ($2)`,
+			wantVal: []any{1, 2},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u, err := url.Parse(test.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts, err := PostgRestParser{}.parse("t", u.Query())
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+			q, v, err := CommonBuilder{}.BuildInsert("t", test.records, parts, &QueryOptions{}, nil)
+			if test.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil (SQL: %s)", test.wantErr, q)
+				}
+				if _, ok := err.(*BuildError); !ok || err.Error() != test.wantErr {
+					t.Fatalf("expected *BuildError %q, got %T %q", test.wantErr, err, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildInsert error: %v", err)
+			}
+			if q != test.wantSQL {
+				t.Errorf("SQL\n  want: %s\n  got:  %s", test.wantSQL, q)
+			}
+			if !compareValues(v, test.wantVal) {
+				t.Errorf("values\n  want: %v\n  got:  %v", test.wantVal, v)
+			}
+		})
+	}
+}
+
+// TestBuildMutationOrder: on POST/PATCH/DELETE `order=` orders the returned
+// representation (PostgREST 13.0.0, #3013 "Fix order= with POST, PATCH, PUT
+// and DELETE requests"): the mutation is wrapped in the _source CTE and the
+// outer select carries the ORDER BY. `limit`/`offset` are ignored on
+// mutations, as PostgREST does since the same release dropped limited
+// updates/deletes: every matching row is written and the representation is
+// never cut. TestQueryBuilder is the positive control for the LIMIT/OFFSET
+// emission on a SELECT.
+func TestBuildMutationOrder(t *testing.T) {
+	tests := []struct {
+		method         string
+		query          string
+		representation bool
+		expectedSQL    string
+		values         []any
+	}{
+		{
+			// order applies to the representation: CTE + outer ORDER BY
+			"PATCH", "?id=gt.1&order=id.desc", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"x", "1"},
+		},
+		{
+			// with a select the outer select carries the formatting, the
+			// RETURNING exposes the raw columns
+			"PATCH", "?select=id,n:name::text&order=name.asc.nullsfirst", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."id", "table"."name") SELECT "_source"."id", "_source"."name"::text AS "n" FROM _source ORDER BY "_source"."name" NULLS FIRST`,
+			[]any{"x"},
+		},
+		{
+			// an order column outside the select is added to the RETURNING so
+			// the outer ORDER BY can see it (it is not part of the output)
+			"PATCH", "?select=name&order=id", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."name", "table"."id") SELECT "_source"."name" FROM _source ORDER BY "_source"."id"`,
+			[]any{"x"},
+		},
+		{
+			// no representation: nothing to order, no CTE
+			"PATCH", "?id=gt.1&order=id.desc", false,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2`,
+			[]any{"x", "1"},
+		},
+		{
+			// no order: the plain RETURNING form is kept
+			"PATCH", "?id=gt.1&select=id", true,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING "table"."id"`,
+			[]any{"x", "1"},
+		},
+		{
+			// limit/offset are ignored on mutations (#3013): no LIMIT, no OFFSET,
+			// no range values, every matching row is updated
+			"PATCH", "?id=gt.1&order=id&limit=1&offset=1", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id"`,
+			[]any{"x", "1"},
+		},
+		{
+			"PATCH", "?id=gt.1&limit=1", false,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2`,
+			[]any{"x", "1"},
+		},
+		{
+			"DELETE", "?id=lt.3&order=id.desc", true,
+			`WITH _source AS (DELETE FROM "table" WHERE "table"."id" < $1 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"3"},
+		},
+		{
+			"DELETE", "?id=lt.3&select=id&limit=1&offset=1", true,
+			`DELETE FROM "table" WHERE "table"."id" < $1 RETURNING "table"."id"`,
+			[]any{"3"},
+		},
+		{
+			"DELETE", "?id=lt.3&order=id&limit=1", false,
+			`DELETE FROM "table" WHERE "table"."id" < $1`,
+			[]any{"3"},
+		},
+		{
+			"POST", "?select=id,body&order=id.desc", true,
+			`WITH _source AS (INSERT INTO "table" ("body") VALUES ($1) RETURNING "table"."id", "table"."body") SELECT "_source"."id", "_source"."body" FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"x"},
+		},
+		{
+			"POST", "?order=id&limit=1", false,
+			`INSERT INTO "table" ("body") VALUES ($1)`,
+			[]any{"x"},
+		},
+	}
+
+	for i, test := range tests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("%d. unexpected parse error for %q: %v", i, test.query, err)
+		}
+		options := &QueryOptions{ReturnRepresentation: test.representation}
+		record := Record{"body": "x"}
+		var query string
+		var values []any
+		switch test.method {
+		case "PATCH":
+			query, values, err = CommonBuilder{}.BuildUpdate("table", record, parts, options, nil)
+		case "DELETE":
+			query, values, err = CommonBuilder{}.BuildDelete("table", parts, options, nil)
+		case "POST":
+			query, values, err = CommonBuilder{}.BuildInsert("table", []Record{record}, parts, options, nil)
+		}
+		if err != nil {
+			t.Errorf("%d. unexpected build error for %s %q: %v", i, test.method, test.query, err)
+			continue
+		}
+		if query != test.expectedSQL {
+			t.Errorf("\n%d. Expected \n\t\"%v\", \ngot \n\t\"%v\" \n(%s %q)", i, test.expectedSQL, query, test.method, test.query)
+			continue
+		}
+		if !compareValues(values, test.values) {
+			t.Errorf("\n%d. Expected values\n\t\"%v\", \ngot \n\t\"%v\" \n(%s %q)", i, test.values, values, test.method, test.query)
+		}
+	}
+}
+
+// A json path on an array or composite column needs its to_jsonb wrapper
+// also when the representation of a mutation is read through the _source CTE
+// (an order= or an embed puts it there): the column type is looked up on the
+// real table, not on the alias. Found in review.
+func TestBuildMutationJsonPathThroughSource(t *testing.T) {
+	info := &SchemaInfo{
+		cachedTypes:       map[uint32]Type{0: {}},
+		cachedColumnTypes: map[string]map[string]ColumnType{"table": {"tags": {Name: "tags", IsArray: true}}},
+	}
+	tests := []struct{ query, want string }{
+		{
+			"?select=tags->0",
+			`UPDATE "table" SET "body" = $1 RETURNING (to_jsonb("table"."tags")->0) AS "tags"`,
+		},
+		{
+			"?select=tags->0&order=id",
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."tags", "table"."id") SELECT (to_jsonb("_source"."tags")->0) AS "tags" FROM _source ORDER BY "_source"."id"`,
+		},
+	}
+	for _, test := range tests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+		sql, _, err := CommonBuilder{}.BuildUpdate("table", Record{"body": "x"}, parts, &QueryOptions{ReturnRepresentation: true}, info)
+		if err != nil {
+			t.Fatalf("BuildUpdate error: %v", err)
+		}
+		if sql != test.want {
+			t.Errorf("%s\n  want: %s\n  got:  %s", test.query, test.want, sql)
+		}
+	}
 }

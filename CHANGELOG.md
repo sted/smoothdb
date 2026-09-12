@@ -1,5 +1,24 @@
 # Change Log
 
+## Unreleased
+
+### Security
+* **GET and HEAD run read-only** — like PostgREST, `GET`/`HEAD` (and a `POST` calling a `STABLE`/`IMMUTABLE` function) run in a read-only transaction: a write reached that way fails inside PostgreSQL (`25006`) and is answered `405` with `Allow: POST`, while a `VOLATILE` function that only reads still answers `GET`. `DELETE`/`PATCH`/`PUT` on `/rpc/` answer `405` instead of `404`.
+* **Anonymous requests never run as the authenticator** — with `AllowAnon: true` and an empty `Database.AnonRole` the request ran as the connecting role with no `SET ROLE` and no claims GUC. It is now refused with `401 "Anonymous access is disabled"`, as PostgREST does; with a configured anon role the `request.jwt.claims` GUC is set for anonymous requests too.
+
+### Fixed
+* **SQLSTATE to HTTP status** — the mapping follows PostgREST's `mapSQLtoHTTP`: an explicit list of codes and classes (foreign-key violation 409, read-only transaction 405, connection and resource errors 503, `PTxyz` chooses its status) and 400 for everything else, where a client-caused error (type mismatch, bad literal, violated constraint, `raise`) used to be a 500. `42501` stays 401 and the DDL "already exists" codes 409.
+* **Bulk insert with mismatched keys** — an array whose objects do not share one key set is refused with 400 (`All object keys must match`, as PostgREST) instead of silently dropping the keys the first object lacked. With `?columns=` the listed columns are inserted for every row, an absent key as NULL (it used to get the column default).
+* **`order=` on writes** — `order` now orders the representation of `POST`, `PATCH` and `DELETE`, as PostgREST does since 13.0; it was parsed and dropped. `limit`/`offset` on `PATCH`/`DELETE` stay ignored like in PostgREST, which dropped limited updates in the same release.
+* **Generated columns** — `attgenerated` is introspected: `$info` and the admin column listing report `"generated"` and `"readonly": true`, and writing such a column is refused with 400 and PostgreSQL's message (`428C9`) instead of a 500, as PostgREST does.
+* **Filter values with dots, commas and quotes** — a value was cut at the second dot or at the first comma, colon or quote (`?ver=eq.1.2.3` filtered on `1.2`). As in PostgREST a top-level value now runs to the end of the parameter, and inside `in.()` and logic trees to the next separator unless quoted; `?col=eq.` matches the empty string and `?col=eq` is a 400. Quoting a top-level value (`eq."a,b"`) keeps working, a smoothdb leniency.
+* **Wire formats** — `bytea`, `inet`, `cidr`, `macaddr`, `time`, `bit`, the geometric types, `tid`/`xid`, `tsvector`, `xml` and their arrays came out as raw binary bytes. The serializers now dispatch on the wire format of each column, request such types in text and print them as `to_json` does (`bytea` as the `\x` hex string); text-format arrays and composites are parsed into JSON arrays and objects (this also fixes arrays of enums), a domain prints as its base type, an unknown binary type is refused instead of copied through, `DateStyle` is pinned to ISO, and an `application/octet-stream` download of a `bytea` still returns the bytes.
+* **Ranges and multiranges** — `empty` and unbounded ranges crashed the serializer (a 406 with an empty body), `daterange`/`tsrange`/`tstzrange` came out as invalid JSON, multiranges failed on a nil subtype. Every range and multirange type is now sent in text and returned as PostgreSQL's own string (`"[2024-01-01,2024-06-01)"`, `"{[1,3),[5,7)}"`), exactly as PostgREST returns it.
+* **`via()` walks enumerated paths, not nodes** — the recursive CTE carried the whole row plus a key array and materialised every simple path (797,161 rows and 791 ms for 490 nodes on a 650-node DAG); it now carries `(node, depth)`, dedups with `UNION` and joins the table back: 1 ms for the same walk, `via!both` joins the edges as a derived table, and a walk over a table with a `json`, `xml` or `point` column no longer fails. `__path` is a selectable pseudo-column (on `via` it restores the path-enumerating shape, documented as exponential), ordering by an unselected `__depth` no longer leaks it, and a `__depth` filter sees the node's shortest depth.
+
+### Added
+* **Server version** — `SchemaInfo.ServerVersion` (`server_version_num`) and `ServerAtLeast(N)` for version-gated features; startup logs the PostgreSQL version and, like PostgREST, refuses a server older than 14.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
