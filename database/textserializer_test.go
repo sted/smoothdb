@@ -867,3 +867,109 @@ func TestSerializeMultirange(t *testing.T) {
 	defer ReleaseConn(ctx, conn)
 	t.Run("composites registered", func(t *testing.T) { check(t, ctx) })
 }
+
+// The text path converts by the shape of the type, and three shapes reached
+// it only through the review: a domain (its base type: 42, not "42"), a
+// timestamp inside a composite that goes text because of another field (T
+// between date and time, +hh:00 offsets, as to_json prints), and xml, which
+// pgx prefers in text alone but in binary inside an array or a composite. A
+// bytea download decodes the hex text it now arrives in.
+func TestSerializeTextShapes(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "test_shapes")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_shapes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gi := GetSmoothContext(ctx)
+	ddl := []string{
+		`create domain posint as int check (value > 0)`,
+		`create domain yesno as bool`,
+		`create type withdom as (a posint, b text, c yesno)`,
+		`create type withts as (at timestamp, tz timestamptz, span int4range)`,
+		`create type withxml as (x xml, n int)`,
+		`create table shapes (id int, pi posint, by bytea, xa xml[], wd withdom, wt withts, wx withxml, x xml)`,
+		`insert into shapes values (1, 7, '\x4142', '{<a/>,<b/>}', '(42,hi,t)',
+			'("2024-01-01 10:00:00.25","2024-01-01 10:00:00+00","[1,3)")', '(<c/>,7)', '<d/>')`,
+		`insert into shapes (id, wd, wt) values (2, '(,,)', '(infinity,,empty)')`,
+	}
+	for _, q := range ddl {
+		if _, err := gi.Conn.Exec(ctx, q); err != nil {
+			t.Fatalf("%v\n%s", err, q)
+		}
+	}
+	if err := db.ReloadSchemaCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	columns := []string{"pi", "xa", "x", "wd", "wt", "wx"}
+	expected := map[string]string{}
+	for _, c := range columns {
+		for _, id := range []int{1, 2} {
+			var row string
+			q := fmt.Sprintf("select row_to_json(t)::text from (select %s from shapes where id = %d) t", c, id)
+			if err := gi.Conn.QueryRow(ctx, q).Scan(&row); err != nil {
+				t.Fatal(err)
+			}
+			expected[fmt.Sprintf("%s/row%d", c, id)] = "[" + row + "]"
+		}
+	}
+
+	check := func(t *testing.T, ctx context.Context) {
+		gi := GetSmoothContext(ctx)
+		info := gi.Db.info.Load()
+		for _, c := range columns {
+			for _, id := range []int{1, 2} {
+				name := fmt.Sprintf("%s/row%d", c, id)
+				t.Run(name, func(t *testing.T) {
+					rows, err := gi.Conn.Query(ctx, fmt.Sprintf("select %s from shapes where id = %d", c, id))
+					if err != nil {
+						t.Fatal(err)
+					}
+					out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+					rows.Close()
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if got := unescapeHTML(string(out)); got != expected[name] {
+						t.Errorf("expected %s\n     got %s", expected[name], got)
+					}
+				})
+			}
+		}
+		t.Run("bytea download", func(t *testing.T) {
+			rows, err := gi.Conn.Query(ctx, "select by from shapes where id = 1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err := (&BinarySerializer{}).Serialize(rows, true, true, info)
+			rows.Close()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(out) != "AB" {
+				t.Errorf("expected the bytes AB, got %q", out)
+			}
+		})
+	}
+
+	t.Run("types unknown to the connection", func(t *testing.T) { check(t, ctx) })
+	ReleaseConn(ctx, conn)
+
+	db.pool.Reset()
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	t.Run("composites registered", func(t *testing.T) { check(t, ctx) })
+}
