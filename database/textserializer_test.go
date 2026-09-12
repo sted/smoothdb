@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -170,5 +172,107 @@ func TestSerializeSurfacesDecoderError(t *testing.T) {
 	}
 	if _, _, err := (&JSONSerializer{}).Serialize(cr, false, false, info); err == nil {
 		t.Error("expected Serialize to surface the decoder error, got nil")
+	}
+}
+
+// A range on the wire is a flag byte followed only by the bounds that exist:
+// 'empty' and '(,)' carry no bound at all, a half-unbounded range carries just
+// the one. The serializer must read the bounds the flags announce and nothing
+// more, and print what PostgreSQL's to_json prints for the same value (the
+// server canonicalizes int4range/int8range to the [) form). The bounded rows
+// are the positive controls: they already serialize, so a failure there is a
+// broken probe, not the defect. Integer and numeric subtypes are used because
+// their bounds are printed bare, so the text is valid JSON independently of
+// how the bounds are quoted.
+func TestSerializeRangeBounds(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "test_ranges")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_ranges")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	gi := GetSmoothContext(ctx)
+
+	_, err = CreateTable(ctx, &Table{
+		Name: "ranges",
+		Columns: []Column{
+			{Name: "id", Type: "integer"},
+			{Name: "r4", Type: "int4range"},
+			{Name: "r8", Type: "int8range"},
+			{Name: "rn", Type: "numrange"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Expected strings are what `select to_json(col)` returns for the value.
+	cases := []struct {
+		id   int
+		in   string // the literal inserted in the three columns
+		json string // JSON serializer output for select r4, r8, rn
+		csv  string // CSV serializer output for the same select
+	}{
+		{1, "[1,10)", `[{"r4":"[1,10)","r8":"[1,10)","rn":"[1,10)"}]`, "r4,r8,rn\n\"[1,10)\",\"[1,10)\",\"[1,10)\""},
+		{2, "[1,10]", `[{"r4":"[1,11)","r8":"[1,11)","rn":"[1,10]"}]`, "r4,r8,rn\n\"[1,11)\",\"[1,11)\",\"[1,10]\""},
+		{3, "(1,5]", `[{"r4":"[2,6)","r8":"[2,6)","rn":"(1,5]"}]`, "r4,r8,rn\n\"[2,6)\",\"[2,6)\",\"(1,5]\""},
+		{4, "[10,)", `[{"r4":"[10,)","r8":"[10,)","rn":"[10,)"}]`, "r4,r8,rn\n\"[10,)\",\"[10,)\",\"[10,)\""},
+		{5, "(,10)", `[{"r4":"(,10)","r8":"(,10)","rn":"(,10)"}]`, "r4,r8,rn\n\"(,10)\",\"(,10)\",\"(,10)\""},
+		{6, "(,)", `[{"r4":"(,)","r8":"(,)","rn":"(,)"}]`, "r4,r8,rn\n\"(,)\",\"(,)\",\"(,)\""},
+		// PostgreSQL's record text (what PostgREST returns as CSV) leaves
+		// 'empty' unquoted, having no separator in it; the CSV value is
+		// compared without its optional quotes so that this test pins the
+		// bound reading, not the quoting of the range.
+		{7, "empty", `[{"r4":"empty","r8":"empty","rn":"empty"}]`, "r4,r8,rn\nempty,empty,empty"},
+	}
+	for _, c := range cases {
+		_, err = gi.Conn.Exec(ctx, fmt.Sprintf("insert into ranges values (%d, '%s', '%s', '%s')", c.id, c.in, c.in, c.in))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	info := gi.Db.info.Load()
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			query := fmt.Sprintf("select r4, r8, rn from ranges where id = %d", c.id)
+
+			rows, err := gi.Conn.Query(ctx, query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+			rows.Close()
+			if err != nil {
+				t.Errorf("JSON: unexpected error: %v", err)
+			} else if string(out) != c.json {
+				t.Errorf("JSON: expected %s, got %s", c.json, out)
+			}
+
+			rows, err = gi.Conn.Query(ctx, query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err = (&CSVSerializer{}).Serialize(rows, false, false, info)
+			rows.Close()
+			got := string(out)
+			if c.in == "empty" {
+				got = strings.ReplaceAll(got, `"`, "")
+			}
+			if err != nil {
+				t.Errorf("CSV: unexpected error: %v", err)
+			} else if got != c.csv {
+				t.Errorf("CSV: expected %q, got %q", c.csv, got)
+			}
+		})
 	}
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+* **Empty and unbounded ranges** — `empty`, `[10,)`, `(,10)` and `(,)` in a range column crashed the serializer with an index-out-of-range panic, recovered as a 406 with an empty body: the decoder read both bound lengths unconditionally, while the wire value carries only the bounds its flags announce (none at all for `empty` and `(,)`). The bounds are now read as the flags say, `empty` prints as `"empty"`, and an unbounded side keeps its bracket as PostgreSQL prints it (`[10,)`, `(,10)`, `(,)`), in JSON and CSV alike.
+
 ### Added
 * **Server version in the schema cache** — nothing in the server knew which PostgreSQL it was talking to. `SchemaInfo.ServerVersion` now carries `server_version_num` (160015 is 16.15), read with the rest of the cache and refreshed on every schema reload, and `ServerAtLeast(N)` gates a feature on it: a code path that needs SQL introduced in PostgreSQL N falls back to the older SQL or refuses the request with a 400 naming the required version, instead of letting Postgres raise a syntax error as a 500. Startup logs the version it connected to and, like PostgREST, refuses a server older than 14.0 (`MinServerVersion`) with an error naming both versions; every release below 14 has reached end of life.
 
