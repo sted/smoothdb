@@ -691,6 +691,36 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  , matchHeaders = []
 		// 		  }
 
+		// 	  context "apply defaults on missing values" $ do
+		// 		it "fails with a good error message on generated always columns" $
+		// 		  request methodPost "/foo?columns=a,b" [("Prefer", "return=representation"), ("Prefer", "missing=default")]
+		// 			  [json| [
+		// 				{"a": "val"},
+		// 				{"a": "val", "b": "val"}
+		// 			  ]|]
+		// 			`shouldRespondWith`
+		// 			  [json| {
+		// 				"code": "428C9",
+		// 				"details": "Column \"b\" is a generated column.",
+		// 				"hint": null,
+		// 				"message": "cannot insert a non-DEFAULT value into column \"b\""
+		// 			  }|]
+		// 			  { matchStatus  = 400 }
+		// @@ smoothdb has no missing=default and takes the insert columns from the first
+		// record, so the generated column is sent in the first record to reach the same refusal
+		{
+			Description: "fails with a good error message on generated always columns",
+			Method:      "POST",
+			Query:       "/foo?columns=a,b",
+			Body: `[
+				{"a": "val", "b": "val"},
+				{"a": "val"}
+			]`,
+			Headers:  test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected: `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`,
+			Status:   400,
+		},
+
 		// 	context "with unicode values" $ do
 		// 	  it "succeeds and returns full representation" $
 		// 		request methodPost "/simple_pk2?select=extra,k"

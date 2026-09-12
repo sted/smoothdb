@@ -72,7 +72,8 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 			"42710": // duplicated role
 			status = http.StatusConflict
 		case "22P02", // invalid_text_representation
-			"42703": // undefined_column
+			"42703", // undefined_column
+			"428C9": // generated_always
 			status = http.StatusBadRequest
 		default:
 			status = http.StatusInternalServerError

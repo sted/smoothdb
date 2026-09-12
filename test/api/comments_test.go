@@ -42,7 +42,7 @@ func TestComments(t *testing.T) {
 		{
 			Description: "table and column comments are returned on GET",
 			Query:       "/dbtest/tables/comments_test",
-			Expected:    `{"name":"comments_test","schema":"public","owner":"admin","comment":"This is a test table","rowsecurity":false,"columns":[{"name":"id","type":"int4","notnull":true,"default":null,"comment":null,"constraints":null,"table":"comments_test","schema":"public"},{"name":"name","type":"text","notnull":false,"default":null,"comment":"The name field","constraints":null,"table":"comments_test","schema":"public"}],"constraints":null,"hasindexes":false,"hastriggers":false,"ispartition":false}`,
+			Expected:    `{"name":"comments_test","schema":"public","owner":"admin","comment":"This is a test table","rowsecurity":false,"columns":[{"name":"id","type":"int4","notnull":true,"default":null,"readonly":false,"comment":null,"constraints":null,"table":"comments_test","schema":"public"},{"name":"name","type":"text","notnull":false,"default":null,"readonly":false,"comment":"The name field","constraints":null,"table":"comments_test","schema":"public"}],"constraints":null,"hasindexes":false,"hastriggers":false,"ispartition":false}`,
 			Status:      200,
 		},
 		// update table comment via PATCH
@@ -65,7 +65,7 @@ func TestComments(t *testing.T) {
 		{
 			Description: "updated comments are returned on GET",
 			Query:       "/dbtest/tables/comments_test",
-			Expected:    `{"name":"comments_test","schema":"public","owner":"admin","comment":"Updated table comment","rowsecurity":false,"columns":[{"name":"id","type":"int4","notnull":true,"default":null,"comment":"The primary key","constraints":null,"table":"comments_test","schema":"public"},{"name":"name","type":"text","notnull":false,"default":null,"comment":"The name field","constraints":null,"table":"comments_test","schema":"public"}],"constraints":null,"hasindexes":false,"hastriggers":false,"ispartition":false}`,
+			Expected:    `{"name":"comments_test","schema":"public","owner":"admin","comment":"Updated table comment","rowsecurity":false,"columns":[{"name":"id","type":"int4","notnull":true,"default":null,"readonly":false,"comment":"The primary key","constraints":null,"table":"comments_test","schema":"public"},{"name":"name","type":"text","notnull":false,"default":null,"readonly":false,"comment":"The name field","constraints":null,"table":"comments_test","schema":"public"}],"constraints":null,"hasindexes":false,"hastriggers":false,"ispartition":false}`,
 			Status:      200,
 		},
 	}

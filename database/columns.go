@@ -7,6 +7,8 @@ type Column struct {
 	Type        string   `json:"type"`
 	NotNull     bool     `json:"notnull"`
 	Default     *string  `json:"default"`
+	Generated   string   `json:"generated,omitempty"` // "stored" or "virtual" (PostgreSQL 18) for a GENERATED ALWAYS AS column
+	ReadOnly    bool     `json:"readonly"`            // a generated column has no default and cannot be written
 	Comment     *string  `json:"comment"`
 	Constraints []string `json:"constraints"`
 	Table       string   `json:"table,omitempty"`
@@ -23,12 +25,15 @@ type ColumnUpdate struct {
 
 const columnsQuery = `
 	SELECT c.column_name, c.udt_name, c.is_nullable, c.column_default,
+		CASE a.attgenerated WHEN 's' THEN 'stored' WHEN 'v' THEN 'virtual' ELSE '' END,
 		col_description(cl.oid, c.ordinal_position),
 		c.table_name, c.table_schema
 	FROM information_schema.columns c
 	JOIN pg_class cl ON cl.relname = c.table_name
 	JOIN pg_namespace n ON n.oid = cl.relnamespace AND n.nspname = c.table_schema
-	WHERE c.table_name = $1 AND c.table_schema = $2`
+	JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name
+	WHERE c.table_name = $1 AND c.table_schema = $2
+	ORDER BY c.ordinal_position`
 
 func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
@@ -47,11 +52,12 @@ func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	var nullable string
 	column := Column{}
 	for rows.Next() {
-		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Comment, &column.Table, &column.Schema)
+		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
 		if err != nil {
 			return columns, err
 		}
 		column.NotNull = nullable == "NO"
+		column.ReadOnly = column.Generated != ""
 		fillColumnConstraints(&column, constraints)
 		columns = append(columns, column)
 	}
@@ -71,11 +77,12 @@ func GetColumn(ctx context.Context, tablename string, name string) (*Column, err
 	column := &Column{}
 	var nullable string
 	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
-		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Comment, &column.Table, &column.Schema)
+		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
 	if err != nil {
 		return nil, err
 	}
 	column.NotNull = nullable == "NO"
+	column.ReadOnly = column.Generated != ""
 	fillColumnConstraints(column, constraints)
 	return column, nil
 }
