@@ -83,8 +83,10 @@ func TestRangeQuoting(t *testing.T) {
 				 "rts": "[2024-01-01 10:00:00,2024-06-01 12:00:00)", "rtz": "[2024-01-01 10:00:00+00,)",
 				 "rd_arr": "{\"[2024-01-01,2024-06-01)\",\"[2024-02-01,)\"}",
 				 "rts_arr": "{\"[\\\"2024-01-01 10:00:00\\\",\\\"2024-06-01 12:00:00\\\")\",NULL}"},
-				{"id": 2},
-				{"id": 3, "rd": "empty", "rts": "(,)", "rtz": "empty"}
+				{"id": 2, "r4": null, "rn": null, "rd": null, "rts": null, "rtz": null,
+				 "rd_arr": null, "rts_arr": null},
+				{"id": 3, "r4": null, "rn": null, "rd": "empty", "rts": "(,)", "rtz": "empty",
+				 "rd_arr": null, "rts_arr": null}
 			]`,
 			Status: 201,
 		},
