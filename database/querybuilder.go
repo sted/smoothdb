@@ -1141,6 +1141,23 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 
 const defaultMaxRecursiveDepth = 100
 
+// referencesField reports whether a where-condition tree filters on the named
+// field, at any depth of its and/or/not nesting.
+func referencesField(node *WhereConditionNode, name string) bool {
+	if node == nil {
+		return false
+	}
+	if node.field.name == name {
+		return true
+	}
+	for _, child := range node.children {
+		if referencesField(child, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
 	selectClause, mainWhere, orderClause, joins string,
 	valueList []any, info *SchemaInfo) (string, []any, error) {
@@ -1191,6 +1208,10 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		if of.field.name == "__path" {
 			withPath = true
 		}
+	}
+	// a result filter on __path (`__path=cs.{1,2}`) reads it from the CTE too
+	if referencesField(parts.whereConditionsTree, "__path") {
+		withPath = true
 	}
 	maxDepth := rec.MaxDepth
 	serverMax := defaultMaxRecursiveDepth
