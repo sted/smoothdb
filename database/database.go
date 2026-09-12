@@ -116,6 +116,17 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
+	// The text form of a timestamp or a date (a field of a composite that
+	// arrives in text) is converted to what to_json prints on the assumption
+	// that it is ISO, the output style pgx assumes as well: pin it at startup
+	// (only the output style: the order part, MDY/DMY, that reads ambiguous
+	// input, keeps the server's setting).
+	if config.ConnConfig.RuntimeParams == nil {
+		config.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	if _, ok := config.ConnConfig.RuntimeParams["DateStyle"]; !ok {
+		config.ConnConfig.RuntimeParams["DateStyle"] = "ISO"
+	}
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before

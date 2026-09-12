@@ -990,6 +990,17 @@ func TestSerializeTextShapes(t *testing.T) {
 	}
 
 	t.Run("types unknown to the connection", func(t *testing.T) { check(t, ctx) })
+	// the conversion reads ISO text: the pool pins the output style at
+	// connection startup whatever the server's default is
+	t.Run("datestyle is ISO on the connection", func(t *testing.T) {
+		var style string
+		if err := gi.Conn.QueryRow(ctx, "show DateStyle").Scan(&style); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(style, "ISO") {
+			t.Errorf("expected an ISO DateStyle, got %q", style)
+		}
+	})
 	ReleaseConn(ctx, conn)
 
 	db.pool.Reset()
