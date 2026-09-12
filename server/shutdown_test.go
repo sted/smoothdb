@@ -49,7 +49,19 @@ func startTestServer(t *testing.T, s *Server) chan error {
 	go func() { done <- s.Start() }()
 	go s.stopHandler(c)
 
-	test.WaitForServer("http://" + s.Config.Address)
+	// Give up as soon as Start() returns: a bind error on a port taken by
+	// another process would otherwise sit unnoticed in done while whoever
+	// holds the port answers the probe.
+	ready := make(chan error, 1)
+	go func() { ready <- test.WaitForServer("http://" + s.Config.Address) }()
+	select {
+	case err := <-done:
+		t.Fatalf("server stopped before it became ready: %v", err)
+	case err := <-ready:
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	return done
 }
 

@@ -117,17 +117,33 @@ func Exec(client *http.Client, config Config, cmd *Command) ([]byte, *http.Heade
 	return ReadResponse(resp)
 }
 
-func WaitForServer(baseURL string) {
+// WaitForServer polls baseURL/live until smoothdb answers. Any listener would
+// not do: when the port is already taken by an unrelated process, Start()
+// fails with a bind error while the squatter happily answers the probe, and
+// the suite then runs against the wrong server with baffling failures. The
+// /live body is the fingerprint — the Server header would not do, /live is
+// registered outside the middleware that sets it.
+func WaitForServer(baseURL string) error {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
+	var lastErr error
 	for i := 0; i < 40; i++ {
 		resp, err := client.Get(baseURL + "/live")
 		if err == nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
-			return
+			var live struct {
+				Status string `json:"status"`
+			}
+			if resp.StatusCode == http.StatusOK && json.Unmarshal(body, &live) == nil && live.Status == "ok" {
+				return nil
+			}
+			return fmt.Errorf("%s/live is answered by something other than smoothdb (HTTP %d, Server %q, body %.80q): is the port taken by another process?",
+				baseURL, resp.StatusCode, resp.Header.Get("Server"), body)
 		}
+		lastErr = err
 		time.Sleep(50 * time.Millisecond)
 	}
-	fmt.Println("Warning: server did not become ready")
+	return fmt.Errorf("server at %s did not become ready: %v", baseURL, lastErr)
 }
 
 func Prepare(config Config, commands []Command) {

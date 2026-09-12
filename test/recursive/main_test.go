@@ -40,7 +40,9 @@ func TestMain(m *testing.M) {
 	}
 
 	go s.Start()
-	test.WaitForServer("http://localhost:8083")
+	if err := test.WaitForServer("http://localhost:8083"); err != nil {
+		log.Fatal(err)
+	}
 
 	postgresToken, _ := authn.GenerateToken("postgres", s.JWTSecret())
 	adminToken, _ = authn.GenerateToken("admin", s.JWTSecret())
