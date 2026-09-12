@@ -469,11 +469,11 @@ func (t *TextBuilder) appendEnum(buf []byte) {
 //     numeric bare (NaN and the infinities quoted), an array literal parsed
 //     into a JSON array and a record literal into a JSON object with the
 //     elements converted by the same rule, and any other type a JSON string
-//     (a range is one: range_out's text, its quotes escaped). Every other
-//     type serializes correctly in text format with no code of its own; the
-//     one difference from to_json is that a timestamp keeps PostgreSQL's
-//     space between date and time, which only shows inside a composite that
-//     arrives in text.
+//     (a range or a multirange is one: range_out's text, its quotes escaped).
+//     Every other type serializes correctly in text format with no code of
+//     its own; the one difference from to_json is that a timestamp keeps
+//     PostgreSQL's space between date and time, which only shows inside a
+//     composite that arrives in text.
 //
 // The CSV serializer shares the binary decoders and writes a text-format
 // value as the text it is, which for an array or a composite is the literal

@@ -66,6 +66,18 @@ var textFormatOnlyTypes = []uint32{
 	pgtype.DaterangeOID, pgtype.DaterangeArrayOID,
 	pgtype.TsrangeOID, pgtype.TsrangeArrayOID,
 	pgtype.TstzrangeOID, pgtype.TstzrangeArrayOID,
+	// The builtin multiranges, one JSON string each like the ranges
+	// (multirange_out's braces around range_out's text of each range, '{}'
+	// for the empty one). pgx's multirange codec follows the range codec it
+	// captured when its default map was built, so the range entries above do
+	// not reach them. pgx registers no codec for their arrays, text already;
+	// listed so that a pgx that does keeps them in text.
+	pgtype.Int4multirangeOID, pgtype.Int4multirangeArrayOID,
+	pgtype.Int8multirangeOID, pgtype.Int8multirangeArrayOID,
+	pgtype.NummultirangeOID, pgtype.NummultirangeArrayOID,
+	pgtype.DatemultirangeOID, pgtype.DatemultirangeArrayOID,
+	pgtype.TsmultirangeOID, pgtype.TsmultirangeArrayOID,
+	pgtype.TstzmultirangeOID, pgtype.TstzmultirangeArrayOID,
 }
 
 type Database struct {
