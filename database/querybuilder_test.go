@@ -617,6 +617,13 @@ func TestQueryBuilder(t *testing.T) {
 			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $1 UNION ALL SELECT "table"."id", "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $2 AND NOT "table"."id" = ANY("__recursive".__path)), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth, __path FROM "__recursive" ORDER BY __node, __depth, __path) SELECT "table"."id" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup".__depth > 0 ORDER BY "__dedup"."__path"`,
 			[]any{"1", 100},
 		},
+		{
+			// a result filter on __path reads it from the CTE, so it carries the path too
+			// (found in review: without it the outer WHERE named a column the CTE lacked)
+			"?id=start.1&id=recurse.all&edge=via(src_id,dst_id)&select=id&__path=cs.{1,2}",
+			`WITH RECURSIVE "__recursive" AS (SELECT "table"."id" AS __node, 0 AS __depth, ARRAY["table"."id"] AS __path FROM "table" WHERE "table"."id" = $2 UNION ALL SELECT "table"."id", "__recursive".__depth + 1, "__recursive".__path || "table"."id" FROM "__recursive" INNER JOIN (SELECT "edge"."src_id" AS __from, "edge"."dst_id" AS __to FROM "edge") "__edge" ON "__edge".__from = "__recursive".__node INNER JOIN "table" ON "table"."id" = "__edge".__to WHERE "__recursive".__depth < $3 AND NOT "table"."id" = ANY("__recursive".__path)), "__dedup" AS (SELECT DISTINCT ON (__node) __node, __depth, __path FROM "__recursive" ORDER BY __node, __depth, __path) SELECT "table"."id" FROM "__dedup" INNER JOIN "table" ON "table"."id" = "__dedup".__node WHERE "__dedup"."__path" @> $1`,
+			[]any{"{1,2}", "1", 100},
+		},
 		// --- bidirectional via!both ---
 		{
 			// via!both: the edge derived table carries both orientations (UNION ALL), so

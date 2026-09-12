@@ -633,6 +633,12 @@ func TestViaPath(t *testing.T) {
 			Status:      200,
 		},
 		{
+			Description: "via filtered on an unselected __path — the nodes whose shortest path goes through 2",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id&__path=cs.{2}&order=id",
+			Expected:    `[{"id":2},{"id":5}]`,
+			Status:      200,
+		},
+		{
 			Description: "via!both select=__path from a leaf",
 			Query:       "/doc?id=after.6&id=recurse.2&doc_rel=via!both(src_id,dst_id)&select=id,__path&order=id",
 			Expected:    `[{"id":1,"__path":[6,3,1]},{"id":3,"__path":[6,3]}]`,
