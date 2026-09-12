@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Security
+* **Anonymous requests never run as the authenticator** — with `AllowAnon: true` and an empty `Database.AnonRole`, an unauthenticated request reached Postgres as the connecting (authenticator) role, skipping both the `SET ROLE` and the `request.jwt.claims` GUC, so every RLS policy keyed off `current_user` or `request.jwt.claims` evaluated in the wrong context and the request carried the pool's own privileges. Anonymous access with no configured anon role is now refused with `401 "Anonymous access is disabled"`, mirroring PostgREST (`db-anon-role` unset → PGRST302); with a configured anon role the `request.jwt.claims` GUC is now set (`{"role":"<anon>"}`) for anonymous requests too. Configure `Database.AnonRole` as an explicit non-superuser role, never the connecting role.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security

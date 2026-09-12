@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,7 +83,20 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 				return nil, nil, http.StatusUnauthorized, err
 			}
 		} else {
-			claims = &Claims{Role: m.AnonRole()}
+			// Anonymous request. Like PostgREST (db-anon-role unset →
+			// PGRST302 "Anonymous access is disabled"), refuse it when no
+			// anonymous role is configured: with an empty role PrepareConnection
+			// skips the SET ROLE, so the request would run as the connecting
+			// (authenticator) role with the pool's own privileges.
+			anonRole := m.AnonRole()
+			if anonRole == "" {
+				return nil, nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
+			}
+			// The claims GUC must be set for every request, anonymous included,
+			// so policies keying off request.jwt.claims evaluate in context.
+			// PostgREST sets it to the claims with "role" inserted: {"role":"<anon>"}.
+			rawClaims, _ := json.Marshal(map[string]string{"role": anonRole})
+			claims = &Claims{Role: anonRole, RawClaims: string(rawClaims)}
 		}
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
