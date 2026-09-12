@@ -645,6 +645,39 @@ func TestPostgREST_Upsert(t *testing.T) {
 		// 		  }
 		// 	  get "/UnitTest?idUnitTest=eq.1" `shouldRespondWith`
 		// 		[json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]
+		//   context "with ordering" $ do
+		// 	it "works with request method PUT and embedded resource" $
+		// 	  request methodPut "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc"
+		// 		[("Prefer", "return=representation")]
+		// 		[json|{ "id": 0, "name": "tardis-upserted", "p_web_id": 5 }|]
+		// 		`shouldRespondWith`
+		// 		[json|
+		// 		  [ { "id": 0, "name": "tardis-upserted", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]
+		// 		|]
+		// 		{ matchStatus  = 200
+		// 		, matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		// 		}
+		// @@ PUT is not supported (see the "with PUT" context above)
+		// 	it "works with batch upserts and embedded resource" $
+		// 	  request methodPost "/artists?select=id,name,albums(title)&order=id.desc"
+		// 		[("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
+		// 		[json| [{ "id": 1, "name": "duster-updated" },
+		// 				{ "id": 2, "name": "bcnr-updated" }] |]
+		// 		`shouldRespondWith`
+		// 		[json|  [{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}] |]
+		// 		{ matchStatus  = 200
+		// 		, matchHeaders = [matchContentTypeJson]
+		// 		}
+		{
+			Description: "with ordering works with batch upserts and embedded resource",
+			Method:      "POST",
+			Query:       "/artists?select=id,name,albums(title)&order=id.desc",
+			Body: `[{ "id": 1, "name": "duster-updated" },
+					{ "id": 2, "name": "bcnr-updated" }]`,
+			Headers:  test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Expected: `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
+			Status:   201, // @@ PostgREST answers 200 when merge-duplicates inserted nothing: not implemented, separate from the ordering
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

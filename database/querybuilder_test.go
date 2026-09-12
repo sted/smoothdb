@@ -782,3 +782,125 @@ func TestBuildInsertKeys(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildMutationOrder: on POST/PATCH/DELETE `order=` orders the returned
+// representation (PostgREST 13.0.0, #3013 "Fix order= with POST, PATCH, PUT
+// and DELETE requests"): the mutation is wrapped in the _source CTE and the
+// outer select carries the ORDER BY. `limit`/`offset` are ignored on
+// mutations, as PostgREST does since the same release dropped limited
+// updates/deletes: every matching row is written and the representation is
+// never cut. TestQueryBuilder is the positive control for the LIMIT/OFFSET
+// emission on a SELECT.
+func TestBuildMutationOrder(t *testing.T) {
+	tests := []struct {
+		method         string
+		query          string
+		representation bool
+		expectedSQL    string
+		values         []any
+	}{
+		{
+			// order applies to the representation: CTE + outer ORDER BY
+			"PATCH", "?id=gt.1&order=id.desc", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"x", "1"},
+		},
+		{
+			// with a select the outer select carries the formatting, the
+			// RETURNING exposes the raw columns
+			"PATCH", "?select=id,n:name::text&order=name.asc.nullsfirst", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."id", "table"."name") SELECT "_source"."id", "_source"."name"::text AS "n" FROM _source ORDER BY "_source"."name" NULLS FIRST`,
+			[]any{"x"},
+		},
+		{
+			// an order column outside the select is added to the RETURNING so
+			// the outer ORDER BY can see it (it is not part of the output)
+			"PATCH", "?select=name&order=id", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."name", "table"."id") SELECT "_source"."name" FROM _source ORDER BY "_source"."id"`,
+			[]any{"x"},
+		},
+		{
+			// no representation: nothing to order, no CTE
+			"PATCH", "?id=gt.1&order=id.desc", false,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2`,
+			[]any{"x", "1"},
+		},
+		{
+			// no order: the plain RETURNING form is kept
+			"PATCH", "?id=gt.1&select=id", true,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING "table"."id"`,
+			[]any{"x", "1"},
+		},
+		{
+			// limit/offset are ignored on mutations (#3013): no LIMIT, no OFFSET,
+			// no range values, every matching row is updated
+			"PATCH", "?id=gt.1&order=id&limit=1&offset=1", true,
+			`WITH _source AS (UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id"`,
+			[]any{"x", "1"},
+		},
+		{
+			"PATCH", "?id=gt.1&limit=1", false,
+			`UPDATE "table" SET "body" = $1 WHERE "table"."id" > $2`,
+			[]any{"x", "1"},
+		},
+		{
+			"DELETE", "?id=lt.3&order=id.desc", true,
+			`WITH _source AS (DELETE FROM "table" WHERE "table"."id" < $1 RETURNING *) SELECT * FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"3"},
+		},
+		{
+			"DELETE", "?id=lt.3&select=id&limit=1&offset=1", true,
+			`DELETE FROM "table" WHERE "table"."id" < $1 RETURNING "table"."id"`,
+			[]any{"3"},
+		},
+		{
+			"DELETE", "?id=lt.3&order=id&limit=1", false,
+			`DELETE FROM "table" WHERE "table"."id" < $1`,
+			[]any{"3"},
+		},
+		{
+			"POST", "?select=id,body&order=id.desc", true,
+			`WITH _source AS (INSERT INTO "table" ("body") VALUES ($1) RETURNING "table"."id", "table"."body") SELECT "_source"."id", "_source"."body" FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{"x"},
+		},
+		{
+			"POST", "?order=id&limit=1", false,
+			`INSERT INTO "table" ("body") VALUES ($1)`,
+			[]any{"x"},
+		},
+	}
+
+	for i, test := range tests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("%d. unexpected parse error for %q: %v", i, test.query, err)
+		}
+		options := &QueryOptions{ReturnRepresentation: test.representation}
+		record := Record{"body": "x"}
+		var query string
+		var values []any
+		switch test.method {
+		case "PATCH":
+			query, values, err = CommonBuilder{}.BuildUpdate("table", record, parts, options, nil)
+		case "DELETE":
+			query, values, err = CommonBuilder{}.BuildDelete("table", parts, options, nil)
+		case "POST":
+			query, values, err = CommonBuilder{}.BuildInsert("table", []Record{record}, parts, options, nil)
+		}
+		if err != nil {
+			t.Errorf("%d. unexpected build error for %s %q: %v", i, test.method, test.query, err)
+			continue
+		}
+		if query != test.expectedSQL {
+			t.Errorf("\n%d. Expected \n\t\"%v\", \ngot \n\t\"%v\" \n(%s %q)", i, test.expectedSQL, query, test.method, test.query)
+			continue
+		}
+		if !compareValues(values, test.values) {
+			t.Errorf("\n%d. Expected values\n\t\"%v\", \ngot \n\t\"%v\" \n(%s %q)", i, test.values, values, test.method, test.query)
+		}
+	}
+}
