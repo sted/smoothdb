@@ -424,40 +424,46 @@ const upperInclusiveMask = 4
 const lowerUnboundedMask = 8
 const upperUnboundedMask = 16
 
+// The wire format is the flag byte followed only by the bounds that exist:
+// nothing for an empty or (,) range, one length-prefixed value for each
+// bounded side otherwise (an unbounded side has no bytes at all).
 func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) error {
 	t.WriteByte('"')
 	rp := 0
 	rangeType := buf[rp]
-	switch {
-	case rangeType&emptyMask > 0,
-		rangeType&lowerUnboundedMask > 0:
-		// nothing to do
-	case rangeType&lowerInclusiveMask > 0:
+	rp += 1
+	if rangeType&emptyMask > 0 {
+		t.WriteString("empty")
+		t.WriteByte('"')
+		return nil
+	}
+	// PostgreSQL prints a bracket for an unbounded side too, and never an
+	// inclusive one: '[10,)', '(,10)', '(,)'.
+	if rangeType&lowerInclusiveMask > 0 {
 		t.WriteByte('[')
-	default:
+	} else {
 		t.WriteByte('(')
 	}
-	rp += 1
-	valuLen1 := binary.BigEndian.Uint32(buf[rp:])
-	rp += 4
-	if err := at.appendType(buf[rp:], typ, info); err != nil {
-		return err
+	if rangeType&lowerUnboundedMask == 0 {
+		valuLen1 := binary.BigEndian.Uint32(buf[rp:])
+		rp += 4
+		if err := at.appendType(buf[rp:rp+int(valuLen1)], typ, info); err != nil {
+			return err
+		}
+		rp += int(valuLen1)
 	}
-	rp += int(valuLen1)
 	t.WriteByte(',')
-	valuLen2 := binary.BigEndian.Uint32(buf[rp:])
-	rp += 4
-	if err := at.appendType(buf[rp:], typ, info); err != nil {
-		return err
+	if rangeType&upperUnboundedMask == 0 {
+		valuLen2 := binary.BigEndian.Uint32(buf[rp:])
+		rp += 4
+		if err := at.appendType(buf[rp:rp+int(valuLen2)], typ, info); err != nil {
+			return err
+		}
+		rp += int(valuLen2)
 	}
-	rp += int(valuLen2)
-	switch {
-	case rangeType&emptyMask > 0,
-		rangeType&upperUnboundedMask > 0:
-		// nothing to do
-	case rangeType&upperInclusiveMask > 0:
+	if rangeType&upperInclusiveMask > 0 {
 		t.WriteByte(']')
-	default:
+	} else {
 		t.WriteByte(')')
 	}
 	t.WriteByte('"')

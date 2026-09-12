@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Empty and unbounded ranges** — `empty`, `[10,)`, `(,10)` and `(,)` in a range column crashed the serializer with an index-out-of-range panic, recovered as a 406 with an empty body: the decoder read both bound lengths unconditionally, while the wire value carries only the bounds its flags announce (none at all for `empty` and `(,)`). The bounds are now read as the flags say, `empty` prints as `"empty"`, and an unbounded side keeps its bracket as PostgreSQL prints it (`[10,)`, `(,10)`, `(,)`), in JSON and CSV alike.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
