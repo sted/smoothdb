@@ -364,6 +364,129 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT "table"."name"::text, "table"."age"::integer FROM "table"`,
 			nil,
 		},
+		// --- Filter values: a top-level value runs to the end of the parameter
+		//     (PostgREST pSingleVal); inside in.(), any/all lists and logic
+		//     trees it ends at the next separator unless quoted (pListElement,
+		//     pLogicSingleVal). Before the fix at most one extra dot survived
+		//     (completeIfFloat) and the rest was silently dropped. ---
+		{
+			// more than one dot
+			"?ver=eq.1.2.3",
+			`SELECT * FROM "table" WHERE "table"."ver" = $1`,
+			[]any{"1.2.3"},
+		},
+		{
+			// dots and an at sign
+			"?mail=eq.a.b@c.com",
+			`SELECT * FROM "table" WHERE "table"."mail" = $1`,
+			[]any{"a.b@c.com"},
+		},
+		{
+			// comma
+			"?name=eq.a,b",
+			`SELECT * FROM "table" WHERE "table"."name" = $1`,
+			[]any{"a,b"},
+		},
+		{
+			// one dot (worked before: positive control)
+			"?name=eq.autoexec.bat",
+			`SELECT * FROM "table" WHERE "table"."name" = $1`,
+			[]any{"autoexec.bat"},
+		},
+		{
+			// negated operator
+			"?ver=not.eq.1.2.3",
+			`SELECT * FROM "table" WHERE NOT "table"."ver" = $1`,
+			[]any{"1.2.3"},
+		},
+		{
+			// like: the star rewrite applies to the whole value
+			"?name=like.*a.b*",
+			`SELECT * FROM "table" WHERE "table"."name" LIKE $1`,
+			[]any{"%a.b%"},
+		},
+		{
+			// regex: the spec case "imatch..*YY.*" used to bind "."
+			"?k=imatch..*YY.*",
+			`SELECT * FROM "table" WHERE "table"."k" ~* $1`,
+			[]any{".*YY.*"},
+		},
+		{
+			// full text search with a language
+			"?x=fts(english).a.b",
+			`SELECT * FROM "table" WHERE "table"."x" @@ to_tsquery('english', $1)`,
+			[]any{"a.b"},
+		},
+		{
+			// colon, space after a dot, apostrophe, unbalanced double quote,
+			// arrow, equals sign: all ordinary characters in a value
+			"?a=eq.10:30&b=eq.Sidney K. Meier&c=eq.O'Brien&d=eq.5\" display&e=eq.a->b&f=eq.a=b",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" = $2 AND "table"."c" = $3 AND "table"."d" = $4 AND "table"."e" = $5 AND "table"."f" = $6`,
+			[]any{"10:30", "Sidney K. Meier", "O'Brien", "5\" display", "a->b", "a=b"},
+		},
+		{
+			// a bracket or a quote that does not span the whole value is literal
+			"?a=eq.[draft] v2&b=eq.(1,2)x&c=eq.\"a\"b",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" = $2 AND "table"."c" = $3`,
+			[]any{"[draft] v2", "(1,2)x", "\"a\"b"},
+		},
+		{
+			// keyword followed by more: not a keyword
+			"?x=eq.null.x",
+			`SELECT * FROM "table" WHERE "table"."x" = $1`,
+			[]any{"null.x"},
+		},
+		{
+			// empty value (PostgREST: searching for an empty string)
+			"?x=eq.",
+			`SELECT * FROM "table" WHERE "table"."x" = $1`,
+			[]any{""},
+		},
+		{
+			// in: dotted elements, quoted element with a comma, empty set
+			"?a=in.(a.b,c.d)&b=in.(1.2.3,x)&c=in.(\"a,b\",c.d)&d=in.()",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1, $2) AND "table"."b" IN ($3, $4) AND "table"."c" IN ($5, $6) AND "table"."d" = ANY('{}')`,
+			[]any{"a.b", "c.d", "1.2.3", "x", "a,b", "c.d"},
+		},
+		{
+			// any/all list: dotted elements
+			"?x=eq(any).{a.b,c.d.e}",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."x" = $2)`,
+			[]any{"a.b", "c.d.e"},
+		},
+		{
+			// logic tree: a value ends at the next separator unless quoted
+			"?or=(x.eq.a.b.c,y.eq.\"c,d\",z.in.(1.2.3,e.f))",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."y" = $2 OR "table"."z" IN ($3, $4))`,
+			[]any{"a.b.c", "c,d", "1.2.3", "e.f"},
+		},
+		{
+			// logic tree: an empty value
+			"?or=(x.eq.,y.eq.1)",
+			`SELECT * FROM "table" WHERE ("table"."x" = $1 OR "table"."y" = $2)`,
+			[]any{"", "1"},
+		},
+		{
+			// a quoted value closes on the same quote character; a quote not at
+			// the start of a value, or not followed by a separator, or left
+			// open, is an ordinary character (PostgREST pQuotedValue)
+			"?a=eq.\"O'Brien\"&b=in.(O'Brien,Smith)&c=in.(\")&d=eq.\"foo&e=in.(\"a\"b,c)&f=in.(\"a,b\"c,d)",
+			`SELECT * FROM "table" WHERE "table"."a" = $1 AND "table"."b" IN ($2, $3) AND "table"."c" IN ($4) AND "table"."d" = $5 AND "table"."e" IN ($6, $7) AND "table"."f" IN ($8, $9, $10)`,
+			[]any{"O'Brien", "O'Brien", "Smith", "\"", "\"foo", "\"a\"b", "c", "\"a", "b\"c", "d"},
+		},
+		{
+			// a backslash escapes only inside quotes
+			"?a=in.(\\)&b=eq.a\\.b&c=eq.\"a\\\"b\"",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1) AND "table"."b" = $2 AND "table"."c" = $3`,
+			[]any{"\\", "a\\.b", "a\"b"},
+		},
+		{
+			// spaces: stripped after the parenthesis of a list (in.(  ) is the
+			// empty set), kept anywhere else; an empty element is a value
+			"?a=in.( \"a\")&b=in.(a, \"b\")&c=in.(  )&d=in.(a,)&e=in.( ,3)&f=eq. a",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1) AND "table"."b" IN ($2, $3) AND "table"."c" = ANY('{}') AND "table"."d" IN ($4, $5) AND "table"."e" IN ($6, $7) AND "table"."f" = $8`,
+			[]any{"a", "a", " \"b\"", "a", "", "", "3", " a"},
+		},
 		// --- Recursive queries ---
 		{
 			// basic recursive query
@@ -467,11 +590,13 @@ func TestQueryBuilder(t *testing.T) {
 		}
 		parts, err := PostgRestParser{}.parse("table", url.Query())
 		if err != nil {
-			t.Error(err)
+			t.Errorf("\n%d. Unexpected parse error %q \n(query string -> \"%v\")", i, err, test.query)
+			continue
 		}
 		query, values, err := DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
 		if err != nil {
-			t.Error(err)
+			t.Errorf("\n%d. Unexpected build error %q \n(query string -> \"%v\")", i, err, test.query)
+			continue
 		}
 		if query != test.expectedSQL {
 			t.Errorf("\n%d. Expected \n\t\"%v\", \ngot \n\t\"%v\" \n(query string -> \"%v\")", i, test.expectedSQL, query, test.query)
@@ -497,6 +622,37 @@ func TestRecursiveParserErrors(t *testing.T) {
 		{"?id=start.1&id=recurse.3&edge=via(src_id)", "via requires two columns: via(from_col,to_col)"},
 		{"?id=start.1&id=recurse.3&edge=via(,dst_id)", "via requires two columns: via(from_col,to_col)"},
 		{"?id=start.1&id=recurse.3&edge=via!sideways(src_id,dst_id)", "via direction must be 'both': via!both(from_col,to_col)"},
+	}
+
+	for i, test := range errorTests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = PostgRestParser{}.parse("table", u.Query())
+		if err == nil {
+			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
+			continue
+		}
+		if err.Error() != test.errMsg {
+			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
+		}
+	}
+}
+
+// TestFilterValueErrors: a comma inside a logic tree separates filters and a
+// filter operator needs its delimiter, as in PostgREST; the operand of IS is
+// checked whole.
+func TestFilterValueErrors(t *testing.T) {
+	errorTests := []struct {
+		query  string
+		errMsg string
+	}{
+		{"?or=(x.eq.a,b)", "'=' expected"},
+		{"?x=eq", "'.' expected"},
+		{"?x=in", "'.' expected"},
+		{"?x=is.null.x", "IS operator requires null, not_null, true, false or unknown"},
+		{"?x=in.(a", "')' expected"},
 	}
 
 	for i, test := range errorTests {
