@@ -37,7 +37,9 @@ func BenchmarkSessionModeRequest(b *testing.B) {
 				s.Shutdown(context.Background())
 				<-done
 			}()
-			test.WaitForServer("http://localhost:" + m.port)
+			if err := test.WaitForServer("http://localhost:" + m.port); err != nil {
+				b.Fatal(err)
+			}
 
 			token, _ := authn.GenerateToken("postgres", "bench-secret")
 			req, _ := http.NewRequest("GET", "http://localhost:"+m.port+"/api/postgres", nil)

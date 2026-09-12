@@ -48,7 +48,9 @@ func TestMain(m *testing.M) {
 	srv = s
 
 	go s.Start()
-	test.WaitForServer("http://localhost:8082")
+	if err := test.WaitForServer("http://localhost:8082"); err != nil {
+		log.Fatal(err)
+	}
 
 	// Tear-up
 
