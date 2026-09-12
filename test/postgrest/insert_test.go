@@ -706,15 +706,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 				"message": "cannot insert a non-DEFAULT value into column \"b\""
 		// 			  }|]
 		// 			  { matchStatus  = 400 }
-		// @@ smoothdb has no missing=default and takes the insert columns from the first
-		// record, so the generated column is sent in the first record to reach the same refusal
+		// @@ missing=default is not implemented: with ?columns= a key absent from an
+		// object is inserted as NULL, which the generated column refuses all the same
 		{
 			Description: "fails with a good error message on generated always columns",
 			Method:      "POST",
 			Query:       "/foo?columns=a,b",
 			Body: `[
-				{"a": "val", "b": "val"},
-				{"a": "val"}
+				{"a": "val"},
+				{"a": "val", "b": "val"}
 			]`,
 			Headers:  test.Headers{"Prefer": {"return=representation", "missing=default"}},
 			Expected: `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`,
