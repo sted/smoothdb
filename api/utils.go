@@ -59,24 +59,7 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	var dberr *pgconn.PgError
 	if errors.As(err, &dberr) {
-		switch dberr.Code {
-		case "42501":
-			status = http.StatusUnauthorized
-		case "42P01", // undefined_table
-			"42883": // undefined_function
-			status = http.StatusNotFound
-		case "42P04", // duplicate database
-			"42P06", // duplicate schema
-			"42P07", // duplicate table
-			"23505", // unique constraint violation
-			"42710": // duplicated role
-			status = http.StatusConflict
-		case "22P02", // invalid_text_representation
-			"42703": // undefined_column
-			status = http.StatusBadRequest
-		default:
-			status = http.StatusInternalServerError
-		}
+		status = pgErrorStatus(dberr)
 		smoothErr := SmoothError{
 			Subsystem: "database",
 			Message:   dberr.Message,
