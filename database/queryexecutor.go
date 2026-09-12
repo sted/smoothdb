@@ -149,6 +149,16 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		}
 	}
 	info := gi.Db.info.Load()
+	f := info.GetFunction(_s(function, options.Schema))
+	// A call to a STABLE or IMMUTABLE function runs READ ONLY whatever the
+	// method, as in PostgREST (Plan.hs callReadPlan: Inv + Stable/Immutable ->
+	// SQL.Read); a GET already does. The marker is a promise PostgreSQL does not
+	// check: a function that writes despite it fails with 25006 (405).
+	if !readonly && f != nil && f.Volatility != "v" {
+		if err := SetReadOnly(ctx); err != nil {
+			return nil, 0, err
+		}
+	}
 	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
@@ -159,7 +169,6 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	}
 	defer rows.Close()
 	var scalar bool
-	f := info.GetFunction(_s(function, options.Schema))
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype != nil {

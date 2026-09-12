@@ -148,4 +148,17 @@ func InitSourcesRouter(apiHelper Helper) {
 			return WriteError(w, err)
 		}
 	})
+
+	// Any other method on a function is refused, as PostgREST does before
+	// touching the database (ApiRequest.hs getAction: InvalidRpcMethod,
+	// PGRST101); without these routes the request fell through to a 404.
+	// The Allow header lists what is routed on /rpc/ (no OPTIONS yet).
+	rpcMethodNotAllowed := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		w.Header().Set("Allow", "GET, HEAD, POST")
+		return heligo.WriteJSON(w, http.StatusMethodNotAllowed,
+			SmoothError{Subsystem: "network", Message: "Cannot use the " + r.Method + " method on RPC"})
+	}
+	api.Handle("DELETE", "/rpc/:fname", rpcMethodNotAllowed)
+	api.Handle("PATCH", "/rpc/:fname", rpcMethodNotAllowed)
+	api.Handle("PUT", "/rpc/:fname", rpcMethodNotAllowed)
 }
