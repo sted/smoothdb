@@ -1031,6 +1031,18 @@ func TestPostgREST_Insert(t *testing.T) {
 			Expected:    `[{"id":10,"name":"Alias Embed","cid":2,"clients":{"id":2,"name":"Apple"}}]`,
 			Status:      201,
 		},
+		// @@ added: order= applies to the representation of a POST too (PostgREST
+		// 13.0.0, #3013 "Fix order= with POST, PATCH, PUT and DELETE requests"); the
+		// spec only covers it through the batch upsert in upsert_test.go
+		{
+			Description: "order applies to the representation of a POST",
+			Method:      "POST",
+			Query:       "/no_pk?order=a.desc",
+			Body:        `[{ "a": "8", "b": "x" }, { "a": "9", "b": "x" }]`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "a": "9", "b": "x" }, { "a": "8", "b": "x" }]`,
+			Status:      201,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

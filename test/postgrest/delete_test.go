@@ -262,82 +262,51 @@ func TestPostgREST_Delete(t *testing.T) {
 			Expected:    ``,
 			Status:      204,
 		},
-		//   context "limited delete" $ do
-		// 	it "works with the limit and offset query params" $
-		// 	  baseTable "limited_delete_items" "id" tblDataBefore
-		// 	  `mutatesWith`
-		// 	  requestMutation methodDelete "/limited_delete_items?order=id&limit=1&offset=1" mempty
-		// 	  `shouldMutateInto`
-		// 	  [json|[
-		// 		{ "id": 1, "name": "item-1" }
-		// 	  , { "id": 3, "name": "item-3" }
-		// 	  ]|]
-
-		// 	it "works with the limit query param plus a filter" $
-		// 	  baseTable "limited_delete_items" "id" tblDataBefore
-		// 	  `mutatesWith`
-		// 	  requestMutation methodDelete "/limited_delete_items?order=id&limit=1&id=gt.1" mempty
-		// 	  `shouldMutateInto`
-		// 	  [json|[
-		// 		{ "id": 1, "name": "item-1" }
-		// 	  , { "id": 3, "name": "item-3" }
-		// 	  ]|]
-
-		// 	it "fails without an explicit order by" $
-		// 	  request methodDelete "/limited_delete_items?limit=1&offset=1"
-		// 		  [("Prefer", "tx=commit")]
-		// 		  mempty
+		// The "limited delete" context (DELETE narrowed by limit/offset, PGRST109,
+		// PGRST110) was dropped upstream in PostgREST 13.0.0 (#3013 limited-updates,
+		// "Drop support for Limited updates/deletes"): limit and offset are ignored
+		// on PATCH and DELETE and every matching row is written. The replacement
+		// guard is `Prefer: max-affected` (card 32482 max-affected).
+		// @@ added: the parity is deliberate — limit/offset do not narrow the delete
+		// (select=b keeps the check independent of the row order)
+		{
+			Description: "limit and offset are ignored on DELETE: every matching row is deleted (PostgREST 13+, #3013)",
+			Method:      "DELETE",
+			Query:       "/no_pk?b=eq.0&select=b&limit=1&offset=1",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "b": "0" }, { "b": "0" }]`,
+			Status:      200,
+		},
+		//   context "with ordering" $
+		// 	it "works with request method DELETE and embedded resource" $ do
+		// 	  request methodDelete "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc"
+		// 		[("Prefer", "return=representation")]
+		// 		""
 		// 		`shouldRespondWith`
-		// 		  [json| {
-		// 			"code":"PGRST109",
-		// 			"hint": "Apply an 'order' using unique column(s)",
-		// 			"details": null,
-		// 			"message": "A 'limit' was applied without an explicit 'order'"
-		// 			}|]
-		// 		  { matchStatus  = 400 }
-
-		// 	it "fails when not ordering by a unique column" $
-		// 	  request methodDelete "/limited_delete_items_wnonuniq_view?order=static&limit=1"
-		// 		  [("Prefer", "tx=commit")]
-		// 		  mempty
-		// 		`shouldRespondWith`
-		// 		  [json| {
-		// 			"code":"PGRST110",
-		// 			"hint": null,
-		// 			"details":"Results contain 3 rows changed but the maximum number allowed is 1",
-		// 			"message":"The maximum number of rows allowed to change was surpassed"
-		// 			}|]
-		// 		  { matchStatus  = 400 }
-
-		// 	it "works with views with an explicit order by unique col" $
-		// 	  baseTable "limited_delete_items_view" "id" tblDataBefore
-		// 	  `mutatesWith`
-		// 	  requestMutation methodDelete "/limited_delete_items_view?order=id&limit=1&offset=1" mempty
-		// 	  `shouldMutateInto`
-		// 	  [json|[
-		// 		{ "id": 1, "name": "item-1" }
-		// 	  , { "id": 3, "name": "item-3" }
-		// 	  ]|]
-
-		// 	it "works with views with an explicit order by composite pk" $
-		// 	  baseTable "limited_delete_items_cpk_view" "id" tblDataBefore
-		// 	  `mutatesWith`
-		// 	  requestMutation methodDelete "/limited_delete_items_cpk_view?order=id,name&limit=1&offset=1" mempty
-		// 	  `shouldMutateInto`
-		// 	  [json|[
-		// 		{ "id": 1, "name": "item-1" }
-		// 	  , { "id": 3, "name": "item-3" }
-		// 	  ]|]
-
-		// 	it "works on a table without a pk by ordering by 'ctid'" $
-		// 	  baseTable "limited_delete_items_no_pk" "id" tblDataBefore
-		// 	  `mutatesWith`
-		// 	  requestMutation methodDelete "/limited_delete_items_no_pk?order=ctid&limit=1&offset=1" mempty
-		// 	  `shouldMutateInto`
-		// 	  [json|[
-		// 		{ "id": 1, "name": "item-1" }
-		// 	  , { "id": 3, "name": "item-3" }
-		// 	  ]|]
+		// 		[json| [ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]
+		// 		|]
+		// 		{ matchStatus  = 200
+		// 		, matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		// 		}
+		{
+			Description: "with ordering works with request method DELETE and embedded resource",
+			Method:      "DELETE",
+			Query:       "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]`,
+			Status:      200,
+		},
+		// @@ added: an embedded order applies to the embed of the representation
+		// (the lateral join of the _source CTE); no top-level order here, so this
+		// is the control that the embed path of a mutation orders on its own
+		{
+			Description: "embedded order applies to the representation of a DELETE",
+			Method:      "DELETE",
+			Query:       "/artists?id=eq.1&select=id,albums(title)&albums.order=title.asc",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id":1,"albums":[{"title": "contemporary movement"},{"title": "stratosphere"}]}]`,
+			Status:      200,
+		},
 		// @@ added: regression for 42702 "column reference is ambiguous" — with select=*
 		// plus an embed, the fk column must not be added twice to the RETURNING clause
 		{
