@@ -9,14 +9,35 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// binaryFormat refuses a column that did not arrive in binary format, unless
+// its type reads the same in both (the text-like types and json). The
+// decoders of rowsToMaps and rowsToDynStructs* read fixed binary layouts and
+// would misread text (see the wire-format rule on JSONSerializer).
+func binaryFormat(fd pgconn.FieldDescription) error {
+	if fd.Format == pgtype.BinaryFormatCode {
+		return nil
+	}
+	switch fd.DataTypeOID {
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.NameOID, pgtype.JSONOID, pgtype.JSONBOID:
+		return nil
+	}
+	return fmt.Errorf("data type OID %d arrived in text format", fd.DataTypeOID)
+}
 
 // @@ This is experimental.
 // For now it seems much slower than rowsToStructs
 
 func rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
 	fds := rows.FieldDescriptions()
+	for _, fd := range fds {
+		if err := binaryFormat(fd); err != nil {
+			return nil, err
+		}
+	}
 	array := make([]map[string]any, 0, 1000)
 	var v any
 

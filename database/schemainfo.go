@@ -207,6 +207,9 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 }
 
 func (si *SchemaInfo) GetTypeById(id uint32) *Type {
+	if si == nil {
+		return nil
+	}
 	t, ok := si.cachedTypes[id]
 	if !ok {
 		return nil

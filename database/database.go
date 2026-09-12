@@ -20,6 +20,41 @@ type DatabaseUpdate struct {
 	Owner *string `json:"owner"`
 }
 
+// textFormatOnlyTypes are the types pgx would request in binary format but
+// the serializers only read as text (the wire-format rule is documented on
+// JSONSerializer). AfterConnect re-registers each of them on every connection
+// with a TextFormatOnlyCodec around its default codec, so the server sends
+// PostgreSQL's text form of the value and the serializer passes it through as
+// to_json would print it; Scan keeps working through the text path of the
+// original codec. The array of each type is listed too: an array codec
+// captures its element type when pgx builds its default map, so it keeps
+// preferring binary otherwise. A type that is neither here nor decoded by the
+// serializers' binary switch fails loudly at serialization: that is where a
+// new entry starts.
+var textFormatOnlyTypes = []uint32{
+	pgtype.ByteaOID, pgtype.ByteaArrayOID,
+	pgtype.QCharOID, pgtype.QCharArrayOID, // "char"
+	pgtype.InetOID, pgtype.InetArrayOID,
+	pgtype.CIDROID, pgtype.CIDRArrayOID,
+	pgtype.MacaddrOID, pgtype.MacaddrArrayOID,
+	pgtype.Macaddr8OID, // pgx has no codec for macaddr8[]: it is text already
+	pgtype.TimeOID, pgtype.TimeArrayOID,
+	pgtype.PointOID, pgtype.PointArrayOID,
+	pgtype.LineOID, pgtype.LineArrayOID,
+	pgtype.LsegOID, pgtype.LsegArrayOID,
+	pgtype.BoxOID, pgtype.BoxArrayOID,
+	pgtype.PathOID, pgtype.PathArrayOID,
+	pgtype.PolygonOID, pgtype.PolygonArrayOID,
+	pgtype.CircleOID, pgtype.CircleArrayOID,
+	pgtype.BitOID, pgtype.BitArrayOID,
+	pgtype.VarbitOID, pgtype.VarbitArrayOID,
+	pgtype.TIDOID, pgtype.TIDArrayOID,
+	pgtype.XIDOID, pgtype.XIDArrayOID,
+	pgtype.CIDOID, pgtype.CIDArrayOID,
+	pgtype.XID8OID, pgtype.XID8ArrayOID,
+	pgtype.TSVectorOID, pgtype.TSVectorArrayOID,
+}
+
 type Database struct {
 	DatabaseInfo
 	activation    chan struct{}
@@ -51,13 +86,22 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		// Force text format for tsvector — pgx v5.9+ defaults to binary,
-		// but we decode RawValues() as text.
-		conn.TypeMap().RegisterType(&pgtype.Type{
-			Name:  "tsvector",
-			OID:   pgtype.TSVectorOID,
-			Codec: &pgtype.TextFormatOnlyCodec{Codec: pgtype.TSVectorCodec{}},
-		})
+		// Force text format for the types the serializers do not decode in
+		// binary (pgx v5.9+ defaults to binary for them). Registered before
+		// the composites below, so that a composite with such a field is
+		// requested in text too (its codec supports binary only when every
+		// field does).
+		for _, oid := range textFormatOnlyTypes {
+			dt, ok := conn.TypeMap().TypeForOID(oid)
+			if !ok {
+				continue
+			}
+			conn.TypeMap().RegisterType(&pgtype.Type{
+				Name:  dt.Name,
+				OID:   oid,
+				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
+			})
+		}
 		var set string
 		var err error
 		if len(dbe.config.SchemaSearchPath) != 0 {
