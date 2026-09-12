@@ -17,6 +17,11 @@ func TestMain(m *testing.M) {
 	var err error
 	config := DefaultConfig()
 	config.URL = "postgresql://postgres:postgres@0.0.0.0:5432/postgres"
+	// The suite activates a database per topic (test_base, test_ranges,
+	// test_formats, ...), each with its own pool: at the default of 10 idle
+	// connections per pool they add up to the server's max_connections.
+	config.MinPoolConnections = 1
+	config.MaxPoolConnections = 10
 	// Same override the server honors, already exported by CI
 	if url := os.Getenv("SMOOTHDB_DATABASE_URL"); url != "" {
 		config.URL = url
