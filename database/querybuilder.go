@@ -70,11 +70,19 @@ func toJson(table, schema, field, quotedField string, info *SchemaInfo) string {
 }
 
 func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) string {
+	return prepareFieldAs(table, schema, table, schema, sfield, info)
+}
+
+// prepareFieldAs builds the select-list item of a field read through an alias
+// (a label, a nesting level, the _source CTE of a mutation) while the column
+// type is still looked up on the real table: the json path of an array or
+// composite column needs its to_jsonb wrapper whatever the prefix.
+func prepareFieldAs(alias, aliasSchema, table, schema string, sfield SelectField, info *SchemaInfo) string {
 	var fieldPart string
 
 	if sfield.aggregate == "" {
 		// Regular field without aggregate
-		fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+		fieldname := _sq(alias, aliasSchema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 		if sfield.field.jsonPath != "" {
 			fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 			fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
@@ -90,7 +98,7 @@ func prepareField(table, schema string, sfield SelectField, info *SchemaInfo) st
 			fieldPart = "COUNT(*)"
 		} else {
 			// For aggregates with specific fields
-			fieldname := _sq(table, schema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
+			fieldname := _sq(alias, aliasSchema) + "." + quoteIf(sfield.field.name, !isStar(sfield.field.name))
 			if sfield.field.jsonPath != "" {
 				fieldname = toJson(table, schema, sfield.field.name, fieldname, info)
 				fieldname = "(" + fieldname + sfield.field.jsonPath + ")"
@@ -379,13 +387,13 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 					if label == "" {
 						fieldPart = prepareField(table, schema, sfield, stack.info)
 					} else {
-						fieldPart = prepareField(label, "", sfield, stack.info)
+						fieldPart = prepareFieldAs(label, "", table, schema, sfield, stack.info)
 					}
 				} else {
-					fieldPart = prepareField(labelWithNumber(table, stack.level), "", sfield, stack.info)
+					fieldPart = prepareFieldAs(labelWithNumber(table, stack.level), "", table, schema, sfield, stack.info)
 				}
 			} else {
-				fieldPart = prepareField("_source", "", sfield, stack.info)
+				fieldPart = prepareFieldAs("_source", "", table, schema, sfield, stack.info)
 			}
 			selClause += fieldPart
 		}
