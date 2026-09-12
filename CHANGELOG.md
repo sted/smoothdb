@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **`via()` walks enumerated paths, not nodes** — the recursive CTE carried the whole row plus a growing key array and guarded cycles per path, so it materialised every simple path of the graph: exponential in depth, and `MaxRecursiveDepth` was no bound at all. On a layered DAG of 650 nodes and 1800 edges (out-degree 3, depth 12) a walk from the root built 797,161 CTE rows for 490 nodes and took 791 ms per request; the CTE now carries only `(node, depth)` and dedups with `UNION`, so a node is one row per depth it is reached at, the seed is never re-entered, the table is joined back onto the deduplicated nodes, and the same walk takes 1.1 ms (`BenchmarkViaLayeredDag` in `test/recursive`, which also checks the walk against a BFS: same node set, same shortest depth per node). The edge table is joined as a derived table of `(from, to)` pairs — both orientations for `via!both` — so each arm uses an index on the known node instead of an OR join that scanned every edge per row. A cycle now walks until the depth cap, one row per node per level at most (a `via!both` walk of a 650-node tree at the default cap of 100: 33 ms). Three visible changes: `__path` is a selectable pseudo-column (the array of keys from the seed to the row; on a `via` walk it restores the path-enumerating shape, documented as exponential); ordering a `via` walk by an unselected `__depth` no longer leaks `__depth` into the result; and a result filter on `__depth` in a `via` walk now sees the node's shortest depth — it used to run before the dedup, per path, so `__depth=gte.2` returned a node at depth 1 that was also reachable at depth 2.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
