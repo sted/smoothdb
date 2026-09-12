@@ -26,10 +26,6 @@ func TestMain(m *testing.M) {
 	if url := os.Getenv("SMOOTHDB_DATABASE_URL"); url != "" {
 		config.URL = url
 	}
-	// Each test keeps the pool of its own database alive to the end of the
-	// run: at the default of 10 idle connections per pool, eleven databases
-	// fill a default max_connections of 100 (53300 "too many clients").
-	config.MinPoolConnections = 2
 	dbe, err = InitDbEngine(config, nil)
 	if err != nil {
 		fmt.Println(err.Error())
