@@ -450,6 +450,7 @@ func TestSerializeTextFormat(t *testing.T) {
 		boxArrOID  = pgtype.BoxArrayOID
 		unknownOID = 900005
 		rangeOID   = pgtype.DaterangeOID
+		multiOID   = pgtype.Int4multirangeOID
 	)
 	dateOID := uint32(pgtype.DateOID)
 	info := &SchemaInfo{cachedTypes: map[uint32]Type{
@@ -461,6 +462,7 @@ func TestSerializeTextFormat(t *testing.T) {
 		boxArrOID:  {Id: boxArrOID, Name: "_box", IsArray: true, ArraySubType: pgtype.BoxOID},
 		unknownOID: {Id: unknownOID, Name: "mystery"},
 		rangeOID:   {Id: rangeOID, Name: "daterange", IsRange: true, RangeSubType: &dateOID},
+		multiOID:   {Id: multiOID, Name: "int4multirange"},
 	}}
 	cases := []struct {
 		name string
@@ -481,6 +483,10 @@ func TestSerializeTextFormat(t *testing.T) {
 		// a range is one JSON string, range_out's quotes escaped
 		{"range", pgtype.DaterangeOID, `[2024-01-01,2024-06-01)`, `"[2024-01-01,2024-06-01)"`},
 		{"range with quoted bounds", pgtype.TsrangeOID, `["2024-01-01 10:00:00","2024-06-01 12:00:00")`, `"[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")"`},
+		// so is a multirange, multirange_out's braces around the ranges
+		{"multirange", multiOID, `{[1,3),[5,7)}`, `"{[1,3),[5,7)}"`},
+		{"empty multirange", multiOID, `{}`, `"{}"`},
+		{"multirange with quoted bounds", pgtype.TsmultirangeOID, `{["2024-01-01 10:00:00","2024-06-01 12:00:00")}`, `"{[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")}"`},
 		{"empty array", enumArrOID, `{}`, `[]`},
 		{"array", enumArrOID, `{sad,"a b","c\"d","e\\f","NULL",NULL,"{x}"}`, `["sad","a b","c\"d","e\\f","NULL",null,"{x}"]`},
 		{"int array with dimension prefix", int4ArrOID, `[0:1]={1,2}`, `[1,2]`},
@@ -522,9 +528,10 @@ func TestSerializeTextFormat(t *testing.T) {
 	// SerializeError naming the type, never a copy-through as if it were text.
 	// The text-format case above is the positive control for the same OID. A
 	// range is one of them: it has no binary decoder, since only PostgreSQL
-	// prints its bounds as range_out does, and arrives in text.
+	// prints its bounds as range_out does, and arrives in text. So is a
+	// multirange.
 	t.Run("unknown binary type fails loudly", func(t *testing.T) {
-		for _, oid := range []uint32{unknownOID, pgtype.RecordOID, rangeOID} {
+		for _, oid := range []uint32{unknownOID, pgtype.RecordOID, rangeOID, multiOID} {
 			cr := &CustomRows{
 				FieldDescriptions_: []pgconn.FieldDescription{{Name: "x", DataTypeOID: oid, Format: pgtype.BinaryFormatCode}},
 				RawValues_:         [][][]byte{{{0x00, 0x00, 0x00, 0x01}}},
@@ -670,6 +677,177 @@ func TestSerializeRangeQuoting(t *testing.T) {
 			}
 			want := "rd,rts,rt,rn\n" +
 				`"[2024-01-01,2024-06-01)","[""2024-01-01 10:00:00"",""2024-06-01 12:00:00"")","[""a,b"",""c""""d""]","[1.5,2.5]"`
+			if string(out) != want {
+				t.Errorf("expected %q\n     got %q", want, out)
+			}
+		})
+	}
+
+	t.Run("types unknown to the connection", func(t *testing.T) { check(t, ctx) })
+	ReleaseConn(ctx, conn)
+
+	db.pool.Reset()
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	t.Run("composites registered", func(t *testing.T) { check(t, ctx) })
+}
+
+// A multirange prints as PostgreSQL's multirange_out text, which to_json (and
+// so PostgREST) returns as one JSON string: the ranges between braces, each
+// with range_out's quoting of its bounds, '{}' for the empty one. pgx requests
+// the six builtin multiranges in binary (its multirange codec follows the
+// range codec it captured when its default map was built, before the ranges
+// were re-registered as text-only) and the serializers have no binary decoder
+// for them, so every such column fails; the introspection query also takes a
+// multirange for a range with no subtype (typcategory 'R', but its pg_range
+// row is the one of its range, under rngmultitypid). The oracle is
+// row_to_json, as in TestSerializeRangeQuoting, on the creating connection
+// (pgx knows no custom type) and on a fresh one after a schema cache reload,
+// where the composites are registered: one has a builtin multirange field and
+// must be requested in text like the ranges, the other pairs textmultirange
+// (created with textrange, unknown to pgx and text already) with an int. The
+// int4range column and the ints are the positive controls.
+func TestSerializeMultirange(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "test_multirange")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_multirange")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gi := GetSmoothContext(ctx)
+
+	ddl := []string{
+		`create type textrange as range (subtype = text)`, // creates textmultirange with it
+		`create type span as (n int, days datemultirange)`,
+		`create type tagged_mr as (n int, label textmultirange)`,
+		`create table multiranges (
+			id int primary key,
+			n int, r4 int4range,
+			m4 int4multirange, m8 int8multirange, mn nummultirange,
+			md datemultirange, mts tsmultirange, mtz tstzmultirange, mt textmultirange,
+			m4_arr int4multirange[], mts_arr tsmultirange[],
+			sp span, sp_arr span[], tg tagged_mr
+		)`,
+		`insert into multiranges values (
+			1, 42, '[1,10)',
+			'{[1,3),[5,7)}', '{[1,10]}', '{[1.5,2.5],[3,)}',
+			'{[2024-01-01,2024-02-01),[2024-03-01,)}', '{[2024-01-01 10:00:00,2024-06-01 12:00:00)}', '{[2024-01-01 10:00:00+00,)}', '{["a,b","c\"d"],[x,y)}',
+			'{"{[1,3)}","{}",NULL}', '{"{[\"2024-01-01 10:00:00\",\"2024-06-01 12:00:00\")}"}',
+			'(1,"{[2024-01-01,2024-02-01)}")', '{"(2,\"{[2024-02-01,)}\")","(3,{})"}', '(7,"{[""a,b"",""c""""d""],[x,y)}")'
+		)`,
+		`insert into multiranges (id) values (2)`,
+		// the empty multirange everywhere it can appear
+		`insert into multiranges (id, m4, md, mt, m4_arr, sp, tg) values (3, '{}', '{}', '{}', '{}', '(,)', '(,{})')`,
+	}
+	for _, q := range ddl {
+		if _, err := gi.Conn.Exec(ctx, q); err != nil {
+			t.Fatalf("%v\n%s", err, q)
+		}
+	}
+	if err := db.ReloadSchemaCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// The schema cache must tell a multirange from a range: a range has a
+	// subtype, a multirange is not a range at all, and nothing in the cache
+	// may be a range without a subtype, which is what the serializers used
+	// to dereference.
+	t.Run("classification", func(t *testing.T) {
+		info := db.info.Load()
+		byName := map[string]Type{}
+		for _, ct := range info.cachedTypes {
+			byName[ct.Name] = ct
+		}
+		for _, name := range []string{"int4range", "textrange"} {
+			ct, ok := byName[name]
+			if !ok || !ct.IsRange || ct.RangeSubType == nil {
+				t.Errorf("%s: expected a range with a subtype, got %+v", name, ct)
+			}
+		}
+		for _, name := range []string{"int4multirange", "textmultirange"} {
+			ct, ok := byName[name]
+			if !ok {
+				t.Errorf("%s: not in the schema cache", name)
+			} else if ct.IsRange {
+				t.Errorf("%s: classified as a range, subtype %v", name, ct.RangeSubType)
+			}
+		}
+		for _, ct := range info.cachedTypes {
+			if ct.IsRange && ct.RangeSubType == nil {
+				t.Errorf("%s.%s: a range with no subtype", ct.Schema, ct.Name)
+			}
+		}
+	})
+
+	projections := []struct{ name, columns string }{
+		{"controls", "id, n, r4"},
+		{"bare bounds", "m4, m8, mn, md"},
+		{"quoted bounds", "mts, mtz, mt"},
+		{"arrays", "m4_arr, mts_arr"},
+		{"composites", "sp, sp_arr, tg"},
+		{"whole row", "*"},
+	}
+	expected := map[string]string{}
+	for _, pr := range projections {
+		for _, id := range []int{1, 2, 3} {
+			var row string
+			q := fmt.Sprintf("select row_to_json(t)::text from (select %s from multiranges where id = %d) t", pr.columns, id)
+			if err := gi.Conn.QueryRow(ctx, q).Scan(&row); err != nil {
+				t.Fatal(err)
+			}
+			expected[fmt.Sprintf("%s/row%d", pr.name, id)] = "[" + row + "]"
+		}
+	}
+
+	check := func(t *testing.T, ctx context.Context) {
+		gi := GetSmoothContext(ctx)
+		info := gi.Db.info.Load()
+		for _, pr := range projections {
+			for _, id := range []int{1, 2, 3} {
+				name := fmt.Sprintf("%s/row%d", pr.name, id)
+				t.Run(name, func(t *testing.T) {
+					rows, err := gi.Conn.Query(ctx, fmt.Sprintf("select %s from multiranges where id = %d", pr.columns, id))
+					if err != nil {
+						t.Fatal(err)
+					}
+					out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+					rows.Close()
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if got := unescapeHTML(string(out)); got != expected[name] {
+						t.Errorf("expected %s\n     got %s", expected[name], got)
+					}
+				})
+			}
+		}
+		// The CSV value is PostgreSQL's text for the multirange (and for the
+		// composite holding one), quoted for its commas and quotes as
+		// PostgREST's CSV (the record text) quotes it.
+		t.Run("csv", func(t *testing.T) {
+			rows, err := gi.Conn.Query(ctx, "select m4, mts, mt, sp from multiranges where id = 1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, err := (&CSVSerializer{}).Serialize(rows, false, false, info)
+			rows.Close()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			want := "m4,mts,mt,sp\n" +
+				`"{[1,3),[5,7)}","{[""2024-01-01 10:00:00"",""2024-06-01 12:00:00"")}","{[""a,b"",""c""""d""],[x,y)}","(1,""{[2024-01-01,2024-02-01)}"")"`
 			if string(out) != want {
 				t.Errorf("expected %q\n     got %q", want, out)
 			}
