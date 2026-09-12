@@ -1021,6 +1021,8 @@ func TestIsoDateStyle(t *testing.T) {
 		{map[string]string{"DateStyle": "ISO"}, "ISO"},
 		{map[string]string{"datestyle": "SQL, DMY"}, "ISO, DMY"},
 		{map[string]string{"DateStyle": "German"}, "ISO, DMY"},
+		{map[string]string{"DateStyle": "MDY, German"}, "ISO, MDY"},
+		{map[string]string{"DateStyle": "German, YMD"}, "ISO, YMD"},
 		{map[string]string{"DateStyle": "Postgres, Euro"}, "ISO, DMY"},
 		{map[string]string{"DateStyle": "SQL, US"}, "ISO, MDY"},
 		{map[string]string{"DATESTYLE": "ymd,postgres"}, "ISO, YMD"},

@@ -92,7 +92,7 @@ var textFormatOnlyTypes = []uint32{
 // parameters (from the URL), whatever the case of its key. The other keys
 // spelling it are dropped, so one value reaches the server.
 func isoDateStyle(params map[string]string) string {
-	order := ""
+	order, implied := "", ""
 	for key, value := range params {
 		if !strings.EqualFold(key, "datestyle") {
 			continue
@@ -101,13 +101,18 @@ func isoDateStyle(params map[string]string) string {
 			switch p := strings.ToUpper(strings.TrimSpace(part)); p {
 			case "MDY", "DMY", "YMD":
 				order = p
-			case "GERMAN", "EURO", "EUROPEAN": // German implies day first, as the aliases do
+			case "EURO", "EUROPEAN":
 				order = "DMY"
 			case "US", "NONEURO", "NONEUROPEAN":
 				order = "MDY"
+			case "GERMAN": // implies day first, unless an order is given
+				implied = "DMY"
 			}
 		}
 		delete(params, key)
+	}
+	if order == "" {
+		order = implied
 	}
 	if order == "" {
 		return "ISO"
