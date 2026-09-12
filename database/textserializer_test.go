@@ -175,15 +175,14 @@ func TestSerializeSurfacesDecoderError(t *testing.T) {
 	}
 }
 
-// A range on the wire is a flag byte followed only by the bounds that exist:
-// 'empty' and '(,)' carry no bound at all, a half-unbounded range carries just
-// the one. The serializer must read the bounds the flags announce and nothing
-// more, and print what PostgreSQL's to_json prints for the same value (the
-// server canonicalizes int4range/int8range to the [) form). The bounded rows
-// are the positive controls: they already serialize, so a failure there is a
-// broken probe, not the defect. Integer and numeric subtypes are used because
-// their bounds are printed bare, so the text is valid JSON independently of
-// how the bounds are quoted.
+// 'empty', '[10,)', '(,10)' and '(,)' used to crash the binary range decoder,
+// which read both bounds unconditionally; a range now arrives in text
+// (textFormatOnlyTypes) and every shape must print what PostgreSQL's to_json
+// prints for the same value (the server canonicalizes int4range/int8range to
+// the [) form). The bounded rows are the positive controls: they already
+// serialized, so a failure there is a broken probe, not the defect. Integer
+// and numeric subtypes are used because their bounds are printed bare, so the
+// text is valid JSON independently of how the bounds are quoted.
 func TestSerializeRangeBounds(t *testing.T) {
 	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
 	if err != nil {
@@ -230,9 +229,7 @@ func TestSerializeRangeBounds(t *testing.T) {
 		{5, "(,10)", `[{"r4":"(,10)","r8":"(,10)","rn":"(,10)"}]`, "r4,r8,rn\n\"(,10)\",\"(,10)\",\"(,10)\""},
 		{6, "(,)", `[{"r4":"(,)","r8":"(,)","rn":"(,)"}]`, "r4,r8,rn\n\"(,)\",\"(,)\",\"(,)\""},
 		// PostgreSQL's record text (what PostgREST returns as CSV) leaves
-		// 'empty' unquoted, having no separator in it; the CSV value is
-		// compared without its optional quotes so that this test pins the
-		// bound reading, not the quoting of the range.
+		// 'empty' unquoted, having no separator in it.
 		{7, "empty", `[{"r4":"empty","r8":"empty","rn":"empty"}]`, "r4,r8,rn\nempty,empty,empty"},
 	}
 	for _, c := range cases {
@@ -264,14 +261,10 @@ func TestSerializeRangeBounds(t *testing.T) {
 			}
 			out, _, err = (&CSVSerializer{}).Serialize(rows, false, false, info)
 			rows.Close()
-			got := string(out)
-			if c.in == "empty" {
-				got = strings.ReplaceAll(got, `"`, "")
-			}
 			if err != nil {
 				t.Errorf("CSV: unexpected error: %v", err)
-			} else if got != c.csv {
-				t.Errorf("CSV: expected %q, got %q", c.csv, got)
+			} else if string(out) != c.csv {
+				t.Errorf("CSV: expected %q, got %q", c.csv, out)
 			}
 		})
 	}
@@ -456,7 +449,9 @@ func TestSerializeTextFormat(t *testing.T) {
 		int4ArrOID = pgtype.Int4ArrayOID
 		boxArrOID  = pgtype.BoxArrayOID
 		unknownOID = 900005
+		rangeOID   = pgtype.DaterangeOID
 	)
+	dateOID := uint32(pgtype.DateOID)
 	info := &SchemaInfo{cachedTypes: map[uint32]Type{
 		enumOID:    {Id: enumOID, Name: "mood", IsEnum: true},
 		enumArrOID: {Id: enumArrOID, Name: "_mood", IsArray: true, ArraySubType: enumOID},
@@ -465,6 +460,7 @@ func TestSerializeTextFormat(t *testing.T) {
 		int4ArrOID: {Id: int4ArrOID, Name: "_int4", IsArray: true, ArraySubType: pgtype.Int4OID},
 		boxArrOID:  {Id: boxArrOID, Name: "_box", IsArray: true, ArraySubType: pgtype.BoxOID},
 		unknownOID: {Id: unknownOID, Name: "mystery"},
+		rangeOID:   {Id: rangeOID, Name: "daterange", IsRange: true, RangeSubType: &dateOID},
 	}}
 	cases := []struct {
 		name string
@@ -524,9 +520,11 @@ func TestSerializeTextFormat(t *testing.T) {
 
 	// A binary value of a type the serializer has no decoder for must be a
 	// SerializeError naming the type, never a copy-through as if it were text.
-	// The text-format case above is the positive control for the same OID.
+	// The text-format case above is the positive control for the same OID. A
+	// range is one of them: it has no binary decoder, since only PostgreSQL
+	// prints its bounds as range_out does, and arrives in text.
 	t.Run("unknown binary type fails loudly", func(t *testing.T) {
-		for _, oid := range []uint32{unknownOID, pgtype.RecordOID} {
+		for _, oid := range []uint32{unknownOID, pgtype.RecordOID, rangeOID} {
 			cr := &CustomRows{
 				FieldDescriptions_: []pgconn.FieldDescription{{Name: "x", DataTypeOID: oid, Format: pgtype.BinaryFormatCode}},
 				RawValues_:         [][][]byte{{{0x00, 0x00, 0x00, 0x01}}},

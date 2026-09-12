@@ -53,6 +53,19 @@ var textFormatOnlyTypes = []uint32{
 	pgtype.CIDOID, pgtype.CIDArrayOID,
 	pgtype.XID8OID, pgtype.XID8ArrayOID,
 	pgtype.TSVectorOID, pgtype.TSVectorArrayOID,
+	// The builtin ranges: a range is one JSON string, range_out's text with
+	// its quoting of the bounds (only those with a bracket, a comma, a quote,
+	// a backslash or whitespace in them, a quote doubled) and PostgreSQL's
+	// own text for each bound (a space between date and time, the session
+	// time zone for tstzrange), which a decoder of the binary bounds would
+	// have to reproduce for every subtype. A custom range type is unknown to
+	// pgx and text already.
+	pgtype.Int4rangeOID, pgtype.Int4rangeArrayOID,
+	pgtype.Int8rangeOID, pgtype.Int8rangeArrayOID,
+	pgtype.NumrangeOID, pgtype.NumrangeArrayOID,
+	pgtype.DaterangeOID, pgtype.DaterangeArrayOID,
+	pgtype.TsrangeOID, pgtype.TsrangeArrayOID,
+	pgtype.TstzrangeOID, pgtype.TstzrangeArrayOID,
 }
 
 type Database struct {
@@ -124,13 +137,23 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		}
 		for _, t := range info.cachedComposites {
 			var fields []pgtype.CompositeCodecField
+			known := true
 			for _, oid := range t.SubTypeIds {
 				dt, ok := conn.TypeMap().TypeForOID(oid)
 				if !ok {
-					//return fmt.Errorf("unknown composite type field OID: %v", oid)
-					continue
+					known = false
+					break
 				}
 				fields = append(fields, pgtype.CompositeCodecField{Name: dt.Name, Type: dt})
+			}
+			if !known {
+				// A field of a type pgx does not know (a custom range, a
+				// domain, a composite not registered yet): left unregistered,
+				// the composite is requested in text, which the serializers
+				// parse at any nesting. Registered without the field, it
+				// would be requested in binary and carry that field in a
+				// format the serializers cannot decode.
+				continue
 			}
 			conn.TypeMap().RegisterType(&pgtype.Type{Name: t.Name, OID: t.Id, Codec: &pgtype.CompositeCodec{Fields: fields}})
 		}

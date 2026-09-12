@@ -7,11 +7,11 @@ import (
 )
 
 // A range column is returned as the text PostgreSQL's to_json prints for it,
-// as PostgREST does (its body is json_agg of the row). The wire value carries
-// only the bounds its flags announce, so 'empty', '[10,)', '(,10)' and '(,)'
-// must serialize without reading a bound that is not there. The bounded rows
-// are the positive controls. Integer and numeric subtypes keep the text valid
-// JSON independently of how the bounds are quoted.
+// as PostgREST does (its body is json_agg of the row). 'empty', '[10,)',
+// '(,10)' and '(,)' used to crash a binary decoder that read both bounds
+// unconditionally; every shape must serialize as PostgreSQL prints it. The
+// bounded rows are the positive controls. Integer and numeric subtypes keep
+// the text valid JSON independently of how the bounds are quoted.
 func TestRangeBounds(t *testing.T) {
 	cmdConfig := test.Config{
 		BaseUrl:       "http://localhost:8082/admin/databases",
@@ -111,9 +111,8 @@ func TestRangeBounds(t *testing.T) {
 				{"id":4,"r4":"[10,)"},{"id":5,"r4":"(,10)"},{"id":6,"r4":"(,)"},{"id":7,"r4":"empty"}]`,
 			Status: 200,
 		},
-		// The CSV serializer shares the range decoder. PostgreSQL's record
-		// text, which is what PostgREST returns as CSV, quotes these values
-		// because of the comma in them.
+		// The CSV value is PostgreSQL's text for the range, quoted for the
+		// comma in it as PostgREST's CSV (the record text) quotes it.
 		{
 			Description: "csv: unbounded shapes",
 			Query:       "/range_bounds?id=in.(1,4,5,6)&select=r4,r8,rn&order=id",

@@ -407,69 +407,6 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 	return nil
 }
 
-// 0 = ()      = 00000
-// 1 = empty   = 00001
-// 2 = [)      = 00010
-// 4 = (]      = 00100
-// 6 = []      = 00110
-// 8 = )       = 01000
-// 12 = ]      = 01100
-// 16 = (      = 10000
-// 18 = [      = 10010
-// 24 =        = 11000
-
-const emptyMask = 1
-const lowerInclusiveMask = 2
-const upperInclusiveMask = 4
-const lowerUnboundedMask = 8
-const upperUnboundedMask = 16
-
-// The wire format is the flag byte followed only by the bounds that exist:
-// nothing for an empty or (,) range, one length-prefixed value for each
-// bounded side otherwise (an unbounded side has no bytes at all).
-func (t *TextBuilder) appendRange(buf []byte, typ uint32, info *SchemaInfo, at appendTyper) error {
-	t.WriteByte('"')
-	rp := 0
-	rangeType := buf[rp]
-	rp += 1
-	if rangeType&emptyMask > 0 {
-		t.WriteString("empty")
-		t.WriteByte('"')
-		return nil
-	}
-	// PostgreSQL prints a bracket for an unbounded side too, and never an
-	// inclusive one: '[10,)', '(,10)', '(,)'.
-	if rangeType&lowerInclusiveMask > 0 {
-		t.WriteByte('[')
-	} else {
-		t.WriteByte('(')
-	}
-	if rangeType&lowerUnboundedMask == 0 {
-		valuLen1 := binary.BigEndian.Uint32(buf[rp:])
-		rp += 4
-		if err := at.appendType(buf[rp:rp+int(valuLen1)], typ, info); err != nil {
-			return err
-		}
-		rp += int(valuLen1)
-	}
-	t.WriteByte(',')
-	if rangeType&upperUnboundedMask == 0 {
-		valuLen2 := binary.BigEndian.Uint32(buf[rp:])
-		rp += 4
-		if err := at.appendType(buf[rp:rp+int(valuLen2)], typ, info); err != nil {
-			return err
-		}
-		rp += int(valuLen2)
-	}
-	if rangeType&upperInclusiveMask > 0 {
-		t.WriteByte(']')
-	} else {
-		t.WriteByte(')')
-	}
-	t.WriteByte('"')
-	return nil
-}
-
 func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) error {
 	rp := uint32(0)
 	nfields := binary.BigEndian.Uint32(buf[rp:])
@@ -521,7 +458,7 @@ func (t *TextBuilder) appendEnum(buf []byte) {
 // dispatch on it, never assuming:
 //
 //   - Binary (appendType): the OID switch decodes the builtin scalars, and
-//     the schema cache classifies arrays, ranges, composites and enums, whose
+//     the schema cache classifies arrays, composites and enums, whose
 //     elements are decoded recursively, in binary too. A binary value of any
 //     other type is a SerializeError naming the type: it is never copied
 //     through as if it were text. The fix for such a type is a decoder in
@@ -531,11 +468,12 @@ func (t *TextBuilder) appendEnum(buf []byte) {
 //     jsonb verbatim, bool t/f as true/false, int2/int4/int8/float4/float8/
 //     numeric bare (NaN and the infinities quoted), an array literal parsed
 //     into a JSON array and a record literal into a JSON object with the
-//     elements converted by the same rule, and any other type a JSON string.
-//     Every other type serializes correctly in text format with no code of
-//     its own; the one difference from to_json is that a timestamp keeps
-//     PostgreSQL's space between date and time, which only shows inside a
-//     composite that arrives in text.
+//     elements converted by the same rule, and any other type a JSON string
+//     (a range is one: range_out's text, its quotes escaped). Every other
+//     type serializes correctly in text format with no code of its own; the
+//     one difference from to_json is that a timestamp keeps PostgreSQL's
+//     space between date and time, which only shows inside a composite that
+//     arrives in text.
 //
 // The CSV serializer shares the binary decoders and writes a text-format
 // value as the text it is, which for an array or a composite is the literal
@@ -595,8 +533,6 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 			switch {
 			case ct.IsArray:
 				return j.appendArray(buf, ct.ArraySubType, info, j)
-			case ct.IsRange:
-				return j.appendRange(buf, *ct.RangeSubType, info, j)
 			case ct.IsComposite:
 				return j.appendComposite(buf, ct, info, j)
 			case ct.IsEnum:
@@ -762,8 +698,6 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 			switch {
 			case ct.IsArray:
 				return csv.appendArray(buf, ct.ArraySubType, info, csv)
-			case ct.IsRange:
-				return csv.appendRange(buf, *ct.RangeSubType, info, csv)
 			case ct.IsComposite:
 				return csv.appendComposite(buf, ct, info, csv)
 			case ct.IsEnum:
