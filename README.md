@@ -760,7 +760,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | LoginMode | Login mode: "none", "db", "gotrue" | none |
 | AuthURL | URL of the external AuthN service | "" |
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
-| AllowAnon | Allow unauthenticated connections | false |
+| AllowAnon | Allow unauthenticated connections; also requires a non-empty Database.AnonRole, otherwise anonymous requests are refused (401) | false |
 | JWTSecret | Secret for JWT tokens | "" |
 | SessionMode | Session mode: "none" (no cache), "role" (cache the verified claims and keep the prepared connection attached to the session between requests), "claims" (cache the verified claims only; the connection returns to the pool after every request) | "role" |
 | MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
@@ -784,7 +784,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
-| Database.AnonRole | Anonymous role | "" |
+| Database.AnonRole | Role for anonymous requests when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" | "none" |
