@@ -1117,3 +1117,41 @@ func TestBuildMutationOrder(t *testing.T) {
 		}
 	}
 }
+
+// A json path on an array or composite column needs its to_jsonb wrapper
+// also when the representation of a mutation is read through the _source CTE
+// (an order= or an embed puts it there): the column type is looked up on the
+// real table, not on the alias. Found in review.
+func TestBuildMutationJsonPathThroughSource(t *testing.T) {
+	info := &SchemaInfo{
+		cachedTypes:       map[uint32]Type{0: {}},
+		cachedColumnTypes: map[string]map[string]ColumnType{"table": {"tags": {Name: "tags", IsArray: true}}},
+	}
+	tests := []struct{ query, want string }{
+		{
+			"?select=tags->0",
+			`UPDATE "table" SET "body" = $1 RETURNING (to_jsonb("table"."tags")->0) AS "tags"`,
+		},
+		{
+			"?select=tags->0&order=id",
+			`WITH _source AS (UPDATE "table" SET "body" = $1 RETURNING "table"."tags", "table"."id") SELECT (to_jsonb("_source"."tags")->0) AS "tags" FROM _source ORDER BY "_source"."id"`,
+		},
+	}
+	for _, test := range tests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+		sql, _, err := CommonBuilder{}.BuildUpdate("table", Record{"body": "x"}, parts, &QueryOptions{ReturnRepresentation: true}, info)
+		if err != nil {
+			t.Fatalf("BuildUpdate error: %v", err)
+		}
+		if sql != test.want {
+			t.Errorf("%s\n  want: %s\n  got:  %s", test.query, test.want, sql)
+		}
+	}
+}
