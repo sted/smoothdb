@@ -449,3 +449,92 @@ func TestViaOrderByDepthUnselected(t *testing.T) {
 	}
 	test.Execute(t, testConfig(), tests)
 }
+
+// TestViaNoEqualityOperatorTypes checks that a via() walk over a table carrying
+// columns whose types have NO equality operator (json, xml, point) returns rows.
+// The node dedup must key on the start field: a whole-row SELECT DISTINCT (or a
+// UNION in the CTE) fails with "could not identify an equality operator for type
+// json" before returning anything. Pages: Home(1) -> About(2), Home(1) ->
+// Contact(3), About(2) -> Contact(3) — Contact is reachable by two paths.
+//
+// The two cases that project the point column assert the status only: point
+// arrives in pgx's binary wire format and the serializer renders it as text (a
+// separate defect), so its body cannot be pinned yet. The json/xml cases pin the rows.
+func TestViaNoEqualityOperatorTypes(t *testing.T) {
+	tests := []test.Test{
+		{
+			// Positive control: projecting only comparable columns already works.
+			Description: "via over page, comparable columns only",
+			Query:       "/page?id=after.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,title&order=id",
+			Expected:    `[{"id":2,"title":"About"},{"id":3,"title":"Contact"}]`,
+			Status:      200,
+		},
+		{
+			// select=* enumerates every column (json, xml AND point) into the projection.
+			Description: "via over page, select=* — no 500",
+			Query:       "/page?id=after.1&id=recurse.all&page_link=via(src_id,dst_id)&order=id",
+			Status:      200,
+		},
+		{
+			Description: "via over page, json and xml columns selected",
+			Query:       "/page?id=after.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,title,meta,body&order=id",
+			Expected:    `[{"id":2,"title":"About","meta":{"k":2},"body":"<p>about</p>"},{"id":3,"title":"Contact","meta":{"k":3},"body":"<p>contact</p>"}]`,
+			Status:      200,
+		},
+		{
+			Description: "via over page, json column selected",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,meta&order=id",
+			Expected:    `[{"id":1,"meta":{"k":1}},{"id":2,"meta":{"k":2}},{"id":3,"meta":{"k":3}}]`,
+			Status:      200,
+		},
+		{
+			Description: "via over page, xml column selected",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,body&order=id",
+			Expected:    `[{"id":1,"body":"<p>home</p>"},{"id":2,"body":"<p>about</p>"},{"id":3,"body":"<p>contact</p>"}]`,
+			Status:      200,
+		},
+		{
+			Description: "via over page, point column selected — no 500",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,pos&order=id",
+			Status:      200,
+		},
+		{
+			// Contact(3) is reached at depth 1 (Home -> Contact) and depth 2 (Home ->
+			// About -> Contact): one row, at the shallowest depth, json column and all.
+			Description: "via over page, json column with __depth keeps min depth per node",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,meta,__depth&order=__depth,id",
+			Expected:    `[{"id":1,"meta":{"k":1},"__depth":0},{"id":2,"meta":{"k":2},"__depth":1},{"id":3,"meta":{"k":3},"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			// A user order= applies to the deduplicated result, not to the walk.
+			Description: "via over page, json column with a user order",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,title,meta&order=title.desc",
+			Expected:    `[{"id":1,"title":"Home","meta":{"k":1}},{"id":3,"title":"Contact","meta":{"k":3}},{"id":2,"title":"About","meta":{"k":2}}]`,
+			Status:      200,
+		},
+		{
+			Description: "via over page, json column with order, limit and offset",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,meta&order=id.desc&limit=1&offset=1",
+			Expected:    `[{"id":2,"meta":{"k":2}}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaDedupIsPerNode checks that the via() dedup keys on the node, not on the
+// projected row: two different nodes with the same projected values are two rows,
+// as in single-table mode. A whole-row SELECT DISTINCT collapsed them —
+// select=type_name over the doc graph returned one row per type, not per node.
+func TestViaDedupIsPerNode(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "via select=type_name — one row per node, not per distinct value",
+			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=type_name&order=type_name",
+			Expected:    `[{"type_name":"Block"},{"type_name":"Block"},{"type_name":"Fragment"},{"type_name":"Fragment"},{"type_name":"Fragment"}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
