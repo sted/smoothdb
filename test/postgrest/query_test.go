@@ -1197,10 +1197,9 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/files?filename=eq.autoexec.bat&project_id=eq.1&select=filename,users_tasks(user_id,task_id)" `shouldRespondWith`
 		// 	  [json|[{"filename":"autoexec.bat","users_tasks":[{"user_id":1,"task_id":1},{"user_id":3,"task_id":1}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-		// @@ modified to surround autoexec.bat with %22 - this should not be necessary here
 		{
 			Description: "requesting many<->many relation using composite key",
-			Query:       "/files?filename=eq.%22autoexec.bat%22&project_id=eq.1&select=filename,users_tasks(user_id,task_id)",
+			Query:       "/files?filename=eq.autoexec.bat&project_id=eq.1&select=filename,users_tasks(user_id,task_id)",
 			Expected:    `[{"filename":"autoexec.bat","users_tasks":[{"user_id":1,"task_id":1},{"user_id":3,"task_id":1}]}]`,
 			Headers:     nil,
 			Status:      200,
@@ -2725,37 +2724,30 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=in.(\")" `shouldRespondWith`
 		// 	  [json| [{ "name": "\"" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
-		// @@ do not work as intended, pathological case
-		// works with \\\" instead of \"
 		{
 			Description: "accepts single double quotes as values",
-			Query:       "/w_or_wo_comma_names?name=in.(\\\")",
+			Query:       "/w_or_wo_comma_names?name=in.(\")",
 			Expected:    `[{"name":"\""}]`,
 			Headers:     nil,
 			Status:      200,
 		},
-		// @@ do not work as intended, pathological case
-
 		// 	get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" `shouldRespondWith`
 		// 	  [json| [ { "name": "Double\"Quote\"McGraw\"" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-		// @@ do not work as intended, pathological case
-		// {
-		// 	Description: "accepts single double quotes as values",
-		// 	Query:       "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
-		// 	Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
-		// @@ do not work as intended, pathological case
+		{
+			Description: "accepts single double quotes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")",
+			Expected:    `[{"name":"Double\"Quote\"McGraw\""}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		//   it "accepts backslashes as values" $ do
 		// 	get "/w_or_wo_comma_names?name=in.(\\)" `shouldRespondWith`
 		// 	  [json| [{ "name": "\\" }] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "accepts backslashes as values",
-			Query:       "/w_or_wo_comma_names?name=in.(\\\\)",
+			Query:       "/w_or_wo_comma_names?name=in.(\\)",
 			Expected:    `[{"name":"\\"}]`,
 			Headers:     nil,
 			Status:      200,
@@ -2763,6 +2755,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/w_or_wo_comma_names?name=in.(/\\Slash/\\Beast/\\)" `shouldRespondWith`
 		// 	  [json| [ { "name": "/\\Slash/\\Beast/\\" } ] |]
 		// 	  { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "accepts backslashes as values",
+			Query:       "/w_or_wo_comma_names?name=in.(/\\Slash/\\Beast/\\)",
+			Expected:    `[{"name":"/\\Slash/\\Beast/\\"}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 
 		// describe "IN and NOT IN empty set" $ do
 		//   context "returns an empty result for IN when no value is present" $ do
@@ -3055,17 +3054,21 @@ func TestPostgREST_Query(t *testing.T) {
 				          {"id":5,"name":"Orphan","client_id":null}]`,
 			Status: 200,
 		},
-		// context "searching for empty string" $
-		//   it "works with empty eq filter" $
+		// context "searching for an empty string" $ do
+		//   it "works with an empty eq filter" $
 		//     get "/empty_string?string=eq.&select=id,string" `shouldRespondWith`
-		//       [json| [{"id":1,"string":""}] |]
-		// @@ not implemented: empty value after operator (eq.)
-		// {
-		// 	Description: "works with empty eq filter",
-		// 	Query:       "/empty_string?string=eq.&select=id,string",
-		// 	Expected:    `[{"id":1,"string":""}]`,
-		// 	Status:      200,
-		// },
+		//       [json|
+		//         [{"id":1,"string":""}]
+		//       |]
+		//       { matchStatus  = 200
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with an empty eq filter",
+			Query:       "/empty_string?string=eq.&select=id,string",
+			Expected:    `[{"id":1,"string":""}]`,
+			Status:      200,
+		},
 
 		// context "return error for infinite recursion" $
 		//   it "return http status 500" $
