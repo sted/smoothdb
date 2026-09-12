@@ -168,6 +168,30 @@ func TestMain(m *testing.M) {
 				]
 			}`,
 		},
+		// The layered DAG of dag_test.go (650 nodes, 1800 edges): the same-result-set
+		// test and the via() benchmark walk it.
+		{
+			Method: "POST",
+			Query:  "/recursive_test/tables",
+			Body: `{
+				"name": "dag_node",
+				"columns": [
+					{"name": "id", "type": "int4", "notnull": true, "constraints": ["PRIMARY KEY"]},
+					{"name": "name", "type": "text", "notnull": true}
+				]
+			}`,
+		},
+		{
+			Method: "POST",
+			Query:  "/recursive_test/tables",
+			Body: `{
+				"name": "dag_link",
+				"columns": [
+					{"name": "src_id", "type": "int4", "notnull": true},
+					{"name": "dst_id", "type": "int4", "notnull": true}
+				]
+			}`,
+		},
 	}
 	test.Prepare(tableConfig, tableCommands)
 
@@ -253,8 +277,11 @@ func TestMain(m *testing.M) {
 			Query:  "/doc_rel",
 			Body:   `[{"src_id": 1, "dst_id": 2, "rel_type": "contains"}, {"src_id": 1, "dst_id": 3, "rel_type": "contains"}, {"src_id": 2, "dst_id": 4, "rel_type": "contains"}, {"src_id": 2, "dst_id": 5, "rel_type": "contains"}, {"src_id": 3, "dst_id": 6, "rel_type": "contains"}, {"src_id": 1, "dst_id": 4, "rel_type": "references"}]`,
 		},
-		// Pages: Home(1) -> About(2), Home(1) -> Contact(3), About(2) -> Contact(3).
-		// Contact is reachable by two paths (depth 1 and 2), so it exercises the dedup.
+		// Pages: Home(1) -> About(2), Home(1) -> Contact(3), About(2) -> Contact(3), plus
+		// two back-edges Contact(3) -> Home(1) and Contact(3) -> About(2). Contact is
+		// reachable by two paths (depth 1 and 2), the graph cycles through the seed and
+		// About <-> Contact is a 2-cycle: the dedup, the seed exclusion and the depth cap
+		// are all exercised on a table with json/xml/point columns.
 		{
 			Method: "POST",
 			Query:  "/page",
@@ -263,9 +290,10 @@ func TestMain(m *testing.M) {
 		{
 			Method: "POST",
 			Query:  "/page_link",
-			Body:   `[{"src_id": 1, "dst_id": 2}, {"src_id": 1, "dst_id": 3}, {"src_id": 2, "dst_id": 3}]`,
+			Body:   `[{"src_id": 1, "dst_id": 2}, {"src_id": 1, "dst_id": 3}, {"src_id": 2, "dst_id": 3}, {"src_id": 3, "dst_id": 1}, {"src_id": 3, "dst_id": 2}]`,
 		},
 	}
+	dataCommands = append(dataCommands, dagDataCommands()...)
 	test.Prepare(dataConfig, dataCommands)
 
 	// Computed relationship: a function taking a tree_node ROW and returning its
@@ -287,6 +315,16 @@ func TestMain(m *testing.M) {
 			RETURNS SETOF node_tag
 			LANGUAGE sql STABLE
 			AS $$ SELECT * FROM node_tag WHERE node_id = $1.id $$;
+		`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// The admin API creates no indexes: give the DAG's edge table the two an edge
+		// table has in practice, so the benchmark measures the CTE shape, not seq scans.
+		_, err = gi.Conn.Exec(dbCtx, `
+			CREATE INDEX ON dag_link (src_id);
+			CREATE INDEX ON dag_link (dst_id);
+			ANALYZE dag_node; ANALYZE dag_link;
 		`)
 		if err != nil {
 			log.Fatal(err)

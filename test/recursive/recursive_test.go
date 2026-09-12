@@ -281,7 +281,8 @@ func TestViaErrors(t *testing.T) {
 }
 
 // TestDepthColumn checks that __depth is a selectable pseudo-column reporting the
-// traversal depth of each node (seed = 0).
+// traversal depth of each node (seed = 0), and __path the array of keys from the
+// seed to the node.
 func TestDepthColumn(t *testing.T) {
 	tests := []test.Test{
 		{
@@ -291,9 +292,23 @@ func TestDepthColumn(t *testing.T) {
 			Status:      200,
 		},
 		{
-			Description: "__path is internal and cannot be selected",
-			Query:       "/tree_node?id=start.1&parent_id=recurse.all&select=id,__path",
-			Status:      400,
+			Description: "select __path on a single-table walk",
+			Query:       "/tree_node?id=start.1&parent_id=recurse.all&select=id,__path&order=id",
+			Expected:    `[{"id":1,"__path":[1]},{"id":2,"__path":[1,2]},{"id":3,"__path":[1,3]},{"id":4,"__path":[1,2,4]},{"id":5,"__path":[1,2,4,5]},{"id":6,"__path":[1,2,6]},{"id":7,"__path":[1,3,7]}]`,
+			Status:      200,
+		},
+		{
+			Description: "select __path on recurse!up — the chain from the seed to the root",
+			Query:       "/tree_node?id=start.5&parent_id=recurse!up.all&select=id,__path&order=__depth",
+			Expected:    `[{"id":5,"__path":[5]},{"id":4,"__path":[5,4]},{"id":2,"__path":[5,4,2]},{"id":1,"__path":[5,4,2,1]}]`,
+			Status:      200,
+		},
+		{
+			// A lexicographic order on the path is a depth-first order of the tree.
+			Description: "order by an unselected __path — depth-first order, nothing leaks",
+			Query:       "/tree_node?id=start.1&parent_id=recurse.all&select=id&order=__path",
+			Expected:    `[{"id":1},{"id":2},{"id":4},{"id":5},{"id":6},{"id":3},{"id":7}]`,
+			Status:      200,
 		},
 	}
 	test.Execute(t, testConfig(), tests)
@@ -310,19 +325,63 @@ func TestViaMinDepth(t *testing.T) {
 			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1},{"id":4,"__depth":1},{"id":5,"__depth":2},{"id":6,"__depth":2}]`,
 			Status:      200,
 		},
+		{
+			// A plain filter on __depth is a result filter on the shallowest depth.
+			Description: "via result filter on __depth",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&__depth=gte.2&select=id,__depth&order=id",
+			Expected:    `[{"id":5,"__depth":2},{"id":6,"__depth":2}]`,
+			Status:      200,
+		},
+		{
+			Description: "single-table result filter on __depth",
+			Query:       "/tree_node?id=start.1&parent_id=recurse.all&__depth=eq.2&select=id&order=id",
+			Expected:    `[{"id":4},{"id":6},{"id":7}]`,
+			Status:      200,
+		},
 	}
 	test.Execute(t, testConfig(), tests)
 }
 
 // TestViaBidirectional checks via!both traversal. Starting from the leaf CTA Text(6)
 // and following edges in EITHER direction reaches its ancestors and their subtree,
-// without looping (the __path cycle guard blocks back-edges).
+// without looping: every undirected edge is a 2-cycle, so the walk terminates only
+// because the seed is never re-entered and the depth cap bounds the rest.
 func TestViaBidirectional(t *testing.T) {
 	tests := []test.Test{
 		{
 			Description: "via!both from a leaf reaches ancestors and the rest of the graph",
 			Query:       "/doc?id=after.6&id=recurse.all&doc_rel=via!both(src_id,dst_id)&select=id,name&order=id",
 			Expected:    `[{"id":1,"name":"Composite"},{"id":2,"name":"Block Hero"},{"id":3,"name":"Block CTA"},{"id":4,"name":"Hero Title"},{"id":5,"name":"Hero Text"}]`,
+			Status:      200,
+		},
+		{
+			// 6 -> 3 -> 1 -> {2, 4 (references)} -> 5: Hero Title(4) is at depth 3 through
+			// the references edge, not at 4 through Block Hero(2).
+			Description: "via!both __depth is the undirected distance",
+			Query:       "/doc?id=after.6&id=recurse.all&doc_rel=via!both(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":2},{"id":2,"__depth":3},{"id":3,"__depth":1},{"id":4,"__depth":3},{"id":5,"__depth":4}]`,
+			Status:      200,
+		},
+		{
+			// The edge filter applies to both orientations: without the references edge
+			// Hero Title(4) is only reachable through Block Hero(2), at depth 4.
+			Description: "via!both with an edge filter — contains only",
+			Query:       "/doc?id=after.6&id=recurse.all&doc_rel=via!both(src_id,dst_id)&doc_rel.rel_type=eq.contains&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":2},{"id":2,"__depth":3},{"id":3,"__depth":1},{"id":4,"__depth":4},{"id":5,"__depth":4}]`,
+			Status:      200,
+		},
+		{
+			Description: "via!both with an edge filter — no references edge touches the leaf",
+			Query:       "/doc?id=after.6&id=recurse.all&doc_rel=via!both(src_id,dst_id)&doc_rel.rel_type=eq.references&select=id",
+			Expected:    `[]`,
+			Status:      200,
+		},
+		{
+			// 4 -> 1 along the references edge, walked backwards; from 1 the only
+			// references edge leads back to the seed.
+			Description: "via!both with an edge filter — references, from the target",
+			Query:       "/doc?id=after.4&id=recurse.all&doc_rel=via!both(src_id,dst_id)&doc_rel.rel_type=eq.references&select=id,__depth",
+			Expected:    `[{"id":1,"__depth":1}]`,
 			Status:      200,
 		},
 	}
@@ -436,14 +495,22 @@ func TestRecurseUp(t *testing.T) {
 }
 
 // TestViaOrderByDepthUnselected checks that ordering a via() walk by __depth WITHOUT
-// selecting it works (surfacing __depth in the projection) instead of 500ing with
-// "ORDER BY expressions must appear in select list" from the min-depth SELECT DISTINCT.
+// selecting it works and leaks nothing into the projection: the outer query is a
+// plain SELECT over the deduplicated nodes joined to the table, so like single-table
+// mode it can order by an unselected column. (The former DISTINCT ON wrapper had to
+// surface __depth to order by it.)
 func TestViaOrderByDepthUnselected(t *testing.T) {
 	tests := []test.Test{
 		{
-			Description: "via order=__depth without selecting __depth — surfaces __depth, no 500",
+			Description: "via order=__depth without selecting __depth — ordered, nothing leaks",
 			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id&order=__depth,id",
-			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1},{"id":4,"__depth":1},{"id":5,"__depth":2},{"id":6,"__depth":2}]`,
+			Expected:    `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6}]`,
+			Status:      200,
+		},
+		{
+			Description: "via select=* with order=__depth — the table's columns only",
+			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&order=__depth.desc,id.desc&limit=2",
+			Expected:    `[{"id":6,"name":"CTA Text","type_name":"Fragment"},{"id":5,"name":"Hero Text","type_name":"Fragment"}]`,
 			Status:      200,
 		},
 	}
@@ -533,6 +600,103 @@ func TestViaDedupIsPerNode(t *testing.T) {
 			Description: "via select=type_name — one row per node, not per distinct value",
 			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=type_name&order=type_name",
 			Expected:    `[{"type_name":"Block"},{"type_name":"Block"},{"type_name":"Fragment"},{"type_name":"Fragment"},{"type_name":"Fragment"}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaPath checks __path on a via() walk: selecting (or ordering by) it switches
+// the CTE to the path-carrying shape, which enumerates every simple path — the
+// shape via() always used before card 32699 via-cte, kept only on request because
+// it is exponential in depth. One row per node survives, with the shortest path
+// (ties broken by the path itself): Hero Title(4) is reached directly (1->4) and
+// through Block Hero (1->2->4).
+func TestViaPath(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "via select=__path — the shortest path to each node",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id,__depth,__path&order=id",
+			Expected:    `[{"id":1,"__depth":0,"__path":[1]},{"id":2,"__depth":1,"__path":[1,2]},{"id":3,"__depth":1,"__path":[1,3]},{"id":4,"__depth":1,"__path":[1,4]},{"id":5,"__depth":2,"__path":[1,2,5]},{"id":6,"__depth":2,"__path":[1,3,6]}]`,
+			Status:      200,
+		},
+		{
+			Description: "via with an edge filter changes the path",
+			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&doc_rel.rel_type=eq.contains&select=id,__path&order=id",
+			Expected:    `[{"id":2,"__path":[1,2]},{"id":3,"__path":[1,3]},{"id":4,"__path":[1,2,4]},{"id":5,"__path":[1,2,5]},{"id":6,"__path":[1,3,6]}]`,
+			Status:      200,
+		},
+		{
+			Description: "via order by an unselected __path — depth-first order, nothing leaks",
+			Query:       "/doc?id=start.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id&order=__path",
+			Expected:    `[{"id":1},{"id":2},{"id":5},{"id":3},{"id":6},{"id":4}]`,
+			Status:      200,
+		},
+		{
+			Description: "via!both select=__path from a leaf",
+			Query:       "/doc?id=after.6&id=recurse.2&doc_rel=via!both(src_id,dst_id)&select=id,__path&order=id",
+			Expected:    `[{"id":1,"__path":[6,3,1]},{"id":3,"__path":[6,3]}]`,
+			Status:      200,
+		},
+	}
+	test.Execute(t, testConfig(), tests)
+}
+
+// TestViaCycles walks the page graph, which cycles through the seed (Home(1) ->
+// Contact(3) -> Home(1)) and has a 2-cycle (About(2) <-> Contact(3)), with the
+// default depth cap of 100. The node set is the reachable set, each node at its
+// shortest depth, `after` never returns the seed — a walk back into the seed only
+// repeats a shorter walk, so the seed is never re-entered — and the walk ends at
+// once, not at the cap.
+func TestViaCycles(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "after the seed, with a cycle back into it",
+			Query:       "/page?id=after.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":2,"__depth":1},{"id":3,"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "from the seed, with a cycle back into it",
+			Query:       "/page?id=start.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":0},{"id":2,"__depth":1},{"id":3,"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			// 2 -> 3 -> {1, 2 (the seed)}, 1 -> {2 (the seed), 3 (seen)}
+			Description: "after a node of the 2-cycle",
+			Query:       "/page?id=after.2&id=recurse.all&page_link=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":2},{"id":3,"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "after a node of the 2-cycle, depth 1",
+			Query:       "/page?id=after.2&id=recurse.1&page_link=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":3,"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "from the node with the back-edges",
+			Query:       "/page?id=start.3&id=recurse.all&page_link=via(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":1},{"id":2,"__depth":1},{"id":3,"__depth":0}]`,
+			Status:      200,
+		},
+		{
+			Description: "via!both on the cyclic graph",
+			Query:       "/page?id=after.2&id=recurse.all&page_link=via!both(src_id,dst_id)&select=id,__depth&order=id",
+			Expected:    `[{"id":1,"__depth":1},{"id":3,"__depth":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "paths on the cyclic graph",
+			Query:       "/page?id=after.2&id=recurse.all&page_link=via(src_id,dst_id)&select=id,__depth,__path&order=id",
+			Expected:    `[{"id":1,"__depth":2,"__path":[2,3,1]},{"id":3,"__depth":1,"__path":[2,3]}]`,
+			Status:      200,
+		},
+		{
+			Description: "json and xml columns on the cyclic graph, user order and limit",
+			Query:       "/page?id=after.1&id=recurse.all&page_link=via(src_id,dst_id)&select=id,title,meta,body&order=title&limit=1",
+			Expected:    `[{"id":2,"title":"About","meta":{"k":2},"body":"<p>about</p>"}]`,
 			Status:      200,
 		},
 	}
