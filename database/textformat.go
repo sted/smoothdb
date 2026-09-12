@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -57,21 +58,31 @@ func (j *JSONSerializer) appendText(buf []byte, typ uint32, info *SchemaInfo) er
 }
 
 // appendTimestampText writes a timestamp or timestamptz in PostgreSQL's text
-// form the way to_json prints it: a T between date and time, and a full
-// hh:mm offset ('2024-01-01 11:00:00+01' is "2024-01-01T11:00:00+01:00").
-// Anything else (infinity, BC dates, fractional seconds) passes through.
+// form (DateStyle ISO, the default, which pgx assumes too) the way to_json
+// prints it: a T between date and time, and a full hh:mm offset
+// ('2024-01-01 11:00:00+01' is "2024-01-01T11:00:00+01:00"), the " BC" suffix
+// after it. infinity passes through.
 func (j *JSONSerializer) appendTimestampText(buf []byte) {
-	if len(buf) < 11 || buf[10] != ' ' {
+	// the date is Y+-MM-DD, any number of year digits
+	sp := bytes.IndexByte(buf, ' ')
+	if sp < 10 || sp+1 >= len(buf) || !isDigit(buf[sp+1]) {
 		j.appendString(buf, true)
 		return
 	}
-	j.appendString(buf[:10], true)
+	j.appendString(buf[:sp], true)
 	j.WriteByte('T')
-	rest := buf[11:]
+	rest := buf[sp+1:]
+	bc := bytes.HasSuffix(rest, []byte(" BC"))
+	if bc {
+		rest = rest[:len(rest)-3]
+	}
 	j.appendString(rest, true)
 	// an offset of whole hours is printed as +hh: to_json spells it +hh:00
 	if n := len(rest); n >= 3 && (rest[n-3] == '+' || rest[n-3] == '-') && isDigit(rest[n-2]) && isDigit(rest[n-1]) {
 		j.WriteString(":00")
+	}
+	if bc {
+		j.WriteString(" BC")
 	}
 }
 

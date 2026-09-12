@@ -833,15 +833,15 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 	}
 	for rows.Next() {
 		raw := rows.RawValues()[0]
+		if raw == nil { // NULL
+			continue
+		}
 		if fds[0].Format == pgtype.TextFormatCode && fds[0].DataTypeOID == pgtype.ByteaOID {
 			// bytea is requested in text (textFormatOnlyTypes): a download
-			// wants the bytes, so decode the \x hex form PostgreSQL sends
-			if len(raw) < 2 || raw[0] != '\\' || raw[1] != 'x' {
-				return nil, 0, &SerializeError{msg: "bytea is not in hex format (set bytea_output to hex)"}
-			}
-			decoded := make([]byte, hex.DecodedLen(len(raw)-2))
-			if _, err := hex.Decode(decoded, raw[2:]); err != nil {
-				return nil, 0, &SerializeError{msg: "malformed bytea hex: " + err.Error()}
+			// wants the bytes, so decode the text form PostgreSQL sends
+			decoded, err := decodeByteaText(raw)
+			if err != nil {
+				return nil, 0, err
 			}
 			b.Write(decoded)
 			continue
@@ -849,6 +849,42 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 		b.Write(raw)
 	}
 	return b.Bytes(), int64(b.Len()), nil
+}
+
+// decodeByteaText decodes bytea_out's text: the hex form (\x0102, the
+// default bytea_output) or the escape form (\ooo for a non-printable byte,
+// \\ for a backslash, every other byte as itself).
+func decodeByteaText(raw []byte) ([]byte, error) {
+	if len(raw) >= 2 && raw[0] == '\\' && raw[1] == 'x' {
+		decoded := make([]byte, hex.DecodedLen(len(raw)-2))
+		if _, err := hex.Decode(decoded, raw[2:]); err != nil {
+			return nil, &SerializeError{msg: "malformed bytea hex: " + err.Error()}
+		}
+		return decoded, nil
+	}
+	decoded := make([]byte, 0, len(raw))
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' {
+			decoded = append(decoded, raw[i])
+			continue
+		}
+		if i+1 < len(raw) && raw[i+1] == '\\' {
+			decoded = append(decoded, '\\')
+			i++
+			continue
+		}
+		if i+3 < len(raw) && isOctal(raw[i+1]) && isOctal(raw[i+2]) && isOctal(raw[i+3]) {
+			decoded = append(decoded, (raw[i+1]-'0')<<6|(raw[i+2]-'0')<<3|(raw[i+3]-'0'))
+			i += 3
+			continue
+		}
+		return nil, &SerializeError{msg: "malformed bytea escape text"}
+	}
+	return decoded, nil
+}
+
+func isOctal(b byte) bool {
+	return b >= '0' && b <= '7'
 }
 
 type DatabaseJSONSerializer struct{}
