@@ -73,7 +73,10 @@ func TestWireFormatTypes(t *testing.T) {
 				 "mac": "08:00:2b:01:02:03", "mac8": "08:00:2b:01:02:03:04:05", "tm": "12:34:56", "tmz": "12:34:56+02",
 				 "pt": "(1,2)", "bx": "((1,2),(3,4))", "bt": "1010", "vb": "10",
 				 "by_arr": "{\"\\\\x01\",\"\\\\x02\"}", "ip_arr": "{10.0.0.1,::1}", "tm_arr": "{01:02:03,04:05:06}"},
-				{"id": 2, "name": "nulls"}
+				{"id": 2, "name": "nulls", "by": null, "ip": null, "net": null,
+				 "mac": null, "mac8": null, "tm": null, "tmz": null,
+				 "pt": null, "bx": null, "bt": null, "vb": null,
+				 "by_arr": null, "ip_arr": null, "tm_arr": null}
 			]`,
 			Status: 201,
 		},
