@@ -734,11 +734,24 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 	return where, valueList
 }
 
-// returningClause
-func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string) {
+// returningClause builds the RETURNING clause of a mutation and, when the
+// representation needs an outer select (embeds, or an order to apply), the
+// select over the _source CTE the callers wrap the mutation in.
+func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string, err error) {
 	ret += " RETURNING "
+	// order= applies to the returned representation (PostgREST 13.0.0, #3013):
+	// it is built against the _source CTE the outer select reads. limit and
+	// offset are ignored on mutations, as in PostgREST since the same release
+	// dropped limited updates/deletes: every matching row is written.
+	order, err := orderClause(table, schema, quote("_source"), 0, parts.orderFields, parts.selectFields, info)
+	if err != nil {
+		return "", "", err
+	}
 	if len(parts.selectFields) == 0 {
 		ret += "*"
+		if order != "" {
+			sel = "SELECT * FROM _source ORDER BY " + order
+		}
 		return
 	}
 	var hasResourceEmbed bool
@@ -748,7 +761,7 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 			break
 		}
 	}
-	if !hasResourceEmbed {
+	if !hasResourceEmbed && order == "" {
 		// The RETURNING clause is the final response: use the formatted
 		// fields, with casts and aliases.
 		var fields string
@@ -761,11 +774,11 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		ret += fields
 		return
 	}
-	// With embeds the RETURNING clause only feeds the _source CTE, which the
-	// outer select and its lateral joins read by column name (casts, aliases
-	// and json paths are applied there). So it must expose each base column
-	// once, raw and deduplicated by name: a formatted or duplicated fk column
-	// would make _source references ambiguous (42702).
+	// With embeds (or an order) the RETURNING clause only feeds the _source
+	// CTE, which the outer select and its lateral joins read by column name
+	// (casts, aliases and json paths are applied there). So it must expose
+	// each base column once, raw and deduplicated by name: a formatted or
+	// duplicated fk column would make _source references ambiguous (42702).
 	sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
 	var fields string
 	var hasStar bool
@@ -803,11 +816,21 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		for _, k := range keys {
 			addColumn(k)
 		}
+		// and the columns of the order, which the outer ORDER BY must see even
+		// when they are not selected (a related order reads the join instead)
+		for _, o := range parts.orderFields {
+			if o.relation == "" && o.field.tablename == table {
+				addColumn(o.field.name)
+			}
+		}
 	}
 	ret += fields
 	sel = "SELECT " + sc + " FROM _source"
 	if joins != "" {
 		sel += " " + joins
+	}
+	if order != "" {
+		sel += " ORDER BY " + order
 	}
 	return
 }
@@ -953,7 +976,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		insert += onConflict
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		insert += ret
 		if sel != "" {
 			insert = "WITH _source AS (" + insert + ") " + sel
@@ -991,7 +1017,10 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		update += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		update += ret
 		if sel != "" {
 			update = "WITH _source AS (" + update + ") " + sel
@@ -1011,7 +1040,10 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
 		delete += ret
 		if sel != "" {
 			delete = "WITH _source AS (" + delete + ") " + sel

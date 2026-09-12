@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **`order=` on writes** — `order` was parsed and dropped on `POST`, `PATCH` and `DELETE`, so a `Prefer: return=representation` came back in physical row order whatever the request asked. The mutation is now wrapped in the `_source` CTE and the outer select orders the representation, as PostgREST does since 13.0.0 (#3013): top-level and related orders, with the embedded `x.order=` already applied inside the embed. `limit`/`offset` on `PATCH`/`DELETE` keep being ignored — every matching row is written — which is PostgREST's behaviour since the same release dropped limited updates/deletes; the guard for "touch at most N rows" is `Prefer: max-affected` (not yet implemented).
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
