@@ -32,6 +32,18 @@ type DbEngine struct {
 	listener         *NotificationListener
 }
 
+// defaultSchemaFromConfig: the schema of a request with no Profile header is
+// the first exposed one, else the first of the search path, else public.
+func defaultSchemaFromConfig(c *Config) string {
+	if len(c.ExposedSchemas) != 0 {
+		return c.ExposedSchemas[0]
+	}
+	if len(c.SchemaSearchPath) != 0 {
+		return c.SchemaSearchPath[0]
+	}
+	return "public"
+}
+
 func getDefaultSchema() string {
 	if dbe != nil {
 		return dbe.defaultSchema
@@ -111,11 +123,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 			dbe.allowedDatabases[dbname] = struct{}{}
 		}
 	}
-	if len(dbConfig.SchemaSearchPath) != 0 {
-		dbe.defaultSchema = dbConfig.SchemaSearchPath[0]
-	} else {
-		dbe.defaultSchema = "public"
-	}
+	dbe.defaultSchema = defaultSchemaFromConfig(dbConfig)
 
 	// Initialize notification listener
 	listenerConfig := DefaultListenerConfig()

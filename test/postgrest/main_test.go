@@ -25,6 +25,9 @@ func TestMain(m *testing.M) {
 		"Logging.StdOut":            false,
 		"Database.URL":              "postgresql://postgres:postgres@localhost:5432/postgres",
 		"Database.SchemaSearchPath": []string{"test"},
+		// the schemas a Profile header may select (PostgREST db-schemas); تست
+		// is exposed but not on the search path, as UnicodeSpec runs upstream
+		"Database.ExposedSchemas": []string{"test", "تست"},
 		"Database.TransactionMode":  "rollback-allow-override",
 	}
 	s, err := server.NewServerWithConfig(c,

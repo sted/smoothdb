@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 )
 
 type RangeError struct {
@@ -15,6 +16,46 @@ type ContentTypeError struct {
 }
 
 func (e ContentTypeError) Error() string { return e.msg }
+
+// SchemaError: the Accept-Profile or Content-Profile header names a schema
+// that is not exposed (406, PostgREST PGRST106)
+type SchemaError struct {
+	msg  string
+	Hint string
+}
+
+func (e SchemaError) Error() string { return e.msg }
+
+// schemaExposed refuses a schema outside the exposed list, with the list as
+// a hint; an empty list exposes every schema.
+func schemaExposed(schema string, exposed []string) *SchemaError {
+	if len(exposed) == 0 {
+		return nil
+	}
+	for _, s := range exposed {
+		if s == schema {
+			return nil
+		}
+	}
+	return &SchemaError{"Invalid schema: " + schema, "Only the following schemas are exposed: " + strings.Join(exposed, ", ")}
+}
+
+// checkSchema refuses a request whose schema, from the Accept-Profile or
+// Content-Profile header, is not in Database.ExposedSchemas, as PostgREST
+// refuses one outside db-schemas: before any SQL, with the exposed list as a
+// hint. With no ExposedSchemas configured every schema is reachable: the
+// search path (SchemaSearchPath) says nothing about exposure — a deployment
+// resolves its extension types through it while its clients select the data
+// schemas by header.
+func checkSchema(ctx context.Context) error {
+	if dbe == nil {
+		return nil
+	}
+	if err := schemaExposed(GetSmoothContext(ctx).QueryOptions.Schema, dbe.config.ExposedSchemas); err != nil {
+		return err
+	}
+	return nil
+}
 
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
@@ -44,6 +85,9 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 }
 
 func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -58,6 +102,9 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 }
 
 func Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -80,6 +127,9 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 }
 
 func Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -102,6 +152,9 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 }
 
 func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	parts, err := gi.RequestParser.parse(table, filters)
 	if err != nil {
@@ -124,6 +177,9 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 }
 
 func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {

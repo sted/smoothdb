@@ -809,7 +809,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
 | Database.AnonRole | Role for anonymous requests when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
-| Database.SchemaSearchPath | Schema search path | [] for Postgres search path |
+| Database.SchemaSearchPath | Schema search path of the connections (name resolution of unqualified types, functions and views) | [] for Postgres search path |
+| Database.ExposedSchemas | Schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`); a header naming another schema answers 406 | [] for every schema, with the first of the search path as default |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |

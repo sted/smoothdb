@@ -80,6 +80,9 @@ func JQTransformResponse(ctx context.Context, data []byte) ([]byte, error) {
 // RLS and triggers apply unchanged. With Prefer: return=representation it
 // returns the resulting rows (all visible columns; select= is not applied).
 func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if !jqeval.Enabled() {
