@@ -1,8 +1,8 @@
 # TODO
 
 ## Bugs
-* [ ] Fix: embedded filter on non-selected resource should return 400
-* [ ] Fix: PATCH on non-existent table returns 500 instead of 404
+* [x] Fix: embedded filter on non-selected resource should return 400
+* [x] Fix: PATCH on non-existent table returns 500 instead of 404
 * [ ] Fix: RPC with FTS language operator (fts(english)) type cast
 
 ## Query / Filtering

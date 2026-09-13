@@ -582,16 +582,48 @@ func TestPostgREST_Update(t *testing.T) {
 		//           { matchStatus  = 404
 		//           , matchHeaders = []
 		//           }
-		// {
-		// 	Description: "PATCH with ?columns parameter returns missing table error even if also has invalid ?columns",
-		// 	Method:      "PATCH",
-		// 	Query:       "/garlic?columns=helicopter",
-		// 	//Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`, // @@ accepts multiple records?
-		// 	Body:     `[{"id": 204, "body": "yyy"}]`,
-		// 	Headers:  test.Headers{"Prefer": {"return=representation"}},
-		// 	Expected: ``,
-		// 	Status:   404, //@@ returns 500
-		// },
+		{
+			Description: "disallows ?columns which don't exist",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.1&columns=helicopter",
+			Body:        `{"body": "yyy"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
+		// @@ the upstream body has two objects: PostgREST passes them to
+		// json_to_recordset and updates with whichever row PostgreSQL picks;
+		// smoothdb refuses a multi-object PATCH body (see below), so the body
+		// is a single object here and the multi-object case is pinned separately
+		{
+			Description: "returns missing table error even if also has invalid ?columns",
+			Method:      "PATCH",
+			Query:       "/garlic?columns=helicopter",
+			Body:        `[{"id": 204, "body": "yyy"}]`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Status:      404,
+		},
+		// @@ added: a PATCH body with more than one object is refused with 400
+		// (it used to be a nil dereference, recovered as 500)
+		{
+			Description: "refuses a PATCH body with more than one object",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.1",
+			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
+			Expected:    `{"subsystem":"network","message":"a PATCH body must be a single object","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
+		// @@ added: ?columns= that leaves nothing of the body to set is a no-op,
+		// as in PostgREST (an UPDATE with an empty SET was a syntax error)
+		{
+			Description: "updates nothing when ?columns= excludes every key of the body",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.1&columns=body",
+			Body:        `{"owner": "me"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//     -- https://github.com/PostgREST/postgrest/issues/2861
 		//     context "bit and char columns with length" $ do
 		//       it "should update a bit column with length" $

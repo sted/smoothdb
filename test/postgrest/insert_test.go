@@ -707,6 +707,44 @@ func TestPostgREST_Insert(t *testing.T) {
 		// 		  , matchHeaders = []
 		// 		  }
 
+		{
+			Description: "disallows ?columns which don't exist",
+			Method:      "POST",
+			Query:       "/articles?columns=helicopter",
+			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
+			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
+		{
+			Description: "returns missing table error even if also has invalid ?columns",
+			Method:      "POST",
+			Query:       "/garlic?columns=helicopter",
+			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
+			Status:      404,
+		},
+		// @@ added: an unknown embed in the select of the representation is
+		// refused as on a GET, instead of building a broken statement
+		{
+			Description: "errs on an unknown embed in the select of the representation",
+			Method:      "POST",
+			Query:       "/articles?select=id,nosuch(*)",
+			Body:        `{"id": 204, "body": "yyy"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"subsystem":"network","message":"cannot find relationship for table articles with table nosuch","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
+		// @@ added: a filter on a relation that is not embedded is refused on a
+		// mutation too (PostgREST addFilters applies the non-root filters to the
+		// read plan of the representation)
+		{
+			Description: "errs on a filter for a relation not embedded in the representation",
+			Method:      "POST",
+			Query:       "/articles?select=id&nosuch.id=eq.1",
+			Body:        `{"id": 204, "body": "yyy"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"subsystem":"network","message":"'nosuch' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
 		// 	  it "disallows array elements that are not json objects" $
 		// 		post "/articles?columns=id,body"
 		// 		  [json|[

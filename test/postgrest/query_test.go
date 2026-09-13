@@ -852,14 +852,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 400
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
-		// @@ returns 200 failing to recognize that non_existent_projects was not selected
-		// we need to check not inserted where nodes
-		// {
-		// 	Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
-		// 	Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
-		// 	Headers:     nil,
-		// 	Status:      400,
-		// },
+		{
+			Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
+			Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"'non_existent_projects' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
 		// 	get "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*" `shouldRespondWith`
 		// 	  [json|
 		// 		{"hint":"Verify that 'amiga_projectsss' is included in the 'select' query parameter.",
@@ -878,6 +877,20 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 400
 		// 	  , matchHeaders = [matchContentTypeJson]
 		// 	  }
+		{
+			Description: "errs when the embedded resource is aliased and the filter names the table",
+			Query:       "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"'amiga_projectsss' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
+		{
+			Description: "errs when a nested embedded resource doesn't exist and a filter is applied to it",
+			Query:       "/clients?select=id,projects(id,tasks(id,name))&projects.tasks2.name=like.Design*",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"'tasks2' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Status:      400,
+		},
 
 		//   it "matches with cs operator" $
 		// 	get "/complex_items?select=id&arr_data=cs.{2}" `shouldRespondWith`
@@ -1003,6 +1016,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 400
 		// 	  , matchHeaders = []
 		// 	  }
+		{
+			Description: "fails on bad casting (wrong cast type)",
+			Query:       "/complex_items?select=id::fakecolumntype",
+			Headers:     nil,
+			Expected:    `{"subsystem":"database","message":"type \"fakecolumntype\" does not exist","code":"42704","hint":"","details":"","position":0}`,
+			Status:      400,
+		},
 
 		//   it "can cast types with underscore and numbers" $
 		// 	get "/oid_test?select=id,oid_col::int,oid_array_col::_int4"

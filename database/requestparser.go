@@ -66,6 +66,7 @@ type WhereConditionNode struct {
 	not        bool
 	values     []string
 	inserted   bool
+	matched    int // how many leading elements of field.relPath a build level matched (see whereClause)
 	children   []*WhereConditionNode
 }
 

@@ -767,6 +767,65 @@ func TestRecursiveBuildErrors(t *testing.T) {
 	}
 }
 
+// TestNotEmbeddedFilterErrors: a filter on a relation that is not embedded in
+// the request (or does not exist) is refused, as PostgREST does (PGRST108),
+// instead of being silently dropped.
+func TestNotEmbeddedFilterErrors(t *testing.T) {
+	errorTests := []struct {
+		query  string
+		errMsg string
+	}{
+		{"?nonexistent.id=eq.1", "'nonexistent' is not an embedded resource in this request"},
+		{"?select=id&nonexistent.id=eq.1", "'nonexistent' is not an embedded resource in this request"},
+		{"?nonexistent.or=(id.eq.1,id.eq.2)", "'nonexistent' is not an embedded resource in this request"},
+		{"?a.b.id=eq.1", "'a' is not an embedded resource in this request"},
+	}
+
+	for i, test := range errorTests {
+		u, err := url.Parse(test.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Fatalf("%d. unexpected parse error for %q: %v", i, test.query, err)
+		}
+		_, _, err = DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
+		if err == nil {
+			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
+			continue
+		}
+		if _, ok := err.(*BuildError); !ok {
+			t.Errorf("%d. Expected a BuildError for %q, got %T", i, test.query, err)
+		}
+		if err.Error() != test.errMsg {
+			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
+		}
+	}
+}
+
+// TestBuildUpdateEmptySet: when ?columns= leaves no key of the body to set,
+// the statement is a no-op select, as PostgREST builds it (an UPDATE with an
+// empty SET is a syntax error); the table name still reaches PostgreSQL, so a
+// missing table answers 42P01 (404) rather than 42601.
+func TestBuildUpdateEmptySet(t *testing.T) {
+	u, _ := url.Parse("?columns=body&id=eq.1")
+	parts, err := PostgRestParser{}.parse("table", u.Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	query, values, err := DirectQueryBuilder{}.BuildUpdate("table", Record{"other": "x"}, parts, &QueryOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `SELECT * FROM "table" WHERE false`; query != want {
+		t.Errorf("expected %q, got %q", want, query)
+	}
+	if len(values) != 0 {
+		t.Errorf("expected no values, got %v", values)
+	}
+}
+
 // TestBuildExecuteDeterministicOrder guards against the pg_stat_statements
 // fragmentation bug (see CollHub doc 27565): named RPC parameters must be
 // emitted in a stable order regardless of Go map iteration so identical calls

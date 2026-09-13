@@ -331,7 +331,10 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 		}
 	} else if r.Method == "PATCH" {
 		if len(records) > 1 {
-			status, err = WriteBadRequest(w, err)
+			// A deliberate divergence: PostgREST hands the whole array to
+			// json_to_recordset and updates with whichever row PostgreSQL
+			// picks; a body that cannot mean one update is refused instead.
+			status, err = WriteBadRequest(w, errors.New("a PATCH body must be a single object"))
 			return
 		}
 		// {}, [] and [{}] as input cause no updates

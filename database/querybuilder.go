@@ -590,6 +590,36 @@ func appendValue(where, value string, valueList []any, nmarker int, forceParam b
 	return where, valueList, nmarker
 }
 
+// checkFiltersApplied refuses a filter that no level of the built query took,
+// as PostgREST does (PGRST108): its relation path names a relation that is
+// not embedded in the request, or does not exist. Without it the filter was
+// silently dropped and the request answered as if it were not there.
+// Filters on embeds are checked only when the representation was built
+// (withEmbeds), since only then the embed levels were visited; root filters
+// are skipped when skipRoot, as an insert ignores them.
+func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool) error {
+	if node == nil {
+		return nil
+	}
+	onEmbed := len(node.field.relPath) > 0
+	container := node.operator == "" || node.field.name == "" // the root or a boolean operator
+	if (onEmbed && !withEmbeds) || (!onEmbed && skipRoot && !container) {
+		return nil
+	}
+	if onEmbed && !node.inserted && node.matched < len(node.field.relPath) {
+		return &BuildError{"'" + node.field.relPath[node.matched] + "' is not an embedded resource in this request"}
+	}
+	if container {
+		// its path matched (or it is the root): check the children
+		for _, n := range node.children {
+			if err := checkFiltersApplied(n, skipRoot, withEmbeds); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // whereClause builds a WHERE condition string starting a root node of a condition tree.
 // Only nodes with fields related to passed table or label are processed (node.inserted is set to true).
 // The nmarker integer is used to keep track of the last marker inserted: the first one will be $(nmarker + 1).
@@ -617,20 +647,23 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 		var children_where string
 	outer:
 		for _, n := range node.children {
-			// check if the field is part of this where clause:
-
-			// 1. first by comparing the stack depth
-			if len(n.field.relPath) != len(stack.relPath) {
-				continue
-			}
-			// 2. then by comparing each item in the field relPath
-			//    with each item in the stack, table or label or FK column name
+			// check if the field is part of this where clause, by comparing
+			// each item in the field relPath with each item in the stack, table
+			// or label or FK column name; the longest prefix any level matches
+			// is kept, to name the first unmatched relation (see checkFiltersApplied)
+			matched := 0
 			for i := range n.field.relPath {
-				if n.field.relPath[i] != stack.relPath[i] &&
-					n.field.relPath[i] != stack.labelPath[i] &&
-					(len(stack.colPath) <= i || n.field.relPath[i] != stack.colPath[i]) {
-					continue outer
+				if i >= len(stack.relPath) ||
+					(n.field.relPath[i] != stack.relPath[i] &&
+						n.field.relPath[i] != stack.labelPath[i] &&
+						(len(stack.colPath) <= i || n.field.relPath[i] != stack.colPath[i])) {
+					break
 				}
+				matched++
+			}
+			n.matched = max(n.matched, matched)
+			if matched < len(n.field.relPath) || len(n.field.relPath) != len(stack.relPath) {
+				continue outer
 			}
 			if children_where != "" {
 				children_where += bool_op
@@ -787,7 +820,10 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 	// (casts, aliases and json paths are applied there). So it must expose
 	// each base column once, raw and deduplicated by name: a formatted or
 	// duplicated fk column would make _source references ambiguous (42702).
-	sc, joins, keys, _ := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
+	sc, joins, keys, err := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
+	if err != nil {
+		return "", "", err
+	}
 	var fields string
 	var hasStar bool
 	var colMap = make(map[string]struct{})
@@ -945,12 +981,35 @@ func sameKeys(a, b Record) bool {
 
 type CommonBuilder struct{}
 
+// checkColumns refuses a ?columns= naming a column the table does not have,
+// as PostgREST does (PGRST204), instead of building a statement PostgreSQL
+// refuses in its own words. A table the cache does not know is left to
+// PostgreSQL, which answers 42P01 (404) whatever the columns.
+func checkColumns(table, schema string, parts *QueryParts, info *SchemaInfo) error {
+	if info == nil || len(parts.columnFields) == 0 || info.GetTable(_s(table, schema)) == nil {
+		return nil
+	}
+	cols := lo.Keys(parts.columnFields)
+	sort.Strings(cols)
+	for _, c := range cols {
+		if info.GetColumnType(_s(table, schema), c) == nil {
+			return &BuildError{"Could not find the '" + c + "' column of '" + table + "' in the schema cache"}
+		}
+	}
+	return nil
+}
+
 func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
 	var fields string
 	var fieldList []string
 	var values string
+
+	schema := options.Schema
+	if err := checkColumns(table, schema, parts, info); err != nil {
+		return "", nil, err
+	}
 
 	// if len(records) == 0 {
 	// 	return "", nil, fmt.Errorf("no records to insert")
@@ -995,7 +1054,6 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 		}
 		j = 0
 	}
-	schema := options.Schema
 	if n > 0 {
 		insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
 	} else {
@@ -1016,6 +1074,9 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 			insert = "WITH _source AS (" + insert + ") " + sel
 		}
 	}
+	if err := checkFiltersApplied(parts.whereConditionsTree, true, options.ReturnRepresentation); err != nil {
+		return "", nil, err
+	}
 	return insert, valueList, nil
 }
 
@@ -1023,6 +1084,10 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	update string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
+	schema := options.Schema
+	if err := checkColumns(table, schema, parts, info); err != nil {
+		return "", nil, err
+	}
 	var pairs string
 	var i int
 	for key := range record {
@@ -1040,7 +1105,13 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		pairs += " = $" + strconv.Itoa(i)
 		valueList = append(valueList, record[key])
 	}
-	schema := options.Schema
+	if pairs == "" {
+		// ?columns= left nothing of the body to set: an UPDATE with an empty
+		// SET is a syntax error, so PostgREST selects nothing from the table
+		// instead (mutatePlanToQuery, null uCols) and the table name still
+		// reaches PostgreSQL, so a missing one answers 42P01.
+		return "SELECT * FROM " + _sq(table, schema) + " WHERE false", nil, nil
+	}
 	whereClause, whereValueList := whereClause(table, schema, "", parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
 	update = "UPDATE " + _sq(table, schema) + " SET " + pairs
@@ -1056,6 +1127,9 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		if sel != "" {
 			update = "WITH _source AS (" + update + ") " + sel
 		}
+	}
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, options.ReturnRepresentation); err != nil {
+		return "", nil, err
 	}
 	return update, valueList, nil
 }
@@ -1079,6 +1153,9 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		if sel != "" {
 			delete = "WITH _source AS (" + delete + ") " + sel
 		}
+	}
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, options.ReturnRepresentation); err != nil {
+		return "", nil, err
 	}
 	return delete, valueList, nil
 }
@@ -1599,6 +1676,9 @@ func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts,
 	}
 	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
 	valueList = append(valueList, whereValueList...)
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
+		return "", nil, err
+	}
 	// patch order fields
 	for i := range parts.orderFields {
 		parts.orderFields[i].field.tablename = "t"
@@ -1625,6 +1705,9 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
+		return "", nil, err
+	}
 	groupByClause := groupByClause(table, schema, parts, info)
 	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
 	if err != nil {
@@ -1661,6 +1744,9 @@ func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *Query
 		return "", nil, err
 	}
 	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
+		return "", nil, err
+	}
 	groupByClause := groupByClause(table, schema, parts, info)
 	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
 	if err != nil {
