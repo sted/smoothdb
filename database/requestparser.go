@@ -130,12 +130,14 @@ type RequestParser interface {
 }
 
 type PostgRestParser struct {
-	src    string // the string scanned last (see scan)
-	tokens []string
-	quoted []bool // for each token, whether it was quoted in the source
-	ends   []int  // for each token, the offset in src just past it
-	cur    int
-	depth  int // current boolean-filter recursion depth (see maxFilterDepth)
+	src     string // the string scanned last (see scan)
+	sep     string // its separators, to rescan a part of it (see rawValue)
+	longSep []string
+	tokens  []string
+	quoted  []bool // for each token, whether it was quoted in the source
+	ends    []int  // for each token, the offset in src just past it
+	cur     int
+	depth   int // current boolean-filter recursion depth (see maxFilterDepth)
 }
 
 // maxFilterDepth caps the nesting of boolean filters (and/or) so a crafted query
@@ -298,8 +300,21 @@ func (p *PostgRestParser) addToken(t string, quoted bool, end int) {
 // of each token is recorded, so that a filter value can be read back verbatim
 // from s (see rawValue).
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
-	//state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
 	p.src = s
+	p.sep = sep
+	p.longSep = longSep
+	p.scanFrom(0)
+}
+
+// scanFrom scans p.src from the offset base, appending the tokens (see scan).
+func (p *PostgRestParser) scanFrom(base int) {
+	//state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
+	s := p.src[base:]
+	sep := p.sep
+	longSep := p.longSep
+	addToken := func(t string, quoted bool, end int) {
+		p.addToken(t, quoted, base+end)
+	}
 	var quot bool
 	var qchar byte // the quote character that opened the quoted token
 	var qstart int // and its offset
@@ -346,10 +361,10 @@ outer:
 				}
 				if strings.Compare(lsep, s[i:i+l]) == 0 {
 					if len(normal) != 0 {
-						p.addToken(string(normal), false, i)
+						addToken(string(normal), false, i)
 						normal = nil
 					}
-					p.addToken(lsep, false, i+l)
+					addToken(lsep, false, i+l)
 					i += l - 1
 					wasSep = true
 					continue outer
@@ -363,10 +378,10 @@ outer:
 				wasSep = false
 			} else if strings.Contains(sep, string(cur)) {
 				if len(normal) != 0 {
-					p.addToken(string(normal), false, i)
+					addToken(string(normal), false, i)
 					normal = nil
 				}
-				p.addToken(string(cur), false, i+1)
+				addToken(string(cur), false, i+1)
 				wasSep = true
 			} else {
 				normal = append(normal, cur)
@@ -376,7 +391,7 @@ outer:
 			if cur == qchar {
 				quot = false
 				if endsToken(i) {
-					p.addToken(string(quoted), true, i+1)
+					addToken(string(quoted), true, i+1)
 					wasSep = true
 				} else {
 					// the quotes are ordinary characters: rescan from the opening
@@ -397,7 +412,7 @@ outer:
 		}
 	}
 	if len(normal) != 0 {
-		p.addToken(string(normal), false, len(s))
+		addToken(string(normal), false, len(s))
 	}
 }
 
@@ -443,6 +458,8 @@ func (p *PostgRestParser) lookAhead() string {
 // reset reinitializes the parser
 func (p *PostgRestParser) reset() {
 	p.src = ""
+	p.sep = ""
+	p.longSep = nil
 	p.tokens = nil
 	p.quoted = nil
 	p.ends = nil
@@ -875,6 +892,17 @@ func (p *PostgRestParser) rawValue(stop string) string {
 	}
 	for p.cur < len(p.tokens) && p.ends[p.cur] <= end {
 		p.cur++
+	}
+	if p.cur < len(p.tokens) && p.quoted[p.cur] {
+		// The value ends inside a quoted token: the scanner opened it at a
+		// quote that followed a separator, but a quote inside a value is an
+		// ordinary character (PostgREST pListElement: a quote only opens at
+		// the start of an element), so the stop byte it swallowed separates.
+		// in.(a."b,c",d) is a."b, c", d. Rescan from the stop byte.
+		p.tokens = p.tokens[:p.cur]
+		p.quoted = p.quoted[:p.cur]
+		p.ends = p.ends[:p.cur]
+		p.scanFrom(end)
 	}
 	return p.src[start:end]
 }

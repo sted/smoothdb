@@ -475,6 +475,15 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"O'Brien", "O'Brien", "Smith", "\"", "\"foo", "\"a\"b", "c", "\"a", "b\"c", "d"},
 		},
 		{
+			// a quote after a dot inside an unquoted element is an ordinary
+			// character, and the comma it seems to enclose still separates
+			// (PostgREST pListElement: a quote only opens at the start of an
+			// element); the same in a logic tree
+			"?a=in.(a.\"b,c\",d)&b=in.(a.\"b,c\")&or=(c.in.(a.\"b,c\",d),d.eq.1)",
+			`SELECT * FROM "table" WHERE "table"."a" IN ($1, $2, $3) AND "table"."b" IN ($4, $5) AND ("table"."c" IN ($6, $7, $8) OR "table"."d" = $9)`,
+			[]any{"a.\"b", "c\"", "d", "a.\"b", "c\"", "a.\"b", "c\"", "d", "1"},
+		},
+		{
 			// a backslash escapes only inside quotes
 			"?a=in.(\\)&b=eq.a\\.b&c=eq.\"a\\\"b\"",
 			`SELECT * FROM "table" WHERE "table"."a" IN ($1) AND "table"."b" = $2 AND "table"."c" = $3`,
