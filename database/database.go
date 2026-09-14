@@ -273,6 +273,16 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 
 	// Atomically replace the old schema info with the new one
 	db.info.Store(newInfo)
+
+	// The DDL that motivates a reload also invalidates the plans the
+	// pool's connections keep for their cached statements: a view
+	// recreated with other columns, or a column added to a table read with
+	// RETURNING *, makes Postgres answer the next execution on each of them
+	// with 0A000 "cached plan must not change result type". Drop the
+	// connections along with the old schema info (what PostgREST does on a
+	// schema cache reload): the idle ones close now, the ones in use when
+	// released, and the pool stays open.
+	db.pool.Reset()
 	return nil
 }
 

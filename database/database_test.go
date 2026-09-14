@@ -744,3 +744,92 @@ func BenchmarkBase(b *testing.B) {
 	// 	}
 	// })
 }
+
+func TestReloadSchemaCacheDropsStalePlans(t *testing.T) {
+	// A migration that recreates a view with a different column set (or adds
+	// a column to a table that a query reads with RETURNING *) invalidates
+	// the plans the pool's connections keep for their cached statements:
+	// Postgres answers the next execution on each of them with 0A000
+	// "cached plan must not change result type". The schema reload that
+	// follows a migration must drop those connections, not only replace
+	// the schema info, or the error lands on user traffic once per pooled
+	// connection.
+
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbe.DeleteDatabase(ctx, "test_stale_plan")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_stale_plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gi := GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, `
+		CREATE TABLE t (id integer, name text);
+		INSERT INTO t VALUES (1, 'one');
+		CREATE VIEW v AS SELECT id, name FROM t`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	// The reload that picks up t and v
+	err = db.ReloadSchemaCache(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A pooled connection caches the plan of the select on the view
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := GetRecords(ctx, "v", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), `"name":"one"`) {
+		t.Fatalf("unexpected output before the migration: %s", result)
+	}
+
+	// The migration: the view comes back with one more column, and the
+	// connection goes back to the pool with its plan now stale
+	gi = GetSmoothContext(ctx)
+	_, err = gi.Conn.Exec(ctx, `
+		DROP VIEW v;
+		CREATE VIEW v AS SELECT id, name, upper(name) AS upper_name FROM t`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	// The reload the migrator notifies
+	err = db.ReloadSchemaCache(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The next request must not meet the stale plan: without the reset the
+	// pool hands out the same idle connection and the select fails with
+	// 0A000
+	ctx, conn, err = ContextWithDb(context.Background(), db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	result, _, err = GetRecords(ctx, "v", nil)
+	if err != nil {
+		t.Fatalf("select on the recreated view after the schema reload: %v", err)
+	}
+	if !strings.Contains(string(result), `"upper_name":"ONE"`) {
+		t.Fatalf("expected the new column of the view, got: %s", result)
+	}
+}
