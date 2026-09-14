@@ -29,10 +29,11 @@ SmoothDB is not *vibe-coded*. It was started in 2022 as a solid, versatile middl
 
 SmoothDB can be installed using the pre-built binaries published on [github](https://github.com/sted/smoothdb/releases) for each of the supported platforms. Support on Windows is not yet well tested.
 
-If you are on MacOS (or Linux) you can use Homebew to install the package:
+If you are on macOS (or Linux) you can use Homebrew to install the package, a Cask (Homebrew 7 loads a third-party tap's casks only once you trust it):
 
 ```
 brew tap sted/tap
+brew trust sted/tap
 brew install --cask smoothdb
 ```
 

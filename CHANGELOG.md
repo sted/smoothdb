@@ -24,7 +24,7 @@
 * **Server version** — `SchemaInfo.ServerVersion` (`server_version_num`) and `ServerAtLeast(N)` for version-gated features; startup logs the PostgreSQL version and, like PostgREST, refuses a server older than 14.
 
 ### Changed
-* **Homebrew: a Cask instead of a Formula** — GoReleaser deprecated formulas of pre-built binaries, so `sted/tap` now publishes `smoothdb` as a Cask, on Linux too. An installed formula is migrated by `brew update` itself (it unlinks the keg and installs the cask; run `brew uninstall --formula --force smoothdb` afterwards to remove it). The binaries are not notarized: the cask clears the quarantine flag Homebrew sets on a cask download (a formula download never had it).
+* **Homebrew: a Cask instead of a Formula** — GoReleaser deprecated formulas of pre-built binaries, so `sted/tap` now publishes `smoothdb` as a Cask, on Linux too. `brew update` finds an installed formula in the tap's `tap_migrations.json` and moves it to the cask: by itself up to Homebrew 6, while Homebrew 7, which loads a third-party cask only once trusted, prints the commands to run (`brew uninstall --formula smoothdb`, `brew trust --cask sted/tap/smoothdb`, `brew install --cask sted/tap/smoothdb`). The binaries are not notarized: the cask clears the quarantine flag Homebrew sets on a cask download (a formula download never had it).
 * **Go 1.27** — the modules and the release binaries are built with Go 1.27.1; plugins must be built with the same toolchain.
 
 ## 0.8.3 - 2026-09-05
