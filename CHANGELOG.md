@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.9.0 - 2026-09-14
 
 ### Security
 * **GET and HEAD run read-only** — like PostgREST, `GET`/`HEAD` (and a `POST` calling a `STABLE`/`IMMUTABLE` function) run in a read-only transaction: a write reached that way fails inside PostgreSQL (`25006`) and is answered `405` with `Allow: POST`, while a `VOLATILE` function that only reads still answers `GET`. `DELETE`/`PATCH`/`PUT` on `/rpc/` answer `405` instead of `404`.
