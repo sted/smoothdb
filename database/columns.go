@@ -23,17 +23,29 @@ type ColumnUpdate struct {
 	Comment *string `json:"comment"`
 }
 
+// The columns are read from pg_catalog, not information_schema, which shows a
+// role only the columns of the tables it has a privilege on: the schema cache
+// is loaded by the connecting role, an authenticator with no privilege at all
+// on the tables it serves in a PostgREST-style deployment. A domain reports its
+// base type and a generated column has no default, as information_schema has it.
 const columnsQuery = `
-	SELECT c.column_name, c.udt_name, c.is_nullable, c.column_default,
+	SELECT a.attname,
+		CASE WHEN t.typtype = 'd' THEN bt.typname ELSE t.typname END,
+		CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
+		CASE WHEN a.attgenerated = '' THEN pg_get_expr(d.adbin, d.adrelid) END,
 		CASE a.attgenerated WHEN 's' THEN 'stored' WHEN 'v' THEN 'virtual' ELSE '' END,
-		col_description(cl.oid, c.ordinal_position),
-		c.table_name, c.table_schema
-	FROM information_schema.columns c
-	JOIN pg_class cl ON cl.relname = c.table_name
-	JOIN pg_namespace n ON n.oid = cl.relnamespace AND n.nspname = c.table_schema
-	JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name
-	WHERE c.table_name = $1 AND c.table_schema = $2
-	ORDER BY c.ordinal_position`
+		col_description(c.oid, a.attnum),
+		c.relname, n.nspname
+	FROM pg_attribute a
+	JOIN pg_class c ON c.oid = a.attrelid
+	JOIN pg_namespace n ON n.oid = c.relnamespace
+	JOIN pg_type t ON t.oid = a.atttypid
+	LEFT JOIN pg_type bt ON bt.oid = t.typbasetype
+	LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+	WHERE c.relname = $1 AND n.nspname = $2
+		AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
+		AND a.attnum > 0 AND NOT a.attisdropped
+	ORDER BY a.attnum`
 
 func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
@@ -203,22 +215,26 @@ type ColumnType struct {
 	IsComposite bool   `json:"iscomposite"`
 }
 
+// Every column of every relation, from pg_catalog for the reason columnsQuery
+// gives; a domain counts as its base type.
 const columnTypesQuery = `
 	SELECT
-		c.table_name tablename,
-		c.table_schema schema,
-		c.column_name name,
-		c.udt_name type,		
-		c.data_type datatype,
-		(t.typcategory = 'A') AS isarray,
-		(t.typcategory = 'C') AS iscomposite
-	FROM
-		information_schema.columns c
-		JOIN pg_type t ON c.udt_name = t.typname and c.udt_schema::regnamespace = t.typnamespace
-	WHERE
-		c.table_schema !~ '^pg_' AND c.table_schema <> 'information_schema'
-	ORDER BY
-		table_name, table_schema, ordinal_position;
+		c.relname tablename,
+		n.nspname schema,
+		a.attname name,
+		ut.typname type,
+		format_type(a.atttypid, a.atttypmod) datatype,
+		(ut.typcategory = 'A') AS isarray,
+		(ut.typcategory = 'C') AS iscomposite
+	FROM pg_attribute a
+	JOIN pg_class c ON c.oid = a.attrelid
+	JOIN pg_namespace n ON n.oid = c.relnamespace
+	JOIN pg_type t ON t.oid = a.atttypid
+	JOIN pg_type ut ON ut.oid = CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END
+	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+		AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
+		AND a.attnum > 0 AND NOT a.attisdropped
+	ORDER BY c.relname, n.nspname, a.attnum;
 `
 
 func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
