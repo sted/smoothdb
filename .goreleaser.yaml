@@ -46,17 +46,23 @@ archives:
       - goos: windows
         formats: zip
 
-brews:
+# A Cask, not a Formula: GoReleaser deprecated `brews` for pre-built binaries
+# (Homebrew supports Casks on Linux too). The tap carries a tap_migrations.json
+# that moves the users of the old Formula over on their next upgrade.
+homebrew_casks:
   - repository:
       owner: sted
       name: homebrew-tap
       token: "{{ .Env.TAP_TOKEN }}"
-    directory: Formula
-    # url_template: "https://github.com/sted/smoothdb/releases/download/{{ .Tag }}/{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
-    # install: |
-    #   bin.install "smoothdb"
-    # test: |
-    #   system "#{bin}/smoothdb --version"
+    homepage: "https://github.com/sted/smoothdb"
+    description: "RESTful API for PostgreSQL databases"
+    # The binaries are not signed or notarized, and Homebrew quarantines Cask
+    # downloads (it does not for Formulas): clear the flag, or macOS refuses
+    # to run the binary.
+    hooks:
+      post:
+        install: |
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/smoothdb"] if OS.mac?
 
 release:
   replace_existing_artifacts: true

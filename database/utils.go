@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func escapeIdent(identifier string) string {
@@ -205,6 +206,7 @@ type CustomRows struct {
 	FieldDescriptions_ []pgconn.FieldDescription
 	RawValues_         [][][]byte
 	CurrentRow         int
+	TypeMap_           *pgtype.Map
 }
 
 func (cr *CustomRows) Next() bool {
@@ -244,6 +246,11 @@ func (cr *CustomRows) Close() {
 	cr.CurrentRow = -1
 }
 
+// TypeMap is the map of the copied rows; nil for rows built by hand in tests.
+func (cr *CustomRows) TypeMap() *pgtype.Map {
+	return cr.TypeMap_
+}
+
 func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 	// Get the column descriptions
 	columns := rows.FieldDescriptions()
@@ -274,6 +281,7 @@ func CopyRows(rows pgx.Rows) (*CustomRows, error) {
 		FieldDescriptions_: columns,
 		RawValues_:         rawValues,
 		CurrentRow:         -1,
+		TypeMap_:           rows.TypeMap(),
 	}
 
 	return customRows, nil

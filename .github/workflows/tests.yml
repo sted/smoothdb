@@ -25,7 +25,7 @@ jobs:
 
     steps:
     # Checkout the code
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     # Fetch full Git history for any dependencies that require it
     - name: Fetch full Git history
@@ -61,9 +61,9 @@ jobs:
 
     # Set up Go environment
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
-        go-version: '1.24'
+        go-version-file: go.mod
 
     # Run tests
     - name: Run tests

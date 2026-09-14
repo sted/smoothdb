@@ -33,7 +33,7 @@ If you are on MacOS (or Linux) you can use Homebew to install the package:
 
 ```
 brew tap sted/tap
-brew install smoothdb
+brew install --cask smoothdb
 ```
 
 If you have Go installed, you can install SmoothDB using:

@@ -23,6 +23,10 @@
 * **`Database.ExposedSchemas`** — the schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`): a header naming another schema answers 406 with the exposed list as hint (`PGRST106`), before any SQL. Unset, every schema stays reachable as before, and the default is the first of `SchemaSearchPath`, which keeps meaning only the connection's search path (PostgREST's `db-extra-search-path`).
 * **Server version** — `SchemaInfo.ServerVersion` (`server_version_num`) and `ServerAtLeast(N)` for version-gated features; startup logs the PostgreSQL version and, like PostgREST, refuses a server older than 14.
 
+### Changed
+* **Homebrew: a Cask instead of a Formula** — GoReleaser deprecated formulas of pre-built binaries, so `sted/tap` now publishes `smoothdb` as a Cask, on Linux too. An installed formula is migrated by `brew update` itself (it unlinks the keg and installs the cask; run `brew uninstall --formula --force smoothdb` afterwards to remove it). The binaries are not notarized: the cask clears the quarantine flag Homebrew sets on a cask download (a formula download never had it).
+* **Go 1.27** — the modules and the release binaries are built with Go 1.27.1; plugins must be built with the same toolchain.
+
 ## 0.8.3 - 2026-09-05
 
 ### Security
