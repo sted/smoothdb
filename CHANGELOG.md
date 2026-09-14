@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.9.1 - 2026-09-14
 
 ### Fixed
 * **Columns hidden from the connecting role** — the schema cache read the columns from `information_schema.columns`, which shows a role only the tables it has a privilege on. Loaded by an authenticator that holds none and only `SET ROLE`s per request (the PostgREST deployment), the cache knew no column of any table: 0.9.0's `?columns=` check then refused every bulk insert and upsert with `PGRST204`, and a generated column went undetected. The columns come from `pg_catalog` now, whatever the role's privileges.
