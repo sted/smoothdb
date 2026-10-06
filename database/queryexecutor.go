@@ -211,7 +211,11 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		}
 	}
 	info := gi.Db.info.Load()
-	f := info.GetFunction(_s(function, options.Schema))
+	// The overload the call invokes, by the names of the arguments it passes
+	f, err := info.FindFunction(_s(function, options.Schema), orderedRecordKeys(record, parts.columnFields, nil))
+	if err != nil {
+		return nil, 0, err
+	}
 	// A call to a STABLE or IMMUTABLE function runs READ ONLY whatever the
 	// method, as in PostgREST (Plan.hs callReadPlan: Inv + Stable/Immutable ->
 	// SQL.Read); a GET already does. The marker is a promise PostgreSQL does not
@@ -221,7 +225,7 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 			return nil, 0, err
 		}
 	}
-	exec, values, err := gi.QueryBuilder.BuildExecute(function, record, parts, options, info)
+	exec, values, err := gi.QueryBuilder.BuildExecute(function, f, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}

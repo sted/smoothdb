@@ -104,6 +104,11 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 		status = http.StatusNotAcceptable
 		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.SchemaError).Hint})
 		return status, err
+	case *database.AmbiguousFunctionError:
+		// PostgREST answers 300 Multiple Choices, with no choice to follow
+		status = http.StatusMultipleChoices
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.AmbiguousFunctionError).Hint})
+		return status, err
 	case *database.SerializeError, *database.ContentTypeError:
 		status = http.StatusNotAcceptable
 		w.WriteHeader(status)

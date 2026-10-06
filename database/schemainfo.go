@@ -1,8 +1,11 @@
 package database
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/samber/lo"
 )
@@ -47,7 +50,7 @@ type SchemaInfo struct {
 	cachedUniqueConstraints map[string][]Constraint
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
-	cachedFunctions         map[string]Function
+	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
 }
 
 func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
@@ -60,7 +63,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	dbi.cachedUniqueConstraints = map[string][]Constraint{}
 	dbi.cachedCheckConstraints = map[string][]Constraint{}
 	dbi.cachedRelationships = map[string][]Relationship{}
-	dbi.cachedFunctions = map[string]Function{}
+	dbi.cachedFunctions = map[string][]Function{}
 
 	// Server version, first: an introspection query below may branch on it
 	version, err := GetServerVersion(ctx)
@@ -170,13 +173,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range functions {
-		fname := _s(f.Name, f.Schema)
-		if f.HasUnnamed {
-			continue
-		}
-		dbi.cachedFunctions[fname] = f
-	}
+	dbi.cachedFunctions = cacheFunctions(functions)
 	// Computed relationships: detect functions with a single IN argument of table type
 	for _, f := range functions {
 		// Count IN arguments (mode 0 means default=IN, 'i' means explicit IN)
@@ -614,10 +611,145 @@ func filterRelationships(rels []Relationship, relatedTable, fk string) []Relatio
 	})
 }
 
-func (si *SchemaInfo) GetFunction(name string) *Function {
-	f, ok := si.cachedFunctions[name]
-	if !ok {
-		return nil
+// cacheFunctions groups the functions by schema-qualified name, each name
+// keeping all its overloads (PostgREST's RoutineMap), in compareOverloads
+// order. A function with an unnamed argument is left out (card 32489 rpc-params).
+func cacheFunctions(functions []Function) map[string][]Function {
+	cached := map[string][]Function{}
+	for _, f := range functions {
+		if f.HasUnnamed {
+			continue
+		}
+		fname := _s(f.Name, f.Schema)
+		cached[fname] = append(cached[fname], f)
 	}
-	return &f
+	for _, overloads := range cached {
+		slices.SortFunc(overloads, func(f1, f2 Function) int { return compareOverloads(&f1, &f2) })
+	}
+	return cached
+}
+
+// AmbiguousFunctionError: more than one overload of a function accepts the
+// argument names of a call (300, PostgREST PGRST203)
+type AmbiguousFunctionError struct {
+	msg  string
+	Hint string
+}
+
+func (e AmbiguousFunctionError) Error() string { return e.msg }
+
+// FindFunction returns the overload of the function name (schema.name, as _s
+// builds it) that a call with the argument names keys invokes, chosen as
+// PostgREST chooses it (Plan.hs findProc): by the names alone, an overload
+// matching when each key names one of its input arguments and each input
+// argument without a default has a key. The overload decides the shape of
+// the response and whether a POST runs READ ONLY.
+//
+// With no match it returns nil, and the call is left to PostgreSQL: it fails
+// there, or reaches a function the cache does not hold, one with an unnamed
+// argument. With more than one it returns an AmbiguousFunctionError naming
+// them, where PostgreSQL would pick one by its type rules or fail.
+func (si *SchemaInfo) FindFunction(name string, keys []string) (*Function, error) {
+	if si == nil {
+		return nil, nil
+	}
+	var found []Function
+	for _, f := range si.cachedFunctions[name] {
+		if f.acceptsArguments(keys) {
+			found = append(found, f)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return nil, nil
+	case 1:
+		return &found[0], nil
+	}
+	signatures := make([]string, len(found))
+	for i, f := range found {
+		args := make([]string, 0, len(f.Arguments))
+		for _, a := range f.inputArguments() {
+			args = append(args, a.Name+" => "+a.Type)
+		}
+		signatures[i] = f.Schema + "." + f.Name + "(" + strings.Join(args, ", ") + ")"
+	}
+	return nil, &AmbiguousFunctionError{
+		"Could not choose the best candidate function between: " + strings.Join(signatures, ", "),
+		"Try renaming the parameters or the function itself in the database so function overloading can be resolved",
+	}
+}
+
+// inputArguments returns the arguments a call passes: IN, INOUT and VARIADIC
+// (mode 0 when proargmodes is NULL, all IN). A function with no argument
+// comes from the query with one empty argument, of type 0, which is skipped.
+func (f *Function) inputArguments() []Argument {
+	var inputs []Argument
+	for _, a := range f.Arguments {
+		if a.TypeId == 0 {
+			continue
+		}
+		switch a.Mode {
+		case 0, 'i', 'b', 'v':
+			inputs = append(inputs, a)
+		}
+	}
+	return inputs
+}
+
+// acceptsArguments reports whether a call with the argument names keys can
+// invoke f, as PostgREST's matchesParams: each key names an input argument
+// and each input argument without a default (all but the last ArgDefaults)
+// has a key. No key matches a function with no argument or defaults for all.
+func (f *Function) acceptsArguments(keys []string) bool {
+	given := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		given[k] = true
+	}
+	inputs := f.inputArguments()
+	required := len(inputs) - f.ArgDefaults
+	matched := 0
+	for i, a := range inputs {
+		if given[a.Name] {
+			matched++
+		} else if i < required {
+			return false
+		}
+	}
+	return matched == len(given)
+}
+
+// compareOverloads orders two overloads of a name as PostgREST's Ord Routine
+// (Routine.hs), which the message of an AmbiguousFunctionError follows:
+// fewer input arguments first, then by the arguments' names, types,
+// requiredness and variadicity. PostgREST compares the functions' comments
+// before the arguments; they are not cached, and do not take part here.
+func compareOverloads(f1, f2 *Function) int {
+	a1, a2 := f1.inputArguments(), f2.inputArguments()
+	if c := cmp.Compare(len(a1), len(a2)); c != 0 {
+		return c
+	}
+	r1, r2 := len(a1)-f1.ArgDefaults, len(a2)-f2.ArgDefaults
+	for i := range a1 {
+		if c := cmp.Or(
+			cmp.Compare(a1[i].Name, a2[i].Name),
+			cmp.Compare(a1[i].Type, a2[i].Type),
+			compareBool(i < r1, i < r2),
+			compareBool(a1[i].Mode == 'v', a2[i].Mode == 'v'),
+		); c != 0 {
+			return c
+		}
+	}
+	return 0
+}
+
+// compareBool orders false before true, as Haskell's Ord Bool
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case !a:
+		return -1
+	default:
+		return 1
+	}
 }
