@@ -49,7 +49,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil || status != 0 {
 			return status, err
 		}
-		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, r.URL.Query())
+		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
 		if err == nil {
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {
@@ -133,7 +133,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil || status != 0 {
 			return status, err
 		}
-		data, count, err := database.ExecFunction(c, fname, records[0], r.URL.Query(), false)
+		data, count, err := database.ExecFunction(c, fname, records[0], payloadFilters(r), false)
 		if err == nil {
 			data, err = database.JQTransformResponse(c, data)
 		}

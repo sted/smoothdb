@@ -1096,13 +1096,13 @@ func TestBuildInsertTyped(t *testing.T) {
 	info := &SchemaInfo{
 		cachedTables: map[string]Table{"t": {Name: "t"}},
 		cachedColumnTypes: map[string]map[string]ColumnType{"t": {
-			"id":   {Name: "id", DataType: "integer"},
-			"body": {Name: "body", DataType: "character varying(20)"},
-			"data": {Name: "data", DataType: "bytea"},
-			"f":    {Name: "f", DataType: "double precision"},
-			"iv":   {Name: "iv", DataType: "interval"},
+			"id":   {Name: "id", Type: "int4", DataType: "integer", Builtin: true},
+			"body": {Name: "body", Type: "varchar", DataType: "character varying(20)", Builtin: true},
+			"data": {Name: "data", Type: "bytea", DataType: "bytea", Builtin: true},
+			"f":    {Name: "f", Type: "float8", DataType: "double precision", Builtin: true},
+			"iv":   {Name: "iv", Type: "interval", DataType: "interval", Builtin: true},
 		}, "ft": {
-			"id": {Name: "id", DataType: "integer"},
+			"id": {Name: "id", Type: "int4", DataType: "integer", Builtin: true},
 		}},
 		cachedPrimaryKeys: map[string]Constraint{"t": {Columns: []string{"id"}}},
 	}

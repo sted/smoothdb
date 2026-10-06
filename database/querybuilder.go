@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/samber/lo"
 )
@@ -1155,15 +1156,23 @@ func appendJSONValue(buf *bytes.Buffer, enc *json.Encoder, v any) error {
 }
 
 func appendValuer(buf *bytes.Buffer, enc *json.Encoder, v driver.Valuer) error {
-	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
-		buf.WriteString("null")
-		return nil
-	}
-	dv, err := v.Value()
+	dv, err := callValuer(v)
 	if err != nil {
 		return err
 	}
 	return appendJSONValue(buf, enc, dv)
+}
+
+var valuerType = reflect.TypeFor[driver.Valuer]()
+
+// callValuer calls v.Value as database/sql and pgx do: a nil pointer whose
+// Value its element's value receiver gives is NULL without the call, while a
+// pointer receiver is called on a nil pointer too.
+func callValuer(v driver.Valuer) (driver.Value, error) {
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() && rv.Type().Elem().Implements(valuerType) {
+		return nil, nil
+	}
+	return v.Value()
 }
 
 func nonFiniteFloat(f float64) (string, bool) {
@@ -1184,10 +1193,248 @@ func isJSONNull(body []byte) bool {
 	return string(bytes.Trim(body, " \t\r\n")) == "null"
 }
 
+// goKind is what a Go value means for its column, as pgx binds it there
+// (see appendGoValue). The zero value is a column whose type is not known.
+type goKind uint8
+
+const (
+	goUnknown   goKind = iota
+	goJSON             // json, jsonb
+	goJSONArray        // json[], jsonb[]
+	goBytea            // bytea
+	goOther            // any other known type
+)
+
+// goValueKind is the kind of a column of the schema cache: only pg_catalog's
+// json types are JSON, a domain counting as its base type.
+func goValueKind(ct *ColumnType) goKind {
+	if ct.Builtin {
+		switch ct.Type {
+		case "json", "jsonb":
+			return goJSON
+		case "_json", "_jsonb":
+			return goJSONArray
+		case "bytea":
+			return goBytea
+		}
+	}
+	return goOther
+}
+
+// appendGoValue encodes a Go value with the meaning pgx gives it for the
+// column's kind: JSON for a json column (appendRawJSON) and for the elements
+// of a json[] column, a []byte as text for a column of another known type;
+// everything else as appendJSONValue does.
+func appendGoValue(buf *bytes.Buffer, enc *json.Encoder, field string, kind goKind, v any) error {
+	switch kind {
+	case goJSON:
+		return appendRawJSON(buf, enc, field, v)
+	case goJSONArray:
+		return appendJSONArray(buf, enc, field, v)
+	case goOther:
+		return appendOtherValue(buf, enc, field, v)
+	}
+	return appendJSONValue(buf, enc, v)
+}
+
+// appendOtherValue encodes a Go value for a column of a known type other than
+// json and bytea: a []byte is its text, as pgx's text codec sends it, also a
+// named one (a json.RawMessage keeps its quotes). As pgx dereferences and
+// plans again at each level, the value is resolved step by step: a
+// driver.Valuer gives its value, a pointer or an interface its element, until
+// a byte slice, or a value that marshals itself and is encoded as it is, so
+// that a pointer keeps its own MarshalJSON.
+func appendOtherValue(buf *bytes.Buffer, enc *json.Encoder, field string, v any) error {
+	for range 64 { // a guard against a Valuer that keeps answering a Valuer
+		if v == nil {
+			buf.WriteString("null")
+			return nil
+		}
+		if valuer, ok := v.(driver.Valuer); ok {
+			dv, err := callValuer(valuer)
+			if err != nil {
+				return err
+			}
+			v = dv
+			continue
+		}
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
+			if rv.IsNil() {
+				buf.WriteString("null")
+				return nil
+			}
+			if !utf8.Valid(rv.Bytes()) {
+				return &BuildError{"Invalid UTF-8 for the column '" + field + "'"}
+			}
+			return appendJSONValue(buf, enc, string(rv.Bytes()))
+		}
+		if rv.Kind() != reflect.Pointer && rv.Kind() != reflect.Interface {
+			return appendJSONValue(buf, enc, v)
+		}
+		if rv.IsNil() {
+			buf.WriteString("null")
+			return nil
+		}
+		// a byte slice comes before a MarshalJSON the pointer inherits from
+		// it (a *json.RawMessage is its bytes)
+		el := rv.Elem()
+		if _, ok := v.(json.Marshaler); ok && !(el.Kind() == reflect.Slice && el.Type().Elem().Kind() == reflect.Uint8) {
+			return appendJSONValue(buf, enc, v)
+		}
+		v = el.Interface()
+	}
+	return &BuildError{"Cannot resolve the value for the column '" + field + "'"}
+}
+
+// appendRawJSON encodes a Go value for a json or jsonb column in the order
+// of pgx's JSON codec (pgtype/json.go): a string, a []byte or a
+// json.RawMessage is the JSON itself and must be valid; a driver.Valuer gives
+// its value before a json.Marshaler is asked; a pointer is followed and a
+// named string or []byte type is one; anything else is encoded as JSON.
+func appendRawJSON(buf *bytes.Buffer, enc *json.Encoder, field string, v any) error {
+	var raw []byte
+	switch x := v.(type) {
+	case nil:
+		buf.WriteString("null")
+		return nil
+	case string:
+		raw = []byte(x)
+	case []byte:
+		raw = x
+	case json.RawMessage:
+		raw = x
+	case driver.Valuer:
+		dv, err := callValuer(x)
+		if err != nil {
+			return err
+		}
+		return appendRawJSON(buf, enc, field, dv)
+	case json.Marshaler:
+		return appendJSONValue(buf, enc, v)
+	default:
+		rv := reflect.ValueOf(v)
+		switch {
+		case rv.Kind() == reflect.Pointer:
+			if rv.IsNil() {
+				buf.WriteString("null")
+				return nil
+			}
+			return appendRawJSON(buf, enc, field, rv.Elem().Interface())
+		case rv.Kind() == reflect.String:
+			raw = []byte(rv.String())
+		case rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8:
+			if rv.IsNil() {
+				buf.WriteString("null")
+				return nil
+			}
+			raw = rv.Bytes()
+		default:
+			return appendJSONValue(buf, enc, v)
+		}
+	}
+	if raw == nil {
+		buf.WriteString("null")
+		return nil
+	}
+	if !json.Valid(raw) {
+		return &BuildError{"Invalid JSON for the column '" + field + "'"}
+	}
+	buf.Write(raw)
+	return nil
+}
+
+// appendJSONArray encodes a Go slice or array for a json[] column as pgx
+// does: a one-dimensional array literal whose elements are JSON
+// (appendRawJSON), a nested slice included, since the json codec takes any
+// value; sent as a string for the array's input function.
+// A JSON array cannot carry it: json_to_recordset reads a nested JSON array as
+// a further dimension, not as a json element. A driver.Valuer, or any other
+// value, goes through appendJSONValue.
+func appendJSONArray(buf *bytes.Buffer, enc *json.Encoder, field string, v any) error {
+	if v == nil {
+		buf.WriteString("null")
+		return nil
+	}
+	if _, ok := v.(driver.Valuer); ok {
+		return appendJSONValue(buf, enc, v)
+	}
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			buf.WriteString("null")
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	if !isGoArray(rv) {
+		return appendJSONValue(buf, enc, v)
+	}
+	if rv.Kind() == reflect.Slice && rv.IsNil() {
+		buf.WriteString("null")
+		return nil
+	}
+	var lit strings.Builder
+	if err := jsonArrayLiteral(&lit, field, rv); err != nil {
+		return err
+	}
+	return appendJSONValue(buf, enc, lit.String())
+}
+
+// isGoArray reports whether v is a slice or an array, but not of bytes.
+func isGoArray(v reflect.Value) bool {
+	return (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Type().Elem().Kind() != reflect.Uint8
+}
+
+// jsonArrayLiteral writes the array literal of a json[] value: each element
+// its JSON text quoted, NULL for a nil one or a Valuer giving nil. pgx makes
+// it one-dimensional whatever the Go type: its slice wrapper is tried first,
+// and the json codec takes an inner slice as a JSON array, ragged or not.
+func jsonArrayLiteral(lit *strings.Builder, field string, rv reflect.Value) error {
+	lit.WriteByte('{')
+	for i := 0; i < rv.Len(); i++ {
+		if i > 0 {
+			lit.WriteByte(',')
+		}
+		e := rv.Index(i)
+		var v any
+		if e.Kind() != reflect.Interface || !e.IsNil() {
+			v = e.Interface()
+		}
+		if valuer, ok := v.(driver.Valuer); ok {
+			dv, err := callValuer(valuer)
+			if err != nil {
+				return err
+			}
+			v = dv
+		}
+		if v == nil {
+			lit.WriteString("NULL")
+			continue
+		}
+		if rv := reflect.ValueOf(v); (rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Map || rv.Kind() == reflect.Slice) && rv.IsNil() {
+			lit.WriteString("NULL")
+			continue
+		}
+		var raw bytes.Buffer
+		enc := json.NewEncoder(&raw)
+		enc.SetEscapeHTML(false)
+		if err := appendRawJSON(&raw, enc, field, v); err != nil {
+			return err
+		}
+		lit.WriteByte('"')
+		lit.WriteString(strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(raw.String()))
+		lit.WriteByte('"')
+	}
+	lit.WriteByte('}')
+	return nil
+}
+
 // insertRows is the JSON array of rows an insert reads: the request body as
-// it came, an object wrapped into an array, or else the records encoded with
-// the insert's columns (see appendJSONValue).
-func insertRows(records []Record, fields []string, body []byte) ([]byte, error) {
+// it came, an object wrapped into an array, or else the Go records encoded
+// with the insert's columns, each value with the meaning pgx gives it for its
+// column (kinds, when the types are known; see appendGoValue).
+func insertRows(records []Record, fields []string, kinds []goKind, body []byte) ([]byte, error) {
 	if body != nil {
 		if trimmed := bytes.TrimLeft(body, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '{' {
 			rows := make([]byte, 0, len(body)+2)
@@ -1228,7 +1475,11 @@ func insertRows(records []Record, fields []string, body []byte) ([]byte, error) 
 			}
 			first = false
 			buf.WriteString(keys[k])
-			if err := appendJSONValue(&buf, enc, v); err != nil {
+			kind := goUnknown
+			if kinds != nil {
+				kind = kinds[k]
+			}
+			if err := appendGoValue(&buf, enc, f, kind, v); err != nil {
 				return nil, err
 			}
 		}
@@ -1243,8 +1494,10 @@ func insertRows(records []Record, fields []string, body []byte) ([]byte, error) 
 // array read with json_to_recordset, so no bulk insert runs into the 65 535
 // parameters of the extended protocol, and the database's input functions
 // convert the values (an array, a composite, a json column keeping its text).
-// body is the JSON the records were decoded from, sent as it is; without one
-// the records are encoded.
+// body is the request's JSON, sent as it is: the JSON the records were decoded
+// from, or the JSON a CSV or form body converts to, as in PostgREST. Without one
+// (the Go API) the records are Go values, encoded with the meaning pgx gave
+// them (see insertRows).
 func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
@@ -1294,6 +1547,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		_, typed = info.cachedColumnTypes[ftable]
 	}
 	var fields, sourceFields, defs string
+	var kinds []goKind
+	if typed {
+		kinds = make([]goKind, len(fieldList))
+	}
 	for i, f := range fieldList {
 		if i > 0 {
 			fields += ", "
@@ -1308,9 +1565,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 				return "", nil, &BuildError{"Could not find the '" + f + "' column of '" + table + "' in the schema cache"}
 			}
 			defs += quote(f) + " " + ct.DataType
+			kinds[i] = goValueKind(ct)
 		}
 	}
-	rows, err := insertRows(records, fieldList, body)
+	rows, err := insertRows(records, fieldList, kinds, body)
 	if err != nil {
 		return "", nil, err
 	}

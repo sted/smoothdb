@@ -92,6 +92,48 @@ func TestBulkInsertOverParameterLimit(t *testing.T) {
 	})
 }
 
+// PostgREST applies ?columns= to a JSON body only (Payload.hs, getPayload):
+// a CSV header or a form's fields are the arguments of an RPC, as they are
+// the columns of an insert. PostgREST 14.15 on the same calls: 3, 3, 1.
+func TestPayloadColumnsOnRPC(t *testing.T) {
+	execSQLAndReload(t, `
+		CREATE OR REPLACE FUNCTION bulk_probe_sum(a int, b int DEFAULT 0) RETURNS int
+			LANGUAGE sql AS $$ SELECT a + b $$;
+	`)
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+	test.Execute(t, testConfig, []test.Test{
+		{
+			Description: "?columns= does not apply to a form body on an RPC",
+			Method:      "POST",
+			Query:       "/rpc/bulk_probe_sum?columns=a",
+			Body:        "a=1&b=2",
+			Headers:     test.Headers{"Content-Type": {"application/x-www-form-urlencoded"}},
+			Expected:    `3`,
+			Status:      200,
+		},
+		{
+			Description: "?columns= does not apply to a CSV body on an RPC",
+			Method:      "POST",
+			Query:       "/rpc/bulk_probe_sum?columns=a",
+			Body:        "a,b\n1,2\n",
+			Headers:     test.Headers{"Content-Type": {"text/csv"}},
+			Expected:    `3`,
+			Status:      200,
+		},
+		{
+			Description: "?columns= applies to a JSON body on an RPC",
+			Method:      "POST",
+			Query:       "/rpc/bulk_probe_sum?columns=a",
+			Body:        `{"a": 1, "b": 2}`,
+			Expected:    `1`,
+			Status:      200,
+		},
+	})
+}
+
 // With the body as one json parameter the values reach the columns through
 // the database's input functions, as in PostgREST, instead of pgx's encoding
 // of the decoded Go values: json_to_recordset gets the column definition list
@@ -254,6 +296,77 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Body:        `[{}]`,
 			Headers:     test.Headers{"Prefer": {"resolution=merge-duplicates", "return=representation"}},
 			Expected:    `[{"id":5,"v":"v"}]`,
+			Status:      201,
+		},
+		{
+			// PostgREST turns a CSV or form body into JSON whose values are
+			// strings (Payload.hs, csvToJson): a json column gets a JSON string,
+			// never the JSON the text spells (PostgREST 14.15 on the same rows)
+			Description: "a CSV value is a JSON string in json and jsonb columns",
+			Method:      "POST",
+			Query:       "/bulk_types",
+			Body:        "id,j,jb\n12,[123],[123]\n13,abc,\"{\"\"a\"\": 1}\"\n",
+			Headers:     test.Headers{"Content-Type": {"text/csv"}},
+			Status:      201,
+		},
+		{
+			Description: "the CSV values stored as JSON strings",
+			Query:       "/bulk_types?select=id,j::text,jb::text&id=in.(12,13)&order=id",
+			Expected:    `[{"id":12,"j":"\"[123]\"","jb":"\"[123]\""},{"id":13,"j":"\"abc\"","jb":"\"{\\\"a\\\": 1}\""}]`,
+			Status:      200,
+		},
+		{
+			Description: "a form value is a JSON string in a json column",
+			Method:      "POST",
+			Query:       "/bulk_types",
+			Body:        "id=14&j=%5B1%5D",
+			Headers:     test.Headers{"Content-Type": {"application/x-www-form-urlencoded"}},
+			Status:      201,
+		},
+		{
+			Description: "the form value stored as a JSON string",
+			Query:       "/bulk_types?select=id,j::text&id=eq.14",
+			Expected:    `[{"id":14,"j":"\"[1]\""}]`,
+			Status:      200,
+		},
+		// A CSV or form body as PostgREST reads it (Payload.hs, PostgREST 14.15
+		// on the same requests): an empty CSV is a 400, ?columns= does not
+		// apply to a CSV (its header is the column list), a repeated form key
+		// keeps its last value, and the URL's parameters are not form fields.
+		{
+			Description: "an empty CSV body is a 400",
+			Method:      "POST",
+			Query:       "/bulk_defaults",
+			Body:        "",
+			Headers:     test.Headers{"Content-Type": {"text/csv"}},
+			Status:      400,
+		},
+		{
+			Description: "?columns= does not apply to a CSV body",
+			Method:      "POST",
+			Query:       "/bulk_types?columns=id&select=id,note",
+			Body:        "id,note\n15,from-csv\n",
+			Headers:     test.Headers{"Content-Type": {"text/csv"}, "Prefer": {"return=representation"}},
+			Expected:    `[{"id":15,"note":"from-csv"}]`,
+			Status:      201,
+		},
+		{
+			Description: "a repeated form key keeps its last value",
+			Method:      "POST",
+			Query:       "/bulk_types?select=id",
+			Body:        "id=16&id=17",
+			Headers:     test.Headers{"Content-Type": {"application/x-www-form-urlencoded"}, "Prefer": {"return=representation"}},
+			Expected:    `[{"id":17}]`,
+			Status:      201,
+		},
+		{
+			// the select above is a URL parameter, not a form field
+			Description: "the URL's parameters are not form fields",
+			Method:      "POST",
+			Query:       "/bulk_types?select=id,note",
+			Body:        "id=18&note=n",
+			Headers:     test.Headers{"Content-Type": {"application/x-www-form-urlencoded"}, "Prefer": {"return=representation"}},
+			Expected:    `[{"id":18,"note":"n"}]`,
 			Status:      201,
 		},
 		{

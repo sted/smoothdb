@@ -3,6 +3,7 @@ package database
 import (
 	"cmp"
 	"context"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -242,6 +243,38 @@ func (si *SchemaInfo) GetColumnType(ftable string, column string) *ColumnType {
 		return nil
 	}
 	return &ct
+}
+
+// withColumnTypesOf returns si when it knows the columns of schema.table, and
+// otherwise a copy that also holds them, read from the database now: a Go
+// caller inserting into a table it has just created needs the column types
+// (see insertRows) before the next schema reload. The cache is left as it is;
+// a relation that does not exist is left to PostgreSQL (42P01).
+func (si *SchemaInfo) withColumnTypesOf(ctx context.Context, table, schema string) (*SchemaInfo, error) {
+	ftable := _s(table, schema)
+	if si != nil {
+		if _, ok := si.cachedColumnTypes[ftable]; ok {
+			return si, nil
+		}
+	}
+	types, err := columnTypesOf(ctx, _sq(table, schema))
+	if err != nil || len(types) == 0 {
+		return si, err
+	}
+	var clone SchemaInfo
+	if si != nil {
+		clone = *si
+	}
+	clone.cachedColumnTypes = make(map[string]map[string]ColumnType, len(clone.cachedColumnTypes)+1)
+	if si != nil {
+		maps.Copy(clone.cachedColumnTypes, si.cachedColumnTypes)
+	}
+	columns := make(map[string]ColumnType, len(types))
+	for _, t := range types {
+		columns[t.Name] = t
+	}
+	clone.cachedColumnTypes[ftable] = columns
+	return &clone, nil
 }
 
 func (si *SchemaInfo) GetPrimaryKey(ftable string) *Constraint {

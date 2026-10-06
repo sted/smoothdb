@@ -117,7 +117,15 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, gi.Db.info.Load())
+	info := gi.Db.info.Load()
+	if body == nil {
+		// Go values need the column types (see insertRows), also for a
+		// relation created since the schema cache was loaded
+		if info, err = info.withColumnTypesOf(ctx, table, options.Schema); err != nil {
+			return nil, 0, err
+		}
+	}
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -36,8 +35,6 @@ func TestStructSerializer(t *testing.T) {
 		{Name: "date", Type: "timestamp"},
 	}})
 
-	// A record holds JSON values (see insertRows): pre-encoded JSON for the
-	// json columns is a json.RawMessage, a Go string would be a JSON string.
 	_, _, err = CreateRecords(ctx, "t1",
 		[]Record{
 			{
@@ -48,8 +45,8 @@ func TestStructSerializer(t *testing.T) {
 				"float8": 3.1415,
 				"bool":   true,
 				"text":   "smoothdb",
-				"json":   json.RawMessage("[123]"),
-				"jsonb":  json.RawMessage(`["test"]`),
+				"json":   "[123]",
+				"jsonb":  "[\"test\"]",
 				"date":   "2022-10-11T19:00",
 			},
 			{
@@ -72,8 +69,8 @@ func TestStructSerializer(t *testing.T) {
 				"float8": 0,
 				"bool":   false,
 				"text":   "",
-				"json":   json.RawMessage("{}"),
-				"jsonb":  json.RawMessage("{}"),
+				"json":   "{}",
+				"jsonb":  "{}",
 				"date":   "0001-01-01T00:00",
 			},
 		},

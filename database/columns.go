@@ -216,6 +216,7 @@ type ColumnType struct {
 	DataType    string `json:"datatype"`
 	IsArray     bool   `json:"isarray"`
 	IsComposite bool   `json:"iscomposite"`
+	Builtin     bool   `json:"builtin"` // the type (a domain's base type) is pg_catalog's
 }
 
 // Every column of every relation, from pg_catalog for the reason columnsQuery
@@ -230,7 +231,8 @@ const columnTypesQuery = `
 		ut.typname type,
 		format_type(a.atttypid, a.atttypmod) datatype,
 		(ut.typcategory = 'A') AS isarray,
-		(ut.typcategory = 'C') AS iscomposite
+		(ut.typcategory = 'C') AS iscomposite,
+		(ut.typnamespace = 'pg_catalog'::regnamespace) AS builtin
 	FROM pg_attribute a
 	JOIN pg_class c ON c.oid = a.attrelid
 	JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -239,7 +241,6 @@ const columnTypesQuery = `
 	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
 		AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
 		AND a.attnum > 0 AND NOT a.attisdropped
-	ORDER BY c.relname, n.nspname, a.attnum;
 `
 
 // GetColumnTypes reads the columns with an empty search path, as PostgREST
@@ -253,6 +254,22 @@ const columnTypesQuery = `
 // changed. The rollback runs even when ctx has been cancelled meanwhile, which
 // pgx would otherwise refuse before sending it.
 func GetColumnTypes(ctx context.Context) (types []ColumnType, err error) {
+	return readColumnTypes(ctx, columnTypesQuery+" ORDER BY c.relname, n.nspname, a.attnum")
+}
+
+// columnTypesOf reads the columns of one relation as GetColumnTypes reads
+// them all, for a relation the schema cache does not know yet. relation is
+// its quoted name, qualified or not: it is resolved under the caller's search
+// path, before the read empties it. No relation, no columns.
+func columnTypesOf(ctx context.Context, relation string) ([]ColumnType, error) {
+	var oid *uint32
+	if err := GetConn(ctx).QueryRow(ctx, "SELECT to_regclass($1)::oid", relation).Scan(&oid); err != nil || oid == nil {
+		return nil, err
+	}
+	return readColumnTypes(ctx, columnTypesQuery+" AND c.oid = $1 ORDER BY a.attnum", *oid)
+}
+
+func readColumnTypes(ctx context.Context, query string, args ...any) (types []ColumnType, err error) {
 	conn := GetConn(ctx)
 	types = []ColumnType{}
 	begin, end := "BEGIN", "ROLLBACK"
@@ -272,7 +289,7 @@ func GetColumnTypes(ctx context.Context) (types []ColumnType, err error) {
 	if _, err = conn.Exec(ctx, "SET LOCAL search_path TO ''"); err != nil {
 		return types, err
 	}
-	rows, err := conn.Query(ctx, columnTypesQuery)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return types, err
 	}
@@ -280,7 +297,7 @@ func GetColumnTypes(ctx context.Context) (types []ColumnType, err error) {
 
 	typ := ColumnType{}
 	for rows.Next() {
-		err = rows.Scan(&typ.Table, &typ.Schema, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
+		err = rows.Scan(&typ.Table, &typ.Schema, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite, &typ.Builtin)
 		if err != nil {
 			return types, err
 		}

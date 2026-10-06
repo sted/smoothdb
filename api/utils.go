@@ -234,8 +234,35 @@ func jsonIsArray(content []byte) bool {
 	return false
 }
 
+// payloadFilters is the request's query for a write that carries a body:
+// PostgREST applies ?columns= to a JSON body only (Payload.hs, getPayload),
+// while a CSV header, or a form's fields, is the list of columns or of an
+// RPC's arguments.
+func payloadFilters(r heligo.Request) url.Values {
+	filters := r.URL.Query()
+	if ct := getContentType(r); ct == "text/csv" || ct == "application/x-www-form-urlencoded" {
+		delete(filters, "columns")
+	}
+	return filters
+}
+
+// recordsJSON is the JSON PostgREST turns a CSV or form body into before an
+// insert (Payload.hs: csvToJson, the form's params map): every value a JSON
+// string, or null. Sent as the insert's body, it gives a json column a JSON
+// string whatever the text spells, never the meaning a Go value would have.
+func recordsJSON(records []database.Record) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(records); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
 // readInputRecords is the low-level function to read and convert the data in the request body.
-// For a JSON body it also returns the body itself, which an insert sends as it is.
+// For a JSON body it also returns the body itself, which an insert sends as it is,
+// and for a CSV or form body the JSON PostgREST would convert it to.
 func readInputRecords(r heligo.Request, contentType string) ([]database.Record, []byte, error) {
 	var records []database.Record
 	var jsonBody []byte
@@ -274,6 +301,10 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 			return nil, nil, err
 		}
 
+		if len(csvData) == 0 {
+			// no header: PostgREST answers 400 (PGRST102) with the parser's message
+			return nil, nil, errors.New(`parse error (not enough input) at ""`)
+		}
 		// Assuming the first row contains headers
 		headers := csvData[0]
 		for _, row := range csvData[1:] {
@@ -288,16 +319,25 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 			}
 			records = append(records, record)
 		}
+		if jsonBody, err = recordsJSON(records); err != nil {
+			return nil, nil, err
+		}
 
 	case "application/x-www-form-urlencoded":
 		if err := r.ParseForm(); err != nil {
 			return nil, nil, err
 		}
+		// the body's fields only, not the URL's parameters (PostForm), and the
+		// last value of a repeated key, as PostgREST's params map keeps it
 		record := database.Record{}
-		for key, values := range r.Form {
-			record[key] = values[0] // taking the first value for each key
+		for key, values := range r.PostForm {
+			record[key] = values[len(values)-1]
 		}
 		records = append(records, record)
+		var err error
+		if jsonBody, err = recordsJSON(records); err != nil {
+			return nil, nil, err
+		}
 	case "application/octet-stream":
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
