@@ -101,6 +101,9 @@ type QueryParts struct {
 	offset              string
 	whereConditionsTree *WhereConditionNode
 	recursive           *RecursiveInfo
+	// set by selectClause: an EXISTS per !inner embed of the root, which
+	// restricts the total of a ranged count (see buildAfterSelect)
+	innerEmbedConds []string
 }
 
 type QueryOptions struct {
