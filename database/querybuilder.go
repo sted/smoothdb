@@ -238,18 +238,20 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		}
 		// where and order clause for the internal select: the expressions related to
 		// the external query are skipped inside the functions.
-		// If the internal table is equal to the external one we avoid repeating
-		// the expressions.
+		// A self-reference is filtered like any other embed: the filters are
+		// matched by embed path, and the related side has its own alias.
+		schema, table := splitTableName(rel.RelatedTable)
+		col := ""
+		if len(rel.Columns) == 1 {
+			col = rel.Columns[0]
+		}
+		whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel, col))
+		if whereClause != "" {
+			sel += " AND " + whereClause
+		}
+		// The orders are keyed by table name: on a self-reference the embed's
+		// order cannot be told from the parent's, so none is applied.
 		if rel.Table != rel.RelatedTable {
-			schema, table := splitTableName(rel.RelatedTable)
-			col := ""
-			if len(rel.Columns) == 1 {
-				col = rel.Columns[0]
-			}
-			whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel, col))
-			if whereClause != "" {
-				sel += " AND " + whereClause
-			}
 			oc, err := orderClause(table, schema, label1, stack.level+1, parts.orderFields, join.selectFields, stack.info)
 			if err != nil {
 				return "", err
@@ -671,6 +673,12 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			if matched < len(n.field.relPath) || len(n.field.relPath) != len(stack.relPath) {
 				continue outer
 			}
+			if n.inserted {
+				// already taken by an earlier embed its path also names, as
+				// siblings embedding the same table (a parent and the children
+				// of a self-reference): it applies once, without a dangling AND
+				continue outer
+			}
 			if children_where != "" {
 				children_where += bool_op
 			}
@@ -682,6 +690,10 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 		where += children_where
 		if node.not || node.operator == "OR" {
 			where += ")"
+		}
+		if node.operator != "" {
+			// a logic tree is taken as a whole, like a single filter
+			node.inserted = true
 		}
 	} else {
 		// skip nodes already inserted
