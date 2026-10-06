@@ -846,7 +846,7 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 	t.Run("no schema info", func(t *testing.T) {
 		var first string
 		for i := 0; i < 50; i++ {
-			q, _, err := CommonBuilder{}.BuildExecute("fn", record, &QueryParts{}, &QueryOptions{}, nil)
+			q, _, err := CommonBuilder{}.BuildExecute("fn", nil, record, &QueryParts{}, &QueryOptions{}, nil)
 			if err != nil {
 				t.Fatalf("BuildExecute error: %v", err)
 			}
@@ -869,8 +869,8 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 	t.Run("with signature", func(t *testing.T) {
 		info := &SchemaInfo{
 			cachedTypes: map[uint32]Type{0: {}},
-			cachedFunctions: map[string]Function{
-				"fn": {
+			cachedFunctions: map[string][]Function{
+				"fn": {{
 					Name:   "fn",
 					Schema: "",
 					Arguments: []Argument{
@@ -880,13 +880,13 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 						{Name: "p_b", Mode: 'i'},
 						{Name: "p_d", Mode: 'i'},
 					},
-				},
+				}},
 			},
 		}
 		var first string
 		var firstValues []any
 		for i := 0; i < 50; i++ {
-			q, v, err := CommonBuilder{}.BuildExecute("fn", record, &QueryParts{}, &QueryOptions{}, info)
+			q, v, err := CommonBuilder{}.BuildExecute("fn", &info.cachedFunctions["fn"][0], record, &QueryParts{}, &QueryOptions{}, info)
 			if err != nil {
 				t.Fatalf("BuildExecute error: %v", err)
 			}
@@ -917,21 +917,21 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 	t.Run("extra keys after signature", func(t *testing.T) {
 		info := &SchemaInfo{
 			cachedTypes: map[uint32]Type{0: {}},
-			cachedFunctions: map[string]Function{
-				"fn": {
+			cachedFunctions: map[string][]Function{
+				"fn": {{
 					Name:   "fn",
 					Schema: "",
 					Arguments: []Argument{
 						{Name: "p_a", Mode: 'i'},
 						{Name: "p_b", Mode: 'i'},
 					},
-				},
+				}},
 			},
 		}
 		rec := Record{"p_b": 2, "p_a": 1, "z_extra": 99, "a_extra": 98}
 		var first string
 		for i := 0; i < 50; i++ {
-			q, _, err := CommonBuilder{}.BuildExecute("fn", rec, &QueryParts{}, &QueryOptions{}, info)
+			q, _, err := CommonBuilder{}.BuildExecute("fn", &info.cachedFunctions["fn"][0], rec, &QueryParts{}, &QueryOptions{}, info)
 			if err != nil {
 				t.Fatalf("BuildExecute error: %v", err)
 			}
@@ -953,8 +953,8 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 	t.Run("skip out mode args", func(t *testing.T) {
 		info := &SchemaInfo{
 			cachedTypes: map[uint32]Type{0: {}},
-			cachedFunctions: map[string]Function{
-				"fn": {
+			cachedFunctions: map[string][]Function{
+				"fn": {{
 					Name:   "fn",
 					Schema: "",
 					Arguments: []Argument{
@@ -962,11 +962,11 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 						{Name: "p_out", Mode: 'o'},
 						{Name: "p_tbl", Mode: 't'},
 					},
-				},
+				}},
 			},
 		}
 		rec := Record{"p_in": 1}
-		q, _, err := CommonBuilder{}.BuildExecute("fn", rec, &QueryParts{}, &QueryOptions{}, info)
+		q, _, err := CommonBuilder{}.BuildExecute("fn", &info.cachedFunctions["fn"][0], rec, &QueryParts{}, &QueryOptions{}, info)
 		if err != nil {
 			t.Fatalf("BuildExecute error: %v", err)
 		}

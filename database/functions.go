@@ -13,6 +13,7 @@ type Function struct {
 	Name         string     `json:"name"`
 	Schema       string     `json:"schema"`
 	Arguments    []Argument `json:"arguments"`
+	ArgDefaults  int        `json:"argdefaults"` // pronargdefaults: how many of the last input arguments have a default
 	Returns      string     `json:"returns"`
 	Language     string     `json:"language"`
 	Definition   string     `json:"definition"`
@@ -39,7 +40,8 @@ const functionsQuery = `
 		BOOL_OR(_.name is null) AND pronargs > 0 hasunnamed,
 		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout,
 		p.provariadic != 0 isvariadic,
-		p.provolatile::text volatility
+		p.provolatile::text volatility,
+		p.pronargdefaults argdefaults
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -73,7 +75,8 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 			&f.HasUnnamed,
 			&f.HasOut,
 			&f.IsVariadic,
-			&f.Volatility)
+			&f.Volatility,
+			&f.ArgDefaults)
 		if err != nil {
 			return nil, err
 		}

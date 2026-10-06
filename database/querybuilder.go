@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +20,9 @@ type QueryBuilder interface {
 	BuildInsert(table string, records []Record, body []byte, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	// BuildExecute calls the function name, whose overload f (nil when unknown)
+	// is the one SchemaInfo.FindFunction resolves for the record's keys
+	BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 
 	preferredSerializer() TextSerializer
 }
@@ -35,6 +38,7 @@ type Join struct {
 	relLabel     string        // label for the relationship, taken from the select clause
 	relName      string        // relation/function name as it appears in the query
 	selectFields []SelectField // inner select fields (for related order validation)
+	innerConds   []string      // an EXISTS per !inner embed of this one, for the count (see selectForJoinClause)
 }
 
 type BuildError struct {
@@ -45,20 +49,62 @@ func (e BuildError) Error() string { return e.msg }
 
 // BuildStack represents the context when navigating the AST produced by the parser
 type BuildStack struct {
-	info            *SchemaInfo // database information (tables, contraints, etc)
-	level           int         // depth
-	relPath         []string    // sequence of nested tables
-	labelPath       []string    // sequence of nested labels for the correspondent tables (can contain empty strings)
-	colPath         []string    // sequence of FK column names that point to the correspondent tables (can contain empty strings)
-	afterWithClause bool        //
+	info            *SchemaInfo       // database information (tables, contraints, etc)
+	level           int               // depth
+	relPath         []string          // sequence of nested tables
+	labelPath       []string          // sequence of nested labels for the correspondent tables (can contain empty strings)
+	colPath         []string          // sequence of FK column names that point to the correspondent tables (can contain empty strings)
+	namePath        []string          // sequence of the names the select embeds each level with (a table, an FK column, a constraint, a function)
+	siblingPath     []map[string]bool // per level, the names and aliases of every embed of the select that embeds it
+	siblings        map[string]bool   // the names and aliases of the embeds of the select being built, for the next level
+	afterWithClause bool              //
 }
 
-// nextBuildStack creates a stack with a new level
-func nextBuildStack(stack BuildStack, rel string, label string, col string) BuildStack {
-	relPath := append(stack.relPath, rel)
-	labelPath := append(stack.labelPath, label)
-	colPath := append(stack.colPath, col)
-	return BuildStack{stack.info, stack.level + 1, relPath, labelPath, colPath, false}
+// nextBuildStack creates a stack with a new level: the embed of the table rel
+// (its label, the FK column pointing to it, the name the select uses for it),
+// among the siblings the current select embeds. The paths are clipped, so that
+// sibling levels never share, and overwrite, a backing array.
+func nextBuildStack(stack BuildStack, rel string, label string, col string, name string) BuildStack {
+	return BuildStack{
+		info:        stack.info,
+		level:       stack.level + 1,
+		relPath:     append(slices.Clip(stack.relPath), rel),
+		labelPath:   append(slices.Clip(stack.labelPath), label),
+		colPath:     append(slices.Clip(stack.colPath), col),
+		namePath:    append(slices.Clip(stack.namePath), name),
+		siblingPath: append(slices.Clip(stack.siblingPath), stack.siblings),
+	}
+}
+
+// matchPath returns how many leading elements of an embed path (the x.y of a
+// filter x.y.col or of an order x.y.order) the levels of the stack match.
+func (stack BuildStack) matchPath(path []string) int {
+	matched := 0
+	for i := range path {
+		if i >= len(stack.relPath) || !stack.levelMatches(i, path[i]) {
+			break
+		}
+		matched++
+	}
+	return matched
+}
+
+// levelMatches reports whether an element of an embed path names the level i
+// of the stack. As in PostgREST (Plan.hs, the legacy target matching) it names
+// the level by the name the select embeds it with or by its alias. smoothdb
+// also accepts the embedded table or the FK column, but only when no embed of
+// that select is named so: the parent and the children of a self-reference
+// both embed the same table, and web_content.name must reach the children
+// (web_content), not the parent (parent:p_web_id).
+func (stack BuildStack) levelMatches(i int, name string) bool {
+	if (i < len(stack.namePath) && name == stack.namePath[i]) ||
+		(stack.labelPath[i] != "" && name == stack.labelPath[i]) {
+		return true
+	}
+	if name != stack.relPath[i] && (len(stack.colPath) <= i || name != stack.colPath[i]) {
+		return false
+	}
+	return i >= len(stack.siblingPath) || !stack.siblingPath[i][name]
 }
 
 // toJson wraps a field into a to_jsonb operator if its type is array or composite,
@@ -136,9 +182,15 @@ func labelWithNumber(table string, num int) string {
 	return table + "_" + strconv.Itoa(num)
 }
 
-func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel string, err error) {
+// selectForJoinClause builds the subquery of an embed, sel, and the same rows
+// for the total of a ranged count, count: PostgREST's readPlanToCountQuery,
+// SELECT 1 with the embed's join condition and filters, and an EXISTS per
+// !inner embed of its own instead of the nested joins, at every level. Neither
+// the select list nor the order reach count: an aggregate there would always
+// yield its one row. Both come from one pass, since whereClause takes each
+// filter once.
+func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel, count string, err error) {
 	rel := join.rel
-	sel = " SELECT " + join.fields
 	_, t1 := splitTableName(rel.RelatedTable)
 	label1 := quote(labelWithNumber(t1, stack.level+1))
 	var label2 string
@@ -151,6 +203,8 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		label2 = quoteParts(rel.Table)
 	}
 
+	var from, oc string
+	var conds []string
 	if rel.Type == Computed {
 		// Computed relationship: call the function with parent row reference
 		// Use the unqualified table name as the row reference (the implicit alias from outer FROM),
@@ -170,96 +224,101 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 		}
 		parentType := quoteParts(rel.Table)
 		funcRef := _sq(rel.FunctionName, rel.FunctionSchema)
-		sel += " FROM " + funcRef + "(" + parentRef + "::" + parentType + ")"
-		sel += " AS " + label1
-		if join.nested != "" {
-			sel += " " + join.nested
-		}
-		// Apply embedded resource filters (use function name for relPath matching)
+		from = " FROM " + funcRef + "(" + parentRef + "::" + parentType + ")"
+		from += " AS " + label1
+		// Apply embedded resource filters and orders (use function name for relPath matching)
 		schema, table := splitTableName(rel.RelatedTable)
 		stackRelName := join.relName
-		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, stackRelName, join.relLabel, ""))
+		embedStack := nextBuildStack(stack, stackRelName, join.relLabel, "", join.relName)
+		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, embedStack)
 		if wc != "" {
-			sel += " WHERE " + wc
+			conds = append(conds, wc)
 		}
-		oc, err := orderClause(table, schema, label1, stack.level+1, parts.orderFields, join.selectFields, stack.info)
+		oc, err = levelOrderClause(table, schema, label1, parts.orderFields, join.selectFields, embedStack)
 		if err != nil {
-			return "", err
-		}
-		if oc != "" {
-			sel += " ORDER BY " + oc
+			return "", "", err
 		}
 	} else {
 		// FK-based relationship
-		sel += " FROM " + quoteParts(rel.RelatedTable)
-		sel += " AS " + label1
+		from = " FROM " + quoteParts(rel.RelatedTable)
+		from += " AS " + label1
 		if rel.JunctionTable != "" {
-			sel += ", " + quoteParts(rel.JunctionTable)
+			from += ", " + quoteParts(rel.JunctionTable)
 		}
-		if join.nested != "" {
-			sel += " " + join.nested
-		}
-		sel += " WHERE "
+		var on string
 		if rel.JunctionTable == "" {
 			for i := range rel.Columns {
 				if i != 0 {
-					sel += " AND "
+					on += " AND "
 				}
-				sel += label1 + "." + quote(rel.RelatedColumns[i])
-				sel += " = "
+				on += label1 + "." + quote(rel.RelatedColumns[i])
+				on += " = "
 				if stack.afterWithClause {
-					sel += quote("_source")
+					on += quote("_source")
 				} else {
-					sel += label2
+					on += label2
 				}
-				sel += "." + quote(rel.Columns[i])
+				on += "." + quote(rel.Columns[i])
 			}
 		} else {
 			// M2M Join
 			for i := range rel.JColumns {
 				if i != 0 {
-					sel += " AND "
+					on += " AND "
 				}
-				sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
-				sel += " = "
+				on += quoteParts(rel.JunctionTable) + "." + quote(rel.JColumns[i])
+				on += " = "
 				if stack.afterWithClause {
-					sel += quote("_source")
+					on += quote("_source")
 				} else {
-					sel += label2
+					on += label2
 				}
-				sel += "." + quote(rel.Columns[i])
+				on += "." + quote(rel.Columns[i])
 			}
 			for i := range rel.JRelatedColumns {
-				sel += " AND "
-				sel += quoteParts(rel.JunctionTable) + "." + quote(rel.JRelatedColumns[i])
-				sel += " = "
-				sel += label1 + "." + quote(rel.RelatedColumns[i])
+				on += " AND "
+				on += quoteParts(rel.JunctionTable) + "." + quote(rel.JRelatedColumns[i])
+				on += " = "
+				on += label1 + "." + quote(rel.RelatedColumns[i])
 			}
 		}
+		conds = append(conds, on)
 		// where and order clause for the internal select: the expressions related to
 		// the external query are skipped inside the functions.
-		// If the internal table is equal to the external one we avoid repeating
-		// the expressions.
-		if rel.Table != rel.RelatedTable {
-			schema, table := splitTableName(rel.RelatedTable)
-			col := ""
-			if len(rel.Columns) == 1 {
-				col = rel.Columns[0]
-			}
-			whereClause, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, nextBuildStack(stack, table, join.relLabel, col))
-			if whereClause != "" {
-				sel += " AND " + whereClause
-			}
-			oc, err := orderClause(table, schema, label1, stack.level+1, parts.orderFields, join.selectFields, stack.info)
-			if err != nil {
-				return "", err
-			}
-			if oc != "" {
-				sel += " ORDER BY " + oc
-			}
+		// A self-reference is filtered and ordered like any other embed: the
+		// filters and the orders are matched by embed path, and the related
+		// side has its own alias.
+		schema, table := splitTableName(rel.RelatedTable)
+		col := ""
+		if len(rel.Columns) == 1 {
+			col = rel.Columns[0]
+		}
+		embedStack := nextBuildStack(stack, table, join.relLabel, col, join.relName)
+		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, embedStack)
+		if wc != "" {
+			conds = append(conds, wc)
+		}
+		oc, err = levelOrderClause(table, schema, label1, parts.orderFields, join.selectFields, embedStack)
+		if err != nil {
+			return "", "", err
 		}
 	}
-	return sel, nil
+
+	sel = " SELECT " + join.fields + from
+	if join.nested != "" {
+		sel += " " + join.nested
+	}
+	if len(conds) > 0 {
+		sel += " WHERE " + strings.Join(conds, " AND ")
+	}
+	if oc != "" {
+		sel += " ORDER BY " + oc
+	}
+	count = " SELECT 1" + from
+	if countConds := append(slices.Clip(conds), join.innerConds...); len(countConds) > 0 {
+		count += " WHERE " + strings.Join(countConds, " AND ")
+	}
+	return sel, count, nil
 }
 
 func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel *Relationship, err error) {
@@ -316,6 +375,18 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 
 	joinSeq := []Join{}
 
+	// the names and aliases of this select's embeds, which an embed path
+	// prefers to the embedded tables (see levelMatches)
+	stack.siblings = map[string]bool{}
+	for _, sfield := range parts.selectFields {
+		if sfield.relation != nil {
+			stack.siblings[sfield.relation.name] = true
+			if sfield.label != "" {
+				stack.siblings[sfield.label] = true
+			}
+		}
+	}
+
 	for i, sfield := range parts.selectFields {
 		if sfield.relation != nil {
 			if sfield.relation.parent != "" {
@@ -368,7 +439,9 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 				}
 			}
 			_, relatedTable = splitTableName(frel.RelatedTable)
-			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree}
+			// the filters and the orders of every level travel down: each level
+			// takes those whose embed path names it
+			internalParts := &QueryParts{selectFields: sfield.relation.fields, whereConditionsTree: parts.whereConditionsTree, orderFields: parts.orderFields}
 			// For computed relationships, use the function name in the relPath so WHERE filters match
 			stackRelName := relatedTable
 			if frel.Type == Computed {
@@ -378,11 +451,11 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			if frel.Type != Computed && len(frel.Columns) == 1 {
 				col = frel.Columns[0]
 			}
-			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label, col))
+			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label, col, sfield.relation.name))
 			if err != nil {
 				return "", "", nil, err
 			}
-			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name, sfield.relation.fields})
+			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name, sfield.relation.fields, internalParts.innerEmbedConds})
 		} else {
 			if i != 0 {
 				selClause += ", "
@@ -407,12 +480,22 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	if selClause == "" {
 		selClause = "*"
 	}
+	root := stack.level == 0 && !stack.afterWithClause
+	if root {
+		parts.innerEmbedConds = nil
+	}
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			relName := join.name
-			selectForJoin, err := selectForJoinClause(join, label, parts, stack)
+			selectForJoin, count, err := selectForJoinClause(join, label, parts, stack)
 			if err != nil {
 				return "", "", nil, err
+			}
+			if join.inner && !stack.afterWithClause {
+				// one EXISTS per !inner embed, for the total of a ranged count:
+				// the root's restrict it, a nested level's go into its
+				// parent's (see selectForJoinClause)
+				parts.innerEmbedConds = append(parts.innerEmbedConds, "EXISTS ("+count+")")
 			}
 			if join.inner {
 				joins += " INNER"
@@ -490,12 +573,24 @@ func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) st
 	return ""
 }
 
+// orderClause builds the ORDER BY of the top level of a query: the orders
+// with no embed path (order=...).
 func orderClause(table, schema, label string, level int, orderFields []OrderField,
 	selectFields []SelectField, info *SchemaInfo) (string, error) {
+	return levelOrderClause(table, schema, label, orderFields, selectFields, BuildStack{info: info, level: level})
+}
+
+// levelOrderClause builds the ORDER BY of the level the stack describes: the
+// orders whose embed path names it (x.order on the embed x, x.y.order on y
+// inside x), matched as the filters are. A self-referencing embed is then
+// told from its parent though both read the same table.
+func levelOrderClause(table, schema, label string, orderFields []OrderField,
+	selectFields []SelectField, stack BuildStack) (string, error) {
+	level, info := stack.level, stack.info
 	var order string
 	for _, o := range orderFields {
-		if o.field.tablename != table {
-			// skip order fields for other tables
+		if len(o.field.relPath) != len(stack.relPath) || stack.matchPath(o.field.relPath) < len(o.field.relPath) {
+			// skip the orders of other levels
 			continue
 		}
 		if order != "" {
@@ -657,18 +752,15 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			// each item in the field relPath with each item in the stack, table
 			// or label or FK column name; the longest prefix any level matches
 			// is kept, to name the first unmatched relation (see checkFiltersApplied)
-			matched := 0
-			for i := range n.field.relPath {
-				if i >= len(stack.relPath) ||
-					(n.field.relPath[i] != stack.relPath[i] &&
-						n.field.relPath[i] != stack.labelPath[i] &&
-						(len(stack.colPath) <= i || n.field.relPath[i] != stack.colPath[i])) {
-					break
-				}
-				matched++
-			}
+			matched := stack.matchPath(n.field.relPath)
 			n.matched = max(n.matched, matched)
 			if matched < len(n.field.relPath) || len(n.field.relPath) != len(stack.relPath) {
+				continue outer
+			}
+			if n.inserted {
+				// already taken by an earlier embed its path also names, as
+				// siblings embedding the same table (a parent and the children
+				// of a self-reference): it applies once, without a dangling AND
 				continue outer
 			}
 			if children_where != "" {
@@ -682,6 +774,10 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 		where += children_where
 		if node.not || node.operator == "OR" {
 			where += ")"
+		}
+		if node.operator != "" {
+			// a logic tree is taken as a whole, like a single filter
+			node.inserted = true
 		}
 	} else {
 		// skip nodes already inserted
@@ -869,7 +965,7 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 		// and the columns of the order, which the outer ORDER BY must see even
 		// when they are not selected (a related order reads the join instead)
 		for _, o := range parts.orderFields {
-			if o.relation == "" && o.field.tablename == table {
+			if o.relation == "" && len(o.field.relPath) == 0 {
 				addColumn(o.field.name)
 			}
 		}
@@ -1378,9 +1474,18 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 		valueList = append(valueList, offset)
 	}
 	if options.Count != "" && (limit != -1 || offset > 0) {
-		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
+		// The total of a ranged request is PostgREST's (readPlanToCountQuery):
+		// the root rows that pass the filters and have a row in each !inner
+		// embed. The left embeds do not restrict them, and the GROUP BY is
+		// left out: a grouped aggregate totals the rows it groups. Without a
+		// range the total is the number of rows read, as PostgREST's page count.
+		conds := parts.innerEmbedConds
 		if whereClause != "" {
-			countQuery += " WHERE " + whereClause
+			conds = append([]string{whereClause}, conds...)
+		}
+		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
+		if len(conds) > 0 {
+			countQuery += " WHERE " + strings.Join(conds, " AND ")
 		}
 		query = countQuery +
 			"), Data AS (" + query +
@@ -1778,16 +1883,11 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	return q.String(), valueList, nil
 }
 
-func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
 	schema := options.Schema
-
-	var f *Function
-	if info != nil {
-		f = info.GetFunction(_s(name, schema))
-	}
 
 	// Determine a deterministic key order so identical RPC calls generate
 	// identical SQL (pg_stat_statements hashes by normalized query). Prefer
