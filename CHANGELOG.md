@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.10.0 - 2026-10-06
 
 ### Security
 * **A token without a role claim never runs as the authenticator** — it ran with the pool's privileges, the hole 0.9.0 closed for anonymous requests. As in PostgREST it now runs as `Database.AnonRole`, with `request.jwt.claims` set, or is refused with 401 when anonymous access is off; an empty `role` claim is a 401.
