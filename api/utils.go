@@ -229,16 +229,19 @@ func jsonIsArray(content []byte) bool {
 	return false
 }
 
-// readInputRecords is the low-level function to read and convert the data in the response body
-func readInputRecords(r heligo.Request, contentType string) ([]database.Record, error) {
+// readInputRecords is the low-level function to read and convert the data in the request body.
+// For a JSON body it also returns the body itself, which an insert sends as it is.
+func readInputRecords(r heligo.Request, contentType string) ([]database.Record, []byte, error) {
 	var records []database.Record
+	var jsonBody []byte
 
 	switch contentType {
 	case "application/json":
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		jsonBody = body
 		isArray := jsonIsArray(body)
 
 		// Create decoder with UseNumber to preserve large integers
@@ -248,13 +251,13 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 		if isArray {
 			err = decoder.Decode(&records)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		} else {
 			var record database.Record
 			err = decoder.Decode(&record)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			records = append(records, record)
 		}
@@ -263,7 +266,7 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 		reader := csv.NewReader(r.Body)
 		csvData, err := reader.ReadAll()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// Assuming the first row contains headers
@@ -283,7 +286,7 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 
 	case "application/x-www-form-urlencoded":
 		if err := r.ParseForm(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		record := database.Record{}
 		for key, values := range r.Form {
@@ -293,13 +296,13 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 	case "application/octet-stream":
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		record := database.Record{"": body}
 		records = append(records, record)
 	}
 
-	return records, nil
+	return records, jsonBody, nil
 }
 
 // ReadRequest reads the input data from a request and manage the preconditions.
@@ -307,6 +310,13 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 // status when appropriate.
 // Supports JSON, CSV and x-www-form-urlencoded input data.
 func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (records []database.Record, status int, err error) {
+	records, _, status, err = readRequest(c, w, r)
+	return
+}
+
+// readRequest is ReadRequest that also returns the JSON body the records were
+// decoded from, nil for another content type.
+func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (records []database.Record, jsonBody []byte, status int, err error) {
 	ctype := getContentType(r)
 	if ctype == "" {
 		// "accepted" content-type not supported
@@ -314,7 +324,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 		return
 	} else {
 		// read input records
-		records, err = readInputRecords(r, ctype)
+		records, jsonBody, err = readInputRecords(r, ctype)
 		if err != nil {
 			status, err = WriteBadRequest(w, err)
 			return
@@ -342,7 +352,7 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 			return
 		}
 	}
-	return records, status, err
+	return records, jsonBody, status, err
 }
 
 // SetResponseHeaders sets the response headers (for now Content-Range and Content-Location).

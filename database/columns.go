@@ -1,6 +1,9 @@
 package database
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Column struct {
 	Name        string   `json:"name"`
@@ -216,7 +219,9 @@ type ColumnType struct {
 }
 
 // Every column of every relation, from pg_catalog for the reason columnsQuery
-// gives; a domain counts as its base type.
+// gives; a domain counts as its base type. datatype is the column's own type
+// as format_type writes it (typmod and domain kept), read with an empty search
+// path (see GetColumnTypes).
 const columnTypesQuery = `
 	SELECT
 		c.relname tablename,
@@ -237,9 +242,36 @@ const columnTypesQuery = `
 	ORDER BY c.relname, n.nspname, a.attnum;
 `
 
-func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
+// GetColumnTypes reads the columns with an empty search path, as PostgREST
+// loads its schema cache (SchemaCache.hs empties it for its introspection):
+// format_type then qualifies every type outside pg_catalog with its schema,
+// so DataType names the type whatever the search path of the connection that
+// uses it later, in an insert's column definition list. The SET LOCAL lives
+// in a transaction of its own, or, when the caller already has one open, in a
+// savepoint: rolled back once the rows are read, either undoes the setting
+// and nothing else, and the caller's transaction is neither committed nor
+// changed. The rollback runs even when ctx has been cancelled meanwhile, which
+// pgx would otherwise refuse before sending it.
+func GetColumnTypes(ctx context.Context) (types []ColumnType, err error) {
 	conn := GetConn(ctx)
-	types := []ColumnType{}
+	types = []ColumnType{}
+	begin, end := "BEGIN", "ROLLBACK"
+	if conn.PgConn().TxStatus() != 'I' {
+		begin, end = "SAVEPOINT column_types", "ROLLBACK TO SAVEPOINT column_types; RELEASE SAVEPOINT column_types"
+	}
+	if _, err = conn.Exec(ctx, begin); err != nil {
+		return types, err
+	}
+	defer func() {
+		endCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if _, endErr := conn.Exec(endCtx, end); err == nil {
+			err = endErr
+		}
+	}()
+	if _, err = conn.Exec(ctx, "SET LOCAL search_path TO ''"); err != nil {
+		return types, err
+	}
 	rows, err := conn.Query(ctx, columnTypesQuery)
 	if err != nil {
 		return types, err
@@ -248,14 +280,11 @@ func GetColumnTypes(ctx context.Context) ([]ColumnType, error) {
 
 	typ := ColumnType{}
 	for rows.Next() {
-		err := rows.Scan(&typ.Table, &typ.Schema, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
+		err = rows.Scan(&typ.Table, &typ.Schema, &typ.Name, &typ.Type, &typ.DataType, &typ.IsArray, &typ.IsComposite)
 		if err != nil {
 			return types, err
 		}
 		types = append(types, typ)
 	}
-	if rows.Err() != nil {
-		return types, err
-	}
-	return types, nil
+	return types, rows.Err()
 }

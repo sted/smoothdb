@@ -1,6 +1,12 @@
 package database
 
 import (
+	"bytes"
+	"database/sql/driver"
+	"encoding/hex"
+	"encoding/json"
+	"math"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,7 +16,7 @@ import (
 
 type QueryBuilder interface {
 	BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	BuildInsert(table string, records []Record, body []byte, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
@@ -903,7 +909,9 @@ func onConflictClause(table, schema string, fields []string,
 		s += quote(col)
 	}
 	s += ") "
-	if options.IgnoreDuplicates {
+	if options.IgnoreDuplicates || len(fields) == 0 {
+		// with no column to set a merge has nothing to update (PostgREST,
+		// QueryBuilder.hs: MergeDuplicates with null iCols is DO NOTHING)
 		s += "DO NOTHING"
 	} else if options.MergeDuplicates {
 		s += "DO UPDATE SET "
@@ -999,32 +1007,173 @@ func checkColumns(table, schema string, parts *QueryParts, info *SchemaInfo) err
 	return nil
 }
 
-func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+// appendJSONValue encodes a record value as the JSON the column's input
+// function reads, keeping the meaning pgx gave the Go value when it bound it:
+// a nil []byte or an invalid pgtype is null, a []byte is bytea's hex form (not
+// json's base64, which bytea would store as text), a driver.Valuer gives its
+// value (a pgtype.Interval its text) unless it marshals itself to JSON, and a
+// float NaN or infinity, which JSON has no number for, the string the float
+// input reads. A json.Marshaler comes first, so that a JSON value type keeps
+// its JSON; one that fails (a pgtype.Float8 NaN) falls back to its Valuer.
+func appendJSONValue(buf *bytes.Buffer, enc *json.Encoder, v any) error {
+	switch x := v.(type) {
+	case nil:
+		buf.WriteString("null")
+		return nil
+	case []byte:
+		if x == nil {
+			buf.WriteString("null")
+		} else {
+			buf.WriteString(`"\\x` + hex.EncodeToString(x) + `"`)
+		}
+		return nil
+	case float64:
+		if s, ok := nonFiniteFloat(x); ok {
+			buf.WriteString(s)
+			return nil
+		}
+	case float32:
+		if s, ok := nonFiniteFloat(float64(x)); ok {
+			buf.WriteString(s)
+			return nil
+		}
+	case json.Marshaler:
+		err := enc.Encode(v)
+		if err == nil {
+			buf.Truncate(buf.Len() - 1) // the newline Encode ends each value with
+			return nil
+		}
+		valuer, ok := v.(driver.Valuer)
+		if !ok {
+			return err
+		}
+		return appendValuer(buf, enc, valuer)
+	case driver.Valuer:
+		return appendValuer(buf, enc, x)
+	}
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	buf.Truncate(buf.Len() - 1)
+	return nil
+}
+
+func appendValuer(buf *bytes.Buffer, enc *json.Encoder, v driver.Valuer) error {
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		buf.WriteString("null")
+		return nil
+	}
+	dv, err := v.Value()
+	if err != nil {
+		return err
+	}
+	return appendJSONValue(buf, enc, dv)
+}
+
+func nonFiniteFloat(f float64) (string, bool) {
+	switch {
+	case math.IsNaN(f):
+		return `"NaN"`, true
+	case math.IsInf(f, 1):
+		return `"Infinity"`, true
+	case math.IsInf(f, -1):
+		return `"-Infinity"`, true
+	}
+	return "", false
+}
+
+// isJSONNull reports whether body is the JSON null, with JSON's whitespace
+// around it and nothing else.
+func isJSONNull(body []byte) bool {
+	return string(bytes.Trim(body, " \t\r\n")) == "null"
+}
+
+// insertRows is the JSON array of rows an insert reads: the request body as
+// it came, an object wrapped into an array, or else the records encoded with
+// the insert's columns (see appendJSONValue).
+func insertRows(records []Record, fields []string, body []byte) ([]byte, error) {
+	if body != nil {
+		if trimmed := bytes.TrimLeft(body, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '{' {
+			rows := make([]byte, 0, len(body)+2)
+			rows = append(rows, '[')
+			rows = append(rows, body...)
+			return append(rows, ']'), nil
+		}
+		return body, nil
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	keys := make([]string, len(fields))
+	for i, f := range fields {
+		k, _ := json.Marshal(f)
+		keys[i] = string(k) + ":"
+	}
+	buf.WriteByte('[')
+	for i, record := range records {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		if record == nil {
+			// the null element a request body would carry: refused before
+			// without ?columns=, left to PostgreSQL with it
+			buf.WriteString("null")
+			continue
+		}
+		buf.WriteByte('{')
+		first := true
+		for k, f := range fields {
+			v, ok := record[f]
+			if !ok {
+				continue
+			}
+			if !first {
+				buf.WriteByte(',')
+			}
+			first = false
+			buf.WriteString(keys[k])
+			if err := appendJSONValue(&buf, enc, v); err != nil {
+				return nil, err
+			}
+		}
+		buf.WriteByte('}')
+	}
+	buf.WriteByte(']')
+	return buf.Bytes(), nil
+}
+
+// BuildInsert inserts the rows as PostgREST does (SqlFragment.hs,
+// fromJsonBodyF): the rows travel as the statement's only parameter, a json
+// array read with json_to_recordset, so no bulk insert runs into the 65 535
+// parameters of the extended protocol, and the database's input functions
+// convert the values (an array, a composite, a json column keeping its text).
+// body is the JSON the records were decoded from, sent as it is; without one
+// the records are encoded.
+func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	insert string, valueList []any, err error) {
 
-	var fields string
-	var fieldList []string
-	var values string
-
 	schema := options.Schema
-	if err := checkColumns(table, schema, parts, info); err != nil {
-		return "", nil, err
+	// A body that is neither an array nor an object is no row, as PostgREST
+	// reads it (Payload.hs, payloadAttributes); null is the one such body
+	// that decodes into records. With ?columns= PostgREST passes the body as
+	// it is (RawJSON), and PostgreSQL refuses a null one (22023).
+	if body != nil && len(parts.columnFields) == 0 && isJSONNull(body) {
+		records, body = nil, []byte("[]")
 	}
 
-	// if len(records) == 0 {
-	// 	return "", nil, fmt.Errorf("no records to insert")
-	// }
 	// The column list. With ?columns= it is exactly the listed set, for every
 	// row: a key absent from an object is inserted as NULL, a key not listed is
-	// ignored (PostgREST passes such a body to json_to_recordset untouched).
-	// Otherwise it is the key set of the first object, which every other object
-	// must share: taking it from the first object alone silently dropped the
-	// keys the others added, so a non-uniform array is refused as PostgREST does.
+	// ignored (json_to_recordset reads only the declared columns). Otherwise it
+	// is the key set of the first object, which every other object must share:
+	// taking it from the first object alone silently dropped the keys the others
+	// added, so a non-uniform array is refused as PostgREST does.
+	var fieldList []string
 	if len(parts.columnFields) > 0 {
 		fieldList = lo.Keys(parts.columnFields)
-	} else {
-		for i := 1; i < len(records); i++ {
-			if !sameKeys(records[0], records[i]) {
+	} else if len(records) > 0 {
+		// a null element is not an object, even beside an empty one
+		for i := range records {
+			if records[i] == nil || !sameKeys(records[0], records[i]) {
 				return "", nil, &BuildError{"All object keys must match"}
 			}
 		}
@@ -1032,34 +1181,59 @@ func (CommonBuilder) BuildInsert(table string, records []Record, parts *QueryPar
 	}
 	// alphabetical, so the SQL text is stable across runs (see orderedRecordKeys)
 	sort.Strings(fieldList)
-	n := len(fieldList)
-	for _, key := range fieldList {
-		if fields != "" {
-			fields += ", "
-		}
-		fields += quote(key)
+
+	// The column definition list of json_to_recordset takes each column's type
+	// from the schema cache, as written by format_type (typmod and domain
+	// included, as PostgREST's nominal type), and a key that is not a column,
+	// from the body or ?columns=, is refused as PostgREST does (resolveOrError,
+	// the checkColumns message). Any relation the cache has the columns of is
+	// typed, a foreign table too. One it does not know is read with its own
+	// row type instead, json_populate_recordset, and left to PostgreSQL, which
+	// answers 42P01 when it is missing; that function runs every column the
+	// body omits through its input function, so there an omitted column of a
+	// NOT NULL domain fails even with a default.
+	ftable := _s(table, schema)
+	var typed bool
+	if info != nil {
+		_, typed = info.cachedColumnTypes[ftable]
 	}
-	var j int
-	for i, record := range records {
+	var fields, sourceFields, defs string
+	for i, f := range fieldList {
 		if i > 0 {
-			values += "), ("
+			fields += ", "
+			sourceFields += ", "
+			defs += ", "
 		}
-		for _, f := range fieldList {
-			if j > 0 {
-				values += ", "
+		fields += quote(f)
+		sourceFields += "_." + quote(f)
+		if typed {
+			ct := info.GetColumnType(ftable, f)
+			if ct == nil {
+				return "", nil, &BuildError{"Could not find the '" + f + "' column of '" + table + "' in the schema cache"}
 			}
-			j += 1
-			values += "$" + strconv.Itoa(i*n+j)
-			valueList = append(valueList, record[f])
+			defs += quote(f) + " " + ct.DataType
 		}
-		j = 0
 	}
-	if n > 0 {
-		insert = "INSERT INTO " + _sq(table, schema) + " (" + fields + ") VALUES (" + values + ")"
-	} else {
-		insert = "INSERT INTO " + _sq(table, schema) + " DEFAULT VALUES"
+	rows, err := insertRows(records, fieldList, body)
+	if err != nil {
+		return "", nil, err
 	}
-	if options.MergeDuplicates || options.IgnoreDuplicates || len(parts.conflictFields) > 0 {
+	valueList = []any{rows}
+
+	insert = "INSERT INTO " + _sq(table, schema)
+	switch {
+	case len(fieldList) == 0:
+		// no columns: one row of defaults per object, as PostgREST does
+		// ([{}, {}] inserts two rows, {} one)
+		insert += " SELECT FROM json_array_elements($1::json) AS _"
+	case typed:
+		insert += " (" + fields + ") SELECT " + sourceFields + " FROM json_to_recordset($1::json) AS _(" + defs + ")"
+	default:
+		insert += " (" + fields + ") SELECT " + sourceFields + " FROM json_populate_recordset(NULL::" + _sq(table, schema) + ", $1::json) AS _"
+	}
+	// ON CONFLICT only for a resolution, as PostgREST (Plan.hs, mutatePlan):
+	// on_conflict alone is a plain insert, and a conflict its 409
+	if options.MergeDuplicates || options.IgnoreDuplicates {
 		conflictFields := lo.Keys(parts.conflictFields)
 		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
 		insert += onConflict

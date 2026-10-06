@@ -45,11 +45,11 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
-		records, status, err := ReadRequest(c, w, r)
+		records, body, status, err := readRequest(c, w, r)
 		if err != nil || status != 0 {
 			return status, err
 		}
-		data, count, err := database.CreateRecords(c, sourcename, records, r.URL.Query())
+		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, r.URL.Query())
 		if err == nil {
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {

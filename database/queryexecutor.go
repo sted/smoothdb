@@ -102,6 +102,12 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 }
 
 func Insert(ctx context.Context, table string, records []Record, filters Filters) ([]byte, int64, error) {
+	return InsertJSON(ctx, table, records, nil, filters)
+}
+
+// InsertJSON is Insert for records decoded from body, a JSON object or array
+// of objects: body itself is sent as the rows (see BuildInsert).
+func InsertJSON(ctx context.Context, table string, records []Record, body []byte, filters Filters) ([]byte, int64, error) {
 	if err := checkSchema(ctx); err != nil {
 		return nil, 0, err
 	}
@@ -111,7 +117,7 @@ func Insert(ctx context.Context, table string, records []Record, filters Filters
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, parts, options, gi.Db.info.Load())
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
 	}

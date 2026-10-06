@@ -53,8 +53,10 @@ type Test struct {
 	Status          int
 }
 
+// InitClient is the client of every suite request: with a timeout, so that a
+// server that stops answering fails the test instead of hanging the suite.
 func InitClient() *http.Client {
-	return &http.Client{}
+	return &http.Client{Timeout: 60 * time.Second}
 }
 
 func PrepareRequest(config Config, cmd *Command) (*http.Request, error) {

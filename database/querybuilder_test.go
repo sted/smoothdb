@@ -1,8 +1,11 @@
 package database
 
 import (
+	"math"
 	"net/url"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func compareValues(v1 []any, v2 []any) bool {
@@ -979,16 +982,18 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 // differ is refused ("All object keys must match", as PostgREST) instead of
 // being built from the first object alone, which dropped the keys the others
 // added. With ?columns= it is exactly the listed set for every row: an absent
-// key is a NULL parameter, a key not listed is ignored. Columns are emitted in
-// alphabetical order so the SQL text is stable across runs.
+// key is NULL, a key not listed is ignored. Columns are emitted in
+// alphabetical order so the SQL text is stable across runs. The rows are the
+// statement's one json parameter; with no schema cache (info nil) the table's
+// own row type reads them.
 func TestBuildInsertKeys(t *testing.T) {
 	tests := []struct {
-		name    string
-		query   string
-		records []Record
-		wantSQL string
-		wantVal []any
-		wantErr string
+		name     string
+		query    string
+		records  []Record
+		wantSQL  string
+		wantRows string
+		wantErr  string
 	}{
 		{
 			name:    "key present only in a later object",
@@ -1010,25 +1015,43 @@ func TestBuildInsertKeys(t *testing.T) {
 			records: []Record{{}, {"id": 1}},
 			wantErr: "All object keys must match",
 		},
+		// a null element is not an object, even beside an empty one
+		// (PostgREST, Payload.hs payloadAttributes)
 		{
-			name:    "same keys in a different order",
-			records: []Record{{"id": 1, "body": "x"}, {"body": "y", "id": 2}},
-			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
-			wantVal: []any{"x", 1, "y", 2},
+			name:    "a null element before an empty object",
+			records: []Record{nil, {}},
+			wantErr: "All object keys must match",
 		},
 		{
-			name:    "?columns= inserts the listed columns for every row",
-			query:   "?columns=id,body",
-			records: []Record{{"id": 1}, {"id": 2, "body": "y", "extra": true}},
-			wantSQL: `INSERT INTO "t" ("body", "id") VALUES ($1, $2), ($3, $4)`,
-			wantVal: []any{nil, 1, "y", 2},
+			name:    "a null element after an empty object",
+			records: []Record{{}, nil},
+			wantErr: "All object keys must match",
 		},
 		{
-			name:    "?columns= ignores the keys not listed",
-			query:   "?columns=id",
-			records: []Record{{"id": 1, "body": "x"}, {"id": 2}},
-			wantSQL: `INSERT INTO "t" ("id") VALUES ($1), ($2)`,
-			wantVal: []any{1, 2},
+			name:     "same keys in a different order",
+			records:  []Record{{"id": 1, "body": "x"}, {"body": "y", "id": 2}},
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_populate_recordset(NULL::"t", $1::json) AS _`,
+			wantRows: `[{"body":"x","id":1},{"body":"y","id":2}]`,
+		},
+		{
+			name:     "?columns= inserts the listed columns for every row",
+			query:    "?columns=id,body",
+			records:  []Record{{"id": 1}, {"id": 2, "body": "y", "extra": true}},
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_populate_recordset(NULL::"t", $1::json) AS _`,
+			wantRows: `[{"id":1},{"body":"y","id":2}]`,
+		},
+		{
+			name:     "?columns= ignores the keys not listed",
+			query:    "?columns=id",
+			records:  []Record{{"id": 1, "body": "x"}, {"id": 2}},
+			wantSQL:  `INSERT INTO "t" ("id") SELECT _."id" FROM json_populate_recordset(NULL::"t", $1::json) AS _`,
+			wantRows: `[{"id":1},{"id":2}]`,
+		},
+		{
+			name:     "empty objects insert one default row each",
+			records:  []Record{{}, {}},
+			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _`,
+			wantRows: `[{},{}]`,
 		},
 	}
 	for _, test := range tests {
@@ -1041,7 +1064,7 @@ func TestBuildInsertKeys(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected parse error: %v", err)
 			}
-			q, v, err := CommonBuilder{}.BuildInsert("t", test.records, parts, &QueryOptions{}, nil)
+			q, v, err := CommonBuilder{}.BuildInsert("t", test.records, nil, parts, &QueryOptions{}, nil)
 			if test.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error %q, got nil (SQL: %s)", test.wantErr, q)
@@ -1057,8 +1080,187 @@ func TestBuildInsertKeys(t *testing.T) {
 			if q != test.wantSQL {
 				t.Errorf("SQL\n  want: %s\n  got:  %s", test.wantSQL, q)
 			}
-			if !compareValues(v, test.wantVal) {
-				t.Errorf("values\n  want: %v\n  got:  %v", test.wantVal, v)
+			if len(v) != 1 || string(v[0].([]byte)) != test.wantRows {
+				t.Errorf("rows\n  want: %s\n  got:  %s", test.wantRows, v)
+			}
+		})
+	}
+}
+
+// With the table in the schema cache json_to_recordset declares each column
+// with the cached type, as PostgREST does with its nominal type; a key that is
+// no column is refused before any SQL. A request body is sent as it came
+// (an object wrapped into an array), records are encoded, a []byte in bytea's
+// hex form. A merge with no column to set does nothing, as in PostgREST.
+func TestBuildInsertTyped(t *testing.T) {
+	info := &SchemaInfo{
+		cachedTables: map[string]Table{"t": {Name: "t"}},
+		cachedColumnTypes: map[string]map[string]ColumnType{"t": {
+			"id":   {Name: "id", DataType: "integer"},
+			"body": {Name: "body", DataType: "character varying(20)"},
+			"data": {Name: "data", DataType: "bytea"},
+			"f":    {Name: "f", DataType: "double precision"},
+			"iv":   {Name: "iv", DataType: "interval"},
+		}, "ft": {
+			"id": {Name: "id", DataType: "integer"},
+		}},
+		cachedPrimaryKeys: map[string]Constraint{"t": {Columns: []string{"id"}}},
+	}
+	tests := []struct {
+		name     string
+		table    string
+		query    string
+		records  []Record
+		body     string
+		options  QueryOptions
+		wantSQL  string
+		wantRows string
+		wantErr  string
+	}{
+		{
+			name:     "the cached types make the column definition list",
+			records:  []Record{{"id": 1, "body": "x"}},
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer)`,
+			wantRows: `[{"body":"x","id":1}]`,
+		},
+		{
+			name:    "a key that is not a column is refused",
+			records: []Record{{"id": 1, "nope": 2}},
+			wantErr: "Could not find the 'nope' column of 't' in the schema cache",
+		},
+		{
+			name:     "a request body array is sent as it came",
+			records:  []Record{{"id": 1, "body": "<x>"}, {"id": 2, "body": "y"}},
+			body:     `[{"id": 1, "body": "<x>"}, {"id": 2, "body": "y"}]`,
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer)`,
+			wantRows: `[{"id": 1, "body": "<x>"}, {"id": 2, "body": "y"}]`,
+		},
+		{
+			name:     "a request body object is wrapped into an array",
+			records:  []Record{{"id": 1}},
+			body:     " \n{\"id\": 1}",
+			wantSQL:  `INSERT INTO "t" ("id") SELECT _."id" FROM json_to_recordset($1::json) AS _("id" integer)`,
+			wantRows: "[ \n{\"id\": 1}]",
+		},
+		{
+			name:     "records are encoded without HTML escapes, a []byte as bytea hex",
+			records:  []Record{{"id": 1, "body": "<x>", "data": []byte{0x01, 0xff}}},
+			wantSQL:  `INSERT INTO "t" ("body", "data", "id") SELECT _."body", _."data", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "data" bytea, "id" integer)`,
+			wantRows: `[{"body":"<x>","data":"\\x01ff","id":1}]`,
+		},
+		{
+			name:     "upsert",
+			records:  []Record{{"id": 1, "body": "x"}},
+			options:  QueryOptions{MergeDuplicates: true},
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer) ON CONFLICT ("id") DO UPDATE SET "body" = EXCLUDED."body", "id" = EXCLUDED."id"`,
+			wantRows: `[{"body":"x","id":1}]`,
+		},
+		{
+			// PostgREST builds ON CONFLICT only for a resolution (Plan.hs,
+			// mutatePlan): on_conflict alone is a plain insert, a conflict a 409
+			name:     "on_conflict without a resolution is a plain insert",
+			query:    "?on_conflict=id",
+			records:  []Record{{"id": 1}},
+			wantSQL:  `INSERT INTO "t" ("id") SELECT _."id" FROM json_to_recordset($1::json) AS _("id" integer)`,
+			wantRows: `[{"id":1}]`,
+		},
+		{
+			// a body that is neither an array nor an object is no row
+			// (PostgREST, payloadAttributes); null is the one that decodes
+			name:     "a JSON null body inserts nothing",
+			records:  []Record{nil},
+			body:     " null ",
+			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _`,
+			wantRows: `[]`,
+		},
+		{
+			// what pgx bound as NULL stays NULL: a nil []byte, an invalid
+			// pgtype; a driver.Valuer gives its value (an interval its text);
+			// a float NaN or infinity, which JSON has no number for, is the
+			// string the float input reads
+			name: "Go values keep the meaning pgx gave them",
+			records: []Record{{"id": 1, "data": []byte(nil), "body": pgtype.Text{}, "iv": pgtype.Interval{Days: 1, Valid: true}, "f": math.NaN()},
+				{"id": 2, "data": []byte{}, "body": (*pgtype.Text)(nil), "iv": pgtype.Interval{}, "f": math.Inf(-1)},
+				// a json.Marshaler that cannot marshal the value falls back to its driver.Valuer
+				{"id": 3, "data": nil, "body": "x", "iv": nil, "f": pgtype.Float8{Float64: math.NaN(), Valid: true}}},
+			wantSQL:  `INSERT INTO "t" ("body", "data", "f", "id", "iv") SELECT _."body", _."data", _."f", _."id", _."iv" FROM json_to_recordset($1::json) AS _("body" character varying(20), "data" bytea, "f" double precision, "id" integer, "iv" interval)`,
+			wantRows: `[{"body":null,"data":null,"f":"NaN","id":1,"iv":"1 day 00:00:00"},{"body":null,"data":"\\x","f":"-Infinity","id":2,"iv":null},{"body":"x","data":null,"f":"NaN","id":3,"iv":null}]`,
+		},
+		{
+			// with ?columns= PostgREST passes the body as it is (Payload.hs,
+			// RawJSON): a null body is PostgreSQL's to refuse (22023)
+			name:     "?columns= leaves a null body to PostgreSQL",
+			query:    "?columns=id",
+			records:  []Record{nil},
+			body:     "null",
+			wantSQL:  `INSERT INTO "t" ("id") SELECT _."id" FROM json_to_recordset($1::json) AS _("id" integer)`,
+			wantRows: `null`,
+		},
+		{
+			// only JSON's whitespace surrounds a JSON null: this body is invalid
+			// JSON, not null, and the null element it decodes to is refused
+			name:    "a null followed by a non-JSON space is not a null body",
+			records: []Record{nil},
+			body:    "null\u00a0",
+			wantErr: "All object keys must match",
+		},
+		{
+			// a nil record is the JSON null element the same body would carry
+			name:     "?columns= encodes a nil record as a null element",
+			query:    "?columns=id",
+			records:  []Record{nil, {"id": 1}},
+			wantSQL:  `INSERT INTO "t" ("id") SELECT _."id" FROM json_to_recordset($1::json) AS _("id" integer)`,
+			wantRows: `[null,{"id":1}]`,
+		},
+		{
+			// a foreign table is not in the table cache, but its columns are
+			name:     "a relation known by its column types is typed",
+			table:    "ft",
+			records:  []Record{{"id": 1}},
+			wantSQL:  `INSERT INTO "ft" ("id") SELECT _."id" FROM json_to_recordset($1::json) AS _("id" integer)`,
+			wantRows: `[{"id":1}]`,
+		},
+		{
+			name:     "a merge of empty objects does nothing on conflict",
+			records:  []Record{{}},
+			options:  QueryOptions{MergeDuplicates: true},
+			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _ ON CONFLICT ("id") DO NOTHING`,
+			wantRows: `[{}]`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u, err := url.Parse(test.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts, err := PostgRestParser{}.parse("t", u.Query())
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+			var body []byte
+			if test.body != "" {
+				body = []byte(test.body)
+			}
+			table := test.table
+			if table == "" {
+				table = "t"
+			}
+			q, v, err := CommonBuilder{}.BuildInsert(table, test.records, body, parts, &test.options, info)
+			if test.wantErr != "" {
+				if err == nil || err.Error() != test.wantErr {
+					t.Fatalf("expected error %q, got %v (SQL: %s)", test.wantErr, err, q)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildInsert error: %v", err)
+			}
+			if q != test.wantSQL {
+				t.Errorf("SQL\n  want: %s\n  got:  %s", test.wantSQL, q)
+			}
+			if len(v) != 1 || string(v[0].([]byte)) != test.wantRows {
+				t.Errorf("rows\n  want: %s\n  got:  %s", test.wantRows, v)
 			}
 		})
 	}
@@ -1141,13 +1343,13 @@ func TestBuildMutationOrder(t *testing.T) {
 		},
 		{
 			"POST", "?select=id,body&order=id.desc", true,
-			`WITH _source AS (INSERT INTO "table" ("body") VALUES ($1) RETURNING "table"."id", "table"."body") SELECT "_source"."id", "_source"."body" FROM _source ORDER BY "_source"."id" DESC`,
-			[]any{"x"},
+			`WITH _source AS (INSERT INTO "table" ("body") SELECT _."body" FROM json_populate_recordset(NULL::"table", $1::json) AS _ RETURNING "table"."id", "table"."body") SELECT "_source"."id", "_source"."body" FROM _source ORDER BY "_source"."id" DESC`,
+			[]any{`[{"body":"x"}]`},
 		},
 		{
 			"POST", "?order=id&limit=1", false,
-			`INSERT INTO "table" ("body") VALUES ($1)`,
-			[]any{"x"},
+			`INSERT INTO "table" ("body") SELECT _."body" FROM json_populate_recordset(NULL::"table", $1::json) AS _`,
+			[]any{`[{"body":"x"}]`},
 		},
 	}
 
@@ -1170,7 +1372,10 @@ func TestBuildMutationOrder(t *testing.T) {
 		case "DELETE":
 			query, values, err = CommonBuilder{}.BuildDelete("table", parts, options, nil)
 		case "POST":
-			query, values, err = CommonBuilder{}.BuildInsert("table", []Record{record}, parts, options, nil)
+			query, values, err = CommonBuilder{}.BuildInsert("table", []Record{record}, nil, parts, options, nil)
+			if err == nil {
+				values = []any{string(values[0].([]byte))} // the json rows, comparable
+			}
 		}
 		if err != nil {
 			t.Errorf("%d. unexpected build error for %s %q: %v", i, test.method, test.query, err)
