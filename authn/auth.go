@@ -15,6 +15,10 @@ type Claims struct {
 	Id   string `json:"id"`
 	jwt.RegisteredClaims
 	RawClaims string `json:"-"`
+	// hasRole says whether the token carries a role claim at all: Role alone
+	// cannot tell a missing claim, which falls back to the anon role, from an
+	// empty one, which is refused.
+	hasRole bool
 }
 
 func (c *Claims) UnmarshalJSON(data []byte) error {
@@ -27,8 +31,35 @@ func (c *Claims) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	_, c.hasRole = keys["role"]
 	c.RawClaims = string(data)
 	return nil
+}
+
+// setAnonRole gives claims without a role of their own the anonymous role, as
+// PostgREST does (Auth/Jwt.hs, parseClaims: the role claim <|> db-anon-role).
+// The request switches to it, and request.jwt.claims carries it inserted into
+// the claims (Query/PreQuery.hs): {"role":"<anon>"} for a request without a
+// token, the token's claims plus "role" for a token without a role claim. The
+// claims are updated in place, so a token's expiry stays checked on the
+// session hits.
+func (c *Claims) setAnonRole(anonRole string) {
+	var claims map[string]json.RawMessage
+	if c.RawClaims != "" {
+		// the payload the token was verified with: a JSON object, or null
+		json.Unmarshal([]byte(c.RawClaims), &claims)
+	}
+	if claims == nil {
+		claims = map[string]json.RawMessage{}
+	}
+	claims["role"], _ = json.Marshal(anonRole)
+	raw, _ := json.Marshal(claims)
+	c.Role = anonRole
+	c.RawClaims = string(raw)
 }
 
 func extractAuthHeader(req *http.Request) string {
