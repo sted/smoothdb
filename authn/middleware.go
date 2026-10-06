@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,6 +81,21 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			if err != nil {
 				return nil, nil, http.StatusUnauthorized, err
 			}
+			if !claims.hasRole {
+				// A token without a role claim is anonymous to PostgREST: it
+				// runs as the anon role, and is refused like a request without
+				// a token when anonymous access is off. Left empty, the role
+				// would skip the SET ROLE in PrepareConnection and the request
+				// would run as the authenticator.
+				if !m.AllowAnon() || m.AnonRole() == "" {
+					return nil, nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
+				}
+				claims.setAnonRole(m.AnonRole())
+			} else if claims.Role == "" {
+				// An empty role claim is a role PostgREST switches to, and
+				// PostgreSQL refuses it with this message (22023, a 401).
+				return nil, nil, http.StatusUnauthorized, fmt.Errorf(`role "" does not exist`)
+			}
 		} else {
 			// Anonymous request. Like PostgREST (db-anon-role unset →
 			// PGRST302 "Anonymous access is disabled"), refuse it when no
@@ -94,9 +108,8 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			}
 			// The claims GUC must be set for every request, anonymous included,
 			// so policies keying off request.jwt.claims evaluate in context.
-			// PostgREST sets it to the claims with "role" inserted: {"role":"<anon>"}.
-			rawClaims, _ := json.Marshal(map[string]string{"role": anonRole})
-			claims = &Claims{Role: anonRole, RawClaims: string(rawClaims)}
+			claims = &Claims{}
+			claims.setAnonRole(anonRole)
 		}
 		session.Claims = claims
 		if dbname != "" && !forceDBE {

@@ -808,7 +808,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Miminum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
-| Database.AnonRole | Role for anonymous requests when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
+| Database.AnonRole | Role for anonymous requests, and for tokens without a role claim, when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path of the connections (name resolution of unqualified types, functions and views) | [] for Postgres search path |
 | Database.ExposedSchemas | Schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`); a header naming another schema answers 406 | [] for every schema, with the first of the search path as default |
