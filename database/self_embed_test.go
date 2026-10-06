@@ -101,3 +101,54 @@ func TestSelfEmbedFilter(t *testing.T) {
 		},
 	})
 }
+
+// TestSelfEmbedOrder: an order is keyed by its embed path, as a filter is, so
+// on a self-reference the embed's order goes into the embed's lateral
+// subquery and the top-level order stays on the top level, each on its own
+// alias.
+func TestSelfEmbedOrder(t *testing.T) {
+	runSelfEmbedTests(t, []selfEmbedTest{
+		{
+			"?select=id,web_content(name)&web_content.order=name&order=id.desc",
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" ORDER BY "web_content_1"."name" ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE ORDER BY "web_content"."id" DESC`,
+			nil,
+		},
+		{
+			// the top-level order does not reach the embed
+			"?select=id,web_content(name)&order=name",
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE ORDER BY "web_content"."name"`,
+			nil,
+		},
+		{
+			// by the embed's alias
+			"?select=id,children:web_content(name)&children.order=name.desc",
+			`SELECT "web_content"."id",  COALESCE("web_content_children_1"."_web_content_children_1", '[]') AS "children" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_children_1") AS "_web_content_children_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" ORDER BY "web_content_1"."name" DESC ) AS "_web_content_children_1") AS "web_content_children_1" ON TRUE`,
+			nil,
+		},
+		{
+			// two levels: the order on the second only
+			"?select=id,web_content(name,web_content(name))&web_content.web_content.order=name.desc",
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name",  COALESCE("web_content_web_content_2"."_web_content_web_content_2", '[]') AS "web_content" FROM "web_content" AS "web_content_1"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_2") AS "_web_content_web_content_2" FROM ( SELECT "web_content_2"."name" FROM "web_content" AS "web_content_2" WHERE "web_content_2"."p_web_id" = "web_content_1"."id" ORDER BY "web_content_2"."name" DESC ) AS "_web_content_web_content_2") AS "web_content_web_content_2" ON TRUE WHERE "web_content_1"."p_web_id" = "web_content"."id" ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE`,
+			nil,
+		},
+	})
+}
+
+// TestSelfEmbedOrderAfterUpdate: in the representation of a write, the embed's
+// order orders the embed only; it is not a top-level order of the _source
+// rows, nor a column the RETURNING must expose (UpdateSpec "with ordering").
+func TestSelfEmbedOrderAfterUpdate(t *testing.T) {
+	u, _ := url.Parse("?id=eq.0&select=id,web_content(name)&web_content.order=name")
+	parts, err := PostgRestParser{}.parse("web_content", u.Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	query, _, err := CommonBuilder{}.BuildUpdate("web_content", Record{"name": "x"}, parts, &QueryOptions{ReturnRepresentation: true}, selfEmbedInfo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `WITH _source AS (UPDATE "web_content" SET "name" = $1 WHERE "web_content"."id" = $2 RETURNING "web_content"."id") SELECT "_source"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM _source  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "_source"."id" ORDER BY "web_content_1"."name" ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE`
+	if query != want {
+		t.Errorf("\nwant: %s\ngot:  %s", want, query)
+	}
+}

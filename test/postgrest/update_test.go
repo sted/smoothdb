@@ -1014,20 +1014,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus  = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not passing: an embedded order is keyed by table name, so on a
-		// self-referencing embed (web_content inside web_content) it cannot be told
-		// apart from the top-level order and selectForJoinClause skips it; the same
-		// GET returns [fezz, foo, bar]. Unrelated to mutations: the embedded order on a
-		// plain embed of a mutation is covered in delete_test.go ("albums.order").
-		// {
-		// 	Description: "with ordering works with request method PATCH and embedded resource",
-		// 	Method:      "PATCH",
-		// 	Query:       "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc",
-		// 	Body:        `{"name": "tardis-patched"}`,
-		// 	Headers:     test.Headers{"Prefer": {"return=representation"}},
-		// 	Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "with ordering works with request method PATCH and embedded resource",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc",
+			Body:        `{"name": "tardis-patched"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
+			Status:      200,
+		},
 		// @@ added
 		{
 			Description: "with camel case columns works",

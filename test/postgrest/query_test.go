@@ -2258,7 +2258,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7","users":[{"id":1,"name":"Angela Martin"}]},{"id":1,"name":"Design w7","users":[{"id":3,"name":"Dwight Schrute"},{"id":1,"name":"Angela Martin"}]}]}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		{
+			Description: "ordering embeded entities, two levels",
+			Query:       "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc",
+			Headers:     nil,
+			Expected:    `[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7","users":[{"id":1,"name":"Angela Martin"}]},{"id":1,"name":"Design w7","users":[{"id":3,"name":"Dwight Schrute"},{"id":1,"name":"Angela Martin"}]}]}]`,
+			Status:      200,
+		},
 		//   it "ordering embeded parents does not break things" $
 		// 	get "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc" `shouldRespondWith`
 		// 	  [json|[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]|]
