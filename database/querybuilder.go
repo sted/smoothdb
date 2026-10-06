@@ -407,12 +407,22 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	if selClause == "" {
 		selClause = "*"
 	}
+	root := stack.level == 0 && !stack.afterWithClause
+	if root {
+		parts.innerEmbedConds = nil
+	}
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			relName := join.name
 			selectForJoin, err := selectForJoinClause(join, label, parts, stack)
 			if err != nil {
 				return "", "", nil, err
+			}
+			if join.inner && root {
+				// The embed's rows, with its filters and its own !inner
+				// embeds: one exists exactly when the INNER JOIN keeps the
+				// root row (for a to-many embed, when its json_agg is not null).
+				parts.innerEmbedConds = append(parts.innerEmbedConds, "EXISTS ("+selectForJoin+")")
 			}
 			if join.inner {
 				joins += " INNER"
@@ -1378,9 +1388,18 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 		valueList = append(valueList, offset)
 	}
 	if options.Count != "" && (limit != -1 || offset > 0) {
-		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
+		// The total of a ranged request is PostgREST's (readPlanToCountQuery):
+		// the root rows that pass the filters and have a row in each !inner
+		// embed. The left embeds do not restrict them, and the GROUP BY is
+		// left out: a grouped aggregate totals the rows it groups. Without a
+		// range the total is the number of rows read, as PostgREST's page count.
+		conds := parts.innerEmbedConds
 		if whereClause != "" {
-			countQuery += " WHERE " + whereClause
+			conds = append([]string{whereClause}, conds...)
+		}
+		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
+		if len(conds) > 0 {
+			countQuery += " WHERE " + strings.Join(conds, " AND ")
 		}
 		query = countQuery +
 			"), Data AS (" + query +
