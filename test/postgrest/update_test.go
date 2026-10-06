@@ -717,6 +717,27 @@ func TestPostgREST_Update(t *testing.T) {
 			              { "a": "1", "b": "1" } ]`,
 			Status: 200,
 		},
+		//       it "with filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.name=like.f*"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched"}|]
+		//           `shouldRespondWith` [json|
+		//             [ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" } ]} ]
+		//           |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		{
+			Description: "tables with self reference foreign keys embeds children after update with filters",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.name=like.f*",
+			Body:        `{"name": "tardis-patched"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" } ]} ]`,
+			Status:      200,
+		},
 		//     it "embeds parent, children and grandchildren after update" $
 		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)"
 		//               [("Prefer", "return=representation")]
@@ -757,6 +778,45 @@ func TestPostgREST_Update(t *testing.T) {
 				        ] `,
 			Status: 200,
 		},
+		//       it "with filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)&web_content.name=like.f*&web_content.web_content.id=eq.4&parent_content.name=neq.wat"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched-2"}|]
+		//           `shouldRespondWith` [json| [
+		//             {
+		//               "id": 0,
+		//               "name": "tardis-patched-2",
+		//               "parent_content": null,
+		//               "web_content": [
+		//                   { "name": "fezz", "web_content": [ { "name": "wut" } ] },
+		//                   { "name": "foo",  "web_content": [] }
+		//               ]
+		//             }
+		//           ] |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		{
+			Description: "embeds parent, children and grandchildren after update with filters",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)&web_content.name=like.f*&web_content.web_content.id=eq.4&parent_content.name=neq.wat",
+			Body:        `{"name": "tardis-patched-2"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				          {
+				            "id": 0,
+				            "name": "tardis-patched-2",
+				            "parent_content": null,
+				            "web_content": [
+				                { "name": "fezz", "web_content": [ { "name": "wut" } ] },
+				                { "name": "foo",  "web_content": [] }
+				            ]
+				          }
+				        ] `,
+			Status: 200,
+		},
 		//     it "embeds children after update without explicitly including the id in the ?select" $
 		//       request methodPatch "/web_content?id=eq.0&select=name,web_content(name)"
 		//               [("Prefer", "return=representation")]
@@ -775,6 +835,27 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:        `{"name": "tardis-patched"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
+			Status:      200,
+		},
+		//       it "with filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=name,web_content(name)&web_content.name=like.b*"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched"}|]
+		//           `shouldRespondWith` [json|
+		//             [ { "name": "tardis-patched", "web_content": [ { "name": "bar" } ]} ]
+		//           |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		{
+			Description: "embeds children after update without explicitly including the id in the ?select with filters",
+			Method:      "PATCH",
+			Query:       "/web_content?id=eq.0&select=name,web_content(name)&web_content.name=like.b*",
+			Body:        `{"name": "tardis-patched"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[ { "name": "tardis-patched", "web_content": [ { "name": "bar" } ]} ]`,
 			Status:      200,
 		},
 		//     it "embeds an M2M relationship plus parent after update" $
