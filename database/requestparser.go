@@ -1341,12 +1341,17 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 
 	// ORDER
 	// order=f1,f2.asc,f3.desc.nullslast
+	// An embedded order (x.order, x.y.order) is keyed by its embed path, as a
+	// filter is: the table name alone cannot tell a self-referencing embed
+	// from its parent.
 	for k, v := range filters {
 		var order, table string
+		var relPath []string
 		if k == "order" {
 			table = mainTable
 		} else if strings.HasSuffix(k, ".order") {
-			table = strings.TrimSuffix(k, ".order")
+			relPath = strings.Split(strings.TrimSuffix(k, ".order"), ".")
+			table = relPath[len(relPath)-1]
 		} else {
 			continue
 		}
@@ -1359,6 +1364,9 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		fields, err := p.parseOrderCondition(table, order)
 		if err != nil {
 			return nil, err
+		}
+		for i := range fields {
+			fields[i].field.relPath = relPath
 		}
 		parts.orderFields = append(parts.orderFields, fields...)
 		delete(filters, k)
