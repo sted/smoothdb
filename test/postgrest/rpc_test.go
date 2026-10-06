@@ -420,6 +420,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 404
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		{
+			Description: "should fail with 404 for overloaded functions with unknown args",
+			Method:      "GET",
+			Query:       "/rpc/overloaded?wrong_arg=value",
+			Status:      404,
+		},
 		//     get "/rpc/overloaded?a=1&b=2&wrong_arg=value" `shouldRespondWith`
 		//       [json| {
 		//         "hint":"Perhaps you meant to call the function test.overloaded(a, b, c)",
@@ -429,6 +435,12 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 404
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		{
+			Description: "should fail with 404 for overloaded functions with unknown args",
+			Method:      "GET",
+			Query:       "/rpc/overloaded?a=1&b=2&wrong_arg=value",
+			Status:      404,
+		},
 
 		// context "ambiguous overloaded functions with same parameters' names but different types" $ do
 		//   it "should fail with 300 Multiple Choices without explicit type casts" $
@@ -441,6 +453,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 300
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		// The code stays empty until SmoothDB adopts PostgREST's PGRST codes.
+		{
+			Description:     "should fail with 300 Multiple Choices without explicit type casts",
+			Method:          "GET",
+			Query:           "/rpc/overloaded_same_args?arg=value",
+			Expected:        `{"subsystem":"network","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)","code":"","hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","details":null,"position":0}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          300,
+		},
 
 		// it "works when having uppercase identifiers" $ do
 		//   get "/rpc/quotedFunction?user=mscott&fullName=Michael Scott&SSN=401-32-XXXX" `shouldRespondWith`
@@ -988,15 +1009,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{"x": 1, "y": 2}|]
 		//         `shouldRespondWith`
 		//           [json|{"x": 1, "y": 2}|]
-		// {
-		// 	Description: "different types when overloaded",
-		// 	Method:      "POST",
-		// 	Query:       "/rpc/ret_point_overloaded",
-		// 	Body:        `{"x": 1, "y": 2}`,
-		// 	Headers:     nil,
-		// 	Expected:    `{"x": 1, "y": 2}`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "different types when overloaded returns composite type",
+			Method:      "POST",
+			Query:       "/rpc/ret_point_overloaded",
+			Body:        `{"x": 1, "y": 2}`,
+			Headers:     nil,
+			Expected:    `{"x": 1, "y": 2}`,
+			Status:      200,
+		},
 		//     it "returns json scalar with prefer single object" $
 		//       request methodPost "/rpc/ret_point_overloaded" [("Prefer","params=single-object")]
 		//         [json|{"x": 1, "y": 2}|]
@@ -1532,6 +1553,13 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/overloaded"
 		//       `shouldRespondWith`
 		//         [json|[1,2,3]|]
+		{
+			Description: "overloaded()",
+			Method:      "GET",
+			Query:       "/rpc/overloaded",
+			Expected:    `[1,2,3]`,
+			Status:      200,
+		},
 
 		//   it "overloaded(json) single-object" $
 		//     request methodPost "/rpc/overloaded"
@@ -1542,9 +1570,23 @@ func TestPostgREST_RPC(t *testing.T) {
 
 		//   it "overloaded(int, int)" $
 		//     get "/rpc/overloaded?a=1&b=2" `shouldRespondWith` [str|3|]
+		{
+			Description: "overloaded(int, int)",
+			Method:      "GET",
+			Query:       "/rpc/overloaded?a=1&b=2",
+			Expected:    `3`,
+			Status:      200,
+		},
 
 		//   it "overloaded(text, text, text)" $
 		//     get "/rpc/overloaded?a=1&b=2&c=3" `shouldRespondWith` [json|"123"|]
+		{
+			Description: "overloaded(text, text, text)",
+			Method:      "GET",
+			Query:       "/rpc/overloaded?a=1&b=2&c=3",
+			Expected:    `"123"`,
+			Status:      200,
+		},
 
 		//   it "overloaded_html_form()" $
 		//     request methodPost "/rpc/overloaded_html_form"
@@ -1552,6 +1594,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         ""
 		//       `shouldRespondWith`
 		//         [json|[1,2,3]|]
+		{
+			Description: "overloaded_html_form()",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_html_form",
+			Body:        ``,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `[1,2,3]`,
+			Status:      200,
+		},
 
 		//   it "overloaded_html_form(json) single-object" $
 		//     request methodPost "/rpc/overloaded_html_form"
@@ -1566,6 +1617,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         "a=1&b=2"
 		//       `shouldRespondWith`
 		//         [str|3|]
+		{
+			Description: "overloaded_html_form(int, int)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_html_form",
+			Body:        `a=1&b=2`,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `3`,
+			Status:      200,
+		},
 
 		//   it "overloaded_html_form(text, text, text)" $
 		//     request methodPost "/rpc/overloaded_html_form"
@@ -1573,6 +1633,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         "a=1&b=2&c=3"
 		//       `shouldRespondWith`
 		//         [json|"123"|]
+		{
+			Description: "overloaded_html_form(text, text, text)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_html_form",
+			Body:        `a=1&b=2&c=3`,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `"123"`,
+			Status:      200,
+		},
 
 		//   -- https://github.com/PostgREST/postgrest/issues/1672
 		//   context "embedding overloaded functions with the same signature except for the last param with a default value" $ do
@@ -1582,6 +1651,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{}|]
 		//         `shouldRespondWith`
 		//           [json|[{"id": 2, "name": "Code w7", "users": [{"name": "Angela Martin"}]}] |]
+		{
+			Description: "overloaded_default(text default)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_default?select=id,name,users(name)",
+			Body:        `{}`,
+			Headers:     test.Headers{"Content-Type": []string{"application/json"}},
+			Expected:    `[{"id": 2, "name": "Code w7", "users": [{"name": "Angela Martin"}]}]`,
+			Status:      200,
+		},
 
 		//     it "overloaded_default(int)" $
 		//       request methodPost "/rpc/overloaded_default"
@@ -1589,6 +1667,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{"must_param":1}|]
 		//         `shouldRespondWith`
 		//           [json|{"val":1}|]
+		{
+			Description: "overloaded_default(int)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_default",
+			Body:        `{"must_param":1}`,
+			Headers:     test.Headers{"Content-Type": []string{"application/json"}},
+			Expected:    `{"val":1}`,
+			Status:      200,
+		},
 
 		//     it "overloaded_default(int, text default)" $ do
 		//       request methodPost "/rpc/overloaded_default?select=id,name,users(name)"
@@ -1596,6 +1683,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{"a":4}|]
 		//         `shouldRespondWith`
 		//           [json|[{"id": 5, "name": "Design IOS", "users": [{"name": "Michael Scott"}, {"name": "Dwight Schrute"}]}] |]
+		{
+			Description: "overloaded_default(int, text default)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_default?select=id,name,users(name)",
+			Body:        `{"a":4}`,
+			Headers:     test.Headers{"Content-Type": []string{"application/json"}},
+			Expected:    `[{"id": 5, "name": "Design IOS", "users": [{"name": "Michael Scott"}, {"name": "Dwight Schrute"}]}]`,
+			Status:      200,
+		},
 
 		//     it "overloaded_default(int, int)" $
 		//       request methodPost "/rpc/overloaded_default"
@@ -1603,6 +1699,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json|{"a":2,"must_param":4}|]
 		//         `shouldRespondWith`
 		//           [json|{"a":2,"val":4}|]
+		{
+			Description: "overloaded_default(int, int)",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_default",
+			Body:        `{"a":2,"must_param":4}`,
+			Headers:     test.Headers{"Content-Type": []string{"application/json"}},
+			Expected:    `{"a":2,"val":4}`,
+			Status:      200,
+		},
 
 		// context "only for POST rpc" $ do
 		//   it "gives a parse filter error if GET style proc args are specified" $

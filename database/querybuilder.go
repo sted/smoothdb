@@ -19,7 +19,9 @@ type QueryBuilder interface {
 	BuildInsert(table string, records []Record, body []byte, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 	BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
-	BuildExecute(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
+	// BuildExecute calls the function name, whose overload f (nil when unknown)
+	// is the one SchemaInfo.FindFunction resolves for the record's keys
+	BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error)
 
 	preferredSerializer() TextSerializer
 }
@@ -1797,16 +1799,11 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	return q.String(), valueList, nil
 }
 
-func (CommonBuilder) BuildExecute(name string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
+func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 
 	stack := BuildStack{info: info}
 	schema := options.Schema
-
-	var f *Function
-	if info != nil {
-		f = info.GetFunction(_s(name, schema))
-	}
 
 	// Determine a deterministic key order so identical RPC calls generate
 	// identical SQL (pg_stat_statements hashes by normalized query). Prefer
