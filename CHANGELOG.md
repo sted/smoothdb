@@ -1,5 +1,31 @@
 # Change Log
 
+## 0.10.2 - 2026-10-28
+
+### Security
+* **Go 1.27.3** — fixes the standard-library vulnerabilities in net/http, crypto/x509 and crypto/tls that the 0.10.1 binaries carry.
+* **`/token`** — a failed login no longer returns the database connection error (user, host, database); login calls now time out.
+* **Admin column updates** — the column name is quoted in every `ALTER TABLE` statement.
+
+### Fixed
+* **Embedded `order`, `limit`, `offset`, `or`, `and` on `GET /rpc`** — no longer taken for function arguments.
+* **`rel!hint!inner`** — an embed takes a hint and a join modifier together, in either order, as in PostgREST.
+* **Select parsing** — leftover input is a 400 instead of being dropped; a schema-qualified cast keeps its whole name.
+* **Column hints** — embed the relation they name, not another one with the same column.
+* **Aggregates on `/rpc`** — group by the other selected columns.
+* **jq updates** — honour `order=`, and a singular request that matches more than one row writes nothing.
+* **`Range` on table writes** — ignored, as in PostgREST.
+* **Admin API** — users, a single view, function deletion and named constraints work again.
+* **Startup and debug routes** — the anon role is checked, startup connections are closed, and a few panics are gone (log directory, plugin type, `IsExist`); `/ui` and the pprof routes answer correctly.
+
+### Changed
+* **`POST /jq`** — authenticates without taking a database connection.
+* **Column hint on a self-reference** — picks the one-to-many side, as PostgREST does.
+* **Admin column rename** — the new name keeps its case.
+* **Go API** — `QueryWithJSON` and `DatabaseJSONSerializer` are removed.
+* **Homebrew cask** — the quarantine hook uses GoReleaser's `install_steps`.
+* **Dependencies** — Go and UI dependencies updated.
+
 ## 0.10.1 - 2026-10-28
 
 ### Security
