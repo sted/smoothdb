@@ -102,3 +102,22 @@ func TestAdminGetView(t *testing.T) {
 		}
 	}
 }
+
+// DeleteFunction quoted the name twice ("""public"""."""f"""), so dropping a
+// function always failed with 42883.
+func TestAdminDeleteFunction(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_functions")
+	lane6Exec(t, ctx, `CREATE FUNCTION lane6_f() RETURNS int LANGUAGE sql AS 'SELECT 1'`)
+
+	if err := DeleteFunction(ctx, "lane6_f"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := GetConn(ctx).QueryRow(ctx,
+		`SELECT count(*) FROM pg_proc WHERE proname = 'lane6_f'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("lane6_f still exists after DeleteFunction")
+	}
+}
