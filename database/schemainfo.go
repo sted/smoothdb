@@ -308,6 +308,33 @@ func (si *SchemaInfo) FindRelationshipByCol(ftable, col string) *Relationship {
 	return nil
 }
 
+// FindRelationshipsByHintCol returns the relationships of ftable to
+// relatedTable that a column hint selects, relatedTable!col(...), as PostgREST
+// matches them (Plan.hs findRel): a one-to-many, many-to-one or one-to-one
+// relationship whose single foreign key column, on either side, is col. In a
+// self-relationship only the one-to-many side matches, by the referencing
+// column (/organizations?select=auditees:organizations!auditor(*)).
+// Relationships to other relations than relatedTable never match, even when
+// they carry the same column (card 34668 column-hint-embed).
+func (si *SchemaInfo) FindRelationshipsByHintCol(ftable, relatedTable, col string) []Relationship {
+	var found []Relationship
+	for _, rel := range si.GetRelationships(ftable) {
+		if rel.RelatedTable != relatedTable || (rel.Type != M2O && rel.Type != O2M && rel.Type != O2O) {
+			continue
+		}
+		local := len(rel.Columns) == 1 && rel.Columns[0] == col
+		ref := len(rel.RelatedColumns) == 1 && rel.RelatedColumns[0] == col
+		if rel.Table == rel.RelatedTable {
+			if rel.Type == O2M && ref {
+				found = append(found, rel)
+			}
+		} else if local || ref {
+			found = append(found, rel)
+		}
+	}
+	return found
+}
+
 func (si *SchemaInfo) FindRelationshipByFK(ftable, fk string) *Relationship {
 	rels := si.GetRelationships(ftable)
 	for _, rel := range rels {

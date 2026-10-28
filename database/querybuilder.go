@@ -338,8 +338,15 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			}
 		}
 		if fk != "" {
-			hint := fk // the hint is not an fk but a col? we try
-			rel = info.FindRelationshipByCol(tableWithSchema, hint)
+			// the hint names no constraint: it can name a column of a
+			// relationship to the relation named, and only to that one
+			hrels := info.FindRelationshipsByHintCol(tableWithSchema, relationWithSchema, fk)
+			if len(hrels) > 1 {
+				return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+			}
+			if len(hrels) == 1 {
+				rel = &hrels[0]
+			}
 		} else {
 			// search rel by column (try to see if relation is instead an fk column)
 			rel = info.FindRelationshipByCol(tableWithSchema, relation)
