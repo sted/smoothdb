@@ -121,3 +121,41 @@ func TestAdminDeleteFunction(t *testing.T) {
 		t.Errorf("lane6_f still exists after DeleteFunction")
 	}
 }
+
+// CreateConstraint took the table name from the constraint name, so it
+// altered a table that does not exist; the name itself was dropped.
+func TestAdminCreateConstraint(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_constraints")
+	lane6Exec(t, ctx, `CREATE TABLE lane6_t (id int, n int)`)
+
+	if _, err := CreateConstraint(ctx, &Constraint{Name: "lane6_positive", Table: "lane6_t",
+		Definition: "CHECK (id > 0)"}); err != nil {
+		t.Fatal(err)
+	}
+	// Without a name PostgreSQL chooses one.
+	if _, err := CreateConstraint(ctx, &Constraint{Table: "lane6_t",
+		Definition: "UNIQUE (n)"}); err != nil {
+		t.Fatal(err)
+	}
+	constraints, err := GetConstraints(ctx, "lane6_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, c := range constraints {
+		names[c.Name] = c.Definition
+	}
+	if names["lane6_positive"] != "CHECK (id > 0)" || names["lane6_t_n_key"] != "UNIQUE (n)" || len(names) != 2 {
+		t.Fatalf("constraints of lane6_t: %v", names)
+	}
+	if err := DeleteConstraint(ctx, "lane6_t", "lane6_positive"); err != nil {
+		t.Fatal(err)
+	}
+	constraints, err = GetConstraints(ctx, "lane6_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(constraints) != 1 || constraints[0].Name != "lane6_t_n_key" {
+		t.Errorf("after DeleteConstraint: %+v", constraints)
+	}
+}
