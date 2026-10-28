@@ -88,10 +88,12 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The cached tables carry no columns: nothing reads them from the cache
+	// (the column types are cached below, the admin API reads the columns
+	// live), and reading them here cost a query per relation (card 32946
+	// column-lookups).
 	for _, t := range tables {
-		ftable := _s(t.Name, t.Schema)
-		t.Columns, _ = GetColumns(ctx, ftable)
-		dbi.cachedTables[ftable] = t
+		dbi.cachedTables[_s(t.Name, t.Schema)] = t
 	}
 	// Views (added to cachedTables so they can participate in embedding)
 	views, err := GetViews(ctx)
@@ -101,12 +103,10 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	for _, v := range views {
 		fview := _s(v.Name, v.Schema)
 		if _, exists := dbi.cachedTables[fview]; !exists {
-			columns, _ := GetColumns(ctx, fview)
 			dbi.cachedTables[fview] = Table{
-				Name:    v.Name,
-				Schema:  v.Schema,
-				Owner:   v.Owner,
-				Columns: columns,
+				Name:   v.Name,
+				Schema: v.Schema,
+				Owner:  v.Owner,
 			}
 		}
 	}
