@@ -2265,49 +2265,14 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
+// preferredSerializer: the response is written in Go from the raw row values
+// by the hand-written serializers, and PostgreSQL builds only the nested
+// embeds as json, passed through untouched. Building the whole response in
+// the backend (one json_agg over the select) was tried and rejected (card
+// 32703 select-select): it is slower and costs more CPU, moves the escaping
+// and the number formatting into the backend, materializes the whole result
+// as one datum before the first byte, breaks Content-Range, and cannot serve
+// CSV or binary output.
 func (DirectQueryBuilder) preferredSerializer() TextSerializer {
 	return &JSONSerializer{}
-}
-
-type QueryWithJSON struct {
-	CommonBuilder
-}
-
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
-	stack := BuildStack{info: info}
-	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
-	if err != nil {
-		return "", nil, err
-	}
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
-		return "", nil, err
-	}
-	groupByClause := groupByClause(table, schema, parts, info)
-	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
-	if err != nil {
-		return "", nil, err
-	}
-
-	if parts.recursive != nil {
-		if groupByClause != "" {
-			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
-		}
-		return buildRecursiveSelect(table, schema, parts, options,
-			selectClause, whereClause, orderClause, joins, valueList, info)
-	}
-
-	query := "SELECT "
-	if selectClause == "*" {
-		query += "json_agg(" + table + ")"
-	} else {
-		query += "SELECT " + selectClause
-	}
-	from := "FROM " + table
-	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
-}
-
-func (QueryWithJSON) preferredSerializer() TextSerializer {
-	return DatabaseJSONSerializer{}
 }

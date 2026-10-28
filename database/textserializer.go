@@ -932,24 +932,3 @@ func decodeByteaText(raw []byte) ([]byte, error) {
 func isOctal(b byte) bool {
 	return b >= '0' && b <= '7'
 }
-
-type DatabaseJSONSerializer struct{}
-
-func (DatabaseJSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info *SchemaInfo) ([]byte, int64, error) {
-	if !rows.Next() {
-		// No row at all: the aggregating query is expected to always return one,
-		// so guard the index below rather than panicking on an empty result.
-		if err := rows.Err(); err != nil {
-			return nil, 0, err
-		}
-		return []byte("null"), 0, nil
-	}
-	values := rows.RawValues()
-	if err := rows.Err(); err != nil {
-		return []byte{}, 0, err
-	}
-	if len(values) == 0 {
-		return []byte("null"), 0, nil
-	}
-	return values[0], 0, nil
-}
