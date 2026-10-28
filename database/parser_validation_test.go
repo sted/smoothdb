@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // limit/offset are parameterized but their value was parsed with the error
@@ -148,5 +149,32 @@ func TestParserViaWithoutParenthesis(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s: expected a parse error, got nil", q)
 		}
+	}
+}
+
+// A list value that ends inside a quoted token makes the parser rescan the
+// rest of the source; done for every element, that rescan was quadratic in the
+// length of the list (16k elements took seconds of CPU). The parse must stay
+// linear: 20k elements well under a second, even under -race.
+func TestParserListRescanIsLinear(t *testing.T) {
+	const n = 20000
+	q := "?a=in.(" + strings.Repeat(`x.",`, n) + "x)"
+	u, err := url.Parse(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	parts, err := PostgRestParser{}.parse("t", u.Query())
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := parts.whereConditionsTree.children[0]
+	if len(node.values) != n+1 || node.values[0] != `x."` || node.values[n] != "x" {
+		t.Fatalf("expected %d values x.\" ... x, got %d: first %q, last %q",
+			n+1, len(node.values), node.values[0], node.values[len(node.values)-1])
+	}
+	if elapsed > time.Second {
+		t.Errorf("parsing %d list elements took %v", n, elapsed)
 	}
 }

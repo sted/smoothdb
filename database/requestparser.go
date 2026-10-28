@@ -1,6 +1,7 @@
 package database
 
 import (
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -140,6 +141,7 @@ type PostgRestParser struct {
 	tokens  []string
 	quoted  []bool // for each token, whether it was quoted in the source
 	ends    []int  // for each token, the offset in src just past it
+	scanned int    // the offset in src where scanning resumes (see fill)
 	cur     int
 	depth   int // current boolean-filter recursion depth (see maxFilterDepth)
 }
@@ -292,6 +294,9 @@ func (p *PostgRestParser) addToken(t string, quoted bool, end int) {
 	p.ends = append(p.ends, end)
 }
 
+// scanChunk is how many tokens fill scans ahead of the one asked for.
+const scanChunk = 32
+
 // scan splits the string s using the separators and
 // skipping double quoted strings.
 // Returns a slice of substrings and separators.
@@ -303,22 +308,32 @@ func (p *PostgRestParser) addToken(t string, quoted bool, end int) {
 // ordinary character. A backslash escapes only inside quotes. The end offset
 // of each token is recorded, so that a filter value can be read back verbatim
 // from s (see rawValue).
+// Tokens are scanned on demand (see fill): rawValue drops the tokens past a
+// value and rescans from its end, and an eager scan would redo the rest of the
+// source every time, quadratic in the length of a list.
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
+	// the tokens left from a previous source stay ahead of the new ones, as
+	// they did when scanning was eager
+	p.fill(math.MaxInt - scanChunk)
 	p.src = s
 	p.sep = sep
 	p.longSep = longSep
-	p.scanFrom(0)
+	p.scanned = 0
 }
 
-// scanFrom scans p.src from the offset base, appending the tokens (see scan).
-func (p *PostgRestParser) scanFrom(base int) {
-	//state := 0 // state 0: normal, 1: quoted 2: escaped (backslash in quotes)
-	s := p.src[base:]
+// fill scans until there are n tokens, and a few more, or the source ends.
+// Scanning stops only between tokens, where the scanner is in its initial
+// state (not in a token, after a separator), so it resumes at p.scanned as a
+// scan of the source from there would.
+func (p *PostgRestParser) fill(n int) {
+	if len(p.tokens) >= n || p.scanned > len(p.src) {
+		return
+	}
+	n += scanChunk
+	s := p.src
 	sep := p.sep
 	longSep := p.longSep
-	addToken := func(t string, quoted bool, end int) {
-		p.addToken(t, quoted, base+end)
-	}
+	addToken := p.addToken
 	var quot bool
 	var qchar byte // the quote character that opened the quoted token
 	var qstart int // and its offset
@@ -340,7 +355,11 @@ func (p *PostgRestParser) scanFrom(base int) {
 		return false
 	}
 outer:
-	for i := 0; i <= len(s); i++ {
+	for i := p.scanned; i <= len(s); i++ {
+		if !quot && len(normal) == 0 && len(p.tokens) >= n {
+			p.scanned = i
+			return
+		}
 		if i == len(s) {
 			if !quot {
 				break
@@ -418,11 +437,13 @@ outer:
 	if len(normal) != 0 {
 		addToken(string(normal), false, len(s))
 	}
+	p.scanned = len(s) + 1 // done
 }
 
 // next returns the next token and advances the cursor.
 // It returns an empty string if it is at the end.
 func (p *PostgRestParser) next() string {
+	p.fill(p.cur + 1)
 	if p.cur == len(p.tokens) {
 		return ""
 	}
@@ -434,6 +455,7 @@ func (p *PostgRestParser) next() string {
 // nextQuoted returns the next token and whether it was quoted in the source,
 // advancing the cursor.
 func (p *PostgRestParser) nextQuoted() (string, bool) {
+	p.fill(p.cur + 1)
 	if p.cur == len(p.tokens) {
 		return "", false
 	}
@@ -453,6 +475,7 @@ func (p *PostgRestParser) back() {
 // lookAhead returns the next token _without_ advancing the cursor.
 // It returns an empty string if it is at the end.
 func (p *PostgRestParser) lookAhead() string {
+	p.fill(p.cur + 1)
 	if p.cur == len(p.tokens) {
 		return ""
 	}
@@ -467,6 +490,7 @@ func (p *PostgRestParser) reset() {
 	p.tokens = nil
 	p.quoted = nil
 	p.ends = nil
+	p.scanned = 0
 	p.cur = 0
 	p.depth = 0
 }
@@ -620,6 +644,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		// Check for aggregate function: field.avg(), field.sum(), etc.
 		if p.lookAhead() == "." {
 			next := p.cur + 1
+			p.fill(next + 2)
 			if next < len(p.tokens) {
 				// Check if we have: . <function> ()
 				aggFunc := p.tokens[next]
@@ -894,7 +919,7 @@ func (p *PostgRestParser) rawValue(stop string) string {
 	if i := strings.IndexAny(p.src[start:], stop); i >= 0 {
 		end = start + i
 	}
-	for p.cur < len(p.tokens) && p.ends[p.cur] <= end {
+	for p.fill(p.cur+1); p.cur < len(p.tokens) && p.ends[p.cur] <= end; p.fill(p.cur + 1) {
 		p.cur++
 	}
 	if p.cur < len(p.tokens) && p.quoted[p.cur] {
@@ -906,7 +931,7 @@ func (p *PostgRestParser) rawValue(stop string) string {
 		p.tokens = p.tokens[:p.cur]
 		p.quoted = p.quoted[:p.cur]
 		p.ends = p.ends[:p.cur]
-		p.scanFrom(end)
+		p.scanned = end
 	}
 	return p.src[start:end]
 }
