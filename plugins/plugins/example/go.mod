@@ -1,6 +1,6 @@
 module github.com/sted/smoothdb/plugins/test
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/sted/heligo v0.3.0

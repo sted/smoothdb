@@ -58,11 +58,15 @@ homebrew_casks:
     description: "RESTful API for PostgreSQL databases"
     # The binaries are not signed or notarized, and Homebrew quarantines Cask
     # downloads (it does not for Formulas): clear the flag, or macOS refuses
-    # to run the binary.
+    # to run the binary. install_steps (GoReleaser >= 2.19) renders Homebrew's
+    # declarative postflight_steps, which replaces the deprecated raw-Ruby
+    # postflight block; {{ .StagedPath }} becomes Homebrew's {{staged_path}}.
     hooks:
       post:
-        install: |
-          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/smoothdb"] if OS.mac?
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/smoothdb"]
+          end
 
 release:
   replace_existing_artifacts: true
