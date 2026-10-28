@@ -48,6 +48,10 @@ type AccessTokenResponse struct {
 	WeakPassword         *WeakPasswordError `json:"weak_password,omitempty"`
 }
 
+// loginTimeout bounds a login attempt: the database dial of db mode, the
+// call to the auth server of gotrue mode.
+var loginTimeout = 10 * time.Second
+
 func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string, tokenExpiry int64) {
 	api := apiHelper.GetRouter()
 	// /token is reachable without credentials and sits outside MiddlewareStd, so
@@ -71,7 +75,9 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 		}
 		switch loginMode {
 		case "db":
-			err = database.VerifyAuthN(credentials.Email, credentials.Password)
+			ctx, cancel := context.WithTimeout(c, loginTimeout)
+			defer cancel()
+			err = database.VerifyAuthN(ctx, credentials.Email, credentials.Password)
 			if err == nil {
 				var expiry time.Duration
 				if tokenExpiry > 0 {
@@ -81,7 +87,12 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 				resp = AccessTokenResponse{Token: token, ExpiresIn: int(tokenExpiry)}
 				return heligo.WriteJSON(w, http.StatusOK, resp)
 			} else {
-				return heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Subsystem: "auth", Message: err.Error()})
+				// The error is a pgx ConnectError: it names the database user,
+				// the database and the dial address, and carries the server's
+				// FATAL text. The caller is unauthenticated: it gets a fixed
+				// message, the request log gets the cause.
+				heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Subsystem: "auth", Message: "invalid credentials"})
+				return http.StatusBadRequest, err
 			}
 		case "gotrue":
 			var errorMessage any
@@ -92,7 +103,9 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 			}
 			url += "token?grant_type=password"
 
-			status, err := postJSON(url, credentials, &resp, &errorMessage)
+			ctx, cancel := context.WithTimeout(c, loginTimeout)
+			defer cancel()
+			status, err := postJSON(ctx, url, credentials, &resp, &errorMessage)
 			if err == nil && status < 400 {
 				return heligo.WriteJSON(w, http.StatusOK, resp)
 			} else {
@@ -101,14 +114,17 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 					status = http.StatusBadRequest
 				}
 				if err != nil {
-					message = err.Error()
+					// a transport or decoding failure: its text names the
+					// auth server, so it goes to the request log only
+					message = "authentication service error"
 				} else {
 					message = "See details for the Auth / GoTrue error"
 				}
-				return heligo.WriteJSON(w, status, SmoothError{
+				heligo.WriteJSON(w, status, SmoothError{
 					Subsystem: "auth",
 					Message:   message,
 					Details:   errorMessage})
+				return status, err
 			}
 		default:
 			return WriteServerError(w, fmt.Errorf("invalid login mode"))

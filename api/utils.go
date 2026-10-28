@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -81,8 +82,13 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		status = http.StatusNotFound
 		heligo.WriteHeader(w, status)
 	} else if connectErr := (*pgconn.ConnectError)(nil); errors.As(err, &connectErr) {
+		// the text names the database user, the database and the dial address
 		status = http.StatusBadRequest
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: err.Error()})
+		msg := "cannot connect to the database"
+		if verboseErrors {
+			msg = err.Error()
+		}
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: msg})
 	} else {
 		status = http.StatusInternalServerError
 		msg := "internal server error"
@@ -474,28 +480,37 @@ func StripPrefix(r *http.Request, prefix string) *http.Request {
 	return nil
 }
 
-func postJSON[I any](url string, inputData I, output any, errorOutput any) (int, error) {
+// authClient calls the external auth server. Its timeout is a backstop: the
+// caller bounds each call with its context.
+var authClient = &http.Client{Timeout: 30 * time.Second}
+
+// maxAuthReplyBytes caps a reply of the auth server.
+const maxAuthReplyBytes = 1 << 20
+
+func postJSON[I any](ctx context.Context, url string, inputData I, output any, errorOutput any) (int, error) {
 	jsonData, err := json.Marshal(inputData)
 	if err != nil {
 		return 0, fmt.Errorf("failed to marshal input data: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := authClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to make request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAuthReplyBytes+1))
 	if err != nil {
 		return resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(body) > maxAuthReplyBytes {
+		return 0, fmt.Errorf("auth server reply exceeds %d bytes", maxAuthReplyBytes)
 	}
 
 	if resp.StatusCode >= 400 {

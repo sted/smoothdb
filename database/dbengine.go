@@ -433,25 +433,23 @@ func (dbe *DbEngine) GetMainDatabase(ctx context.Context) (*Database, error) {
 	return dbe.mainDb, nil
 }
 
-func VerifyAuthN(user, password string) error {
+// VerifyAuthN checks a login by connecting to the main database as user.
+// ctx bounds the dial and the ping: a client that hangs up cancels them.
+func VerifyAuthN(ctx context.Context, user, password string) error {
 	config, err := pgx.ParseConfig(dbe.config.URL)
 	if err != nil {
 		return err
 	}
 	config.User = user
 	config.Password = password
-	conn, err := pgx.ConnectConfig(context.Background(), config)
+	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Close(ctx)
 
 	// Test the connection
-	err = conn.Ping(context.Background())
-	if err != nil {
-		return err
-	}
-	return nil
+	return conn.Ping(ctx)
 }
 
 // reloadSchemaAndLog handles the actual schema reload and logging for a database
