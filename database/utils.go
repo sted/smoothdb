@@ -3,6 +3,7 @@ package database
 import (
 	"cmp"
 	"context"
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -123,8 +124,8 @@ func arrayEqualUnordered[T cmp.Ordered](a, b []T) bool {
 }
 
 func IsExist(err error) bool {
-	pgerr := err.(*pgconn.PgError)
-	if pgerr == nil {
+	var pgerr *pgconn.PgError
+	if !errors.As(err, &pgerr) {
 		return false
 	}
 	code := pgerr.Code
