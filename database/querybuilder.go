@@ -422,14 +422,14 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 						err = &BuildError{"A spread operation on " + relatedTable + " is not possible"}
 						return "", "", nil, err
 					}
-					selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
+					selClause += " COALESCE(" + quote(joinName) + "." + quote("_"+joinName) + ", '[]') AS " + quote(labelRelName)
 				case Computed:
 					if frel.ReturnIsSet {
 						if sfield.relation.spread {
 							err = &BuildError{"A spread operation on " + sfield.relation.name + " is not possible"}
 							return "", "", nil, err
 						}
-						selClause += " COALESCE(" + quote(joinName) + ".\"_" + joinName + "\", '[]') AS " + quote(labelRelName)
+						selClause += " COALESCE(" + quote(joinName) + "." + quote("_"+joinName) + ", '[]') AS " + quote(labelRelName)
 					} else {
 						if sfield.relation.spread {
 							selClause += quote(joinName) + ".*"
@@ -487,7 +487,8 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	}
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
-			relName := join.name
+			// the join name carries the user's label: quote it, never wrap it
+			qName, qAgg := quote(join.name), quote("_"+join.name)
 			selectForJoin, count, err := selectForJoinClause(join, label, parts, stack)
 			if err != nil {
 				return "", "", nil, err
@@ -508,23 +509,23 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			case M2O, O2O:
 				joins += selectForJoin
 			case O2M, M2M:
-				joins += " SELECT json_agg(\"_" + relName + "\") AS \"_" + relName + "\""
+				joins += " SELECT json_agg(" + qAgg + ") AS " + qAgg
 				joins += " FROM ("
 				joins += selectForJoin
-				joins += " ) AS \"_" + relName + "\""
+				joins += " ) AS " + qAgg
 			case Computed:
 				if join.rel.ReturnIsSet {
-					joins += " SELECT json_agg(\"_" + relName + "\") AS \"_" + relName + "\""
+					joins += " SELECT json_agg(" + qAgg + ") AS " + qAgg
 					joins += " FROM ("
 					joins += selectForJoin
-					joins += " ) AS \"_" + relName + "\""
+					joins += " ) AS " + qAgg
 				} else {
 					joins += selectForJoin
 				}
 			}
-			joins += ") AS \"" + relName + "\" ON"
+			joins += ") AS " + qName + " ON"
 			if join.inner && (join.rel.Type == O2M || join.rel.Type == M2M || (join.rel.Type == Computed && join.rel.ReturnIsSet)) {
-				joins += " \"" + relName + "\" IS NOT NULL"
+				joins += " " + qName + " IS NOT NULL"
 			} else {
 				joins += " TRUE"
 			}

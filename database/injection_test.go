@@ -210,3 +210,23 @@ func TestInjectionSchemaDDLQuoting(t *testing.T) {
 		}
 	}
 }
+
+// The label of an embed names its lateral join ("<parent>_<label>_<level>"
+// and the "_"-prefixed aggregate inside it). Those names were wrapped in bare
+// double quotes in the select list and the join, while the label itself went
+// through quote() beside them, so a " in the label broke out of the
+// identifier into the query.
+func TestInjectionEmbedLabelQuoting(t *testing.T) {
+	runSelfEmbedTests(t, []selfEmbedTest{
+		{
+			`?select=id,x"y:web_content(name)`,
+			`SELECT "web_content"."id",  COALESCE("web_content_x""y_1"."_web_content_x""y_1", '[]') AS "x""y" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_x""y_1") AS "_web_content_x""y_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" ) AS "_web_content_x""y_1") AS "web_content_x""y_1" ON TRUE`,
+			nil,
+		},
+		{
+			`?select=id,x"y:web_content!inner(name)`,
+			`SELECT "web_content"."id",  COALESCE("web_content_x""y_1"."_web_content_x""y_1", '[]') AS "x""y" FROM "web_content"  INNER JOIN LATERAL ( SELECT json_agg("_web_content_x""y_1") AS "_web_content_x""y_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" ) AS "_web_content_x""y_1") AS "web_content_x""y_1" ON "web_content_x""y_1" IS NOT NULL`,
+			nil,
+		},
+	})
+}
