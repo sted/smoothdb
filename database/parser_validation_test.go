@@ -178,3 +178,37 @@ func TestParserListRescanIsLinear(t *testing.T) {
 		t.Errorf("parsing %d list elements took %v", n, elapsed)
 	}
 }
+
+// not, start, after, recurse and via are in the operator table with an empty
+// SQL operator, to be recognized as keywords. Reaching a condition as its
+// operator (inside a logic tree, or after not.) they made a node with no
+// operator, which the WHERE builder takes for a container: the condition
+// vanished (or=(id.start.1,b.eq.2) became WHERE b = $1, and a DELETE deleted
+// more) or left an empty NOT (). They must be parse errors.
+func TestParserRejectsKeywordsAsOperators(t *testing.T) {
+	bad := []string{
+		"?or=(id.start.1,b.eq.2)",
+		"?or=(id.after.1,b.eq.2)",
+		"?and=(id.recurse.1,b.eq.2)",
+		"?or=(id.via.1,b.eq.2)",
+		"?id=not.not.5",
+		"?id=not.after.3",
+		"?or=(id.not.start.1,b.eq.2)",
+	}
+	for _, q := range bad {
+		u, _ := url.Parse(q)
+		_, err := PostgRestParser{}.parse("t", u.Query())
+		if err == nil {
+			t.Errorf("%s: expected a parse error, got nil", q)
+		} else if !strings.Contains(err.Error(), "operator") {
+			t.Errorf("%s: expected an operator error, got %q", q, err.Error())
+		}
+	}
+	// controls: real operators, negated or in a logic tree
+	for _, q := range []string{"?or=(id.eq.1,b.eq.2)", "?id=not.eq.5", "?or=(id.not.in.(1,2),b.eq.2)"} {
+		u, _ := url.Parse(q)
+		if _, err := (PostgRestParser{}).parse("t", u.Query()); err != nil {
+			t.Errorf("%s: unexpected error: %v", q, err)
+		}
+	}
+}

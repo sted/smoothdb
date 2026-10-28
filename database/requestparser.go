@@ -1196,7 +1196,9 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			token = p.next()
 		}
 		op, ok := postgRestParserOperators[token]
-		if !ok {
+		// the keywords with an empty operator (not, start, ...) are no operator:
+		// a node without one is taken for a container by the WHERE builder
+		if !ok || op == "" {
 			return &ParseError{"valid sql operator expected"}
 		}
 		node.operator = op
