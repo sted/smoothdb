@@ -153,7 +153,7 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 		} else {
 			set_drop = "DROP"
 		}
-		alter = prefix + name + " " + set_drop + " NOT NULL"
+		alter = prefix + quote(name) + " " + set_drop + " NOT NULL"
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return err
@@ -162,9 +162,9 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 	// DEFAULT
 	if column.Default != nil {
 		if *column.Default != "" {
-			alter = prefix + name + " SET DEFAULT " + *column.Default
+			alter = prefix + quote(name) + " SET DEFAULT " + *column.Default
 		} else {
-			alter = prefix + name + " DROP DEFAULT"
+			alter = prefix + quote(name) + " DROP DEFAULT"
 		}
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
@@ -181,7 +181,7 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 	}
 	// NAME as the last update
 	if column.Name != nil && *column.Name != name {
-		alter = "ALTER TABLE " + ftablename + " RENAME " + name + " TO " + *column.Name
+		alter = "ALTER TABLE " + ftablename + " RENAME " + quote(name) + " TO " + quote(*column.Name)
 		_, err = tx.Exec(ctx, alter)
 		if err != nil {
 			return err

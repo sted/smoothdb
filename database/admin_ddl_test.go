@@ -196,3 +196,56 @@ func TestAdminUpdateRole(t *testing.T) {
 		t.Errorf("lane6_role2 after update: %+v", role)
 	}
 }
+
+// UpdateColumn quoted the column name only in ALTER ... TYPE and COMMENT and
+// interpolated it raw in NOT NULL, DEFAULT and RENAME: a mixed-case or
+// reserved name failed there, and any name was spliced into the DDL.
+func TestAdminUpdateColumnQuoting(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_columns")
+	lane6Exec(t, ctx, `CREATE TABLE lane6_t ("Mixed Case" int, "order" text, id int)`)
+
+	yes := true
+	def := "7"
+	for _, name := range []string{"Mixed Case", "order"} {
+		if err := UpdateColumn(ctx, "lane6_t", name, &ColumnUpdate{NotNull: &yes}); err != nil {
+			t.Fatalf("%s NOT NULL: %v", name, err)
+		}
+	}
+	if err := UpdateColumn(ctx, "lane6_t", "Mixed Case", &ColumnUpdate{Default: &def}); err != nil {
+		t.Fatalf("SET DEFAULT: %v", err)
+	}
+	empty := ""
+	if err := UpdateColumn(ctx, "lane6_t", "Mixed Case", &ColumnUpdate{Default: &empty}); err != nil {
+		t.Fatalf("DROP DEFAULT: %v", err)
+	}
+	newName := "Renamed Col"
+	if err := UpdateColumn(ctx, "lane6_t", "Mixed Case", &ColumnUpdate{Name: &newName}); err != nil {
+		t.Fatalf("RENAME: %v", err)
+	}
+	// A name carrying SQL is an identifier, never statement text.
+	evil := `id DROP NOT NULL; DROP TABLE lane6_t; --`
+	if err := UpdateColumn(ctx, "lane6_t", evil, &ColumnUpdate{NotNull: &yes}); err == nil {
+		t.Errorf("a column named %q should not exist", evil)
+	}
+
+	var cols []string
+	rows, err := GetConn(ctx).Query(ctx, `SELECT attname || ':' || attnotnull || ':' || atthasdef
+		FROM pg_attribute WHERE attrelid = 'lane6_t'::regclass AND attnum > 0 ORDER BY attnum`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		cols = append(cols, c)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Renamed Col:true:false", "order:true:false", "id:false:false"}
+	if strings.Join(cols, ",") != strings.Join(want, ",") {
+		t.Errorf("columns of lane6_t: %v, want %v", cols, want)
+	}
+}
