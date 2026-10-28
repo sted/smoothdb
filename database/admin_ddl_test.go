@@ -159,3 +159,40 @@ func TestAdminCreateConstraint(t *testing.T) {
 		t.Errorf("after DeleteConstraint: %+v", constraints)
 	}
 }
+
+// UpdateRole ran a bare ALTER ROLE "x" when the update set no attribute, a
+// syntax error, so a rename alone (or an empty update) always failed.
+func TestAdminUpdateRole(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	for _, name := range []string{"lane6_role", "lane6_role2"} {
+		DeleteRole(ctx, name)
+		defer DeleteRole(ctx, name)
+	}
+	if _, err := CreateRole(ctx, &Role{Name: "lane6_role"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateRole(ctx, "lane6_role", &RoleUpdate{}); err != nil {
+		t.Fatalf("empty update: %v", err)
+	}
+	newName := "lane6_role2"
+	if err := UpdateRole(ctx, "lane6_role", &RoleUpdate{Name: &newName}); err != nil {
+		t.Fatalf("rename only: %v", err)
+	}
+	yes := true
+	if err := UpdateRole(ctx, "lane6_role2", &RoleUpdate{CanLogin: &yes}); err != nil {
+		t.Fatalf("attribute only: %v", err)
+	}
+	role, err := GetRole(ctx, "lane6_role2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !role.CanLogin {
+		t.Errorf("lane6_role2 after update: %+v", role)
+	}
+}
