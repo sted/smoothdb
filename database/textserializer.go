@@ -891,6 +891,9 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 		}
 		b.Write(raw)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
 	return b.Bytes(), int64(b.Len()), nil
 }
 

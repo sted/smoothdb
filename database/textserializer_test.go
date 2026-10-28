@@ -1099,3 +1099,35 @@ func TestSerializeSpecialValues(t *testing.T) {
 		t.Errorf("CSV\nexpected %q\n     got %q", wantCSV, out)
 	}
 }
+
+// An error that PostgreSQL raises after the first rows (a function that fails
+// on a later row, a statement timeout) is reported by rows.Err() once the rows
+// are exhausted. The octet-stream serializer never asked, so the request got a
+// 200 with a truncated body. The JSON serializer is the control: it reports it.
+func TestBinarySerializerSurfacesRowError(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	gi := GetSmoothContext(ctx)
+	info := gi.Db.info.Load()
+	query := `select ('\x01'::bytea || (1 / (3 - i))::text::bytea) from generate_series(1, 5) i`
+	for _, s := range []struct {
+		name string
+		ser  TextSerializer
+	}{
+		{"json (control)", &JSONSerializer{}},
+		{"binary", &BinarySerializer{}},
+	} {
+		rows, err := gi.Conn.Query(ctx, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = s.ser.Serialize(rows, true, false, info)
+		rows.Close()
+		if err == nil || !strings.Contains(err.Error(), "division by zero") {
+			t.Errorf("%s: expected the division by zero raised at row 3, got %v", s.name, err)
+		}
+	}
+}
