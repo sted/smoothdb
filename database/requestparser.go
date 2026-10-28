@@ -163,9 +163,33 @@ type ParseError struct {
 
 func (e ParseError) Error() string { return e.msg }
 
+// postgRestReservedWords are the parameter keys that are never a filter nor a
+// function argument. Besides PostgREST's select, columns and on_conflict, the
+// bare not and the jq extension are reserved here.
 var postgRestReservedWords = map[string]struct{}{
-	"select": {}, "column": {}, "order": {}, "limit": {}, "offset": {}, "not": {}, "and": {}, "or": {}, "on_conlict": {},
+	"select": {}, "columns": {}, "on_conflict": {}, "not": {},
 	"jq": {}, "jq_args": {},
+}
+
+// postgRestReservedEmbeddable are the control keys that can be scoped to an
+// embed path (order, x.order, x.y.order, not.or, x.not.or...): PostgREST
+// reserves every key whose last dotted word is one of these.
+var postgRestReservedEmbeddable = map[string]struct{}{
+	"order": {}, "limit": {}, "offset": {}, "and": {}, "or": {},
+}
+
+// isReservedParameter reports whether the query key k is a control parameter
+// rather than a filter or a function argument.
+func isReservedParameter(k string) bool {
+	if _, ok := postgRestReservedWords[k]; ok {
+		return true
+	}
+	last := k
+	if i := strings.LastIndexByte(k, '.'); i >= 0 {
+		last = k[i+1:]
+	}
+	_, ok := postgRestReservedEmbeddable[last]
+	return ok
 }
 
 // From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
@@ -263,10 +287,10 @@ func checkAggregatesEnabled() error {
 func (p PostgRestParser) filterParameters(filters Filters) Filters {
 	skipped := make(Filters)
 	for k, vv := range filters {
-		if _, exists := postgRestReservedWords[k]; !exists {
+		if !isReservedParameter(k) {
 			var toRemove []int
 			for i, v := range vv {
-				prefix := strings.SplitN(v, ".", 2)[0]
+				prefix, _, _ := strings.Cut(v, ".")
 				if _, exists := postgRestParserOperators[prefix]; !exists {
 					skipped[k] = append(skipped[k], v)
 					toRemove = append(toRemove, i)

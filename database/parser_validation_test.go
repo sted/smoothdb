@@ -212,3 +212,42 @@ func TestParserRejectsKeywordsAsOperators(t *testing.T) {
 		}
 	}
 }
+
+// On GET /rpc every parameter that is neither reserved nor an operator filter
+// becomes a function argument. Only the bare keys were reserved, and two of them
+// were misspelled ("column", "on_conlict"), so an embedded order such as
+// steps.order=id.asc reached the call as an argument named "steps.order": no
+// overload matched and the embed failed with an empty table name. PostgREST
+// reserves select, columns and on_conflict, and every key whose last dotted
+// word is order, limit, offset, and or or (QueryParams.hs, isFilter).
+func TestParserRPCParametersSkipReservedKeys(t *testing.T) {
+	q := "?a=1&b=x.y" +
+		"&select=*,steps(*)&columns=a,b&on_conflict=a" +
+		"&order=id&limit=1&offset=2&or=(a.eq.1)&and=(a.eq.1)&not.or=(a.eq.1)&not.and=(a.eq.1)" +
+		"&steps.order=id.asc&steps.limit=5&steps.offset=1" +
+		"&steps.or=(id.eq.1)&steps.and=(id.eq.1)&steps.not.or=(id.eq.1)&steps.not.and=(id.eq.1)" +
+		"&steps.sub.order=id.desc&c=eq.3"
+	u, err := url.Parse(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filters := Filters(u.Query())
+	params := PostgRestParser{}.filterParameters(filters)
+	// positive control: plain arguments stay arguments, whatever their value
+	for _, k := range []string{"a", "b"} {
+		if _, ok := params[k]; !ok {
+			t.Errorf("%q should be a function argument, got arguments %v", k, params)
+		}
+	}
+	for k := range params {
+		if k != "a" && k != "b" {
+			t.Errorf("%q is a reserved parameter, not a function argument", k)
+		}
+	}
+	// the reserved keys and the operator filter stay for the parser
+	for _, k := range []string{"select", "columns", "on_conflict", "steps.order", "steps.not.or", "c"} {
+		if _, ok := filters[k]; !ok {
+			t.Errorf("%q should remain in the filters", k)
+		}
+	}
+}
