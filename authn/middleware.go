@@ -198,9 +198,13 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
 				return status, err
 			}
+			// deferred so that a panic, recovered outside this middleware, still
+			// returns the connection; status stays 500 then, so a transaction
+			// left open is rolled back as on any error status
+			status = http.StatusInternalServerError
+			defer func() { m.releaseSession(ctx, status, session) }()
 			//w.(http.Flusher).Flush() // to enable Transfer-Encoding: chunked
 			status, err = next(ctx, w, r)
-			m.releaseSession(ctx, status, session)
 			return status, err
 		}
 	}

@@ -130,3 +130,23 @@ func TestParserRejectsNonKeywordIsOperand(t *testing.T) {
 		}
 	}
 }
+
+// A via! filter value without the opening parenthesis sliced the value at
+// IndexByte(v, '(') == -1 and panicked; it must be a parse error.
+func TestParserViaWithoutParenthesis(t *testing.T) {
+	for _, q := range []string{"?x=via!)", "?x=via!x)", "?x=via!both)"} {
+		u, _ := url.Parse(q)
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s: parser panicked: %v", q, r)
+				}
+			}()
+			_, err = PostgRestParser{}.parse("t", u.Query())
+		}()
+		if err == nil {
+			t.Errorf("%s: expected a parse error, got nil", q)
+		}
+	}
+}

@@ -1422,6 +1422,9 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						return nil, &ParseError{"only one 'via' operator is allowed"}
 					}
 					open := strings.IndexByte(v, '(')
+					if open < 0 { // via!x) ends in ")" but opens no list
+						return nil, &ParseError{"via requires two columns: via(from_col,to_col)"}
+					}
 					if head := v[:open]; head != "via" {
 						if head[len("via!"):] != "both" {
 							return nil, &ParseError{"via direction must be 'both': via!both(from_col,to_col)"}
