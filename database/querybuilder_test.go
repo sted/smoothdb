@@ -977,6 +977,37 @@ func TestBuildExecuteDeterministicOrder(t *testing.T) {
 	})
 }
 
+// TestBuildExecuteGroupBy: an aggregate beside plain columns on a function
+// call is grouped by those columns, as on a table (card 33885 ranged-206,
+// item 3): /rpc/f?select=category,amount.sum() used to have no GROUP BY and
+// failed with 42803.
+func TestBuildExecuteGroupBy(t *testing.T) {
+	for _, tc := range []struct{ query, want string }{
+		{"?select=category,amount.sum()",
+			`SELECT "t"."category", SUM("t"."amount") AS "sum" FROM "f"() t  GROUP BY "t"."category"`},
+		{"?select=category,total:amount.sum(),count()&order=category",
+			`SELECT "t"."category", SUM("t"."amount") AS "total", COUNT(*) AS "count" FROM "f"() t  GROUP BY "t"."category" ORDER BY "t"."category"`},
+		// an aggregate alone needs no GROUP BY
+		{"?select=amount.sum()", `SELECT SUM("t"."amount") AS "sum" FROM "f"() t `},
+	} {
+		u, err := url.Parse(tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts, err := PostgRestParser{}.parse("f", u.Query())
+		if err != nil {
+			t.Fatalf("%q: parse error: %v", tc.query, err)
+		}
+		q, _, err := CommonBuilder{}.BuildExecute("f", nil, Record{}, parts, &QueryOptions{}, &SchemaInfo{})
+		if err != nil {
+			t.Fatalf("%q: build error: %v", tc.query, err)
+		}
+		if q != tc.want {
+			t.Errorf("%q:\n  want: %s\n  got:  %s", tc.query, tc.want, q)
+		}
+	}
+}
+
 // TestBuildInsertKeys guards the column list of a bulk INSERT. Without
 // ?columns= it is the key set shared by every object, so an array whose objects
 // differ is refused ("All object keys must match", as PostgREST) instead of

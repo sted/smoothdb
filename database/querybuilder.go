@@ -548,6 +548,13 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 
 // groupByClause creates a GROUP BY clause when aggregate functions are present
 func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) string {
+	return groupByClauseAs(table, schema, table, schema, parts, info)
+}
+
+// groupByClauseAs is groupByClause for fields read through an alias (the t of
+// a function call), the column types still looked up on the real relation,
+// as prepareFieldAs does for the select list.
+func groupByClauseAs(alias, aliasSchema, table, schema string, parts *QueryParts, info *SchemaInfo) string {
 	// If no select fields are specified, no GROUP BY needed
 	if len(parts.selectFields) == 0 {
 		return ""
@@ -561,7 +568,7 @@ func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) st
 			hasAggregates = true
 		} else if sfield.relation == nil && sfield.field.name != "*" && sfield.field.name != "" && sfield.field.name != "," {
 			// Skip empty field names and comma separators
-			fieldname := _sq(table, schema) + "." + quote(sfield.field.name)
+			fieldname := _sq(alias, aliasSchema) + "." + quote(sfield.field.name)
 			if sfield.field.jsonPath != "" {
 				fieldname = "(" + toJson(table, schema, sfield.field.name, fieldname, info) +
 					sfield.field.jsonPath + ")"
@@ -2224,10 +2231,12 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	if err != nil {
 		return "", nil, err
 	}
+	// an aggregate beside plain columns groups by them, as on a table
+	groupByClause := groupByClauseAs("t", "", t, s, parts, info)
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, joins, whereClause, "", orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
