@@ -594,6 +594,27 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 	return f, nil
 }
 
+// castType reads the type after "::". The dot separates in a select, so a
+// schema-qualified type (public.mytype) arrives as several tokens: they are
+// joined, unless the dot starts an aggregate (field::int4.sum()).
+func (p *PostgRestParser) castType() string {
+	cast := p.next()
+	for p.lookAhead() == "." {
+		next := p.cur + 1
+		p.fill(next + 2)
+		if next >= len(p.tokens) {
+			break
+		}
+		name := p.tokens[next]
+		if isValidAggregateFunction(name) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
+			break
+		}
+		p.next() // the dot
+		cast += "." + p.next()
+	}
+	return cast
+}
+
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	p.scan(s, selectSeparators, selectLongSeparators...)
@@ -688,7 +709,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		// Check for field cast before aggregate: field::cast.aggregate()
 		if p.lookAhead() == "::" {
 			p.next() // consume ::
-			cast = p.next() // get cast type
+			cast = p.castType()
 		}
 
 		// Check for aggregate function: field.avg(), field.sum(), etc.
@@ -721,10 +742,10 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		p.next() // consume ::
 		if aggregate != "" {
 			// This is an aggregate cast
-			aggCast = p.next()
+			aggCast = p.castType()
 		} else {
 			// This is a field cast (fallback case)
-			cast = p.next()
+			cast = p.castType()
 		}
 	}
 	// Casts are interpolated verbatim into the SQL (they cannot be bind

@@ -325,3 +325,32 @@ func TestParserSelectHintAndModifier(t *testing.T) {
 		}
 	}
 }
+
+// A schema-qualified cast arrives as three tokens (the dot separates in a
+// select): only the schema was read as the type and the rest was dropped
+// silently, so t::public.mytype cast to a type named public. The cast must
+// carry the whole name, and a cast followed by an aggregate (t::int4.sum())
+// must keep working.
+func TestParserSchemaQualifiedCast(t *testing.T) {
+	cases := map[string]string{
+		"?select=t::public.mytype":   `SELECT "table"."t"::public.mytype FROM "table"`,
+		"?select=x:t::public.mytype": `SELECT "table"."t"::public.mytype AS "x" FROM "table"`,
+		"?select=t::int4":            `SELECT "table"."t"::int4 FROM "table"`,
+	}
+	for q, want := range cases {
+		u, _ := url.Parse(q)
+		parts, err := PostgRestParser{}.parse("table", u.Query())
+		if err != nil {
+			t.Errorf("%s: unexpected parse error: %v", q, err)
+			continue
+		}
+		sql, _, err := DirectQueryBuilder{}.BuildSelect("table", parts, &QueryOptions{}, nil)
+		if err != nil {
+			t.Errorf("%s: unexpected build error: %v", q, err)
+			continue
+		}
+		if sql != want {
+			t.Errorf("%s\n want: %s\n  got: %s", q, want, sql)
+		}
+	}
+}
