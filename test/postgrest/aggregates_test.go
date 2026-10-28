@@ -455,6 +455,28 @@ func TestPostgREST_Aggregates(t *testing.T) {
 		// 	Expected:    `{"code":"PGRST127","message":"Feature not implemented","details":"Aggregates are not implemented for one-to-many or many-to-many spreads.","hint":null}`,
 		// 	Status:      400,
 		// },
+
+		// @@ added: aggregates on a function call group by the plain columns
+		// as on a table (card 33885 ranged-206, item 3: there was no GROUP BY,
+		// 42803). Bodies from PostgREST 16.4 on the fixtures.
+		{
+			Description: "an aggregate on a function call groups by the other columns",
+			Query:       "/rpc/getallprojects?select=client_id,count()&order=client_id",
+			Expected:    `[{"client_id":1,"count":2},{"client_id":2,"count":2},{"client_id":null,"count":1}]`,
+			Status:      200,
+		},
+		{
+			Description: "an aliased aggregate on a function call groups by the other columns",
+			Query:       "/rpc/getallprojects?select=client_id,total:id.sum()&order=client_id.desc",
+			Expected:    `[{"client_id":null,"total":5},{"client_id":2,"total":7},{"client_id":1,"total":3}]`,
+			Status:      200,
+		},
+		{
+			Description: "an aggregate alone on a function call",
+			Query:       "/rpc/getallprojects?select=id.sum()",
+			Expected:    `[{"sum":15}]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

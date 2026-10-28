@@ -31,7 +31,7 @@ type ColumnUpdate struct {
 // is loaded by the connecting role, an authenticator with no privilege at all
 // on the tables it serves in a PostgREST-style deployment. A domain reports its
 // base type and a generated column has no default, as information_schema has it.
-const columnsQuery = `
+const columnsSelect = `
 	SELECT a.attname,
 		CASE WHEN t.typtype = 'd' THEN bt.typname ELSE t.typname END,
 		CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
@@ -47,8 +47,15 @@ const columnsQuery = `
 	LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 	WHERE c.relname = $1 AND n.nspname = $2
 		AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
-		AND a.attnum > 0 AND NOT a.attisdropped
+		AND a.attnum > 0 AND NOT a.attisdropped`
+
+// columnsQuery reads the columns of a table, in their order.
+const columnsQuery = columnsSelect + `
 	ORDER BY a.attnum`
+
+// columnQuery reads one column of a table, by name.
+const columnQuery = columnsSelect + `
+		AND a.attname = $3`
 
 func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
@@ -91,7 +98,7 @@ func GetColumn(ctx context.Context, tablename string, name string) (*Column, err
 	}
 	column := &Column{}
 	var nullable string
-	err = conn.QueryRow(ctx, columnsQuery, tablename, schemaname).
+	err = conn.QueryRow(ctx, columnQuery, tablename, schemaname, name).
 		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
 	if err != nil {
 		return nil, err

@@ -87,3 +87,60 @@ func TestColumnsWithoutPrivileges(t *testing.T) {
 		t.Errorf("column types: %+v", seen)
 	}
 }
+
+// TestGetColumnByName: GetColumn returns the column it is asked for, not the
+// first column of the table (card 32946 column-lookups), and fails for a
+// column the table does not have. The schema cache still knows the tables
+// and the views, whose columns it does not read.
+func TestGetColumnByName(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "lane3_columns")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "lane3_columns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ReleaseConn(ctx, conn)
+
+	ctx, conn, err = ContextWithDb(context.Background(), db, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	c := GetConn(ctx)
+	for _, sql := range []string{
+		`CREATE TABLE several (id int PRIMARY KEY, name text NOT NULL, price numeric DEFAULT 1)`,
+		`CREATE VIEW several_view AS SELECT id, name FROM several`,
+	} {
+		if _, err := c.Exec(ctx, sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, want := range []struct {
+		name, typ string
+		notNull   bool
+	}{{"id", "int4", true}, {"name", "text", true}, {"price", "numeric", false}} {
+		column, err := GetColumn(ctx, "several", want.name)
+		if err != nil {
+			t.Fatalf("%s: %v", want.name, err)
+		}
+		if column.Name != want.name || column.Type != want.typ || column.NotNull != want.notNull {
+			t.Errorf("GetColumn(several, %s) = %+v", want.name, column)
+		}
+	}
+	if column, err := GetColumn(ctx, "several", "nosuch"); err == nil {
+		t.Errorf("GetColumn(several, nosuch) = %+v, want an error", column)
+	}
+
+	info, err := NewSchemaInfo(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.GetTable("public.several") == nil || info.GetTable("public.several_view") == nil {
+		t.Errorf("the schema cache misses the table or the view")
+	}
+}

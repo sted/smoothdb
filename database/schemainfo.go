@@ -88,10 +88,12 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The cached tables carry no columns: nothing reads them from the cache
+	// (the column types are cached below, the admin API reads the columns
+	// live), and reading them here cost a query per relation (card 32946
+	// column-lookups).
 	for _, t := range tables {
-		ftable := _s(t.Name, t.Schema)
-		t.Columns, _ = GetColumns(ctx, ftable)
-		dbi.cachedTables[ftable] = t
+		dbi.cachedTables[_s(t.Name, t.Schema)] = t
 	}
 	// Views (added to cachedTables so they can participate in embedding)
 	views, err := GetViews(ctx)
@@ -101,12 +103,10 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	for _, v := range views {
 		fview := _s(v.Name, v.Schema)
 		if _, exists := dbi.cachedTables[fview]; !exists {
-			columns, _ := GetColumns(ctx, fview)
 			dbi.cachedTables[fview] = Table{
-				Name:    v.Name,
-				Schema:  v.Schema,
-				Owner:   v.Owner,
-				Columns: columns,
+				Name:   v.Name,
+				Schema: v.Schema,
+				Owner:  v.Owner,
 			}
 		}
 	}
@@ -306,6 +306,33 @@ func (si *SchemaInfo) FindRelationshipByCol(ftable, col string) *Relationship {
 		}
 	}
 	return nil
+}
+
+// FindRelationshipsByHintCol returns the relationships of ftable to
+// relatedTable that a column hint selects, relatedTable!col(...), as PostgREST
+// matches them (Plan.hs findRel): a one-to-many, many-to-one or one-to-one
+// relationship whose single foreign key column, on either side, is col. In a
+// self-relationship only the one-to-many side matches, by the referencing
+// column (/organizations?select=auditees:organizations!auditor(*)).
+// Relationships to other relations than relatedTable never match, even when
+// they carry the same column (card 34668 column-hint-embed).
+func (si *SchemaInfo) FindRelationshipsByHintCol(ftable, relatedTable, col string) []Relationship {
+	var found []Relationship
+	for _, rel := range si.GetRelationships(ftable) {
+		if rel.RelatedTable != relatedTable || (rel.Type != M2O && rel.Type != O2M && rel.Type != O2O) {
+			continue
+		}
+		local := len(rel.Columns) == 1 && rel.Columns[0] == col
+		ref := len(rel.RelatedColumns) == 1 && rel.RelatedColumns[0] == col
+		if rel.Table == rel.RelatedTable {
+			if rel.Type == O2M && ref {
+				found = append(found, rel)
+			}
+		} else if local || ref {
+			found = append(found, rel)
+		}
+	}
+	return found
 }
 
 func (si *SchemaInfo) FindRelationshipByFK(ftable, fk string) *Relationship {

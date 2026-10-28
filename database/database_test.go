@@ -98,14 +98,6 @@ func TestBase(t *testing.T) {
 		}
 	})
 
-	t.Run("Select2", func(t *testing.T) {
-		SetQueryBuilder(ctx, QueryWithJSON{})
-		_, _, err := GetRecords(ctx, "b1", nil)
-		if err != nil {
-			t.Error(err)
-		}
-	})
-
 	// t.Run("Select3", func(t *testing.T) {
 	// 	j, err := GetRecords3(ctx, "b1")
 	// 	if err != nil {
@@ -715,17 +707,6 @@ func BenchmarkBase(b *testing.B) {
 	}
 
 	b.Run("Select1", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, _, err := GetRecords(ctx, "b1", nil)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-		}
-	})
-
-	b.Run("Select2", func(b *testing.B) {
-		SetQueryBuilder(ctx, QueryWithJSON{})
 		for i := 0; i < b.N; i++ {
 			_, _, err := GetRecords(ctx, "b1", nil)
 			if err != nil {

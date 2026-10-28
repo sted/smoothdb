@@ -338,8 +338,15 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			}
 		}
 		if fk != "" {
-			hint := fk // the hint is not an fk but a col? we try
-			rel = info.FindRelationshipByCol(tableWithSchema, hint)
+			// the hint names no constraint: it can name a column of a
+			// relationship to the relation named, and only to that one
+			hrels := info.FindRelationshipsByHintCol(tableWithSchema, relationWithSchema, fk)
+			if len(hrels) > 1 {
+				return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+			}
+			if len(hrels) == 1 {
+				rel = &hrels[0]
+			}
 		} else {
 			// search rel by column (try to see if relation is instead an fk column)
 			rel = info.FindRelationshipByCol(tableWithSchema, relation)
@@ -541,6 +548,13 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 
 // groupByClause creates a GROUP BY clause when aggregate functions are present
 func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) string {
+	return groupByClauseAs(table, schema, table, schema, parts, info)
+}
+
+// groupByClauseAs is groupByClause for fields read through an alias (the t of
+// a function call), the column types still looked up on the real relation,
+// as prepareFieldAs does for the select list.
+func groupByClauseAs(alias, aliasSchema, table, schema string, parts *QueryParts, info *SchemaInfo) string {
 	// If no select fields are specified, no GROUP BY needed
 	if len(parts.selectFields) == 0 {
 		return ""
@@ -554,7 +568,7 @@ func groupByClause(table, schema string, parts *QueryParts, info *SchemaInfo) st
 			hasAggregates = true
 		} else if sfield.relation == nil && sfield.field.name != "*" && sfield.field.name != "" && sfield.field.name != "," {
 			// Skip empty field names and comma separators
-			fieldname := _sq(table, schema) + "." + quote(sfield.field.name)
+			fieldname := _sq(alias, aliasSchema) + "." + quote(sfield.field.name)
 			if sfield.field.jsonPath != "" {
 				fieldname = "(" + toJson(table, schema, sfield.field.name, fieldname, info) +
 					sfield.field.jsonPath + ")"
@@ -2217,10 +2231,12 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	if err != nil {
 		return "", nil, err
 	}
+	// an aggregate beside plain columns groups by them, as on a table
+	groupByClause := groupByClauseAs("t", "", t, s, parts, info)
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, joins, whereClause, "", orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
@@ -2258,49 +2274,14 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
+// preferredSerializer: the response is written in Go from the raw row values
+// by the hand-written serializers, and PostgreSQL builds only the nested
+// embeds as json, passed through untouched. Building the whole response in
+// the backend (one json_agg over the select) was tried and rejected (card
+// 32703 select-select): it is slower and costs more CPU, moves the escaping
+// and the number formatting into the backend, materializes the whole result
+// as one datum before the first byte, breaks Content-Range, and cannot serve
+// CSV or binary output.
 func (DirectQueryBuilder) preferredSerializer() TextSerializer {
 	return &JSONSerializer{}
-}
-
-type QueryWithJSON struct {
-	CommonBuilder
-}
-
-func (QueryWithJSON) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
-	stack := BuildStack{info: info}
-	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
-	if err != nil {
-		return "", nil, err
-	}
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
-		return "", nil, err
-	}
-	groupByClause := groupByClause(table, schema, parts, info)
-	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
-	if err != nil {
-		return "", nil, err
-	}
-
-	if parts.recursive != nil {
-		if groupByClause != "" {
-			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
-		}
-		return buildRecursiveSelect(table, schema, parts, options,
-			selectClause, whereClause, orderClause, joins, valueList, info)
-	}
-
-	query := "SELECT "
-	if selectClause == "*" {
-		query += "json_agg(" + table + ")"
-	} else {
-		query += "SELECT " + selectClause
-	}
-	from := "FROM " + table
-	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
-}
-
-func (QueryWithJSON) preferredSerializer() TextSerializer {
-	return DatabaseJSONSerializer{}
 }
