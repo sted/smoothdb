@@ -145,6 +145,13 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	if err != nil {
 		return nil, 0, err
 	}
+	// A single object is checked before any row is written: err set here
+	// lets the deferred ROLLBACK fire, while a check after the COMMIT would
+	// answer an error for an update that was applied
+	if options.ReturnRepresentation && options.Singular && len(ctids) != 1 {
+		err = &SerializeError{"JSON object requested, multiple (or no) rows returned"}
+		return nil, int64(len(ctids)), err
+	}
 
 	var representation [][]byte
 	for i, ctid := range ctids {

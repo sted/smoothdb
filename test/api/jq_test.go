@@ -505,6 +505,86 @@ func TestJQUpdateOrder(t *testing.T) {
 	test.Execute(t, testConfig, tests)
 }
 
+// TestJQUpdateSingular: a jq update asking for a single object refuses a
+// match of zero or several rows before writing anything, also with
+// TransactionMode "none" (the suite's mode), where the update runs in a
+// transaction of its own
+func TestJQUpdateSingular(t *testing.T) {
+
+	cmdConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/admin",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	commands := []test.Command{
+		{
+			Method: "DELETE",
+			Query:  "/databases/dbtest/tables/jqsingular",
+		},
+		{
+			Method: "POST",
+			Query:  "/databases/dbtest/tables",
+			Body: `{
+				"name": "jqsingular",
+				"columns": [
+					{"name": "id", "type": "integer"},
+					{"name": "counter", "type": "integer"}
+				]}`,
+		},
+	}
+	test.Prepare(cmdConfig, commands)
+
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	object := test.Headers{
+		"Accept": {"application/vnd.pgrst.object+json"},
+		"Prefer": {"return=representation"},
+	}
+	tests := []test.Test{
+		{
+			Description: "insert records",
+			Method:      "POST",
+			Query:       "/jqsingular",
+			Body:        `[{"id": 1, "counter": 1}, {"id": 2, "counter": 2}]`,
+			Status:      201,
+		},
+		{
+			Description: "two matching rows: refused",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqsingular", "", `{"counter": -1}`, ""),
+			Headers:     object,
+			Status:      406,
+		},
+		{
+			Description: "no row was changed by the refused update",
+			Method:      "GET",
+			Query:       "/jqsingular?select=counter&order=id",
+			Expected:    `[{"counter": 1}, {"counter": 2}]`,
+			Status:      200,
+		},
+		{
+			Description: "no matching row: refused",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqsingular", "id=eq.99", `{"counter": -1}`, ""),
+			Headers:     object,
+			Status:      406,
+		},
+		{
+			Description: "one matching row: the object",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqsingular", "id=eq.2", `{"counter": (.counter + 1)}`, ""),
+			Headers:     object,
+			Expected:    `{"id": 2, "counter": 3}`,
+			Status:      200,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
+
 // TestJQUpdateRLS: jq-update goes through row level security like a normal update
 func TestJQUpdateRLS(t *testing.T) {
 
