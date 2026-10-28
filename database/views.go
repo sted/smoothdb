@@ -58,7 +58,7 @@ func GetView(ctx context.Context, name string) (*View, error) {
 	var kind byte
 	err := conn.QueryRow(ctx, viewsQuery+
 		" AND c.relname = $1 AND n.nspname = $2", name, schemaname).
-		Scan(&view.Name, &view.Schema, &view.Owner, &kind)
+		Scan(&view.Name, &view.Schema, &view.Owner, &view.Definition, &kind)
 	if err != nil {
 		return nil, err
 	}

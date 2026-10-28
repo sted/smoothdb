@@ -19,7 +19,7 @@ func GetUsers(ctx context.Context) ([]User, error) {
 	conn := GetConn(ctx)
 	roles := []User{}
 	query := usersQuery + ` ORDER BY 1`
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, dbe.authRole)
 	if err != nil {
 		return roles, err
 	}

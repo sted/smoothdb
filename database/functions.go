@@ -139,8 +139,7 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 
 func DeleteFunction(ctx context.Context, name string) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	fname := _sq(name, schemaname)
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+quoteParts(fname))
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+_sq(name, schemaname))
 	return err
 }
 
