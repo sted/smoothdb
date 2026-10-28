@@ -285,7 +285,6 @@ func (sm *SessionManager) dropSession(session *Session) {
 		return
 	}
 	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
 	if list := sm.slots[session.key]; list != nil {
 		list.remove(session)
 		sm.total -= 1
@@ -294,6 +293,18 @@ func (sm *SessionManager) dropSession(session *Session) {
 		}
 	}
 	session.transient = true // later leave/drop calls are no-ops
+	conn := session.DbConn
+	session.DbConn = nil
+	sm.mtx.Unlock()
+	// A connection the session kept between requests ("role" mode, see the
+	// watcher) goes back to the pool now: once dropped, the session is out of
+	// the watcher's sight and nothing else would release it.
+	if conn != nil {
+		err := database.ReleaseConnection(context.Background(), conn, false, true)
+		if err != nil && sm.logger != nil {
+			sm.logger.Err(err).Msg("error releasing the connection of a dropped session")
+		}
+	}
 }
 
 // SetMaxSessions bounds the number of stored sessions (non-positive: default)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/sted/heligo"
 )
 
@@ -55,5 +56,56 @@ func TestPanicInHandlerReleasesConnection(t *testing.T) {
 	}
 	if !acquireWithin(t, s, 500*time.Millisecond) {
 		t.Fatal("the connection of the panicking request was not returned to the pool")
+	}
+}
+
+// In "role" mode the connection stays attached to the session for about a
+// second after the request. A request that hits the session with a token
+// expired meanwhile drops the session; the connection attached to it must go
+// back to the pool then, since a dropped session is no longer seen by the
+// watcher that would otherwise release it. The control is the same flow with
+// a valid token: the watcher releases the idle connection.
+func TestExpiredTokenOnSessionHitReleasesConnection(t *testing.T) {
+	s := newSingleConnectionServer(t, map[string]any{
+		"Address":          "localhost:8179",
+		"AllowAnon":        false,
+		"JWTSecret":        "connection-leak-test-secret",
+		"SessionMode":      "role",
+		"EnableAdminRoute": false,
+	})
+	ensureAnonRole(t, s, "leak_user")
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	url := "http://localhost:8179/api/postgres/whatever"
+
+	// control: a valid token, the watcher hands the connection back
+	valid := signClaims(t, jwt.MapClaims{"role": "leak_user"}, s.JWTSecret())
+	getWithToken(t, url, valid)
+	if !acquireWithin(t, s, 3*time.Second) {
+		t.Fatal("control: the watcher did not release the idle session connection")
+	}
+
+	// a token that expires between two requests within the retention window;
+	// jwt rounds exp to the second unless told otherwise
+	precision := jwt.TimePrecision
+	jwt.TimePrecision = time.Millisecond
+	t.Cleanup(func() { jwt.TimePrecision = precision })
+	exp := time.Now().Add(500 * time.Millisecond)
+	expiring := signClaims(t, jwt.MapClaims{
+		"role": "leak_user",
+		"exp":  float64(exp.UnixMilli()) / 1000,
+	}, s.JWTSecret())
+	if status := getWithToken(t, url, expiring); status == http.StatusUnauthorized {
+		t.Fatalf("first request: the token is still valid, got %d", status)
+	}
+	time.Sleep(time.Until(exp) + 100*time.Millisecond)
+	if status := getWithToken(t, url, expiring); status != http.StatusUnauthorized {
+		t.Fatalf("second request: expected 401 for the expired token, got %d", status)
+	}
+	if !acquireWithin(t, s, 3*time.Second) {
+		t.Fatal("the connection of the dropped session was never returned to the pool")
 	}
 }
