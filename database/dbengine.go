@@ -383,6 +383,8 @@ func (dbe *DbEngine) GetActiveDatabase(ctx context.Context, name string) (db *Da
 
 		dbi, err := dbe.GetDatabase(ctx, name)
 		if err != nil {
+			// the waiters return the database unless an error is recorded
+			db.activationErr = err
 			close(db.activation)
 			return nil, err
 		}

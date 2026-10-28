@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -88,4 +90,31 @@ func TestEngine(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// Concurrent requests for a database that does not exist: the first caller
+// fails in GetDatabase and wakes the waiters, which return the database when
+// no activation error was recorded. That failure path recorded none, so a
+// waiter got a *Database with no pool, and its first AcquireConnection
+// panicked. Every caller must get the error.
+func TestGetActiveDatabaseConcurrentFailure(t *testing.T) {
+	ctx := context.Background()
+	for round := 0; round < 20; round++ {
+		var wg sync.WaitGroup
+		var unexpected atomic.Int32
+		for g := 0; g < 32; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				db, err := dbe.GetActiveDatabase(ctx, "no_such_database_for_race")
+				if err == nil || db != nil {
+					unexpected.Add(1)
+				}
+			}()
+		}
+		wg.Wait()
+		if n := unexpected.Load(); n > 0 {
+			t.Fatalf("round %d: %d callers got a database without an error", round, n)
+		}
+	}
 }
