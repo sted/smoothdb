@@ -1590,6 +1590,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 	// on_conflict alone is a plain insert, and a conflict its 409
 	if options.MergeDuplicates || options.IgnoreDuplicates {
 		conflictFields := lo.Keys(parts.conflictFields)
+		sort.Strings(conflictFields) // one SQL text, see BuildUpdate
 		onConflict := onConflictClause(table, schema, fieldList, conflictFields, options, info)
 		insert += onConflict
 	}
@@ -1619,13 +1620,9 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	}
 	var pairs string
 	var i int
-	for key := range record {
-		// check if there are specified columns
-		if len(parts.columnFields) > 0 {
-			if _, ok := parts.columnFields[key]; !ok {
-				continue
-			}
-		}
+	// in a fixed order, as INSERT: one SQL text per set of columns, so one
+	// prepared statement in pgx's cache
+	for _, key := range orderedRecordKeys(record, parts.columnFields, nil) {
 		if pairs != "" {
 			pairs += ", "
 		}

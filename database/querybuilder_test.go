@@ -1428,3 +1428,55 @@ func TestBuildMutationJsonPathThroughSource(t *testing.T) {
 		}
 	}
 }
+
+// The SET list of an UPDATE and the ON CONFLICT columns were built by ranging
+// over maps, so the same request produced a different SQL text from one call
+// to the next. pgx caches a prepared statement per text: a PATCH of n columns
+// could take n! texts, an extra Parse round trip on most of them, and as many
+// rows in pg_stat_statements. Both are now in a fixed (sorted) order. INSERT,
+// which already sorted its columns, is the control.
+func TestMutationSQLIsDeterministic(t *testing.T) {
+	record := Record{"d": 4, "c": 3, "b": 2, "a": 1}
+	build := func(query string, f func(parts *QueryParts) (string, error)) map[string]bool {
+		t.Helper()
+		texts := map[string]bool{}
+		for i := 0; i < 50; i++ {
+			u, _ := url.Parse(query)
+			parts, err := PostgRestParser{}.parse("table", u.Query())
+			if err != nil {
+				t.Fatal(err)
+			}
+			sql, err := f(parts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			texts[sql] = true
+		}
+		return texts
+	}
+	cases := []struct {
+		name  string
+		query string
+		build func(parts *QueryParts) (string, error)
+		want  string
+	}{
+		{"insert (control)", "?", func(parts *QueryParts) (string, error) {
+			sql, _, err := CommonBuilder{}.BuildInsert("table", []Record{record}, nil, parts, &QueryOptions{}, nil)
+			return sql, err
+		}, `INSERT INTO "table" ("a", "b", "c", "d") SELECT _."a", _."b", _."c", _."d" FROM json_populate_recordset(NULL::"table", $1::json) AS _`},
+		{"update", "?id=eq.1", func(parts *QueryParts) (string, error) {
+			sql, _, err := CommonBuilder{}.BuildUpdate("table", record, parts, &QueryOptions{}, nil)
+			return sql, err
+		}, `UPDATE "table" SET "a" = $1, "b" = $2, "c" = $3, "d" = $4 WHERE "table"."id" = $5`},
+		{"on_conflict", "?on_conflict=d,c,b,a", func(parts *QueryParts) (string, error) {
+			sql, _, err := CommonBuilder{}.BuildInsert("table", []Record{record}, nil, parts, &QueryOptions{IgnoreDuplicates: true}, nil)
+			return sql, err
+		}, `INSERT INTO "table" ("a", "b", "c", "d") SELECT _."a", _."b", _."c", _."d" FROM json_populate_recordset(NULL::"table", $1::json) AS _ ON CONFLICT ("a", "b", "c", "d") DO NOTHING`},
+	}
+	for _, c := range cases {
+		texts := build(c.query, c.build)
+		if len(texts) != 1 || !texts[c.want] {
+			t.Errorf("%s: expected the single text\n\t%s\ngot %d texts: %v", c.name, c.want, len(texts), texts)
+		}
+	}
+}
