@@ -23,6 +23,12 @@ func (s *Server) MiddlewareDBE() heligo.Middleware {
 	return authn.Middleware(s, true, s.getDatabaseName)
 }
 
+// MiddlewareAuth authenticates without a database session or connection,
+// for routes that never touch the database.
+func (s *Server) MiddlewareAuth() heligo.Middleware {
+	return authn.AuthMiddleware(s)
+}
+
 func (s *Server) MiddlewareWithDbName(dbname string) heligo.Middleware {
 	return authn.Middleware(s, false, func(ctx context.Context, r heligo.Request) string {
 		return dbname
