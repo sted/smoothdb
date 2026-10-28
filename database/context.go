@@ -55,10 +55,15 @@ func ContextWithDb(parent context.Context, db *Database, role string) (context.C
 		db, err = dbe.GetMainDatabase(parent)
 	}
 	if err != nil {
+		if conn != nil {
+			conn.Release()
+		}
 		return nil, nil, err
 	}
 	err = PrepareConnection(parent, conn, role, "", true, false)
 	if err != nil {
+		// pgxpool destroys a connection left in a (failed) transaction
+		conn.Release()
 		return nil, nil, err
 	}
 	return contextImpl(parent, db, conn.Conn(), role), conn, nil

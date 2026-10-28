@@ -74,7 +74,7 @@ func GetTypes(ctx context.Context) ([]Type, error) {
 		}
 		types = append(types, typ)
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		return types, err
 	}
 	return types, nil

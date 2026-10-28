@@ -76,7 +76,7 @@ func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 		fillColumnConstraints(&column, constraints)
 		columns = append(columns, column)
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		return columns, err
 	}
 	return columns, nil
