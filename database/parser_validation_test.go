@@ -212,3 +212,116 @@ func TestParserRejectsKeywordsAsOperators(t *testing.T) {
 		}
 	}
 }
+
+// On GET /rpc every parameter that is neither reserved nor an operator filter
+// becomes a function argument. Only the bare keys were reserved, and two of them
+// were misspelled ("column", "on_conlict"), so an embedded order such as
+// steps.order=id.asc reached the call as an argument named "steps.order": no
+// overload matched and the embed failed with an empty table name. PostgREST
+// reserves select, columns and on_conflict, and every key whose last dotted
+// word is order, limit, offset, and or or (QueryParams.hs, isFilter).
+func TestParserRPCParametersSkipReservedKeys(t *testing.T) {
+	q := "?a=1&b=x.y" +
+		"&select=*,steps(*)&columns=a,b&on_conflict=a" +
+		"&order=id&limit=1&offset=2&or=(a.eq.1)&and=(a.eq.1)&not.or=(a.eq.1)&not.and=(a.eq.1)" +
+		"&steps.order=id.asc&steps.limit=5&steps.offset=1" +
+		"&steps.or=(id.eq.1)&steps.and=(id.eq.1)&steps.not.or=(id.eq.1)&steps.not.and=(id.eq.1)" +
+		"&steps.sub.order=id.desc&c=eq.3"
+	u, err := url.Parse(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filters := Filters(u.Query())
+	params := PostgRestParser{}.filterParameters(filters)
+	// positive control: plain arguments stay arguments, whatever their value
+	for _, k := range []string{"a", "b"} {
+		if _, ok := params[k]; !ok {
+			t.Errorf("%q should be a function argument, got arguments %v", k, params)
+		}
+	}
+	for k := range params {
+		if k != "a" && k != "b" {
+			t.Errorf("%q is a reserved parameter, not a function argument", k)
+		}
+	}
+	// the reserved keys and the operator filter stay for the parser
+	for _, k := range []string{"select", "columns", "on_conflict", "steps.order", "steps.not.or", "c"} {
+		if _, ok := filters[k]; !ok {
+			t.Errorf("%q should remain in the filters", k)
+		}
+	}
+}
+
+// An embed takes a hint and a join modifier together (rel!hint!inner), as in
+// PostgREST. The parser consumed one token after '!', so the second '!' ended
+// the item, clients became a plain field and, since nothing checked that the
+// select was consumed, the rest of it was dropped without an error.
+func TestParserSelectHintAndModifier(t *testing.T) {
+	type embed struct {
+		name, fk string
+		inner    bool
+	}
+	good := []struct {
+		sel    string
+		fields int // top-level items
+		embed  embed
+	}{
+		{"id,clients!client!inner(id),name", 3, embed{"clients", "client", true}},
+		{"id,clients!client!left(id)", 2, embed{"clients", "client", false}},
+		// PostgREST's pEmbedParams reads up to two parameters in either
+		// order; the hint is the first hint, the join the first modifier, and
+		// a second hint or a second modifier is ignored
+		{"id,clients!inner!client(id),name", 3, embed{"clients", "client", true}},
+		{"id,clients!left!client(id)", 2, embed{"clients", "client", false}},
+		{"id,clients!client!bogus(id)", 2, embed{"clients", "client", false}},
+		{"id,clients!bogus!client(id)", 2, embed{"clients", "bogus", false}},
+		{"id,clients!inner!left(id)", 2, embed{"clients", "", true}},
+		{"id,clients!left!inner(id)", 2, embed{"clients", "", false}},
+		{"id,clients!inner!inner(id)", 2, embed{"clients", "", true}},
+		{`id,clients!"inner"(id)`, 2, embed{"clients", "inner", false}}, // a quoted name is a hint
+		// controls: one embed parameter, as before
+		{"id,clients!inner(id)", 2, embed{"clients", "", true}},
+		{"id,clients!left(id)", 2, embed{"clients", "", false}},
+		{"id,clients!client(id)", 2, embed{"clients", "client", false}},
+		{"id,clients(id)", 2, embed{"clients", "", false}},
+	}
+	for _, c := range good {
+		p := PostgRestParser{}
+		fields, err := p.parseSelect(c.sel)
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", c.sel, err)
+			continue
+		}
+		if len(fields) != c.fields {
+			t.Errorf("%s: %d select items, want %d", c.sel, len(fields), c.fields)
+			continue
+		}
+		rel := fields[1].relation
+		if rel == nil {
+			t.Errorf("%s: item 1 is not an embed: %+v", c.sel, fields[1])
+			continue
+		}
+		if got := (embed{rel.name, rel.fk, rel.inner}); got != c.embed {
+			t.Errorf("%s: embed %+v, want %+v", c.sel, got, c.embed)
+		}
+	}
+	// trailing input and malformed embed parameters are parse errors, not a
+	// truncated select (card 35452 parser-trailing for the first two); a
+	// third embed parameter fails in PostgREST too
+	bad := []string{
+		"a)b",
+		"a!(b)",
+		"id,clients!client!inner!x(id)",
+		"id,clients!inner!client!left(id)",
+		"id,clients!client!(id)",
+		"id,clients!(id)",
+		"id,clients!(id),name",
+		"a,b(c))",
+	}
+	for _, sel := range bad {
+		p := PostgRestParser{}
+		if fields, err := p.parseSelect(sel); err == nil {
+			t.Errorf("%s: expected a parse error, got %d items", sel, len(fields))
+		}
+	}
+}

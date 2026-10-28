@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -163,9 +164,33 @@ type ParseError struct {
 
 func (e ParseError) Error() string { return e.msg }
 
+// postgRestReservedWords are the parameter keys that are never a filter nor a
+// function argument. Besides PostgREST's select, columns and on_conflict, the
+// bare not and the jq extension are reserved here.
 var postgRestReservedWords = map[string]struct{}{
-	"select": {}, "column": {}, "order": {}, "limit": {}, "offset": {}, "not": {}, "and": {}, "or": {}, "on_conlict": {},
+	"select": {}, "columns": {}, "on_conflict": {}, "not": {},
 	"jq": {}, "jq_args": {},
+}
+
+// postgRestReservedEmbeddable are the control keys that can be scoped to an
+// embed path (order, x.order, x.y.order, not.or, x.not.or...): PostgREST
+// reserves every key whose last dotted word is one of these.
+var postgRestReservedEmbeddable = map[string]struct{}{
+	"order": {}, "limit": {}, "offset": {}, "and": {}, "or": {},
+}
+
+// isReservedParameter reports whether the query key k is a control parameter
+// rather than a filter or a function argument.
+func isReservedParameter(k string) bool {
+	if _, ok := postgRestReservedWords[k]; ok {
+		return true
+	}
+	last := k
+	if i := strings.LastIndexByte(k, '.'); i >= 0 {
+		last = k[i+1:]
+	}
+	_, ok := postgRestReservedEmbeddable[last]
+	return ok
 }
 
 // From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
@@ -263,10 +288,10 @@ func checkAggregatesEnabled() error {
 func (p PostgRestParser) filterParameters(filters Filters) Filters {
 	skipped := make(Filters)
 	for k, vv := range filters {
-		if _, exists := postgRestReservedWords[k]; !exists {
+		if !isReservedParameter(k) {
 			var toRemove []int
 			for i, v := range vv {
-				prefix := strings.SplitN(v, ".", 2)[0]
+				prefix, _, _ := strings.Cut(v, ".")
 				if _, exists := postgRestParserOperators[prefix]; !exists {
 					skipped[k] = append(skipped[k], v)
 					toRemove = append(toRemove, i)
@@ -571,8 +596,30 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
-	p.scan(s, ".,():!", "->>", "->", "::", "...", "()")
-	return p.selectList(nil)
+	p.scan(s, selectSeparators, selectLongSeparators...)
+	fields, err := p.selectList(nil)
+	if err != nil {
+		return nil, err
+	}
+	// selectList stops at the first token that cannot continue the list: what
+	// is left is not part of any select item and must not be dropped silently
+	if rest := p.lookAhead(); rest != "" {
+		return nil, &ParseError{"unexpected " + strconv.Quote(rest) + " in select"}
+	}
+	return fields, nil
+}
+
+const selectSeparators = ".,():!"
+
+var selectLongSeparators = []string{"->>", "->", "::", "...", "()"}
+
+// isSelectSeparator reports whether an unquoted token of the select is a
+// separator rather than a name.
+func isSelectSeparator(tok string) bool {
+	if len(tok) == 1 && strings.Contains(selectSeparators, tok) {
+		return true
+	}
+	return slices.Contains(selectLongSeparators, tok)
 }
 
 func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []SelectField, err error) {
@@ -689,14 +736,31 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if aggCast != "" && !isValidCastType(aggCast) {
 		return nil, &ParseError{"invalid cast type: " + aggCast}
 	}
-	if p.lookAhead() == "!" {
+	// Embed parameters, as PostgREST's pEmbedParams reads them: up to two
+	// '!' parameters in either order, each a join modifier (inner, left) or
+	// a hint. The hint is the first hint and the join the first modifier;
+	// a second hint or a second modifier is ignored (rel!hint!inner,
+	// rel!inner!hint, rel!inner!left is inner).
+	var hintSeen, joinSeen bool
+	for n := 0; p.lookAhead() == "!"; n++ {
+		if n == 2 {
+			return nil, &ParseError{"unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
+		}
 		p.next()
-		fk = p.next()
-		if fk == "inner" {
-			fk = ""
-			inner = true
-		} else if fk == "left" {
-			fk = ""
+		param, quoted := p.nextQuoted()
+		if !quoted && (param == "inner" || param == "left") {
+			if !joinSeen {
+				inner = param == "inner"
+				joinSeen = true
+			}
+			continue
+		}
+		if param == "" || (!quoted && isSelectSeparator(param)) {
+			return nil, &ParseError{"embed hint expected after '!'"}
+		}
+		if !hintSeen {
+			fk = param
+			hintSeen = true
 		}
 	}
 	if p.lookAhead() != "(" && p.lookAhead() != "()" {

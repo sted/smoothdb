@@ -2388,3 +2388,33 @@ func TestPostgREST_RPC(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+// Not a ported spec. On GET /rpc an embed-scoped control key (tasks.order,
+// tasks.limit, tasks.or...) is reserved as it is on the table path, as
+// PostgREST's QueryParams does (isFilter / reservedEmbeddable). It used to be
+// passed to the function as an argument named "tasks.order", so no overload
+// matched and the embed failed with "cannot find relationship for table  with
+// table tasks".
+func TestRPC_GetEmbeddedOrder(t *testing.T) {
+	tests := []test.Test{
+		{
+			Description: "GET rpc honours an embedded order",
+			Method:      "GET",
+			Query:       "/rpc/getallusers?select=name,tasks(name)&id=gt.1&tasks.order=name.desc",
+			Expected: `[
+				{"name":"Michael Scott", "tasks":[{"name":"Design OSX"}, {"name":"Design IOS"}, {"name":"Code IOS"}]},
+				{"name":"Dwight Schrute","tasks":[{"name":"Design w7"}, {"name":"Design IOS"}]}]`,
+			Status: 200,
+		},
+		{
+			Description: "GET rpc honours an embedded or filter",
+			Method:      "GET",
+			Query:       "/rpc/getallusers?select=name,tasks(name)&id=gt.1&tasks.or=(name.eq.Code%20IOS,name.eq.Design%20w7)",
+			Expected: `[
+				{"name":"Michael Scott", "tasks":[{"name":"Code IOS"}]},
+				{"name":"Dwight Schrute","tasks":[{"name":"Design w7"}]}]`,
+			Status: 200,
+		},
+	}
+	test.Execute(t, testConfig, tests)
+}
