@@ -1,5 +1,23 @@
 # Change Log
 
+## 0.10.1 - 2026-10-28
+
+### Security
+* **SQL injection through an embed label** — the lateral join of an embed is named after its label, and that name was wrapped in bare double quotes beside the quoted label: a `"` in `select=` (`?select=id,x"y:rel(name)`) broke out of the identifier into the query, for any caller including an anonymous one. The join names are now quoted like every other identifier.
+* **Connections leaked by malformed or expired requests** — a `via!` filter without its list (`?x=via!)`) panicked in the parser, and the recovered panic skipped the release of the request connection, still inside its transaction: anonymous requests could drain the pool. The release now runs on a panic too, and `via!` without a list is a 400. In `SessionMode: "role"`, a request whose token expired while its session still held a connection dropped the session without releasing it; the connection now goes back to the pool.
+* **Quadratic parse of quoted list elements** — an `in.()` list whose elements end inside a quoted token (`in.(x.",x.",…)`) made the parser rescan the rest of the query string for every element: seconds of CPU for a 64 KB query. Tokens are now scanned on demand, so the parse is linear (4 000 elements: 334 ms → 3.2 ms).
+
+### Fixed
+* **Keywords used as filter operators** — `not`, `start`, `after`, `recurse` and `via` as the operator of a condition (in a logic tree, or after `not.`) made the condition vanish: `or=(id.start.1,b.eq.2)` filtered on `b` alone, so a `DELETE` deleted more rows, and `not.not.5` was a SQL syntax error. They are a 400 now, as in PostgREST.
+* **Non-finite numbers and timestamps on the binary path** — `float4`, `float8` and `numeric` `NaN`/`Infinity`/`-Infinity` were written as bare tokens (`NaN`, `+Inf`), invalid JSON; they are strings now, as `to_json` prints them, and PostgreSQL's text in CSV. Timestamps between 1970 and 2000 with a fractional second came out one second late, and `infinity`/`-infinity` timestamps and dates as dates in the year 294277 / 5881610.
+* **`application/octet-stream` with an error after the first rows** — the error was ignored and the request answered 200 with a truncated body.
+* **Concurrent first requests to a missing database** — the callers waiting on the first one got a database without a pool and panicked on their first query; they now get the error.
+* **Schema cache and failed queries** — the type and column queries reported a failure while executing as a success with a partial list; `ContextWithDb` kept the connection it acquired when preparing it failed.
+
+### Changed
+* **One SQL text per `PATCH` and upsert column set** — the `SET` list and the `on_conflict` columns followed the order of a Go map, so the same request produced a different SQL text from one call to the next, and pgx prepared a statement for each (up to n! for n columns, each one an extra round trip and a row in `pg_stat_statements`). Their order is now fixed: a permuted 6-parameter statement cost 43 µs against 25 µs for a fixed one.
+* **Logging level** — the logger now carries the configured level: the pgx query tracer built the event data of every query, and the HTTP logger the path of every request, even at the `info` level where both were dropped (half the per-query allocations of a traced connection).
+
 ## 0.10.0 - 2026-10-06
 
 ### Security
