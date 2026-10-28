@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -23,7 +22,9 @@ func InitLogger(config *Config) *Logger {
 	var writers []io.Writer
 
 	if config.FileLogging && config.FilePath != "" {
-		writers = append(writers, newRollingFile(config))
+		if file := newRollingFile(config); file != nil {
+			writers = append(writers, file)
+		}
 	}
 	if config.StdOut {
 		if config.PrettyConsole {
@@ -139,9 +140,13 @@ func methodColor(method string) string {
 	}
 }
 
+// newRollingFile returns the log file writer, or nil when its directory
+// cannot be created: file logging is then skipped, with the error on stderr
+// (the logger being built cannot report it).
 func newRollingFile(config *Config) io.Writer {
-	if err := os.MkdirAll(path.Dir(config.FilePath), 0744); err != nil {
-		log.Error().Err(err).Str("path", path.Dir(config.FilePath)).Msg("can't create log directory")
+	dir := path.Dir(config.FilePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot create the log directory %s, file logging disabled: %v\n", dir, err)
 		return nil
 	}
 	return &lumberjack.Logger{
