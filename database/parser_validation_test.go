@@ -268,6 +268,17 @@ func TestParserSelectHintAndModifier(t *testing.T) {
 	}{
 		{"id,clients!client!inner(id),name", 3, embed{"clients", "client", true}},
 		{"id,clients!client!left(id)", 2, embed{"clients", "client", false}},
+		// PostgREST's pEmbedParams reads up to two parameters in either
+		// order; the hint is the first hint, the join the first modifier, and
+		// a second hint or a second modifier is ignored
+		{"id,clients!inner!client(id),name", 3, embed{"clients", "client", true}},
+		{"id,clients!left!client(id)", 2, embed{"clients", "client", false}},
+		{"id,clients!client!bogus(id)", 2, embed{"clients", "client", false}},
+		{"id,clients!bogus!client(id)", 2, embed{"clients", "bogus", false}},
+		{"id,clients!inner!left(id)", 2, embed{"clients", "", true}},
+		{"id,clients!left!inner(id)", 2, embed{"clients", "", false}},
+		{"id,clients!inner!inner(id)", 2, embed{"clients", "", true}},
+		{`id,clients!"inner"(id)`, 2, embed{"clients", "inner", false}}, // a quoted name is a hint
 		// controls: one embed parameter, as before
 		{"id,clients!inner(id)", 2, embed{"clients", "", true}},
 		{"id,clients!left(id)", 2, embed{"clients", "", false}},
@@ -295,13 +306,14 @@ func TestParserSelectHintAndModifier(t *testing.T) {
 		}
 	}
 	// trailing input and malformed embed parameters are parse errors, not a
-	// truncated select (card 35452 parser-trailing for the first two)
+	// truncated select (card 35452 parser-trailing for the first two); a
+	// third embed parameter fails in PostgREST too
 	bad := []string{
 		"a)b",
 		"a!(b)",
-		"id,clients!client!bogus(id)",
-		"id,clients!client!other(id)",
-		"id,clients!inner!left(id)",
+		"id,clients!client!inner!x(id)",
+		"id,clients!inner!client!left(id)",
+		"id,clients!client!(id)",
 		"id,clients!(id)",
 		"id,clients!(id),name",
 		"a,b(c))",

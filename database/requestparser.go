@@ -736,29 +736,31 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if aggCast != "" && !isValidCastType(aggCast) {
 		return nil, &ParseError{"invalid cast type: " + aggCast}
 	}
-	// Embed parameters: rel!hint, rel!inner, rel!left, or a hint followed by
-	// a join modifier, rel!hint!inner and rel!hint!left.
-	if p.lookAhead() == "!" {
+	// Embed parameters, as PostgREST's pEmbedParams reads them: up to two
+	// '!' parameters in either order, each a join modifier (inner, left) or
+	// a hint. The hint is the first hint and the join the first modifier;
+	// a second hint or a second modifier is ignored (rel!hint!inner,
+	// rel!inner!hint, rel!inner!left is inner).
+	var hintSeen, joinSeen bool
+	for n := 0; p.lookAhead() == "!"; n++ {
+		if n == 2 {
+			return nil, &ParseError{"unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
+		}
 		p.next()
 		param, quoted := p.nextQuoted()
 		if !quoted && (param == "inner" || param == "left") {
-			inner = param == "inner"
-		} else {
-			if param == "" || (!quoted && isSelectSeparator(param)) {
-				return nil, &ParseError{"embed hint expected after '!'"}
-			}
-			fk = param
-			if p.lookAhead() == "!" {
-				p.next()
-				param, quoted = p.nextQuoted()
-				if quoted || (param != "inner" && param != "left") {
-					return nil, &ParseError{"unknown embed modifier " + strconv.Quote(param) + ": expected inner or left"}
-				}
+			if !joinSeen {
 				inner = param == "inner"
+				joinSeen = true
 			}
+			continue
 		}
-		if p.lookAhead() == "!" {
-			return nil, &ParseError{"unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
+		if param == "" || (!quoted && isSelectSeparator(param)) {
+			return nil, &ParseError{"embed hint expected after '!'"}
+		}
+		if !hintSeen {
+			fk = param
+			hintSeen = true
 		}
 	}
 	if p.lookAhead() != "(" && p.lookAhead() != "()" {
