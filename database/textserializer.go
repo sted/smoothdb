@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -133,12 +134,38 @@ func (t *TextBuilder) appendInt8(buf []byte) {
 	t.WriteString(strconv.FormatInt(toInt64(buf), 10))
 }
 
-func (t *TextBuilder) appendFloat4(buf []byte) {
-	t.WriteString(strconv.FormatFloat(float64(toFloat32(buf)), 'g', -1, 32))
+func (t *TextBuilder) appendFloat4(buf []byte, quoteSpecial bool) {
+	t.appendFloat(float64(toFloat32(buf)), 32, quoteSpecial)
 }
 
-func (t *TextBuilder) appendFloat8(buf []byte) {
-	t.WriteString(strconv.FormatFloat(toFloat64(buf), 'g', -1, 64))
+func (t *TextBuilder) appendFloat8(buf []byte, quoteSpecial bool) {
+	t.appendFloat(toFloat64(buf), 64, quoteSpecial)
+}
+
+// appendFloat writes f; a non-finite one as PostgreSQL prints it, quoted when
+// quoteSpecial is set: NaN, Infinity and -Infinity are strings in JSON, as
+// to_json prints them
+func (t *TextBuilder) appendFloat(f float64, bitSize int, quoteSpecial bool) {
+	switch {
+	case math.IsNaN(f):
+		t.appendSpecial("NaN", quoteSpecial)
+	case math.IsInf(f, 1):
+		t.appendSpecial("Infinity", quoteSpecial)
+	case math.IsInf(f, -1):
+		t.appendSpecial("-Infinity", quoteSpecial)
+	default:
+		t.WriteString(strconv.FormatFloat(f, 'g', -1, bitSize))
+	}
+}
+
+func (t *TextBuilder) appendSpecial(s string, quoted bool) {
+	if quoted {
+		t.WriteByte('"')
+	}
+	t.WriteString(s)
+	if quoted {
+		t.WriteByte('"')
+	}
 }
 
 func (t *TextBuilder) appendBool(buf []byte) {
@@ -150,6 +177,14 @@ func (t *TextBuilder) appendBool(buf []byte) {
 }
 
 func (t *TextBuilder) appendTimestamp(buf []byte) {
+	switch toInt64(buf) { // PostgreSQL's sentinels for ±infinity
+	case math.MaxInt64:
+		t.WriteString("infinity")
+		return
+	case math.MinInt64:
+		t.WriteString("-infinity")
+		return
+	}
 	tim := toTimestamp(buf)
 	t.date = t.dateBuf[:0]
 	t.date = tim.AppendFormat(t.date, time.RFC3339Nano)
@@ -157,6 +192,14 @@ func (t *TextBuilder) appendTimestamp(buf []byte) {
 }
 
 func (t *TextBuilder) appendDate(buf []byte) {
+	switch toInt32(buf) { // PostgreSQL's sentinels for ±infinity
+	case math.MaxInt32:
+		t.WriteString("infinity")
+		return
+	case math.MinInt32:
+		t.WriteString("-infinity")
+		return
+	}
 	pgDate := toDate(buf)
 	t.date = t.dateBuf[:0]
 	t.date = pgDate.AppendFormat(t.date, "2006-01-02")
@@ -238,7 +281,7 @@ func (t *TextBuilder) appendUUID(buf []byte) {
 	t.WriteByte('"')
 }
 
-func (t *TextBuilder) appendNumeric(buf []byte) {
+func (t *TextBuilder) appendNumeric(buf []byte, quoteSpecial bool) {
 	if len(buf) < 8 {
 		t.WriteString("0")
 		return
@@ -253,13 +296,13 @@ func (t *TextBuilder) appendNumeric(buf []byte) {
 	// Handle special values
 	switch sign {
 	case 0xC000: // NaN
-		t.WriteString("NaN")
+		t.appendSpecial("NaN", quoteSpecial)
 		return
 	case 0xD000: // Positive Infinity
-		t.WriteString("Infinity")
+		t.appendSpecial("Infinity", quoteSpecial)
 		return
 	case 0xF000: // Negative Infinity
-		t.WriteString("-Infinity")
+		t.appendSpecial("-Infinity", quoteSpecial)
 		return
 	}
 
@@ -496,9 +539,9 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 	case pgtype.Int8OID:
 		j.appendInt8(buf)
 	case pgtype.Float4OID:
-		j.appendFloat4(buf)
+		j.appendFloat4(buf, true)
 	case pgtype.Float8OID:
-		j.appendFloat8(buf)
+		j.appendFloat8(buf, true)
 	case pgtype.BoolOID:
 		j.appendBool(buf)
 	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID:
@@ -526,7 +569,7 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 	case pgtype.UUIDOID:
 		j.appendUUID(buf)
 	case pgtype.NumericOID:
-		j.appendNumeric(buf)
+		j.appendNumeric(buf, true)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {
@@ -670,9 +713,9 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 	case pgtype.Int8OID:
 		csv.appendInt8(buf)
 	case pgtype.Float4OID:
-		csv.appendFloat4(buf)
+		csv.appendFloat4(buf, false)
 	case pgtype.Float8OID:
-		csv.appendFloat8(buf)
+		csv.appendFloat8(buf, false)
 	case pgtype.BoolOID:
 		csv.appendBool(buf)
 	case pgtype.TextOID, pgtype.VarcharOID, pgtype.BPCharOID, pgtype.NameOID:
@@ -694,7 +737,7 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 	case pgtype.UUIDOID:
 		csv.appendUUID(buf)
 	case pgtype.NumericOID:
-		csv.appendNumeric(buf)
+		csv.appendNumeric(buf, false)
 	default:
 		ct := info.GetTypeById(typ)
 		if ct != nil {

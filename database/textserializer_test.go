@@ -1039,3 +1039,63 @@ func TestIsoDateStyle(t *testing.T) {
 		}
 	}
 }
+
+// Values on the binary path that the decoders got wrong: non-finite floats and
+// numerics came out as bare NaN/+Inf tokens (invalid JSON; PostgreSQL's to_json
+// quotes them), timestamps between 1970 and 2000 with a fractional second came
+// out one second late (the seconds were truncated toward zero, the fraction
+// taken modulo), and the infinity sentinels of timestamp and date came out as
+// dates in the year 294277 / 5881610. The 1960 and 2015 values are controls
+// the decoders already got right.
+func TestSerializeSpecialValues(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	gi := GetSmoothContext(ctx)
+	info := gi.Db.info.Load()
+
+	query := `select 'NaN'::float4 f4n, 'Infinity'::float4 f4p, '-Infinity'::float8 f8m, 1.5::float8 f8,
+		'NaN'::numeric nn, 'Infinity'::numeric np, '-Infinity'::numeric nm, 1.50::numeric n,
+		'1985-06-01 12:00:00.25'::timestamp ts85, '1999-12-31 23:59:59.5'::timestamp ts99,
+		'1960-01-01 00:00:00.5'::timestamp ts60, '2015-12-08 04:22:57.472738'::timestamp ts15,
+		'infinity'::timestamp tsi, '-infinity'::timestamp tsm, 'infinity'::timestamptz tzi,
+		'infinity'::date di, '-infinity'::date dm, '1985-06-01'::date d`
+	rows, err := gi.Conn.Query(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+	rows.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"f4n":"NaN","f4p":"Infinity","f8m":"-Infinity","f8":1.5,` +
+		`"nn":"NaN","np":"Infinity","nm":"-Infinity","n":1.50,` +
+		`"ts85":"1985-06-01T12:00:00.25Z","ts99":"1999-12-31T23:59:59.5Z",` +
+		`"ts60":"1960-01-01T00:00:00.5Z","ts15":"2015-12-08T04:22:57.472738Z",` +
+		`"tsi":"infinity","tsm":"-infinity","tzi":"infinity",` +
+		`"di":"infinity","dm":"-infinity","d":"1985-06-01"}]`
+	if string(out) != want {
+		t.Errorf("JSON\nexpected %s\n     got %s", want, out)
+	}
+
+	// CSV carries PostgreSQL's text for the same values
+	rows, err = gi.Conn.Query(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = (&CSVSerializer{}).Serialize(rows, false, false, info)
+	rows.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCSV := "f4n,f4p,f8m,f8,nn,np,nm,n,ts85,ts99,ts60,ts15,tsi,tsm,tzi,di,dm,d\n" +
+		"NaN,Infinity,-Infinity,1.5,NaN,Infinity,-Infinity,1.50," +
+		"1985-06-01T12:00:00.25Z,1999-12-31T23:59:59.5Z,1960-01-01T00:00:00.5Z,2015-12-08T04:22:57.472738Z," +
+		"infinity,-infinity,infinity,infinity,-infinity,1985-06-01"
+	if string(out) != wantCSV {
+		t.Errorf("CSV\nexpected %q\n     got %q", wantCSV, out)
+	}
+}

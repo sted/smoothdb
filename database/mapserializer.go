@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -60,10 +59,7 @@ func rowsToMaps(rows pgx.Rows) ([]map[string]any, error) {
 			case pgtype.BoolOID:
 				v = buf[0] == 1
 			case pgtype.TimestampOID, pgtype.TimestamptzOID:
-				microsecSinceY2K := int64(binary.BigEndian.Uint64((buf)))
-				v = time.Unix(
-					secFromUnixEpochToY2K+microsecSinceY2K/1000000,
-					(microsecFromUnixEpochToY2K+microsecSinceY2K)%1000000*1000).UTC()
+				v = toTimestamp(buf)
 			default:
 				// Handle unsupported data types
 				return nil, fmt.Errorf("unsupported data type OID: %d", fds[i].DataTypeOID)

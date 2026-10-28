@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-const microsecFromUnixEpochToY2K int64 = 946684800 * 1000000
 const secFromUnixEpochToY2K int64 = 946684800
 
 func toInt16(buf []byte) int16 {
@@ -42,7 +41,12 @@ func toDate(buf []byte) time.Time {
 
 func toTimestamp(buf []byte) time.Time {
 	microsecSinceY2K := int64(binary.BigEndian.Uint64(buf))
-	return time.Unix(
-		secFromUnixEpochToY2K+microsecSinceY2K/1_000_000,
-		(microsecFromUnixEpochToY2K+microsecSinceY2K)%1_000_000*1_000).UTC()
+	// floor division: before 2000 the seconds round down and the fraction
+	// stays positive (truncation made 1970-1999 one second late)
+	sec, frac := microsecSinceY2K/1_000_000, microsecSinceY2K%1_000_000
+	if frac < 0 {
+		sec--
+		frac += 1_000_000
+	}
+	return time.Unix(secFromUnixEpochToY2K+sec, frac*1_000).UTC()
 }
