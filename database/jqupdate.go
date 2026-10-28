@@ -68,8 +68,8 @@ func JQTransformResponse(ctx context.Context, data []byte) ([]byte, error) {
 //
 // Inside the request transaction (one is started if not already open):
 //
-//  1. The matched rows are selected FOR UPDATE, capped at MaxUpdateRows+1
-//     (exceeding the cap is an error).
+//  1. The matched rows are selected FOR UPDATE, in the order= order, capped
+//     at MaxUpdateRows+1 (exceeding the cap is an error).
 //  2. Each row, as a JSON object with the columns visible to the role, is fed
 //     to the program. The output must be a JSON object whose keys are columns
 //     of the table: it becomes that row's UPDATE ... SET. An empty object
@@ -78,13 +78,15 @@ func JQTransformResponse(ctx context.Context, data []byte) ([]byte, error) {
 //     whole request: all rows or none.
 //
 // RLS and triggers apply unchanged. With Prefer: return=representation it
-// returns the resulting rows (all visible columns; select= is not applied).
+// returns the resulting rows in that order (all visible columns; select= is
+// not applied).
 func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	if err := checkSchema(ctx); err != nil {
 		return nil, 0, err
 	}
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
+	ignoreRange(options)
 	if !jqeval.Enabled() {
 		return nil, 0, &ParseError{"jq evaluation is disabled (see the JQ configuration section)"}
 	}
@@ -107,11 +109,21 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	schema := options.Schema
 	stack := BuildStack{info: gi.Db.info.Load()}
 	where, values := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	// order= orders the representation, as on the standard PATCH: rows are
+	// selected, updated and returned in that order. limit= and offset= are
+	// ignored, as on the standard PATCH (every matching row is written).
+	order, err := orderClause(table, schema, "", 0, parts.orderFields, nil, stack.info)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	maxRows := jqeval.MaxUpdateRows()
 	query := "SELECT " + quote(table) + ".ctid::text, to_jsonb(" + quote(table) + ") FROM " + _sq(table, schema)
 	if where != "" {
 		query += " WHERE " + where
+	}
+	if order != "" {
+		query += " ORDER BY " + order
 	}
 	query += " LIMIT " + strconv.Itoa(maxRows+1) + " FOR UPDATE"
 
@@ -133,6 +145,13 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	ctids, inputs, err := jqSelectRows(ctx, query, values, maxRows)
 	if err != nil {
 		return nil, 0, err
+	}
+	// A single object is checked before any row is written: err set here
+	// lets the deferred ROLLBACK fire, while a check after the COMMIT would
+	// answer an error for an update that was applied
+	if options.ReturnRepresentation && options.Singular && len(ctids) != 1 {
+		err = &SerializeError{"JSON object requested, multiple (or no) rows returned"}
+		return nil, int64(len(ctids)), err
 	}
 
 	var representation [][]byte

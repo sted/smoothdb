@@ -57,6 +57,18 @@ func checkSchema(ctx context.Context) error {
 	return nil
 }
 
+// ignoreRange drops the Range header of a table write (insert, update or
+// delete), as PostgREST does: the header pages reads (GET, and a function
+// call whatever its method), never a mutation. The write and its
+// representation take every row, and neither the 416 of an unsatisfiable
+// range nor a Content-Range derived from it can follow. The values are the
+// ones the request parser leaves when no Range header is given.
+func ignoreRange(options *QueryOptions) {
+	options.HasRange = false
+	options.RangeMin = -1
+	options.RangeMax = -1
+}
+
 func querySerialize(ctx context.Context, query string, values []any) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
@@ -117,6 +129,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	ignoreRange(options)
 	info := gi.Db.info.Load()
 	if body == nil {
 		// Go values need the column types (see insertRows), also for a
@@ -150,6 +163,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	ignoreRange(options)
 	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
@@ -175,6 +189,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	ignoreRange(options)
 	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info.Load())
 	if err != nil {
 		return nil, 0, err
