@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -595,8 +596,30 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 
 // SELECT
 func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
-	p.scan(s, ".,():!", "->>", "->", "::", "...", "()")
-	return p.selectList(nil)
+	p.scan(s, selectSeparators, selectLongSeparators...)
+	fields, err := p.selectList(nil)
+	if err != nil {
+		return nil, err
+	}
+	// selectList stops at the first token that cannot continue the list: what
+	// is left is not part of any select item and must not be dropped silently
+	if rest := p.lookAhead(); rest != "" {
+		return nil, &ParseError{"unexpected " + strconv.Quote(rest) + " in select"}
+	}
+	return fields, nil
+}
+
+const selectSeparators = ".,():!"
+
+var selectLongSeparators = []string{"->>", "->", "::", "...", "()"}
+
+// isSelectSeparator reports whether an unquoted token of the select is a
+// separator rather than a name.
+func isSelectSeparator(tok string) bool {
+	if len(tok) == 1 && strings.Contains(selectSeparators, tok) {
+		return true
+	}
+	return slices.Contains(selectLongSeparators, tok)
 }
 
 func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []SelectField, err error) {
@@ -713,14 +736,29 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if aggCast != "" && !isValidCastType(aggCast) {
 		return nil, &ParseError{"invalid cast type: " + aggCast}
 	}
+	// Embed parameters: rel!hint, rel!inner, rel!left, or a hint followed by
+	// a join modifier, rel!hint!inner and rel!hint!left.
 	if p.lookAhead() == "!" {
 		p.next()
-		fk = p.next()
-		if fk == "inner" {
-			fk = ""
-			inner = true
-		} else if fk == "left" {
-			fk = ""
+		param, quoted := p.nextQuoted()
+		if !quoted && (param == "inner" || param == "left") {
+			inner = param == "inner"
+		} else {
+			if param == "" || (!quoted && isSelectSeparator(param)) {
+				return nil, &ParseError{"embed hint expected after '!'"}
+			}
+			fk = param
+			if p.lookAhead() == "!" {
+				p.next()
+				param, quoted = p.nextQuoted()
+				if quoted || (param != "inner" && param != "left") {
+					return nil, &ParseError{"unknown embed modifier " + strconv.Quote(param) + ": expected inner or left"}
+				}
+				inner = param == "inner"
+			}
+		}
+		if p.lookAhead() == "!" {
+			return nil, &ParseError{"unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
 		}
 	}
 	if p.lookAhead() != "(" && p.lookAhead() != "()" {

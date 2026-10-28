@@ -664,6 +664,27 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-1/2" ]
 		// 	  }
+		{
+			Description: "works when using hints",
+			Query:       "/projects?select=id,clients!client!inner(id)&clients.id=eq.2",
+			Expected:    `[{"id":3,"clients":{"id":2}}, {"id":4,"clients":{"id":2}}]`,
+			Status:      200,
+		},
+		{
+			Description: "works when using hints",
+			Query:       "/projects?select=id,client!inner(id)&client.id=eq.2",
+			Expected:    `[{"id":3,"client":{"id":2}}, {"id":4,"client":{"id":2}}]`,
+			Status:      200,
+		},
+		{
+			Description:     "works when using hints",
+			Method:          "HEAD",
+			Query:           "/projects?select=id,clients!client!inner(id)&clients.id=eq.2",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        ``,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
 
 		//   it "works with many one-to-many relationships" $ do
 		// 	-- https://github.com/PostgREST/postgrest/issues/1977

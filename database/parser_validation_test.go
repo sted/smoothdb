@@ -251,3 +251,65 @@ func TestParserRPCParametersSkipReservedKeys(t *testing.T) {
 		}
 	}
 }
+
+// An embed takes a hint and a join modifier together (rel!hint!inner), as in
+// PostgREST. The parser consumed one token after '!', so the second '!' ended
+// the item, clients became a plain field and, since nothing checked that the
+// select was consumed, the rest of it was dropped without an error.
+func TestParserSelectHintAndModifier(t *testing.T) {
+	type embed struct {
+		name, fk string
+		inner    bool
+	}
+	good := []struct {
+		sel    string
+		fields int // top-level items
+		embed  embed
+	}{
+		{"id,clients!client!inner(id),name", 3, embed{"clients", "client", true}},
+		{"id,clients!client!left(id)", 2, embed{"clients", "client", false}},
+		// controls: one embed parameter, as before
+		{"id,clients!inner(id)", 2, embed{"clients", "", true}},
+		{"id,clients!left(id)", 2, embed{"clients", "", false}},
+		{"id,clients!client(id)", 2, embed{"clients", "client", false}},
+		{"id,clients(id)", 2, embed{"clients", "", false}},
+	}
+	for _, c := range good {
+		p := PostgRestParser{}
+		fields, err := p.parseSelect(c.sel)
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", c.sel, err)
+			continue
+		}
+		if len(fields) != c.fields {
+			t.Errorf("%s: %d select items, want %d", c.sel, len(fields), c.fields)
+			continue
+		}
+		rel := fields[1].relation
+		if rel == nil {
+			t.Errorf("%s: item 1 is not an embed: %+v", c.sel, fields[1])
+			continue
+		}
+		if got := (embed{rel.name, rel.fk, rel.inner}); got != c.embed {
+			t.Errorf("%s: embed %+v, want %+v", c.sel, got, c.embed)
+		}
+	}
+	// trailing input and malformed embed parameters are parse errors, not a
+	// truncated select (card 35452 parser-trailing for the first two)
+	bad := []string{
+		"a)b",
+		"a!(b)",
+		"id,clients!client!bogus(id)",
+		"id,clients!client!other(id)",
+		"id,clients!inner!left(id)",
+		"id,clients!(id)",
+		"id,clients!(id),name",
+		"a,b(c))",
+	}
+	for _, sel := range bad {
+		p := PostgRestParser{}
+		if fields, err := p.parseSelect(sel); err == nil {
+			t.Errorf("%s: expected a parse error, got %d items", sel, len(fields))
+		}
+	}
+}
