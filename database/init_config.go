@@ -2,10 +2,16 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/jackc/pgx/v5"
 )
+
+// checkOutput receives the warnings and errors of the startup checks.
+var checkOutput io.Writer = os.Stdout
 
 // PrepareDatabase prepares the database for SmoothDb
 func PrepareDatabase(adminURL string, dbConfig *Config) error {
@@ -14,6 +20,7 @@ func PrepareDatabase(adminURL string, dbConfig *Config) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close(context.Background())
 	ctx = ContextWithDbConn(ctx, nil, conn)
 
 	// Auth role
@@ -53,25 +60,42 @@ func PrepareDatabase(adminURL string, dbConfig *Config) error {
 }
 
 func checkAuthRole(ctx context.Context, name string) (canContinue bool) {
+	auth, err := GetRole(ctx, name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			fmt.Fprintf(checkOutput, "Error: the authenticator role %q does not exist.\n", name)
+		} else {
+			fmt.Fprintf(checkOutput, "Error: cannot check the authenticator role %q: %v\n", name, err)
+		}
+		return false
+	}
 	canContinue = true
-	auth, _ := GetRole(ctx, name)
 	if auth.IsSuperUser || auth.CanCreateDatabases || auth.CanCreateRoles || auth.CanBypassRLS {
-		fmt.Println("Warning: the authenticator role should have minimal privileges. Drop or alter the role if in production.")
+		fmt.Fprintln(checkOutput, "Warning: the authenticator role should have minimal privileges. Drop or alter the role if in production.")
 	}
 	if !auth.CanLogin {
-		fmt.Println("Error: the authenticator role must be allowed to login directly. Drop or alter the role if in production.")
+		fmt.Fprintln(checkOutput, "Error: the authenticator role must be allowed to login directly. Drop or alter the role if in production.")
 		canContinue = false
 	}
 	return canContinue
 }
 
 func checkAnonRole(ctx context.Context, name string) bool {
-	anon, _ := GetRole(ctx, name)
+	anon, err := GetRole(ctx, name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// anonymous requests fail on SET ROLE until it is created
+			fmt.Fprintf(checkOutput, "Warning: the anonymous role %q does not exist.\n", name)
+			return true
+		}
+		fmt.Fprintf(checkOutput, "Error: cannot check the anonymous role %q: %v\n", name, err)
+		return false
+	}
 	if anon.IsSuperUser || anon.CanCreateDatabases || anon.CanCreateRoles || anon.CanBypassRLS {
-		fmt.Println("Warning: the anonymous role should have minimal privileges. Drop or alter the role if in production.")
+		fmt.Fprintln(checkOutput, "Warning: the anonymous role should have minimal privileges. Drop or alter the role if in production.")
 	}
 	if anon.CanLogin {
-		fmt.Println("Warning: the anonymous role shouldn't be allowed to login directly. Alter role with NOLOGIN if in production.")
+		fmt.Fprintln(checkOutput, "Warning: the anonymous role shouldn't be allowed to login directly. Alter role with NOLOGIN if in production.")
 	}
 	return true
 }
@@ -82,6 +106,7 @@ func CheckDatabase(dbConfig *Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer conn.Close(context.Background())
 	ctx = ContextWithDbConn(ctx, nil, conn)
 	authConfig, err := ParsePostgresURL(dbConfig.URL)
 	if err != nil {
@@ -90,7 +115,7 @@ func CheckDatabase(dbConfig *Config) (bool, error) {
 	if !checkAuthRole(ctx, authConfig.User) {
 		return false, nil
 	}
-	if !checkAuthRole(ctx, authConfig.User) {
+	if dbConfig.AnonRole != "" && !checkAnonRole(ctx, dbConfig.AnonRole) {
 		return false, nil
 	}
 	return true, nil

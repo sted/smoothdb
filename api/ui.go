@@ -27,6 +27,7 @@ func InitAdminUI(apiHelper Helper) {
 			p := r2.URL.Path
 			if p == "" {
 				http.Redirect(w, r.Request, defaultUIRoute, http.StatusFound)
+				return http.StatusFound, nil
 			} else if !strings.HasPrefix(p, "assets/") && p != "index.html" {
 				p = "index.html"
 			}

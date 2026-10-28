@@ -40,7 +40,8 @@ type jqErrorItem struct {
 // It is called only when jq evaluation is enabled, so the route 404s otherwise.
 func InitJQRoute(apiHelper Helper) {
 	router := apiHelper.GetRouter()
-	jq := router.Group("/jq", apiHelper.MiddlewareDBE())
+	// pure CPU: authenticated, but without a database session or connection
+	jq := router.Group("/jq", apiHelper.MiddlewareAuth())
 
 	// POST /jq: batch evaluation of jq programs, or compile-only validation
 	// with parse_only. Errors are reported per item; 400 is reserved for a

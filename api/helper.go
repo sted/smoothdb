@@ -16,6 +16,7 @@ type Helper interface {
 	GetRouter() *heligo.Router
 	MiddlewareStd() heligo.Middleware
 	MiddlewareDBE() heligo.Middleware
+	MiddlewareAuth() heligo.Middleware
 	MiddlewareWithDbName(string) heligo.Middleware
 
 	BaseAdminURL() string

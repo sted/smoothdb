@@ -20,7 +20,10 @@ func InitTestRouter(api Helper) {
 
 	router.Handle("GET", "/test/prepare/:test", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		//test := c.Param("test")
-		conn, _ := dbe.AcquireConnection(c)
+		conn, err := dbe.AcquireConnection(c)
+		if err != nil {
+			return WriteServerError(w, err)
+		}
 		defer conn.Release()
 		database.PrepareStressTest(conn)
 		return http.StatusOK, nil
@@ -38,9 +41,19 @@ func InitTestRouter(api Helper) {
 
 	// Register pprof handlers
 	router.Handle("GET", "/debug/pprof/", heligo.AdaptFunc(pprof.Index))
-	router.Handle("GET", "/debug/pprof/:cmd", heligo.AdaptFunc(pprof.Index))
-	// router.Handle("GET", "/debug/pprof/cmdline", pprof.Cmdline)
-	// router.Handle("GET", "/debug/pprof/profile", pprof.Profile)
-	// router.Handle("GET", "/debug/pprof/symbol", pprof.Symbol)
-	// router.Handle("GET", "/debug/pprof/trace", pprof.Trace)
+	// pprof.Index serves the named profiles (heap, goroutine, ...); these four
+	// have handlers of their own, and Index answers 404 for them
+	pprofHandlers := map[string]heligo.Handler{
+		"cmdline": heligo.AdaptFunc(pprof.Cmdline),
+		"profile": heligo.AdaptFunc(pprof.Profile),
+		"symbol":  heligo.AdaptFunc(pprof.Symbol),
+		"trace":   heligo.AdaptFunc(pprof.Trace),
+	}
+	index := heligo.AdaptFunc(pprof.Index)
+	router.Handle("GET", "/debug/pprof/:cmd", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		if h, ok := pprofHandlers[r.Param("cmd")]; ok {
+			return h(c, w, r)
+		}
+		return index(c, w, r)
+	})
 }

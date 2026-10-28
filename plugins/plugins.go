@@ -52,6 +52,16 @@ func InitPluginManager(host Host, dir string, plugins []string) *PluginManager {
 	return &PluginManager{hostProxy{host, logger}, dir, plugins, logger}
 }
 
+// pluginFromSymbol returns the Plugin exported by the plugin name, or an
+// error when the exported symbol does not implement Plugin.
+func pluginFromSymbol(name string, symbol plugin.Symbol) (Plugin, error) {
+	pluginInstance, ok := symbol.(Plugin)
+	if !ok || pluginInstance == nil {
+		return nil, fmt.Errorf("not a proper plugin %q: its Plugin symbol is a %T, which does not implement plugins.Plugin", name, symbol)
+	}
+	return pluginInstance, nil
+}
+
 // Load prepares and runs plugins
 func (pm PluginManager) Load() error {
 	for _, name := range pm.plugins {
@@ -67,9 +77,9 @@ func (pm PluginManager) Load() error {
 		if err != nil {
 			return fmt.Errorf("cannot lookup plugin instance %q (%w)", name, err)
 		}
-		pluginInstance := symbol.(Plugin)
-		if pluginInstance == nil {
-			return fmt.Errorf("not a proper plugin %q (%w)", name, err)
+		pluginInstance, err := pluginFromSymbol(name, symbol)
+		if err != nil {
+			return err
 		}
 		err = pluginInstance.Prepare(pm.host)
 		if err != nil {

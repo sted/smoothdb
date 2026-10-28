@@ -31,6 +31,60 @@ type middleware struct {
 	MiddlewareConfig
 }
 
+// admit applies the first anonymous-access rule: without a token a request
+// is refused outright when anonymous access is off.
+func (m middleware) admit(tokenString string) (int, error) {
+	if tokenString == "" && !m.AllowAnon() {
+		return http.StatusUnauthorized, fmt.Errorf("unauthorized access")
+	}
+	return http.StatusOK, nil
+}
+
+// resolveClaims verifies the token, or builds the anonymous claims for a
+// request without one, applying the anonymous-access rules. It is the whole
+// authentication of a request: the database middleware runs it when it builds
+// a session, the auth-only middleware on every request.
+func (m middleware) resolveClaims(tokenString string) (*Claims, int, error) {
+	var claims *Claims
+	var err error
+	if tokenString != "" {
+		claims, err = authenticate(tokenString, m.JWTSecret())
+		if err != nil {
+			return nil, http.StatusUnauthorized, err
+		}
+		if !claims.hasRole {
+			// A token without a role claim is anonymous to PostgREST: it
+			// runs as the anon role, and is refused like a request without
+			// a token when anonymous access is off. Left empty, the role
+			// would skip the SET ROLE in PrepareConnection and the request
+			// would run as the authenticator.
+			if !m.AllowAnon() || m.AnonRole() == "" {
+				return nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
+			}
+			claims.setAnonRole(m.AnonRole())
+		} else if claims.Role == "" {
+			// An empty role claim is a role PostgREST switches to, and
+			// PostgreSQL refuses it with this message (22023, a 401).
+			return nil, http.StatusUnauthorized, fmt.Errorf(`role "" does not exist`)
+		}
+	} else {
+		// Anonymous request. Like PostgREST (db-anon-role unset →
+		// PGRST302 "Anonymous access is disabled"), refuse it when no
+		// anonymous role is configured: with an empty role PrepareConnection
+		// skips the SET ROLE, so the request would run as the connecting
+		// (authenticator) role with the pool's own privileges.
+		anonRole := m.AnonRole()
+		if anonRole == "" {
+			return nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
+		}
+		// The claims GUC must be set for every request, anonymous included,
+		// so policies keying off request.jwt.claims evaluate in context.
+		claims = &Claims{}
+		claims.setAnonRole(anonRole)
+	}
+	return claims, http.StatusOK, nil
+}
+
 func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 	forceDBE bool, getDBName GetDatabaseNameFn) (context.Context, *Session, int, error) {
 	var claims *Claims
@@ -41,8 +95,8 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 	var claimsString string
 
 	tokenString := extractAuthHeader(r.Request)
-	if tokenString == "" && !m.AllowAnon() {
-		return nil, nil, http.StatusUnauthorized, fmt.Errorf("unauthorized access")
+	if status, err := m.admit(tokenString); err != nil {
+		return nil, nil, status, err
 	}
 	dbname := getDBName(ctx, r)
 	keyInput := tokenString + "; "
@@ -76,40 +130,10 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		}
 	}()
 	if isNewSession {
-		if tokenString != "" {
-			claims, err = authenticate(tokenString, m.JWTSecret())
-			if err != nil {
-				return nil, nil, http.StatusUnauthorized, err
-			}
-			if !claims.hasRole {
-				// A token without a role claim is anonymous to PostgREST: it
-				// runs as the anon role, and is refused like a request without
-				// a token when anonymous access is off. Left empty, the role
-				// would skip the SET ROLE in PrepareConnection and the request
-				// would run as the authenticator.
-				if !m.AllowAnon() || m.AnonRole() == "" {
-					return nil, nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
-				}
-				claims.setAnonRole(m.AnonRole())
-			} else if claims.Role == "" {
-				// An empty role claim is a role PostgREST switches to, and
-				// PostgreSQL refuses it with this message (22023, a 401).
-				return nil, nil, http.StatusUnauthorized, fmt.Errorf(`role "" does not exist`)
-			}
-		} else {
-			// Anonymous request. Like PostgREST (db-anon-role unset →
-			// PGRST302 "Anonymous access is disabled"), refuse it when no
-			// anonymous role is configured: with an empty role PrepareConnection
-			// skips the SET ROLE, so the request would run as the connecting
-			// (authenticator) role with the pool's own privileges.
-			anonRole := m.AnonRole()
-			if anonRole == "" {
-				return nil, nil, http.StatusUnauthorized, fmt.Errorf("Anonymous access is disabled")
-			}
-			// The claims GUC must be set for every request, anonymous included,
-			// so policies keying off request.jwt.claims evaluate in context.
-			claims = &Claims{}
-			claims.setAnonRole(anonRole)
+		var status int
+		claims, status, err = m.resolveClaims(tokenString)
+		if err != nil {
+			return nil, nil, status, err
 		}
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
@@ -188,11 +212,7 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 			r.Body = LimitBody(w, r.Body, cfg.RequestMaxBytes())
 			defer r.Body.Close()
-			if version.Version != "" {
-				w.Header().Set("Server", "smoothdb/"+version.Version)
-			} else {
-				w.Header().Set("Server", "smoothdb")
-			}
+			setServerHeader(w)
 			ctx, session, status, err := m.acquireSession(c, r, forceDBE, getDBName)
 			if err != nil {
 				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
@@ -207,6 +227,40 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 			status, err = next(ctx, w, r)
 			return status, err
 		}
+	}
+}
+
+// AuthMiddleware authenticates a request like Middleware — the same token
+// verification and anonymous-access rules — but takes no session and no
+// database connection. It is for routes that never touch the database, such
+// as POST /jq: under Middleware each call would hold a pool connection, with
+// its SET ROLE, for a handler that does not use it.
+func AuthMiddleware(cfg MiddlewareConfig) heligo.Middleware {
+	m := middleware{cfg}
+	return func(next heligo.Handler) heligo.Handler {
+		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+			r.Body = LimitBody(w, r.Body, cfg.RequestMaxBytes())
+			defer r.Body.Close()
+			setServerHeader(w)
+			tokenString := extractAuthHeader(r.Request)
+			status, err := m.admit(tokenString)
+			if err == nil {
+				_, status, err = m.resolveClaims(tokenString)
+			}
+			if err != nil {
+				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
+				return status, err
+			}
+			return next(c, w, r)
+		}
+	}
+}
+
+func setServerHeader(w http.ResponseWriter) {
+	if version.Version != "" {
+		w.Header().Set("Server", "smoothdb/"+version.Version)
+	} else {
+		w.Header().Set("Server", "smoothdb")
 	}
 }
 
