@@ -326,10 +326,13 @@ func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
 // state (not in a token, after a separator), so it resumes at p.scanned as a
 // scan of the source from there would.
 func (p *PostgRestParser) fill(n int) {
-	if len(p.tokens) >= n || p.scanned > len(p.src) {
-		return
+	if len(p.tokens) < n && p.scanned <= len(p.src) { // inlined fast path
+		p.scanMore(n + scanChunk)
 	}
-	n += scanChunk
+}
+
+// scanMore scans until there are n tokens or the source ends (see fill).
+func (p *PostgRestParser) scanMore(n int) {
 	s := p.src
 	sep := p.sep
 	longSep := p.longSep
