@@ -73,7 +73,7 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	if logger != nil {
 		dbe.dbtracer = &tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
-			LogLevel: tracelog.LogLevelDebug - tracelog.LogLevel(logger.GetLevel()),
+			LogLevel: tracelogLevel(logger.GetLevel()),
 		}
 	}
 

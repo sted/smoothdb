@@ -23,6 +23,23 @@ func NewDbLogger(logger *zerolog.Logger) *DbLogger {
 	return &l
 }
 
+// tracelogLevel is the pgx tracer threshold for a zerolog level, following
+// the mapping in Log: pgx logs every query at its Info level, a zerolog trace
+// event, so below trace the tracer stays at Warn and does not build the data
+// of every query only for zerolog to drop it.
+func tracelogLevel(level zerolog.Level) tracelog.LogLevel {
+	switch {
+	case level <= zerolog.TraceLevel:
+		return tracelog.LogLevelTrace
+	case level <= zerolog.WarnLevel:
+		return tracelog.LogLevelWarn
+	case level == zerolog.ErrorLevel:
+		return tracelog.LogLevelError
+	default:
+		return tracelog.LogLevelNone
+	}
+}
+
 func (pl *DbLogger) Log(ctx context.Context, level tracelog.LogLevel, msg string, data map[string]interface{}) {
 	var zlevel zerolog.Level
 	switch level {

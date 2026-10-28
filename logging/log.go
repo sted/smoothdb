@@ -46,7 +46,9 @@ func InitLogger(config *Config) *Logger {
 		level = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(level)
-	zlogger := zerolog.New(mw).With().Timestamp().Logger()
+	// the logger's own level too: GetLevel() answers it, and the query tracer
+	// and the HTTP logger size their work on it
+	zlogger := zerolog.New(mw).Level(level).With().Timestamp().Logger()
 
 	return &Logger{&zlogger}
 }

@@ -25,11 +25,6 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 
 			// before executing the next handlers
 			begin := time.Now()
-			path := r.URL.Path
-			raw := r.URL.RawQuery
-			if raw != "" {
-				path = path + "?" + raw
-			}
 
 			// executes the next handler
 			statusCode, err := next(ctx, w, r)
@@ -48,6 +43,10 @@ func HTTPLogger(logger *logging.Logger) heligo.Middleware {
 
 			if event.Enabled() {
 				duration := time.Since(begin)
+				path := r.URL.Path
+				if raw := r.URL.RawQuery; raw != "" {
+					path = path + "?" + raw
+				}
 				gctx := database.GetSmoothContext(ctx)
 				var role string
 				if gctx != nil {
