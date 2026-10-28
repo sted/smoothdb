@@ -404,6 +404,107 @@ func TestJQUpdateAtomicity(t *testing.T) {
 	test.Execute(t, testConfig, tests)
 }
 
+// TestJQUpdateOrder: order= orders the representation of a jq update as it
+// does the standard PATCH, and limit= is ignored by both (every matching row
+// is written, as in PostgREST)
+func TestJQUpdateOrder(t *testing.T) {
+
+	cmdConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/admin",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	commands := []test.Command{
+		{
+			Method: "DELETE",
+			Query:  "/databases/dbtest/tables/jqorder",
+		},
+		{
+			Method: "POST",
+			Query:  "/databases/dbtest/tables",
+			Body: `{
+				"name": "jqorder",
+				"columns": [
+					{"name": "id", "type": "integer"},
+					{"name": "counter", "type": "integer"}
+				]}`,
+		},
+	}
+	test.Prepare(cmdConfig, commands)
+
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+
+	tests := []test.Test{
+		{
+			Description: "insert records",
+			Method:      "POST",
+			Query:       "/jqorder",
+			Body:        `[{"id": 1, "counter": 1}, {"id": 2, "counter": 2}, {"id": 3, "counter": 3}]`,
+			Status:      201,
+		},
+		{
+			Description: "standard PATCH: order= orders the representation",
+			Method:      "PATCH",
+			Query:       "/jqorder?order=id.desc",
+			Body:        `{"counter": 0}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 3, "counter": 0}, {"id": 2, "counter": 0}, {"id": 1, "counter": 0}]`,
+			Status:      200,
+		},
+		{
+			Description: "jq PATCH: order= orders the representation",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqorder", "order=id.desc", `{"counter": (.id * 10)}`, ""),
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 3, "counter": 30}, {"id": 2, "counter": 20}, {"id": 1, "counter": 10}]`,
+			Status:      200,
+		},
+		{
+			Description: "jq PATCH: order= on two columns",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqorder", "id=gte.2&order=counter.desc,id", `{}`, ""),
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 3, "counter": 30}, {"id": 2, "counter": 20}]`,
+			Status:      200,
+		},
+		{
+			Description: "standard PATCH: limit= is ignored",
+			Method:      "PATCH",
+			Query:       "/jqorder?order=id&limit=1",
+			Body:        `{"counter": 5}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 1, "counter": 5}, {"id": 2, "counter": 5}, {"id": 3, "counter": 5}]`,
+			Status:      200,
+		},
+		{
+			Description: "jq PATCH: limit= is ignored the same way",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqorder", "order=id&limit=1", `{"counter": (.counter + 1)}`, ""),
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"id": 1, "counter": 6}, {"id": 2, "counter": 6}, {"id": 3, "counter": 6}]`,
+			Status:      200,
+		},
+		{
+			Description: "jq PATCH: an unknown order column is refused before any write",
+			Method:      "PATCH",
+			Query:       jqQuery("/jqorder", "order=nope", `{"counter": 0}`, ""),
+			Status:      400,
+		},
+		{
+			Description: "no row was changed by the refused update",
+			Method:      "GET",
+			Query:       "/jqorder?select=counter&order=id",
+			Expected:    `[{"counter": 6}, {"counter": 6}, {"counter": 6}]`,
+			Status:      200,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
+
 // TestJQUpdateRLS: jq-update goes through row level security like a normal update
 func TestJQUpdateRLS(t *testing.T) {
 
