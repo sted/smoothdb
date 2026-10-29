@@ -108,3 +108,59 @@ func TestRangedCountRunsFunctionOnce(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+// With autocommit (TransactionMode "none") the page and the total of a ranged
+// count are one batch, one implicit transaction that PostgreSQL commits when
+// the batch ends: a DEFERRABLE INITIALLY DEFERRED constraint is checked then,
+// and its violation rolls the write back. PostgREST checks it at the COMMIT
+// of its transaction and answers the error (23505 is 409); the commit error
+// of the batch was dropped, and the request answered the page of a write that
+// did not happen.
+func TestRangedCountReportsTheCommitError(t *testing.T) {
+	createRangedCountFixtures(t)
+	execSQLAndReload(t, `
+		CREATE TABLE ranged_count.deferred (v int UNIQUE DEFERRABLE INITIALLY DEFERRED);
+		CREATE FUNCTION ranged_count.insert_twice(v int) RETURNS SETOF ranged_count.deferred
+			LANGUAGE sql VOLATILE AS $$
+				INSERT INTO ranged_count.deferred VALUES (v), (v) RETURNING *
+			$$;
+	`)
+
+	testConfig := test.Config{
+		BaseUrl: "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{
+			"Authorization":   {adminToken},
+			"Accept-Profile":  {"ranged_count"},
+			"Content-Profile": {"ranged_count"},
+		},
+	}
+
+	tests := []test.Test{
+		// control: without a count the call is one statement, whose commit
+		// error the rows report
+		{
+			Description: "a deferred violation without a count",
+			Method:      "POST",
+			Query:       "/rpc/insert_twice",
+			Body:        `{"v": 1}`,
+			Status:      409,
+		},
+		{
+			Description: "a deferred violation with a ranged count",
+			Method:      "POST",
+			Query:       "/rpc/insert_twice?limit=1",
+			Body:        `{"v": 2}`,
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+			Status:      409,
+		},
+		{
+			Description: "both writes were rolled back",
+			Method:      "GET",
+			Query:       "/deferred",
+			Expected:    `[]`,
+			Status:      200,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
