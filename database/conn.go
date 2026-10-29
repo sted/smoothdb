@@ -197,18 +197,24 @@ func prepareConnection(ctx context.Context, conn *DbConn, role string, claims st
 }
 
 // ReleaseConnection releases a connection to the proper pool.
-// It resets the session-level role and claims a request left on it, if
-// requested, and closes the transaction, based on the configuration.
+// It closes the transaction, based on the configuration, and then, if
+// requested, resets the session-level role and claims a request left on it:
+// after, so that a ROLLBACK cannot undo the reset.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, resetRole bool) error {
 	defer conn.Release()
-	hasTX := dbe.config.TransactionMode != "none"
-
-	if resetRole {
-		if err := resetSession(ctx, conn.Conn()); err != nil {
-			return err
-		}
+	if err := endTransaction(ctx, conn, httpErr); err != nil {
+		return err
 	}
+	if resetRole {
+		return resetSession(ctx, conn.Conn())
+	}
+	return nil
+}
 
+// endTransaction ends the request's transaction, if one is open, as the
+// configuration says.
+func endTransaction(ctx context.Context, conn *DbPoolConn, httpErr bool) error {
+	hasTX := dbe.config.TransactionMode != "none"
 	if hasTX && conn.Conn().PgConn().TxStatus() != 'I' {
 		var end string
 
@@ -296,6 +302,12 @@ const sessionCleanup = "SET SESSION AUTHORIZATION DEFAULT; SET ROLE NONE; RESET 
 func cleanSession(ctx context.Context, conn *DbConn) error {
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
+	if conn.PgConn().TxStatus() != 'I' {
+		// in a transaction the cleanup could still be rolled back: the
+		// connection is discarded instead
+		conn.Close(rctx)
+		return errors.New("a connection in a transaction cannot be cleaned")
+	}
 	_, err := conn.Exec(rctx, sessionCleanup+roleSettingsReset())
 	if err != nil {
 		conn.Close(rctx)
