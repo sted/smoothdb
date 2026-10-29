@@ -129,14 +129,9 @@ func searchPathSet() string {
 	if len(dbe.config.SchemaSearchPath) == 0 {
 		return ""
 	}
-	set := "set_config('search_path', '"
-	for i, schema := range dbe.config.SchemaSearchPath {
-		if i != 0 {
-			set += ", "
-		}
-		set += schema
-	}
-	return set + "', false)"
+	// a literal: an apostrophe in a quoted schema name is doubled
+	path := strings.ReplaceAll(strings.Join(dbe.config.SchemaSearchPath, ", "), "'", "''")
+	return "set_config('search_path', '" + path + "', false)"
 }
 
 type Database struct {
