@@ -13,7 +13,8 @@ import (
 // are read at startup and again with every schema cache reload.
 type roleSettings struct {
 	roles map[string]*roleConfig
-	// names are the settings loaded since startup, and reset their RESET,
+	// names are the settings loaded since startup, and reset their RESET
+	// (for search_path, the configured one set again: see searchPathSet),
 	// appended to the statement that returns an autocommit connection to the
 	// pool: a setting applied for one role must not reach the next role that
 	// takes the connection, even after a reload dropped it from the cache.
@@ -132,7 +133,12 @@ func loadRoleSettings(ctx context.Context, conn *DbConn, version int, prev *role
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		rs.reset += "; RESET " + quote(name)
+		if set := searchPathSet(); set != "" && strings.EqualFold(name, "search_path") {
+			// back to the configured path, which a RESET would not restore
+			rs.reset += "; SELECT " + set
+		} else {
+			rs.reset += "; RESET " + quote(name)
+		}
 	}
 	for _, rc := range rs.roles {
 		rc.sqlTX = prepareStatement(rc.txArgs, true, withSwitch)
