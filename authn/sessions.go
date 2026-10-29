@@ -104,6 +104,8 @@ type SessionManager struct {
 	// retainConnections keeps the prepared connection attached to the session
 	// between requests ("role" mode); "claims" mode caches only the claims
 	retainConnections bool
+	// closed is set on shutdown: no session is stored any more
+	closed bool
 	// now is the clock of the session times, release gives a connection a
 	// session kept back to its pool (the tests replace both)
 	now     func() time.Time
@@ -143,6 +145,15 @@ func newSessionManager(logger *logging.Logger, enabled bool, shutdown chan struc
 
 func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.Duration) {
 	now := sm.clock()
+	// the connections to give back: released once the lock is free, so that
+	// no request waits for their round trips (each bounded, see
+	// database.ReleaseConnection)
+	var expired []*database.DbPoolConn
+	defer func() {
+		for _, conn := range expired {
+			sm.release(conn)
+		}
+	}()
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 
@@ -177,10 +188,10 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 
 			} else if spentTime > connTimeout && session.DbConn != nil {
 
-				// Release and detach the database connection from the session
+				// Detach the database connection from the session, to release
 				// (Acquire and attach are done in the auth middleware)
 				// The session is preserved and can be reused
-				sm.release(session.DbConn)
+				expired = append(expired, session.DbConn)
 				session.DbConn = nil
 			}
 		}
@@ -193,22 +204,39 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 func (sm *SessionManager) sessionWatcher() {
 
 	ticker := time.NewTicker(1000 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			sm.watch(5*time.Second, 1*time.Second)
 		case <-sm.shutdown:
-			for k, list := range sm.slots {
-				for session := list.head; session != nil; session = session.next {
-					if session.DbConn != nil {
-						sm.release(session.DbConn)
-					}
-					delete(sm.slots, k)
-				}
-			}
+			sm.close()
 			return
 		}
+	}
+}
+
+// close empties the manager on shutdown: the idle sessions give their
+// connections back, a request in flight keeps its own until it leaves (see
+// leaveSession), and the requests that come after get transient sessions.
+func (sm *SessionManager) close() {
+	var conns []*database.DbPoolConn
+	sm.mtx.Lock()
+	sm.closed = true
+	for _, list := range sm.slots {
+		for session := list.head; session != nil; session = session.next {
+			if !session.inUse.Load() && session.DbConn != nil {
+				conns = append(conns, session.DbConn)
+				session.DbConn = nil
+			}
+		}
+	}
+	sm.slots = map[string]*SessionList{}
+	sm.total = 0
+	sm.mtx.Unlock()
+	for _, conn := range conns {
+		sm.release(conn)
 	}
 }
 
@@ -234,7 +262,7 @@ func (sm *SessionManager) getSession(key string) (*Session, bool) {
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 	list := sm.slots[key]
-	if list == nil || list.isEmpty() {
+	if list == nil || list.isEmpty() || sm.closed {
 		return sm.newSessionOrTransient(key), true
 	}
 	session := list.head
@@ -247,10 +275,24 @@ func (sm *SessionManager) getSession(key string) (*Session, bool) {
 }
 
 func (sm *SessionManager) leaveSession(session *Session) bool {
-	if !sm.enabled || session.transient {
+	if !sm.enabled {
+		return true
+	}
+	if session.transient {
 		return true
 	}
 	sm.mtx.Lock()
+	if sm.closed {
+		// emptied by the shutdown while the request ran: nothing keeps the
+		// session's connection any more
+		conn := session.DbConn
+		session.DbConn = nil
+		sm.mtx.Unlock()
+		if conn != nil {
+			sm.release(conn)
+		}
+		return true
+	}
 	defer sm.mtx.Unlock()
 	list := sm.slots[session.key]
 	list.toFront(session)
@@ -282,7 +324,7 @@ func (sm *SessionManager) Statistics() SessionStatistics {
 // were disabled, and the map cannot grow without bound under a scan of tokens.
 // Must be called with the lock held.
 func (sm *SessionManager) newSessionOrTransient(key string) *Session {
-	if sm.total >= sm.maxSessions {
+	if sm.total >= sm.maxSessions || sm.closed {
 		s := &Session{key: key, transient: true}
 		s.inUse.Store(true)
 		return s

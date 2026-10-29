@@ -12,6 +12,7 @@
 
 ### Fixed
 * **Pooled connections keep nothing of a request** — the role, claims, access mode and role settings of a request are transaction-local, as in PostgREST, or reset when the connection goes back to the pool: the next user of the connection (the schema reload, a library caller) no longer runs as the previous client.
+* **Session watcher** — releases the connections of idle sessions without holding up the requests, and a shutdown no longer takes the connection of a request still running.
 * **Ranged `count=exact` on `/rpc`** — a VOLATILE function runs once, as in PostgREST (it wrote twice); a STABLE or IMMUTABLE one is counted like a table.
 * **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
 * **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
