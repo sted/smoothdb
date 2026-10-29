@@ -1800,7 +1800,11 @@ func buildAfterSelect(query, from string, call bool, joins, whereClause, groupBy
 			} else {
 				whereClause = gate
 			}
-			options.totalQuery = "SELECT current_setting('" + totalSetting + "')::bigint"
+			// a filter that PostgreSQL folds to a constant false drops the
+			// one-time filter with it, and the total stays unset (or '', the
+			// value of a setting defined earlier in the session): the count
+			// over a false filter is 0
+			options.totalQuery = "SELECT coalesce(nullif(current_setting('" + totalSetting + "', true), ''), '0')::bigint"
 		}
 	}
 
