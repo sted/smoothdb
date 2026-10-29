@@ -154,11 +154,12 @@ func TestSchemaSearchPathIsSetWithSQL(t *testing.T) {
 	}
 }
 
-// A schema name with an apostrophe, quoted as an identifier, is set as it is:
-// the path is a SQL literal in set_config and in the release reset.
+// A schema name with an apostrophe or a backslash, quoted as an identifier,
+// is set as it is, whatever standard_conforming_strings says: the path is a
+// SQL literal in set_config and in the release reset.
 func TestSchemaSearchPathWithAnApostrophe(t *testing.T) {
 	saved := dbe.config.SchemaSearchPath
-	dbe.config.SchemaSearchPath = []string{"public", `"O'Reilly"`}
+	dbe.config.SchemaSearchPath = []string{"public", `"O'Reilly"`, `"a\b"`}
 	defer func() { dbe.config.SchemaSearchPath = saved }()
 
 	c, err := dbe.AcquireConnection(context.Background())
@@ -166,19 +167,26 @@ func TestSchemaSearchPathWithAnApostrophe(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Release()
-	// in a transaction rolled back, so the connection keeps its own path
-	tx, err := c.Begin(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(context.Background())
-	var path string
-	err = tx.QueryRow(context.Background(), "SELECT "+searchPathSet()+
-		", current_setting('search_path')").Scan(nil, &path)
-	if err != nil {
-		t.Fatalf("%s: %v", searchPathSet(), err)
-	}
-	if want := `public, "O'Reilly"`; path != want {
-		t.Errorf("search_path: got %q, want %q", path, want)
+	for _, conforming := range []string{"on", "off"} {
+		// in a transaction rolled back, so the connection keeps its own path
+		tx, err := c.Begin(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(context.Background(), "SET LOCAL standard_conforming_strings = "+conforming); err != nil {
+			t.Fatal(err)
+		}
+		var path string
+		// a text of its own for each setting: a statement prepared under the
+		// other one would be reused as it was parsed
+		err = tx.QueryRow(context.Background(), "SELECT "+searchPathSet()+
+			", current_setting('search_path') /* "+conforming+" */").Scan(nil, &path)
+		tx.Rollback(context.Background())
+		if err != nil {
+			t.Fatalf("%s: %v", searchPathSet(), err)
+		}
+		if want := `public, "O'Reilly", "a\b"`; path != want {
+			t.Errorf("standard_conforming_strings %s: got %q, want %q", conforming, path, want)
+		}
 	}
 }
