@@ -175,7 +175,7 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 		if m.retains(session) {
 			dbconn, err = m.acquireFor(ctx, db, session)
 		} else {
-			dbconn, err = database.AcquireConnection(ctx, db)
+			dbconn, err = database.AcquireRequestConnection(ctx, db)
 		}
 		if errors.Is(err, database.ErrAcquisitionTimeout) {
 			// PostgREST's AcquisitionTimeoutUsageError
@@ -235,7 +235,7 @@ func (m middleware) acquireFor(ctx context.Context, db *database.Database, sessi
 	if conn := sm.takeConnection(session, w, database.Exhausted(db)); conn != nil {
 		return conn, nil
 	}
-	conn, err := database.AcquireConnection(actx, db)
+	conn, err := database.AcquireRequestConnection(actx, db)
 	sm.dropWaiter(session.key, w)
 	select {
 	case handed := <-w.conn:

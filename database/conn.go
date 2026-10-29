@@ -77,16 +77,22 @@ func SetReadOnly(ctx context.Context) error {
 // PoolAcquisitionTimeout, with PostgREST's message (PGRST003).
 var ErrAcquisitionTimeout = errors.New("Timed out acquiring connection from connection pool.")
 
-// AcquireConnection takes a connection from a database pool.
+// AcquireConnection takes a connection from a database pool, clean of
+// anything a request left on its session (see Database.AcquireConnection).
 // If the db parameter is nil, it uses the main db pool.
 // The wait is bounded by PoolAcquisitionTimeout (see acquireBounded).
-// It is the acquire of a request, which applies its own role and claims
-// over whatever the connection carries (see Database.AcquireConnection).
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
 	if db == nil {
 		db = dbe.mainDb
 	}
-	return acquireBounded(context.WithValue(ctx, requestAcquireKey{}, true), db)
+	return acquireBounded(ctx, db)
+}
+
+// AcquireRequestConnection is AcquireConnection for a request, which applies
+// its own role and claims (PrepareRequest) over whatever the session of the
+// connection carries: it skips the cleanup.
+func AcquireRequestConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
+	return AcquireConnection(context.WithValue(ctx, requestAcquireKey{}, true), db)
 }
 
 type requestAcquireKey struct{}
