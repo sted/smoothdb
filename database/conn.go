@@ -64,21 +64,27 @@ var ErrAcquisitionTimeout = errors.New("Timed out acquiring connection from conn
 
 // AcquireConnection takes a connection from a database pool.
 // If the db parameter is nil, it uses the main db pool.
-// The wait is bounded by PoolAcquisitionTimeout, as PostgREST bounds it by
-// db-pool-acquisition-timeout: a saturated pool answers instead of holding the
-// request until the client gives up.
+// The wait is bounded by PoolAcquisitionTimeout (see acquireBounded).
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
+	if db == nil {
+		db = dbe.mainDb
+	}
+	return acquireBounded(ctx, db)
+}
+
+// acquireBounded takes a connection from the pool of db, waiting at most
+// PoolAcquisitionTimeout, as PostgREST bounds it by
+// db-pool-acquisition-timeout: a saturated pool answers instead of holding the
+// request until the client gives up. Every acquire on the path of a request
+// goes through it.
+func acquireBounded(ctx context.Context, db *Database) (*DbPoolConn, error) {
 	actx := ctx
 	if timeout := dbe.config.PoolAcquisitionTimeout; timeout > 0 {
 		var cancel context.CancelFunc
 		actx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 		defer cancel()
 	}
-	if db != nil {
-		conn, err = db.AcquireConnection(actx)
-	} else {
-		conn, err = dbe.AcquireConnection(actx)
-	}
+	conn, err := db.AcquireConnection(actx)
 	if err != nil {
 		if ctx.Err() == nil && errors.Is(actx.Err(), context.DeadlineExceeded) {
 			return nil, ErrAcquisitionTimeout

@@ -147,7 +147,11 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
 			db, err = m.GetDatabase(ctx, dbname)
-			if err != nil {
+			if errors.Is(err, database.ErrAcquisitionTimeout) {
+				// activating the database read it from a saturated main pool
+				return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
+					Message: err.Error()}
+			} else if err != nil {
 				return nil, nil, false, &Error{Status: http.StatusNotFound, Message: err.Error(), Err: err}
 			}
 			session.Db = db
