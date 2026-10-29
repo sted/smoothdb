@@ -21,6 +21,7 @@ func TestPrepareStatement(t *testing.T) {
 		{"no settings, transaction", nil, true, withSwitch, prepareTX},
 		{"no settings, batch", nil, true, withTxAccessMode, prepareLocal},
 		{"no settings, autocommit", nil, false, withAccessMode, prepareAuto},
+		{"no settings, kept", nil, false, withTxAccessMode, prepareKeep},
 		{"transaction", two, true, withSwitch,
 			"SELECT set_config($1, $2, true), set_config($3, $4, true), set_config('role', $5, true), set_config('request.jwt.claims', $6, true)"},
 		{"batch", two, true, withTxAccessMode,

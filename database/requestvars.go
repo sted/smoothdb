@@ -50,14 +50,6 @@ type requestVars struct {
 func PrepareRequest(ctx context.Context, role, claims string, readOnly bool, keep string, deferred bool) error {
 	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
-	needTX := dbe.config.TransactionMode != "none"
-	if keep != "" && !needTX && !sessionUserChanged(conn) {
-		if mark, ok := conn.PgConn().CustomData()[sessionMarkKey].(string); ok && mark == keep {
-			// the session's own connection, already switched: only the access
-			// mode may differ
-			return setSessionReadOnly(ctx, conn, readOnly)
-		}
-	}
 	if role == "" {
 		// no role to switch to (a library user): the connection as it is
 		return prepareConnection(ctx, conn, role, claims, true, readOnly)
@@ -112,9 +104,11 @@ func (gi *SmoothContext) conn(ctx context.Context) (*DbConn, error) {
 	}
 	// session-level. A connection that still carries a role (another
 	// session's) loses it first: the settings of that role are not all
-	// overwritten by this one's.
-	if err := resetSession(ctx, conn); err != nil {
-		return nil, err
+	// overwritten by this one's. The session's own is switched again.
+	if !v.kept(conn) {
+		if err := resetSession(ctx, conn); err != nil {
+			return nil, err
+		}
 	}
 	var err error
 	if v.rc != nil {
@@ -140,6 +134,28 @@ func (v *requestVars) begin() string {
 		begin += " READ ONLY"
 	}
 	return begin
+}
+
+// kept says whether conn is the connection the session keeps, switched to
+// its role session-level by an earlier request (see markSession).
+func (v *requestVars) kept(conn *DbConn) bool {
+	if v.keep == "" || sessionUserChanged(conn) {
+		return false
+	}
+	mark, ok := conn.PgConn().CustomData()[sessionMarkKey].(string)
+	return ok && mark == v.keep
+}
+
+// queueKept queues the variables for the connection a session keeps:
+// session-level again, the role, the claims and the role's settings (a
+// function of the previous request may have changed them), and the access
+// mode of this batch's transaction.
+func (v *requestVars) queueKept(b *pgx.Batch) {
+	if v.rc != nil {
+		b.Queue(v.rc.sqlKeep, append(v.rc.autoArgs[:len(v.rc.autoArgs):len(v.rc.autoArgs)], v.role, v.claims, onOff(v.readOnly))...)
+	} else {
+		b.Queue(prepareKeep, v.role, v.claims, onOff(v.readOnly))
+	}
 }
 
 // queueLocal queues the transaction-local variables, with the access mode if
@@ -180,7 +196,7 @@ type requestBatch struct {
 	pgx.Batch
 	lead   int  // the statements of the variables, before the request's own
 	commit bool // a transaction of the batch's own, to commit after them
-	tx     bool // the batch begins the request's transaction
+	tx     bool // the variables last after the batch: the request's transaction, or session-level
 }
 
 // newBatch starts the batch of the request's statements sqls (the empty ones
@@ -193,11 +209,19 @@ func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*request
 	if v == nil {
 		return b, nil
 	}
-	if v.keep != "" || !gi.prepared(sqls) {
+	// on a session that defaults to READ ONLY (a function set it, or the
+	// session's last request was a read), a write cannot turn its
+	// transaction back once the variables have run: they go first
+	writeOnReadOnly := !v.readOnly && gi.Conn.PgConn().ParameterStatus(readOnlyGUC) == "on"
+	if (v.keep != "" && !v.kept(gi.Conn)) || writeOnReadOnly || !gi.prepared(sqls) {
 		_, err := gi.conn(ctx)
 		return b, err
 	}
 	switch {
+	case v.keep != "":
+		// session-level: after the batch the connection keeps them
+		v.queueKept(&b.Batch)
+		b.lead, b.tx = 1, true
 	case dbe.config.TransactionMode != "none":
 		b.Queue(v.begin())
 		v.queueLocal(&b.Batch, false)
@@ -342,9 +366,8 @@ type statementCache struct {
 }
 
 func (gi *SmoothContext) statements() *statementCache {
-	if gi.Db == nil || gi.Db.statements <= 0 || gi.vars == nil || gi.vars.keep != "" {
-		// no batch of this request carries variables: a request without
-		// them, or of a session that keeps its connection prepared
+	if gi.Db == nil || gi.Db.statements <= 0 || gi.vars == nil {
+		// no batch of this request carries variables
 		return nil
 	}
 	data := gi.Conn.PgConn().CustomData()

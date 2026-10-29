@@ -30,9 +30,9 @@ type roleSettings struct {
 // requestvars.go); with autocommit (sqlAuto) they are session settings, the
 // isolation among them, that last while the connection serves the role.
 type roleConfig struct {
-	isolation                string // REPEATABLE READ, SERIALIZABLE, "" for the default
-	txArgs, autoArgs         []any  // name, value, name, value, ...
-	sqlTX, sqlLocal, sqlAuto string
+	isolation                         string // REPEATABLE READ, SERIALIZABLE, "" for the default
+	txArgs, autoArgs                  []any  // name, value, name, value, ...
+	sqlTX, sqlLocal, sqlAuto, sqlKeep string
 	// sqlTXSettings applies the settings alone, to a transaction on a
 	// connection already switched to the role
 	sqlTXSettings string
@@ -48,6 +48,7 @@ const (
 	prepareTX    = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true)"
 	prepareLocal = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true), set_config('" + txReadOnlyGUC + "', $3, true)"
 	prepareAuto  = "SELECT set_config('role', $1, false), set_config('request.jwt.claims', $2, false), set_config('" + readOnlyGUC + "', $3, false)"
+	prepareKeep  = "SELECT set_config('role', $1, false), set_config('request.jwt.claims', $2, false), set_config('" + txReadOnlyGUC + "', $3, true)"
 )
 
 // roleSettingsQuery is PostgREST's queryRoleSettings, as rows. The
@@ -150,6 +151,7 @@ func loadRoleSettings(ctx context.Context, conn *DbConn, version int, prev *role
 		rc.sqlTX = prepareStatement(rc.txArgs, true, withSwitch)
 		rc.sqlLocal = prepareStatement(rc.txArgs, true, withTxAccessMode)
 		rc.sqlAuto = prepareStatement(rc.autoArgs, false, withAccessMode)
+		rc.sqlKeep = prepareStatement(rc.autoArgs, false, withTxAccessMode)
 		if len(rc.txArgs) != 0 {
 			rc.sqlTXSettings = prepareStatement(rc.txArgs, true, settingsOnly)
 		}
@@ -192,7 +194,8 @@ func prepareStatement(args []any, local bool, end int) string {
 	case withAccessMode:
 		fmt.Fprintf(&b, ", set_config('%s', $%d, %t)", readOnlyGUC, p+2, local)
 	case withTxAccessMode:
-		fmt.Fprintf(&b, ", set_config('%s', $%d, %t)", txReadOnlyGUC, p+2, local)
+		// the transaction's own, whatever the rest
+		fmt.Fprintf(&b, ", set_config('%s', $%d, true)", txReadOnlyGUC, p+2)
 	}
 	return b.String()
 }
