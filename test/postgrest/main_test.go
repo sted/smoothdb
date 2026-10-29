@@ -29,6 +29,9 @@ func TestMain(m *testing.M) {
 		// is exposed but not on the search path, as UnicodeSpec runs upstream
 		"Database.ExposedSchemas": []string{"test", "تست"},
 		"Database.TransactionMode":  "rollback-allow-override",
+		// the anonymous role the suite's token names, as db-anon-role in
+		// PostgREST's test config: 42501 is 401 for it and 403 for the others
+		"Database.AnonRole": "postgrest_test_anonymous",
 	}
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{

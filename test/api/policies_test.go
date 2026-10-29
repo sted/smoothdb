@@ -103,7 +103,7 @@ func TestPolicies(t *testing.T) {
 			Query:       "/table_policies",
 			Body:        `{"name": "user3"}`,
 			Headers:     test.Headers{"Authorization": {user1Token}},
-			Status:      401,
+			Status:      403,
 		},
 	}
 
