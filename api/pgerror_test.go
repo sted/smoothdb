@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/sted/smoothdb/authn"
 )
 
 // The status a PostgreSQL error is reported with must match PostgREST's, whose
@@ -13,14 +14,11 @@ import (
 // list of codes and class prefixes, and **400 for everything else** — a database
 // error is a client error unless it is known to be the server's fault.
 //
-// Deliberate divergences, asserted here so they stay deliberate:
-//   - 42501 insufficient_privilege is 401 regardless of authentication, where
-//     PostgREST answers 403 to an authenticated caller. smoothdb's middleware
-//     already answers 401 before Postgres is reached, and the ported PostgREST
-//     suites run anonymously, where PostgREST answers 401 too.
-//   - the "already exists" codes of the DDL API (duplicate database, schema,
-//     table, role) are 409. PostgREST has no DDL surface, so these reach its
-//     catch-all 400; a Conflict is the accurate answer for /admin.
+// 42501 insufficient_privilege depends on the caller, as in PostgREST: 401 for
+// an anonymous request, 403 for an authenticated one (asserted below). One
+// deliberate divergence, asserted here so it stays deliberate: the "already exists" codes of the DDL API (duplicate database,
+// schema, table, role) are 409. PostgREST has no DDL surface, so these reach
+// its catch-all 400; a Conflict is the accurate answer for /admin.
 func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -45,7 +43,7 @@ func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 		{"undefined_function", "42883", "function f() does not exist", http.StatusNotFound},
 		{"unique_violation", "23505", "duplicate key value violates unique constraint", http.StatusConflict},
 		{"infinite_recursion", "42P17", "infinite recursion detected in rules for relation", http.StatusInternalServerError},
-		{"insufficient_privilege", "42501", "permission denied for table t", http.StatusUnauthorized},
+		{"insufficient_privilege, anonymous", "42501", "permission denied for table t", http.StatusUnauthorized},
 
 		// The DDL API's own conflicts.
 		{"duplicate_database", "42P04", `database "d" already exists`, http.StatusConflict},
@@ -103,6 +101,47 @@ func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 			}
 			if w.Code != status {
 				t.Errorf("%s (%s): wrote %d to the response but returned %d", tt.name, tt.code, w.Code, status)
+			}
+		})
+	}
+}
+
+// PostgREST (Error.hs, mapSQLtoHTTP and the PgError headers): 42501 is 401 for
+// an anonymous request and 403 for an authenticated one, and every 401 carries
+// the bare challenge.
+func TestInsufficientPrivilegeFollowsAuthentication(t *testing.T) {
+	tests := []struct {
+		name          string
+		code, message string
+		authenticated bool
+		status        int
+		challenge     string
+	}{
+		{"anonymous, insufficient privilege", "42501", "permission denied for table t", false, http.StatusUnauthorized, "Bearer"},
+		{"authenticated, insufficient privilege", "42501", "permission denied for table t", true, http.StatusForbidden, ""},
+		{"authenticated, refused role switch", "42501", `permission denied to set role "r"`, true, http.StatusForbidden, ""},
+		{"authenticated, missing role", "22023", `role "nobody" does not exist`, true, http.StatusUnauthorized, "Bearer"},
+		{"anonymous, other error", "42P01", `relation "t" does not exist`, false, http.StatusNotFound, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			w := authn.WithAuthenticated(rec, tt.authenticated)
+			status, _ := WriteServerError(w, &pgconn.PgError{Code: tt.code, Message: tt.message})
+			if status != tt.status || rec.Code != tt.status {
+				t.Errorf("status: returned %d, wrote %d, want %d", status, rec.Code, tt.status)
+			}
+			if got := rec.Header().Get("WWW-Authenticate"); got != tt.challenge {
+				t.Errorf("WWW-Authenticate: got %q, want %q", got, tt.challenge)
+			}
+			// the middleware's writer reaches the same answer from its flag
+			rec = httptest.NewRecorder()
+			status, _ = WriteAuthError(rec, &pgconn.PgError{Code: tt.code, Message: tt.message}, tt.authenticated)
+			if status != tt.status || rec.Code != tt.status {
+				t.Errorf("WriteAuthError status: returned %d, wrote %d, want %d", status, rec.Code, tt.status)
+			}
+			if got := rec.Header().Get("WWW-Authenticate"); got != tt.challenge {
+				t.Errorf("WriteAuthError WWW-Authenticate: got %q, want %q", got, tt.challenge)
 			}
 		})
 	}

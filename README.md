@@ -815,6 +815,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
+| Database.PoolAcquisitionTimeout | Seconds a request waits for a pool connection before answering 504 `PGRST003` (PostgREST's `db-pool-acquisition-timeout`); 0 to wait without a bound | 10 |
 | JQ.Enabled | Enable jq evaluation: /jq route, jq= query parameter | false |
 | JQ.Timeout | Timeout in milliseconds for a single jq evaluation | 250 |
 | JQ.MaxProgramBytes | Maximum size in bytes for a jq program or its arguments | 4096 |
@@ -883,6 +884,17 @@ smoothdb --initdb
 ```
 
 and following the prompt, is an easy way to initialize the role and other configurations
+
+#### Role settings
+
+As in PostgREST, the settings of a role the authenticator is granted (`ALTER ROLE ... SET`) apply to the requests that run as it, so a per-role statement timeout needs no SmoothDB key:
+
+```sql
+ALTER ROLE web_user SET statement_timeout = '5s';
+ALTER ROLE reporting SET default_transaction_isolation = 'repeatable read';
+```
+
+Only settings a role may change (`user` context, or granted with `GRANT SET ON PARAMETER` to the authenticator) are applied; `default_transaction_isolation` sets the isolation of the request's transaction. The settings are read at startup and on every schema cache reload (`NOTIFY smoothdb, 'reload schema'`). With `TransactionMode: "none"` a session keeps its connection, and the settings it was prepared with, until the connection goes back to the pool.
 
 ## Health Check Endpoints
 
@@ -1000,6 +1012,7 @@ This will automatically reload the schema cache whenever DDL operations (CREATE,
 - The listener automatically reconnects if the connection is lost
 - Schema reloads are performed asynchronously and do not block other operations
 - If a specific database is not found or not active, the reload request for that database is ignored
+- Every reload also reads the [role settings](#role-settings) again
 
 ## Development
 

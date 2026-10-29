@@ -112,7 +112,7 @@ func TestGrants(t *testing.T) {
 			Query:       "/table_grants",
 			Body:        `{"name": "user2"}`,
 			Headers:     test.Headers{"Authorization": {user2Token}},
-			Status:      401,
+			Status:      403,
 		},
 		{
 			Description: "select",
@@ -127,7 +127,7 @@ func TestGrants(t *testing.T) {
 			Method:      "GET",
 			Query:       "/table_grants?select=name",
 			Headers:     test.Headers{"Authorization": {user2Token}},
-			Status:      401,
+			Status:      403,
 		},
 		{
 			Description: "verify grants",
@@ -159,7 +159,7 @@ func TestGrants(t *testing.T) {
 			Query:       "/table_grants",
 			Body:        `{"name": "user1-update"}`,
 			Headers:     test.Headers{"Authorization": {user1Token}},
-			Status:      401,
+			Status:      403,
 		},
 		{
 			Description: "update records",
@@ -174,7 +174,7 @@ func TestGrants(t *testing.T) {
 			Method:      "DELETE",
 			Query:       "/table_grants",
 			Headers:     test.Headers{"Authorization": {user1Token}},
-			Status:      401,
+			Status:      403,
 		},
 		{
 			Description: "delete records",

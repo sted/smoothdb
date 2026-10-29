@@ -78,11 +78,12 @@ func TestAnonymousWithEmptyAnonRoleIsRefused(t *testing.T) {
 	anon := test.Config{BaseUrl: "http://localhost:8086/api/postgres"}
 	test.Execute(t, anon, []test.Test{
 		{
-			Description: "anonymous request with an empty anon role is refused",
-			Method:      "GET",
-			Query:       "/rpc/anon_probe_whoami",
-			Expected:    `{"error":"Anonymous access is disabled"}`,
-			Status:      401,
+			Description:     "anonymous request with an empty anon role is refused",
+			Method:          "GET",
+			Query:           "/rpc/anon_probe_whoami",
+			Expected:        `{"subsystem":"auth","message":"Anonymous access is disabled","code":"PGRST302","hint":"","details":null,"position":0}`,
+			ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
+			Status:          401,
 		},
 	})
 
@@ -280,11 +281,12 @@ func TestTokenWithoutRoleRunsAsAnonRole(t *testing.T) {
 			emptyRole := signClaims(t, jwt.MapClaims{"role": "", "id": "jdoe"}, postgrestJWTSecret)
 			test.Execute(t, bearer(base, emptyRole), []test.Test{
 				{
-					Description: "a token with an empty role claim is refused",
-					Method:      "GET",
-					Query:       "/rpc/anon_probe_whoami",
-					Expected:    `{"error":"role \"\" does not exist"}`,
-					Status:      401,
+					Description:     "a token with an empty role claim is refused",
+					Method:          "GET",
+					Query:           "/rpc/anon_probe_whoami",
+					Expected:        `{"subsystem":"database","message":"role \"\" does not exist","code":"22023","hint":"","details":null,"position":0}`,
+					ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
+					Status:          401,
 				},
 			})
 
@@ -347,11 +349,12 @@ func TestTokenWithoutRoleIsRefusedWithoutAnonRole(t *testing.T) {
 			for _, token := range []string{noRoleToken, noClaimsToken} {
 				test.Execute(t, bearer(base, token), []test.Test{
 					{
-						Description: "a token without a role claim is refused",
-						Method:      "GET",
-						Query:       "/rpc/anon_probe_whoami",
-						Expected:    `{"error":"Anonymous access is disabled"}`,
-						Status:      401,
+						Description:     "a token without a role claim is refused",
+						Method:          "GET",
+						Query:           "/rpc/anon_probe_whoami",
+						Expected:        `{"subsystem":"auth","message":"Anonymous access is disabled","code":"PGRST302","hint":"","details":null,"position":0}`,
+						ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
+						Status:          401,
 					},
 				})
 			}

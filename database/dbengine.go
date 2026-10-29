@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +31,7 @@ type DbEngine struct {
 	mainDb           *Database
 	logger           *logging.Logger
 	listener         *NotificationListener
+	roleSettings     atomic.Pointer[roleSettings]
 }
 
 // defaultSchemaFromConfig: the schema of a request with no Profile header is
@@ -116,6 +118,17 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	}
 	dbe.activeDatabases.Store(configDbName, db)
 	dbe.mainDb = db
+
+	// Like PostgREST, a failure to read the role settings is reported and the
+	// server runs without them.
+	rs, err := loadRoleSettings(ctx, conn, version, nil)
+	if err != nil {
+		if logger != nil {
+			logger.Err(err).Msg("Cannot read the role settings")
+		}
+	} else {
+		dbe.roleSettings.Store(rs)
+	}
 
 	if len(dbConfig.AllowedDatabases) != 0 {
 		dbe.allowedDatabases = map[string]struct{}{}
@@ -452,6 +465,15 @@ func VerifyAuthN(ctx context.Context, user, password string) error {
 	return conn.Ping(ctx)
 }
 
+// reloadRoleSettingsAndLog reads the role settings again, with the schema
+// cache: an ALTER ROLE ... SET takes effect on the same notification.
+func (dbe *DbEngine) reloadRoleSettingsAndLog(ctx context.Context) {
+	err := dbe.ReloadRoleSettings(ctx)
+	if err != nil && dbe.logger != nil {
+		dbe.logger.Err(err).Msg("Failed to reload the role settings")
+	}
+}
+
 // reloadSchemaAndLog handles the actual schema reload and logging for a database
 func (dbe *DbEngine) reloadSchemaAndLog(ctx context.Context, db *Database, dbName string) error {
 	err := db.ReloadSchemaCache(ctx)
@@ -467,6 +489,7 @@ func (dbe *DbEngine) reloadSchemaAndLog(ctx context.Context, db *Database, dbNam
 
 // ReloadDatabaseSchema reloads the schema cache for a specific database
 func (dbe *DbEngine) ReloadDatabaseSchema(ctx context.Context, dbName string) error {
+	dbe.reloadRoleSettingsAndLog(ctx)
 	if dbName == "" {
 		// If no specific database is mentioned, reload the main database
 		dbName = dbe.mainDb.Name
@@ -483,6 +506,7 @@ func (dbe *DbEngine) ReloadDatabaseSchema(ctx context.Context, dbName string) er
 
 // ReloadAllSchemas reloads the schema cache for all active databases
 func (dbe *DbEngine) ReloadAllSchemas(ctx context.Context) error {
+	dbe.reloadRoleSettingsAndLog(ctx)
 	var errors []error
 
 	dbe.activeDatabases.Range(func(key, value interface{}) bool {

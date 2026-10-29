@@ -1,11 +1,14 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/authn"
 )
 
 // pgErrorStatus maps a PostgreSQL SQLSTATE to the HTTP status PostgREST reports it
@@ -17,10 +20,12 @@ import (
 // so defaulting to 500 turns ordinary rejections into server errors and leaves the
 // caller unable to tell a bad request from an outage.
 //
-// Two entries deliberately differ from PostgREST, asserted in
-// TestPgErrorStatusMatchesPostgREST: insufficient_privilege is 401 whoever the
-// caller is, and the "already exists" codes of the DDL API are 409.
-func pgErrorStatus(dberr *pgconn.PgError) int {
+// insufficient_privilege depends on the caller, as in PostgREST: 401 for an
+// anonymous request, which may succeed with a token, 403 for an authenticated
+// one, which will not. One group of entries deliberately differs from
+// PostgREST, asserted in TestPgErrorStatusMatchesPostgREST: the "already
+// exists" codes of the DDL API are 409.
+func pgErrorStatus(dberr *pgconn.PgError, authenticated bool) int {
 	code, message := dberr.Code, dberr.Message
 
 	// Exact codes first: every one of them sits in a class mapped differently below.
@@ -60,6 +65,9 @@ func pgErrorStatus(dberr *pgconn.PgError) int {
 	case "42P17": // infinite_recursion
 		return http.StatusInternalServerError
 	case "42501": // insufficient_privilege
+		if authenticated {
+			return http.StatusForbidden
+		}
 		return http.StatusUnauthorized
 	}
 
@@ -101,4 +109,54 @@ func pgErrorStatus(dberr *pgconn.PgError) int {
 	}
 
 	return http.StatusBadRequest
+}
+
+// writeDatabaseError writes a database error with the status PostgREST reports
+// it with. A 401 carries the bare challenge, as PostgREST's PgError headers do.
+func writeDatabaseError(w http.ResponseWriter, dberr *pgconn.PgError, authenticated bool) (int, error) {
+	status := pgErrorStatus(dberr, authenticated)
+	switch status {
+	case http.StatusMethodNotAllowed:
+		// 25006 read_only_sql_transaction: a write reached by a GET/HEAD, or
+		// by a STABLE/IMMUTABLE function. PostgREST answers 405 without an
+		// Allow header; RFC 9110 requires one, and POST is the method every
+		// resource that can raise this accepts.
+		w.Header().Set("Allow", "POST")
+	case http.StatusUnauthorized:
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	}
+	smoothErr := SmoothError{
+		Subsystem: "database",
+		Message:   dberr.Message,
+		Code:      dberr.Code,
+	}
+	if verboseErrors {
+		smoothErr.Hint = dberr.Hint
+		smoothErr.Details = dberr.Detail
+	}
+	heligo.WriteJSON(w, status, smoothErr)
+	return status, dberr
+}
+
+// WriteAuthError is the error writer of the auth middleware: a refusal of its
+// own with its status, code and challenge, anything else — the database errors
+// of the role switch — as WriteServerError writes it.
+func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, error) {
+	var aerr *authn.Error
+	if !errors.As(err, &aerr) {
+		return WriteServerError(authn.WithAuthenticated(w, authenticated), err)
+	}
+	if aerr.Challenge != "" {
+		w.Header().Set("WWW-Authenticate", aerr.Challenge)
+	}
+	subsystem := "database" // an unknown database, a pool with no connection
+	if aerr.Status == http.StatusUnauthorized || aerr.Status == http.StatusForbidden {
+		subsystem = "auth"
+	}
+	smoothErr := SmoothError{Subsystem: subsystem, Message: aerr.Message, Code: aerr.Code}
+	if verboseErrors && aerr.Err != nil && aerr.Err.Error() != aerr.Message {
+		smoothErr.Details = aerr.Err.Error()
+	}
+	heligo.WriteJSON(w, aerr.Status, smoothErr)
+	return aerr.Status, err
 }
