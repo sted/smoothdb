@@ -104,12 +104,25 @@ type SessionManager struct {
 	// retainConnections keeps the prepared connection attached to the session
 	// between requests ("role" mode); "claims" mode caches only the claims
 	retainConnections bool
+	// now is the clock of the session times, release gives a connection a
+	// session kept back to its pool (the tests replace both)
+	now     func() time.Time
+	release func(conn *database.DbPoolConn)
 }
 
 // DefaultMaxSessions bounds the session map when no MaxSessions is configured
 const DefaultMaxSessions = 10000
 
 func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
+	sm := newSessionManager(logger, enabled, shutdown)
+	if enabled {
+		go sm.sessionWatcher()
+	}
+	return sm
+}
+
+// newSessionManager is NewSessionManager without the watcher's goroutine.
+func newSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
 	sm := &SessionManager{
 		slots:             map[string]*SessionList{},
 		logger:            logger,
@@ -117,15 +130,19 @@ func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struc
 		shutdown:          shutdown,
 		maxSessions:       DefaultMaxSessions,
 		retainConnections: true,
+		now:               time.Now,
 	}
-	if enabled {
-		go sm.sessionWatcher()
+	sm.release = func(conn *database.DbPoolConn) {
+		err := database.ReleaseConnection(context.Background(), conn, false, true)
+		if err != nil && sm.logger != nil {
+			sm.logger.Err(err).Msg("error releasing the connection of a session")
+		}
 	}
 	return sm
 }
 
 func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.Duration) {
-	now := time.Now()
+	now := sm.clock()
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 
@@ -163,10 +180,7 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 				// Release and detach the database connection from the session
 				// (Acquire and attach are done in the auth middleware)
 				// The session is preserved and can be reused
-				err := database.ReleaseConnection(context.Background(), session.DbConn, false, true)
-				if err != nil {
-					sm.logger.Err(err).Msg("error releasing an expired session")
-				}
+				sm.release(session.DbConn)
 				session.DbConn = nil
 			}
 		}
@@ -188,7 +202,7 @@ func (sm *SessionManager) sessionWatcher() {
 			for k, list := range sm.slots {
 				for session := list.head; session != nil; session = session.next {
 					if session.DbConn != nil {
-						database.ReleaseConnection(context.Background(), session.DbConn, false, false)
+						sm.release(session.DbConn)
 					}
 					delete(sm.slots, k)
 				}
@@ -199,7 +213,7 @@ func (sm *SessionManager) sessionWatcher() {
 }
 
 func (sm *SessionManager) newSession(key string) *Session {
-	now := time.Now()
+	now := sm.clock()
 	session := &Session{key: key}
 	session.inUse.Store(true)
 	session.LastUsedAt = now
@@ -240,7 +254,7 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	defer sm.mtx.Unlock()
 	list := sm.slots[session.key]
 	list.toFront(session)
-	session.LastUsedAt = time.Now()
+	session.LastUsedAt = sm.clock()
 	swapped := session.inUse.CompareAndSwap(true, false)
 	return swapped
 }
@@ -300,10 +314,7 @@ func (sm *SessionManager) dropSession(session *Session) {
 	// watcher) goes back to the pool now: once dropped, the session is out of
 	// the watcher's sight and nothing else would release it.
 	if conn != nil {
-		err := database.ReleaseConnection(context.Background(), conn, false, true)
-		if err != nil && sm.logger != nil {
-			sm.logger.Err(err).Msg("error releasing the connection of a dropped session")
-		}
+		sm.release(conn)
 	}
 }
 
@@ -336,4 +347,12 @@ func claimsExpired(c *Claims, now time.Time) bool {
 		return false
 	}
 	return now.Unix()-allowedSkew > c.ExpiresAt.Unix()
+}
+
+// clock is the time of the session manager (its now, time.Now by default).
+func (sm *SessionManager) clock() time.Time {
+	if sm.now == nil {
+		return time.Now()
+	}
+	return sm.now()
 }
