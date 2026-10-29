@@ -306,13 +306,31 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 	return nil
 }
 
+// AcquireConnection takes a connection from the pool. Unless the acquire is a
+// request's (see the package's AcquireConnection), a connection a request ran
+// on is cleaned first: a function may have left its role or claims on the
+// session, and an internal user (the schema reload, the activation of a
+// database, a library caller) would run as them.
 func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
 	if ctx.Value(handOffKey{}) == nil {
 		// a session's wait is counted by the session manager itself
 		db.acquiring.Add(1)
 		defer db.acquiring.Add(-1)
 	}
-	return db.pool.Acquire(ctx)
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := conn.Conn().PgConn().CustomData()
+	if ctx.Value(requestAcquireKey{}) != nil {
+		data[requestUsedKey] = true
+	} else if data[requestUsedKey] != nil {
+		if err := cleanSession(ctx, conn.Conn()); err != nil {
+			conn.Release()
+			return nil, err
+		}
+	}
+	return conn, nil
 }
 
 // PoolOf is the database whose pool serves db (nil is the main database).

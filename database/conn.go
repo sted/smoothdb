@@ -80,12 +80,16 @@ var ErrAcquisitionTimeout = errors.New("Timed out acquiring connection from conn
 // AcquireConnection takes a connection from a database pool.
 // If the db parameter is nil, it uses the main db pool.
 // The wait is bounded by PoolAcquisitionTimeout (see acquireBounded).
+// It is the acquire of a request, which applies its own role and claims
+// over whatever the connection carries (see Database.AcquireConnection).
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
 	if db == nil {
 		db = dbe.mainDb
 	}
-	return acquireBounded(ctx, db)
+	return acquireBounded(context.WithValue(ctx, requestAcquireKey{}, true), db)
 }
+
+type requestAcquireKey struct{}
 
 // acquireBounded takes a connection from the pool of db, waiting at most
 // PoolAcquisitionTimeout, as PostgREST bounds it by
@@ -272,7 +276,10 @@ func SessionMark(conn *DbPoolConn) (key string, marked bool) {
 // cancelled (a client that hangs up), and a connection it fails on is closed,
 // so the pool destroys it instead of handing out a client's role.
 func resetSession(ctx context.Context, conn *DbConn) error {
-	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; !marked && !sessionUserChanged(conn) {
+	// unmarked, a connection may still carry what a function set: the
+	// settings the server reports, read without a round trip
+	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; !marked && !sessionUserChanged(conn) &&
+		conn.PgConn().ParameterStatus(readOnlyGUC) != "on" {
 		return nil
 	}
 	return cleanSession(ctx, conn)
@@ -295,8 +302,15 @@ func cleanSession(ctx context.Context, conn *DbConn) error {
 		return err
 	}
 	delete(conn.PgConn().CustomData(), sessionMarkKey)
+	delete(conn.PgConn().CustomData(), requestUsedKey)
 	return nil
 }
+
+// requestUsedKey marks, in the custom data of a connection, that a request
+// ran on it since its session was last cleaned: a function it called may
+// have set a role or claims session-level, which a request overrides with
+// its own but an internal user would run as (see Database.AcquireConnection).
+const requestUsedKey = "smoothdb.used"
 
 // sessionUserChanged says whether the session authorization of conn is no
 // longer the user it logged in as. The server reports the setting whenever
