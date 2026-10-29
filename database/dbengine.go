@@ -73,10 +73,10 @@ func InitDbEngine(dbConfig *Config, logger *logging.Logger) (*DbEngine, error) {
 	dbe.authRole = config.ConnConfig.User
 	// Db logging
 	if logger != nil {
-		dbe.dbtracer = &tracelog.TraceLog{
+		dbe.dbtracer = poolTracer{&tracelog.TraceLog{
 			Logger:   NewDbLogger(logger.Logger),
 			LogLevel: tracelogLevel(logger.GetLevel()),
-		}
+		}}
 	}
 
 	ctx := context.Background()

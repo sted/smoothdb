@@ -219,7 +219,7 @@ func roleSettingsReset() string {
 // ReloadRoleSettings reads the role settings again, with a connection of the
 // main pool.
 func (dbe *DbEngine) ReloadRoleSettings(ctx context.Context) error {
-	conn, err := dbe.mainDb.pool.Acquire(ctx)
+	conn, err := dbe.mainDb.AcquireConnection(ctx)
 	if err != nil {
 		return err
 	}

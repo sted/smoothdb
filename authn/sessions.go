@@ -106,6 +106,12 @@ type SessionManager struct {
 	retainConnections bool
 	// closed is set on shutdown: no session is stored any more
 	closed bool
+	// waiters are the requests waiting for a connection, per key, oldest
+	// first: a session of the same key that leaves hands its own over (see
+	// leaveSession). idle counts the sessions not in use that keep a
+	// connection.
+	waiters map[string][]*waiter
+	idle    int
 	// now is the clock of the session times, release gives a connection a
 	// session kept back to its pool (the tests replace both)
 	now     func() time.Time
@@ -162,6 +168,7 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 	}
 	sm.count = 0
 	sm.inUse = 0
+	sm.idle = 0
 
 	for k, list := range sm.slots {
 
@@ -193,6 +200,9 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 				// The session is preserved and can be reused
 				expired = append(expired, session.DbConn)
 				session.DbConn = nil
+			}
+			if session.DbConn != nil {
+				sm.idle += 1 // recounted, as count and inUse
 			}
 		}
 		if list.isEmpty() {
@@ -234,6 +244,7 @@ func (sm *SessionManager) close() {
 	}
 	sm.slots = map[string]*SessionList{}
 	sm.total = 0
+	sm.idle = 0
 	sm.mtx.Unlock()
 	for _, conn := range conns {
 		sm.release(conn)
@@ -270,6 +281,9 @@ func (sm *SessionManager) getSession(key string) (*Session, bool) {
 	if !swapped {
 		return sm.newSessionOrTransient(key), true
 	}
+	if session.DbConn != nil {
+		sm.idle -= 1
+	}
 	list.frontToBack()
 	return session, false
 }
@@ -293,12 +307,113 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 		}
 		return true
 	}
-	defer sm.mtx.Unlock()
+	var yielded *database.DbPoolConn
+	if conn := session.DbConn; conn != nil {
+		if q := sm.waiters[session.key]; len(q) > 0 {
+			// a request of the same token waits: the connection is its own
+			// already (same role, same claims), handed over as it is
+			q[0].conn <- conn
+			q[0].cancel()
+			sm.popWaiter(session.key)
+			session.DbConn = nil
+		} else if database.Acquiring(session.Db) {
+			// another request waits for the pool: the connection goes back
+			// to it, reset, rather than idle here
+			yielded = conn
+			session.DbConn = nil
+		} else {
+			sm.idle += 1
+		}
+	}
 	list := sm.slots[session.key]
 	list.toFront(session)
 	session.LastUsedAt = sm.clock()
 	swapped := session.inUse.CompareAndSwap(true, false)
+	sm.mtx.Unlock()
+	if yielded != nil {
+		// off the request's path: its answer does not wait for the reset
+		go sm.release(yielded)
+	}
 	return swapped
+}
+
+// waiter is a request waiting for a connection: the pool's, or the one a
+// session of its key leaves (see takeConnection).
+type waiter struct {
+	conn   chan *database.DbPoolConn // buffered: a hand-over never blocks
+	cancel context.CancelFunc        // stops the wait on the pool
+}
+
+// takeConnection gives the request of session a connection kept by an idle
+// session: one of its own key (prepared already), or, when the pool is
+// exhausted, one of any key. Otherwise it queues w for the next connection a
+// session of the key leaves, and answers nil: the request then waits on the
+// pool and on w at once, and calls dropWaiter when either answers.
+func (sm *SessionManager) takeConnection(session *Session, w *waiter, exhausted bool) *database.DbPoolConn {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	if sm.idle > 0 {
+		if conn := sm.detachIdle(sm.slots[session.key]); conn != nil {
+			return conn
+		}
+		if exhausted {
+			for _, list := range sm.slots {
+				if conn := sm.detachIdle(list); conn != nil {
+					return conn
+				}
+			}
+		}
+	}
+	if sm.waiters == nil {
+		sm.waiters = map[string][]*waiter{}
+	}
+	sm.waiters[session.key] = append(sm.waiters[session.key], w)
+	return nil
+}
+
+// detachIdle takes the connection of an idle session of list, if one keeps
+// one. Must be called with the lock held.
+func (sm *SessionManager) detachIdle(list *SessionList) *database.DbPoolConn {
+	if list == nil {
+		return nil
+	}
+	for s := list.head; s != nil; s = s.next {
+		if !s.inUse.Load() && s.DbConn != nil {
+			conn := s.DbConn
+			s.DbConn = nil
+			sm.idle -= 1
+			return conn
+		}
+	}
+	return nil
+}
+
+// dropWaiter takes w out of the queue of key, if it is still there.
+func (sm *SessionManager) dropWaiter(key string, w *waiter) {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	q := sm.waiters[key]
+	for i, x := range q {
+		if x == w {
+			q = append(q[:i:i], q[i+1:]...)
+			break
+		}
+	}
+	if len(q) == 0 {
+		delete(sm.waiters, key)
+	} else {
+		sm.waiters[key] = q
+	}
+}
+
+// popWaiter removes the first waiter of key. Must be called with the lock held.
+func (sm *SessionManager) popWaiter(key string) {
+	q := sm.waiters[key]
+	if len(q) == 1 {
+		delete(sm.waiters, key)
+	} else {
+		sm.waiters[key] = q[1:]
+	}
 }
 
 func (sm *SessionManager) pauseWatcher(pause bool) {

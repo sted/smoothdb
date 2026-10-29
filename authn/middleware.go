@@ -172,7 +172,11 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 			session.DbConn.Release()
 			session.DbConn = nil
 		}
-		dbconn, err = database.AcquireConnection(ctx, db)
+		if m.retains(session) {
+			dbconn, err = m.acquireFor(ctx, db, session)
+		} else {
+			dbconn, err = database.AcquireConnection(ctx, db)
+		}
 		if errors.Is(err, database.ErrAcquisitionTimeout) {
 			// PostgREST's AcquisitionTimeoutUsageError
 			return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
@@ -213,6 +217,37 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	}
 	acquired = true
 	return ctx, session, authenticated, nil
+}
+
+// acquireFor gets a connection for a session that keeps it ("role" mode).
+// A session may keep its connection idle while a request waits, and the
+// requests of one token beyond the pool size would wait for the connections
+// of its other sessions until they idled out: so the request takes the
+// connection of an idle session first (its token's, already prepared, or
+// another's when the pool is exhausted), and otherwise waits both on the pool
+// and for the connection a session of its token leaves (see leaveSession,
+// which also gives a connection back to the pool when a request waits there).
+func (m middleware) acquireFor(ctx context.Context, db *database.Database, session *Session) (*database.DbPoolConn, error) {
+	sm := m.SessionManager()
+	actx, cancel := context.WithCancel(database.WithHandOff(ctx))
+	defer cancel()
+	w := &waiter{conn: make(chan *database.DbPoolConn, 1), cancel: cancel}
+	if conn := sm.takeConnection(session, w, database.Exhausted(db)); conn != nil {
+		return conn, nil
+	}
+	conn, err := database.AcquireConnection(actx, db)
+	sm.dropWaiter(session.key, w)
+	select {
+	case handed := <-w.conn:
+		// handed over (perhaps as the pool answered too: that one, fresh,
+		// goes back)
+		if conn != nil {
+			conn.Release()
+		}
+		return handed, nil
+	default:
+	}
+	return conn, err
 }
 
 func (m middleware) releaseSession(ctx context.Context, status int, session *Session) {
