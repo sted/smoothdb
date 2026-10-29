@@ -57,13 +57,14 @@ func TestPostgREST_Unicode(t *testing.T) {
 		//       , matchHeaders = [matchHeaderAbsent hContentType]
 		//       }
 		{
-			Description: "Can read and write values",
-			Method:      "DELETE",
-			Query:       "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF",
-			Body:        "",
-			Headers:     test.Headers{"Content-Profile": {"تست"}, "Prefer": {"tx=commit"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "Can read and write values",
+			Method:          "DELETE",
+			Query:           "/%D9%85%D9%88%D8%A7%D8%B1%D8%AF",
+			Body:            "",
+			Headers:         test.Headers{"Content-Profile": {"تست"}, "Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": ""},
+			Status:          204,
 		},
 	}
 
