@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
 )
 
@@ -14,12 +15,12 @@ func InitSourcesRouter(apiHelper Helper) {
 	if !apiHelper.HasShortAPIURL() {
 		baseURL += "/:dbname"
 	}
-	api := apiHelper.GetRouter().Group(baseURL, apiHelper.MiddlewareStd())
+	api := apiHelper.GetRouter().Group(baseURL, authn.DeferPreparation, apiHelper.MiddlewareStd())
 
 	// TABLES
 
-	api.Handle("GET", "", TableListHandler)
-	api.Handle("GET", "/$info/:table", TableGetHandler)
+	api.Handle("GET", "", prepared(TableListHandler))
+	api.Handle("GET", "/$info/:table", prepared(TableGetHandler))
 
 	// RECORDS
 
@@ -160,5 +161,16 @@ func writeRead(c context.Context, w http.ResponseWriter, r heligo.Request, conte
 		return WriteContent(c, w, http.StatusOK, content)
 	default:
 		return WriteContent(c, w, status, content)
+	}
+}
+
+// prepared applies the request's role and claims before h, which reaches the
+// database outside the query executor (see authn.DeferPreparation).
+func prepared(h heligo.Handler) heligo.Handler {
+	return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		if err := database.PrepareNow(c); err != nil {
+			return WriteError(w, err)
+		}
+		return h(c, w, r)
 	}
 }

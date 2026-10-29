@@ -147,6 +147,9 @@ type Database struct {
 	// call info.Load(), the reloader calls info.Store(). Never copy Database by
 	// value (the atomic makes that unsafe).
 	info atomic.Pointer[SchemaInfo]
+	// statements says how the connections of the pool prepare the statements
+	// of a batch (see statementsInBatch)
+	statements int
 }
 
 // activate initializes a database and starts its connection pool
@@ -167,6 +170,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
+	db.statements = statementsInBatch(config.ConnConfig)
 	// The text form of a timestamp or a date (a field of a composite that
 	// arrives in text) is converted to what to_json prints on the assumption
 	// that it is ISO, the output style pgx assumes as well: pin it at startup

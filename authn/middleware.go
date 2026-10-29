@@ -94,8 +94,9 @@ func (m middleware) resolveClaims(tokenString string) (*Claims, int, error) {
 // the anonymous one, as PostgREST decides it (App.hs: Just authRole /=
 // configDbAnonRole): a token naming the anon role, or without a role claim,
 // is anonymous.
-func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
+func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	forceDBE bool, getDBName GetDatabaseNameFn) (_ context.Context, _ *Session, authenticated bool, _ error) {
+	ctx := c
 	var claims *Claims
 	var err error
 	var db *database.Database
@@ -126,7 +127,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			return
 		}
 		if newAcquire && dbconn != nil {
-			dbconn.Release()
+			database.ReleaseConnection(ctx, dbconn, true, true)
 			session.DbConn = nil
 		}
 		if isNewSession {
@@ -193,13 +194,23 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 	// function or view that writes fails (25006 -> 405) instead of mutating on
 	// a request that proxies, prefetchers and caches replay at will.
 	readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
-	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire, readOnly)
+	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
+	// The session that keeps the connection after the request, if any: its
+	// connection carries its role session-level from one request to the next.
+	keep := ""
+	if m.retains(session) {
+		keep = key
+	}
+	// On the data routes the role, the claims and the access mode wait for
+	// the first statement of the request and travel with it (see
+	// database.PrepareRequest); elsewhere they are applied now.
+	deferred, _ := c.Value(deferKey{}).(bool)
+	err = database.PrepareRequest(ctx, session.Claims.Role, claimsString, readOnly, keep, deferred)
 	if err != nil {
 		// a refused role switch (42501) or a role that does not exist (22023)
 		// is reported like any database error, by the status of its code
 		return nil, nil, authenticated, err
 	}
-	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
 	acquired = true
 	return ctx, session, authenticated, nil
 }
@@ -211,26 +222,39 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 	// total is the answer of a call that ran, and its writes commit. The 416
 	// of a Range header refused before execution has nothing to commit.
 	httpErr := status >= http.StatusBadRequest && status != http.StatusRequestedRangeNotSatisfiable
-	// Release the connection only if:
-	// - the sessionmanager is not enabled
-	// - the connection has an open transaction
-	// Otherwise it will be released in the sessionmanager after a cer
-	sm := m.SessionManager()
-	if !sm.enabled || session.transient || !sm.retainConnections {
-		// no sessions, a transient session (over the cap) or "claims" mode: the
-		// connection goes back to the pool at the end of every request
-		if session.DbConn != nil {
-			err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
-			session.DbConn = nil
-		}
-	} else if session.DbConn != nil && database.HasTX(session.DbConn) {
-		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, false)
+	// The connection goes back to the pool at the end of the request, with
+	// its transaction ended and what the request set on it session-level
+	// reset, unless its session keeps it (see retains).
+	if !m.retains(session) && session.DbConn != nil {
+		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
 		session.DbConn = nil
 	}
 	if err != nil {
 		m.GetLogger().Err(err).Msg("error releasing database connection")
 	}
 	m.SessionManager().leaveSession(session)
+}
+
+// retains says whether session keeps its connection between its requests:
+// in "role" mode, for a stored session, and with TransactionMode "none"
+// (otherwise the request's role and claims end with its transaction, and
+// there is nothing to keep).
+func (m middleware) retains(session *Session) bool {
+	sm := m.SessionManager()
+	return sm.enabled && !session.transient && sm.retainConnections && !database.Transactional()
+}
+
+type deferKey struct{}
+
+// DeferPreparation marks the routes whose handlers reach the database through
+// the query executor (records and functions): Middleware lets the role, the
+// claims and the access mode of their requests travel with their first
+// statement instead of applying them up front (see database.PrepareRequest).
+// It goes before Middleware.
+func DeferPreparation(next heligo.Handler) heligo.Handler {
+	return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return next(context.WithValue(c, deferKey{}, true), w, r)
+	}
 }
 
 func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn) heligo.Middleware {

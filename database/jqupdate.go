@@ -130,6 +130,11 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	// jq-update is all-or-nothing: make sure it runs in a transaction even
 	// when TransactionMode is "none". When a request transaction is already
 	// open we join it; an error will roll it back on release (http error).
+	// the request's variables first, on their own (see requestVars): in the
+	// request's transaction, if there is one, which this joins
+	if _, err = gi.conn(ctx); err != nil {
+		return nil, 0, err
+	}
 	ownTx := gi.Conn.PgConn().TxStatus() == 'I'
 	if ownTx {
 		if _, err = gi.Conn.Exec(ctx, "BEGIN"); err != nil {
