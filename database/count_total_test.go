@@ -108,3 +108,47 @@ func TestRangedCountTotal(t *testing.T) {
 		})
 	}
 }
+
+// TestRangedCountOrderIsOutermost checks that the rows of a ranged count
+// come out of their ORDER BY: SQL keeps the order of a subquery or a CTE
+// through no join, so the statement that returns the page must end with its
+// ORDER BY, LIMIT and OFFSET (card 32702: the page used to be a CTE read back
+// through LEFT JOIN Data d ON true).
+func TestRangedCountOrderIsOutermost(t *testing.T) {
+	info := &SchemaInfo{}
+	tests := []struct {
+		name   string
+		rpc    bool
+		query  string
+		suffix string
+	}{
+		{"table", false, "?select=id&order=id.desc&limit=2&offset=1", ` ORDER BY "projects"."id" DESC LIMIT $1 OFFSET $2`},
+		{"table, offset only", false, "?select=id&order=id.desc&offset=1", ` ORDER BY "projects"."id" DESC OFFSET $1`},
+		{"rpc", true, "?select=id&order=id.desc&limit=2&offset=1", ` ORDER BY "t"."id" DESC LIMIT $1 OFFSET $2`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u, err := url.Parse(test.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts, err := PostgRestParser{}.parse("projects", u.Query())
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			options := &QueryOptions{Count: "exact"}
+			var query string
+			if test.rpc {
+				query, _, err = DirectQueryBuilder{}.BuildExecute("getallprojects", nil, Record{}, parts, options, info)
+			} else {
+				query, _, err = DirectQueryBuilder{}.BuildSelect("projects", parts, options, info)
+			}
+			if err != nil {
+				t.Fatalf("build: %v", err)
+			}
+			if !strings.HasSuffix(strings.TrimSpace(query), test.suffix) {
+				t.Errorf("the page does not end with its order\n\twant suffix %s\n\tgot %s", test.suffix, query)
+			}
+		})
+	}
+}

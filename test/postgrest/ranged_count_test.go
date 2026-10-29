@@ -302,6 +302,21 @@ func TestPostgREST_RangedCount(t *testing.T) {
 			Expected:        `[]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/5"},
 		},
+		// the page keeps its order (PostgREST 16.4: 206 1-2/5)
+		{
+			Description:     "ranged count of a descending page",
+			Query:           "/projects?select=id&order=id.desc&limit=2&offset=1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[{"id":4},{"id":3}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/5"},
+		},
+		{
+			Description:     "ranged count of an rpc's descending page",
+			Query:           "/rpc/getallprojects?select=id&order=id.desc&limit=2&offset=1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[{"id":4},{"id":3}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/5"},
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
