@@ -148,3 +148,58 @@ func TestRangedCountOrderIsOutermost(t *testing.T) {
 		})
 	}
 }
+
+// TestRangedCountFunctionVolatility checks the two shapes of a ranged count
+// on a function. A VOLATILE function must run once, so the page reads it
+// through a materialized CTE and stores the total (and a function missing
+// from the cache is taken for VOLATILE). A STABLE or IMMUTABLE one is
+// counted like a table, the call in both statements: the CTE would keep
+// PostgreSQL from inlining a SQL function into the page.
+func TestRangedCountFunctionVolatility(t *testing.T) {
+	info := &SchemaInfo{cachedTypes: map[uint32]Type{
+		1: {Id: 1, Name: "projects", Schema: "test", IsTable: true},
+	}}
+	fn := func(volatility string) *Function {
+		return &Function{Name: "getallprojects", Schema: "test", ReturnTypeId: 1, ReturnIsSet: true, Volatility: volatility}
+	}
+	tests := []struct {
+		name string
+		f    *Function
+		once bool
+	}{
+		{"volatile", fn("v"), true},
+		{"not in the cache", nil, true},
+		{"stable", fn("s"), false},
+		{"immutable", fn("i"), false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			u, _ := url.Parse("?select=id&id=gt.1&limit=2")
+			parts, err := PostgRestParser{}.parse("getallprojects", u.Query())
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			options := &QueryOptions{Count: "exact", Schema: "test"}
+			query, values, err := DirectQueryBuilder{}.BuildExecute("getallprojects", test.f, Record{}, parts, options, info)
+			if err != nil {
+				t.Fatalf("build: %v", err)
+			}
+			if got := strings.Contains(query, "__source"); got != test.once {
+				t.Errorf("materialized source: got %v, want %v\n\t%s", got, test.once, query)
+			}
+			if test.once {
+				if !strings.Contains(options.totalQuery, "current_setting(") {
+					t.Errorf("total: want the stored total, got %s", options.totalQuery)
+				}
+				return
+			}
+			want := `SELECT COUNT(*) FROM "test"."getallprojects"() t WHERE "t"."id" > $1`
+			if strings.TrimSpace(options.totalQuery) != want {
+				t.Errorf("total\n\twant %s\n\tgot  %s", want, options.totalQuery)
+			}
+			if len(options.totalValues) != 1 || options.totalValues[0] != "1" || len(values) != 2 {
+				t.Errorf("values: total %v, page %v", options.totalValues, values)
+			}
+		})
+	}
+}

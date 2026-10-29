@@ -213,3 +213,56 @@ func TestRangedCountFunctionConstantFalseFilter(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+// A STABLE function is counted like a table: the page and a COUNT(*) over
+// the same call, which PostgreSQL may inline; its total and range status are
+// those of the VOLATILE path.
+func TestRangedCountStableFunction(t *testing.T) {
+	createRangedCountFixtures(t)
+	execSQLAndReload(t, `
+		CREATE FUNCTION ranged_count.stable_numbers(n int) RETURNS TABLE (id int, label text)
+			LANGUAGE sql STABLE AS $$
+				SELECT i, 'n' || i FROM generate_series(1, n) i
+			$$;
+	`)
+
+	testConfig := test.Config{
+		BaseUrl: "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{
+			"Authorization":   {adminToken},
+			"Accept-Profile":  {"ranged_count"},
+			"Content-Profile": {"ranged_count"},
+			"Prefer":          {"count=exact"},
+		},
+	}
+
+	tests := []test.Test{
+		{
+			Description:     "a ranged count of a STABLE function",
+			Method:          "POST",
+			Query:           "/rpc/stable_numbers?id=gt.2&order=id.desc&limit=2&offset=1",
+			Body:            `{"n": 9}`,
+			Expected:        `[{"id":8,"label":"n8"},{"id":7,"label":"n7"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/7"},
+			Status:          206,
+		},
+		{
+			Description:     "a ranged count of a STABLE function, GET",
+			Method:          "GET",
+			Query:           "/rpc/stable_numbers?n=4&limit=1",
+			Expected:        `[{"id":1,"label":"n1"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/4"},
+			Status:          206,
+		},
+		{
+			Description:     "a ranged count of a STABLE function, offset past the total",
+			Method:          "POST",
+			Query:           "/rpc/stable_numbers?offset=20",
+			Body:            `{"n": 3}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/3"},
+			Status:          416,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
