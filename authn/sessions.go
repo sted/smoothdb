@@ -353,12 +353,12 @@ func (sm *SessionManager) takeConnection(session *Session, w *waiter, exhausted 
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 	if sm.idle > 0 {
-		if conn := sm.detachIdle(sm.slots[session.key]); conn != nil {
+		if conn := sm.detachIdle(sm.slots[session.key], session.Db); conn != nil {
 			return conn
 		}
 		if exhausted {
 			for _, list := range sm.slots {
-				if conn := sm.detachIdle(list); conn != nil {
+				if conn := sm.detachIdle(list, session.Db); conn != nil {
 					return conn
 				}
 			}
@@ -372,13 +372,14 @@ func (sm *SessionManager) takeConnection(session *Session, w *waiter, exhausted 
 }
 
 // detachIdle takes the connection of an idle session of list, if one keeps
-// one. Must be called with the lock held.
-func (sm *SessionManager) detachIdle(list *SessionList) *database.DbPoolConn {
+// one from the pool of db: a connection is bound to its database. Must be
+// called with the lock held.
+func (sm *SessionManager) detachIdle(list *SessionList, db *database.Database) *database.DbPoolConn {
 	if list == nil {
 		return nil
 	}
 	for s := list.head; s != nil; s = s.next {
-		if !s.inUse.Load() && s.DbConn != nil {
+		if !s.inUse.Load() && s.DbConn != nil && database.SamePool(s.Db, db) {
 			conn := s.DbConn
 			s.DbConn = nil
 			sm.idle -= 1

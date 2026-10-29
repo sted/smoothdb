@@ -311,6 +311,20 @@ func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error
 	return db.pool.Acquire(ctx)
 }
 
+// SamePool says whether a and b take their connections from the same pool
+// (nil is the main database).
+func SamePool(a, b *Database) bool {
+	if dbe != nil {
+		if a == nil {
+			a = dbe.mainDb
+		}
+		if b == nil {
+			b = dbe.mainDb
+		}
+	}
+	return a == b
+}
+
 // Acquiring says whether a connection of db's pool (nil: the main database)
 // is being acquired: a session that keeps one ("role" mode) gives it back
 // instead, so that it does not idle while a request waits.
