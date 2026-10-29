@@ -153,3 +153,32 @@ func TestSchemaSearchPathIsSetWithSQL(t *testing.T) {
 		t.Errorf("reset: got %q, want %q in place of RESET search_path", rs.reset, want)
 	}
 }
+
+// A schema name with an apostrophe, quoted as an identifier, is set as it is:
+// the path is a SQL literal in set_config and in the release reset.
+func TestSchemaSearchPathWithAnApostrophe(t *testing.T) {
+	saved := dbe.config.SchemaSearchPath
+	dbe.config.SchemaSearchPath = []string{"public", `"O'Reilly"`}
+	defer func() { dbe.config.SchemaSearchPath = saved }()
+
+	c, err := dbe.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Release()
+	// in a transaction rolled back, so the connection keeps its own path
+	tx, err := c.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	var path string
+	err = tx.QueryRow(context.Background(), "SELECT "+searchPathSet()+
+		", current_setting('search_path')").Scan(nil, &path)
+	if err != nil {
+		t.Fatalf("%s: %v", searchPathSet(), err)
+	}
+	if want := `public, "O'Reilly"`; path != want {
+		t.Errorf("search_path: got %q, want %q", path, want)
+	}
+}
