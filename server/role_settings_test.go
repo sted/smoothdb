@@ -303,3 +303,43 @@ func TestRoleSearchPathResetsToTheConfiguredOne(t *testing.T) {
 		t.Errorf("anonymous after authz_path: got %s, want %s", got, configured)
 	}
 }
+
+// A role's DateStyle (ALTER ROLE ... SET DateStyle) does not reach the JSON:
+// a timestamp in a composite that travels in text (here an array of
+// composites with an int4range field) is read as ISO text, and PostgREST's to_json writes it in ISO whatever the
+// DateStyle. Applied as it is, 'SQL, DMY' made it "31/12/2024T10:00:00".
+func TestRoleDateStyleKeepsISOTimestamps(t *testing.T) {
+	authzSetup(t)
+	superuserSetup(t, []string{
+		"DROP FUNCTION IF EXISTS role_stamp()",
+		"DROP TYPE IF EXISTS role_stamp_t",
+		"DROP ROLE IF EXISTS authz_dmy",
+	}, []string{
+		"CREATE ROLE authz_dmy NOLOGIN",
+		"GRANT authz_dmy TO authz_authn",
+		"ALTER ROLE authz_dmy SET DateStyle = 'SQL, DMY'",
+		"CREATE TYPE role_stamp_t AS (ts timestamp, r int4range)",
+		`CREATE FUNCTION role_stamp() RETURNS TABLE (id int, stamps role_stamp_t[]) LANGUAGE sql AS $$
+			SELECT 1, ARRAY[('2024-12-31 10:00:00'::timestamp, int4range(1, 2))::role_stamp_t] $$`,
+	})
+	s := newAuthzServer(t, "8122", map[string]any{
+		"SessionMode":              "none",
+		"Database.TransactionMode": "none",
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	url := "http://localhost:8122/api/postgres/rpc/role_stamp"
+	dmy := signClaims(t, map[string]any{"role": "authz_dmy"}, postgrestJWTSecret)
+
+	want := `[{"id":1,"stamps":[{"ts":"2024-12-31T10:00:00","r":"[1,2)"}]}]`
+	// control: the anonymous role has no DateStyle of its own
+	if got := getBody(t, url, ""); got != want {
+		t.Errorf("anonymous: got %s, want %s", got, want)
+	}
+	if got := getBody(t, url, dmy); got != want {
+		t.Errorf("authz_dmy: got %s, want %s", got, want)
+	}
+}
