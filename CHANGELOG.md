@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Added
+* **JWT claims as in PostgREST** — `JWTRoleClaimKey`, `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
+
 ## 0.10.2 - 2026-10-28
 
 ### Security

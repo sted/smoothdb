@@ -17,7 +17,7 @@ import (
 
 type MiddlewareConfig interface {
 	GetDatabase(context.Context, string) (*database.Database, error)
-	JWTSecret() string
+	JWTVerifier() *JWTVerifier
 	AllowAnon() bool
 	AnonRole() string
 	RequestMaxBytes() int64
@@ -48,7 +48,7 @@ func (m middleware) resolveClaims(tokenString string) (*Claims, int, error) {
 	var claims *Claims
 	var err error
 	if tokenString != "" {
-		claims, err = authenticate(tokenString, m.JWTSecret())
+		claims, err = authenticate(tokenString, m.JWTVerifier())
 		if err != nil {
 			return nil, http.StatusUnauthorized, err
 		}

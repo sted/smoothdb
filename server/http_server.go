@@ -53,7 +53,7 @@ func (s *Server) initHTTPServer() error {
 	}
 
 	if cfg.LoginMode != "none" {
-		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, cfg.JWTSecret, cfg.TokenExpiry)
+		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, s.JWTSecret(), cfg.TokenExpiry)
 	}
 
 	if cfg.JQ.Enabled {

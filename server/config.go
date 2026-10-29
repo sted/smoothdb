@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/config"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/jqeval"
@@ -32,6 +33,9 @@ type Config struct {
 	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret               string          `comment:"Secret for JWT tokens"`
+	JWTSecretIsBase64       bool            `comment:"JWTSecret is base64-encoded (default: false)"`
+	JWTAud                  string          `comment:"Audience the JWT aud claim must contain, when present (default: '' for any)"`
+	JWTRoleClaimKey         string          `comment:"JSONPath of the role in the JWT claims (default: $.role)"`
 	SessionMode             string          `comment:"Session mode: none, role, claims (default: role)"`
 	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
@@ -67,6 +71,9 @@ func defaultConfig() *Config {
 		LoginRateLimit:          30,
 		AllowAnon:               false,
 		JWTSecret:               "",
+		JWTSecretIsBase64:       false,
+		JWTAud:                  "",
+		JWTRoleClaimKey:         authn.DefaultRoleClaimKey,
 		SessionMode:             "role",
 		MaxSessions:             10000,
 		EnableAdminRoute:        false,
@@ -105,6 +112,18 @@ func getEnvironment(c *Config) {
 	jwtSecret := os.Getenv("SMOOTHDB_JWT_SECRET")
 	if jwtSecret != "" {
 		c.JWTSecret = jwtSecret
+	}
+	jwtSecretIsBase64 := os.Getenv("SMOOTHDB_JWT_SECRET_IS_BASE64")
+	if jwtSecretIsBase64 != "" {
+		c.JWTSecretIsBase64 = strings.ToLower(jwtSecretIsBase64) == "true"
+	}
+	jwtAud := os.Getenv("SMOOTHDB_JWT_AUD")
+	if jwtAud != "" {
+		c.JWTAud = jwtAud
+	}
+	jwtRoleClaimKey := os.Getenv("SMOOTHDB_JWT_ROLE_CLAIM_KEY")
+	if jwtRoleClaimKey != "" {
+		c.JWTRoleClaimKey = jwtRoleClaimKey
 	}
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
@@ -156,6 +175,9 @@ Environment Variables:
 	SMOOTHDB_DATABASE_URL         Database URL
 	SMOOTHDB_AUTH_URL             URL of the external AuthN service
 	SMOOTHDB_JWT_SECRET           Secret for JWT tokens
+	SMOOTHDB_JWT_SECRET_IS_BASE64 JWTSecret is base64-encoded (true/false)
+	SMOOTHDB_JWT_AUD              Audience the JWT aud claim must contain
+	SMOOTHDB_JWT_ROLE_CLAIM_KEY   JSONPath of the role in the JWT claims
 	SMOOTHDB_DEBUG                Enable debug mode (true/false)
 	SMOOTHDB_ALLOW_ANON           Allow unauthenticated connections (true/false)
 	SMOOTHDB_ENABLE_ADMIN_ROUTE   Enable administration of databases and tables (true/false)
@@ -254,6 +276,16 @@ func randomSecret() string {
 	return hex.EncodeToString(b)
 }
 
+// jwtConfig is the JWT part of the configuration.
+func jwtConfig(cfg *Config) authn.JWTConfig {
+	return authn.JWTConfig{
+		Secret:         cfg.JWTSecret,
+		SecretIsBase64: cfg.JWTSecretIsBase64,
+		Aud:            cfg.JWTAud,
+		RoleClaimKey:   cfg.JWTRoleClaimKey,
+	}
+}
+
 func checkConfig(cfg *Config) error {
 	switch cfg.SessionMode {
 	case "none", "role", "claims":
@@ -267,6 +299,13 @@ func checkConfig(cfg *Config) error {
 	if cfg.LoginMode != "none" && cfg.JWTSecret == "" {
 		return fmt.Errorf("'JWTSecret' is empty while authentication is enabled (LoginMode: %s): "+
 			"an empty secret lets anyone forge tokens for any role; set 'JWTSecret' or SMOOTHDB_JWT_SECRET", cfg.LoginMode)
+	}
+	if _, err := authn.NewJWTVerifier(jwtConfig(cfg)); err != nil {
+		return fmt.Errorf("invalid JWT configuration ('JWTSecret', 'JWTSecretIsBase64', 'JWTAud', 'JWTRoleClaimKey'): %w", err)
+	}
+	if k, _ := authn.ParseRoleClaimKey(cfg.JWTRoleClaimKey); k != nil && k.Deprecated() {
+		fmt.Printf("Warning: 'JWTRoleClaimKey' %q uses the deprecated JSPath syntax of PostgREST 15; "+
+			"use JSONPath (RFC 9535), e.g. $.role\n", cfg.JWTRoleClaimKey)
 	}
 	if cfg.CORSAllowCredentials {
 		for _, origin := range cfg.CORSAllowedOrigins {

@@ -86,6 +86,13 @@ A valid JWT for SmoothDB must include at least the **role** claim in the payload
 
 To generate a JWT for testing, you can use the generator at [jwt.io](jwt.io), using as a secret the same value configured in the configuration file for JWTSecret.
 
+Token verification follows PostgREST's (`jwt-secret`, `jwt-secret-is-base64`, `jwt-aud`, `jwt-role-claim-key`):
+
+- `JWTRoleClaimKey` is a JSONPath ([RFC 9535](https://www.rfc-editor.org/rfc/rfc9535.html)) to the role in the claims, `$.role` by default: for instance `$.app_metadata.role`, `$["https://myapp.example.com"].role`, or `$.realm_access.roles[?search(@, "^app_")]`. When the query selects several values the first one is the role; a value that is not a string is taken as its JSON text. Of the JSONPath functions only `search()` is available, as in PostgREST. The JSPath syntax of PostgREST 15 and earlier (`.app_metadata.role`, `.roles[?(@ ^== "app_")]`) is still read, with a warning at startup. A token where the key finds nothing runs as the anonymous role, and `request.jwt.claims` carries the role in `"role"` in every case.
+- `JWTAud`, when set, must appear in the token's `aud` claim, a string or an array of strings; a token without `aud`, or with a null or empty-array one, is accepted. A value with a `:` must be a URI.
+- `JWTSecretIsBase64` reads `JWTSecret` as base64 (the URL-safe alphabet and `.` for the padding are accepted), for providers that publish a binary HMAC key; the decoded key also signs the `/token` tokens.
+- `exp`, `nbf` and `iat` are checked with a fixed 30-second clock skew, as in PostgREST; a cached session expires by the same rule.
+
 Below is an example of an authenticated API call:
 
 ```http
@@ -786,6 +793,9 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
 | AllowAnon | Allow unauthenticated connections; also requires a non-empty Database.AnonRole, otherwise anonymous requests are refused (401) | false |
 | JWTSecret | Secret for JWT tokens | "" |
+| JWTSecretIsBase64 | JWTSecret is base64-encoded | false |
+| JWTAud | Audience the JWT `aud` claim must contain, when present; "" for any | "" |
+| JWTRoleClaimKey | JSONPath of the role in the JWT claims, see [Authentication](#authentication) | "$.role" |
 | SessionMode | Session mode: "none" (no cache), "role" (cache the verified claims and keep the prepared connection attached to the session between requests), "claims" (cache the verified claims only; the connection returns to the pool after every request) | "role" |
 | MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
 | EnableAdminRoute | Enable administration of databases and tables | false |
@@ -839,6 +849,9 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | --- | --- | 
 | SMOOTHDB_DATABASE_URL | Database.URL |
 | SMOOTHDB_JWT_SECRET | JWTSecret |
+| SMOOTHDB_JWT_SECRET_IS_BASE64 | JWTSecretIsBase64 (true/false) |
+| SMOOTHDB_JWT_AUD | JWTAud |
+| SMOOTHDB_JWT_ROLE_CLAIM_KEY | JWTRoleClaimKey |
 | SMOOTHDB_AUTH_URL | AuthURL |
 | SMOOTHDB_ALLOW_ANON | AllowAnon |
 | SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 

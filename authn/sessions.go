@@ -328,11 +328,12 @@ func (sm *SessionManager) SetRetainConnections(retain bool) {
 }
 
 // claimsExpired reports whether cached claims are past their exp, with the
-// same rule as the jwt validator (exp == now is expired). A session hit skips
-// token verification, so this is the one check that must be repeated.
+// same rule and 30 s skew as the verifier (PostgREST's checkForErrors: expired
+// when now - 30 > exp, in whole seconds). A session hit skips token
+// verification, so this is the one check that must be repeated.
 func claimsExpired(c *Claims, now time.Time) bool {
 	if c == nil || c.ExpiresAt == nil {
 		return false
 	}
-	return !now.Before(c.ExpiresAt.Time)
+	return now.Unix()-allowedSkew > c.ExpiresAt.Unix()
 }
