@@ -21,6 +21,10 @@ const superuserURL = "postgresql://postgres:postgres@localhost:5432/postgres"
 // superuser can SET ROLE to anything, so a refused role switch needs an
 // authenticator that is not one. authz_private is a table no role may read,
 // authz_open one authz_user may.
+//
+// authz_user and authz_iso carry role settings (ALTER ROLE ... SET), which
+// PostgREST applies to the requests that run as them; authz_settings reports
+// the ones the request sees and authz_sleep outlasts the statement timeout.
 // The objects are dropped when the test ends.
 func authzSetup(t *testing.T) {
 	t.Helper()
@@ -31,19 +35,37 @@ func authzSetup(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 	drop := []string{
+		"DROP FUNCTION IF EXISTS authz_settings()",
+		"DROP FUNCTION IF EXISTS authz_sleep(float8)",
 		"DROP TABLE IF EXISTS authz_private",
 		"DROP TABLE IF EXISTS authz_open",
 		"DROP ROLE IF EXISTS authz_authn",
 		"DROP ROLE IF EXISTS authz_anon",
 		"DROP ROLE IF EXISTS authz_user",
 		"DROP ROLE IF EXISTS authz_denied",
+		"DROP ROLE IF EXISTS authz_iso",
 	}
 	stmts := append(drop,
 		"CREATE ROLE authz_authn LOGIN PASSWORD 'authz' NOINHERIT",
 		"CREATE ROLE authz_anon NOLOGIN",
 		"CREATE ROLE authz_user NOLOGIN",
 		"CREATE ROLE authz_denied NOLOGIN",
-		"GRANT authz_anon, authz_user TO authz_authn",
+		"CREATE ROLE authz_iso NOLOGIN",
+		"GRANT authz_anon, authz_user, authz_iso TO authz_authn",
+		"ALTER ROLE authz_user SET statement_timeout = '500ms'",
+		"ALTER ROLE authz_user SET work_mem = '7MB'",
+		// a per-database setting is not in rolconfig: PostgREST ignores it
+		"ALTER ROLE authz_user IN DATABASE postgres SET maintenance_work_mem = '9MB'",
+		"ALTER ROLE authz_iso SET default_transaction_isolation = 'serializable'",
+		`CREATE FUNCTION authz_settings() RETURNS json LANGUAGE sql AS $$
+			SELECT json_build_object(
+				'user', current_user,
+				'statement_timeout', current_setting('statement_timeout'),
+				'work_mem', current_setting('work_mem'),
+				'maintenance_work_mem', current_setting('maintenance_work_mem'),
+				'isolation', current_setting('transaction_isolation'))
+			$$`,
+		"CREATE FUNCTION authz_sleep(s float8) RETURNS void LANGUAGE sql AS $$ SELECT pg_sleep(s) $$",
 		"CREATE TABLE authz_private (secret text)",
 		"CREATE TABLE authz_open (note text)",
 		"GRANT SELECT ON authz_open TO authz_user",
