@@ -101,7 +101,6 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	var err error
 	var db *database.Database
 	var dbconn *database.DbPoolConn
-	var newAcquire bool
 	var claimsString string
 
 	tokenString := extractAuthHeader(r.Request)
@@ -126,7 +125,7 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 		if acquired {
 			return
 		}
-		if newAcquire && dbconn != nil {
+		if dbconn != nil {
 			database.ReleaseConnection(ctx, dbconn, true, true)
 			session.DbConn = nil
 		}
@@ -166,31 +165,17 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 		}
 		db = session.Db
 	}
-	if session.DbConn == nil || session.DbConn.Conn().PgConn().IsClosed() {
-		if session.DbConn != nil {
-			// Connection went stale while held by the session — release it
-			session.DbConn.Release()
-			session.DbConn = nil
-		}
-		if m.retains(session) {
-			dbconn, err = m.acquireFor(ctx, db, session)
-		} else {
-			dbconn, err = database.AcquireRequestConnection(ctx, db)
-		}
-		if errors.Is(err, database.ErrAcquisitionTimeout) {
-			// PostgREST's AcquisitionTimeoutUsageError
-			return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
-				Message: err.Error()}
-		} else if err != nil {
-			// PostgREST's ConnectionUsageError: the database is unreachable
-			return nil, nil, false, &Error{Status: http.StatusServiceUnavailable, Code: "PGRST000",
-				Message: "Database connection error.", Err: err}
-		}
-		session.DbConn = dbconn
-		newAcquire = true
-	} else {
-		dbconn = session.DbConn
+	dbconn, err = database.AcquireRequestConnection(ctx, db)
+	if errors.Is(err, database.ErrAcquisitionTimeout) {
+		// PostgREST's AcquisitionTimeoutUsageError
+		return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
+			Message: err.Error()}
+	} else if err != nil {
+		// PostgREST's ConnectionUsageError: the database is unreachable
+		return nil, nil, false, &Error{Status: http.StatusServiceUnavailable, Code: "PGRST000",
+			Message: "Database connection error.", Err: err}
 	}
+	session.DbConn = dbconn
 	claimsString = session.Claims.RawClaims
 	anonRole := m.AnonRole()
 	authenticated = anonRole == "" || session.Claims.Role != anonRole
@@ -199,17 +184,11 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	// a request that proxies, prefetchers and caches replay at will.
 	readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
 	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
-	// The session that keeps the connection after the request, if any: its
-	// connection carries its role session-level from one request to the next.
-	keep := ""
-	if m.retains(session) {
-		keep = key
-	}
 	// On the data routes the role, the claims and the access mode wait for
 	// the first statement of the request and travel with it (see
 	// database.PrepareRequest); elsewhere they are applied now.
 	deferred, _ := c.Value(deferKey{}).(bool)
-	err = database.PrepareRequest(ctx, session.Claims.Role, claimsString, readOnly, keep, deferred)
+	err = database.PrepareRequest(ctx, session.Claims.Role, claimsString, readOnly, deferred)
 	if err != nil {
 		// a refused role switch (42501) or a role that does not exist (22023)
 		// is reported like any database error, by the status of its code
@@ -217,37 +196,6 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	}
 	acquired = true
 	return ctx, session, authenticated, nil
-}
-
-// acquireFor gets a connection for a session that keeps it ("role" mode).
-// A session may keep its connection idle while a request waits, and the
-// requests of one token beyond the pool size would wait for the connections
-// of its other sessions until they idled out: so the request takes the
-// connection of an idle session first (its token's, already prepared, or
-// another's when the pool is exhausted), and otherwise waits both on the pool
-// and for the connection a session of its token leaves (see leaveSession,
-// which also gives a connection back to the pool when a request waits there).
-func (m middleware) acquireFor(ctx context.Context, db *database.Database, session *Session) (*database.DbPoolConn, error) {
-	sm := m.SessionManager()
-	actx, cancel := context.WithCancel(database.WithHandOff(ctx))
-	defer cancel()
-	w := &waiter{conn: make(chan *database.DbPoolConn, 1), cancel: cancel}
-	if conn := sm.takeConnection(session, w, database.Exhausted(db)); conn != nil {
-		return conn, nil
-	}
-	conn, err := database.AcquireRequestConnection(actx, db)
-	sm.dropWaiter(session.key, w)
-	select {
-	case handed := <-w.conn:
-		// handed over (perhaps as the pool answered too: that one, fresh,
-		// goes back)
-		if conn != nil {
-			conn.Release()
-		}
-		return handed, nil
-	default:
-	}
-	return conn, err
 }
 
 func (m middleware) releaseSession(ctx context.Context, status int, session *Session) {
@@ -259,8 +207,8 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 	httpErr := status >= http.StatusBadRequest && status != http.StatusRequestedRangeNotSatisfiable
 	// The connection goes back to the pool at the end of the request, with
 	// its transaction ended and what the request set on it session-level
-	// reset, unless its session keeps it (see retains).
-	if !m.retains(session) && session.DbConn != nil {
+	// reset: a session caches the claims of its token, not a connection.
+	if session.DbConn != nil {
 		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
 		session.DbConn = nil
 	}
@@ -268,15 +216,6 @@ func (m middleware) releaseSession(ctx context.Context, status int, session *Ses
 		m.GetLogger().Err(err).Msg("error releasing database connection")
 	}
 	m.SessionManager().leaveSession(session)
-}
-
-// retains says whether session keeps its connection between its requests:
-// in "role" mode, for a stored session, and with TransactionMode "none"
-// (otherwise the request's role and claims end with its transaction, and
-// there is nothing to keep).
-func (m middleware) retains(session *Session) bool {
-	sm := m.SessionManager()
-	return sm.enabled && !session.transient && sm.retainConnections && !database.Transactional()
 }
 
 type deferKey struct{}

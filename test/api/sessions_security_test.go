@@ -9,7 +9,7 @@ import (
 	"github.com/sted/smoothdb/test"
 )
 
-// The test server runs with SessionMode "role": a session keyed by the token is
+// The test server runs with SessionMode "claims": a session keyed by the token is
 // created before the token is verified and, on a hit, verification is skipped.
 // A half-built session left behind by a failed request must not be reachable
 // by the next one, and an expired token must be refused even on a hit.

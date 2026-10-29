@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/sted/smoothdb/database"
 )
 
 // tickingClock is a clock that moves forward a millisecond at each reading, so
@@ -55,7 +53,7 @@ func checkStats(t *testing.T, sm *SessionManager, expected SessionStatistics) {
 func TestWatchDoesNotLeakLockWhenPaused(t *testing.T) {
 	sm := &SessionManager{slots: map[string]*SessionList{}}
 	sm.pauseWatcher(true)
-	sm.watch(time.Second, time.Second)
+	sm.watch(time.Second)
 
 	done := make(chan struct{})
 	go func() {
@@ -76,47 +74,47 @@ func TestSessionManager(t *testing.T) {
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 
 	s11, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	s12, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 1})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	s21, n := sm.getSession("2")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{3, 3, 2})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	sm.leaveSession(s11)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 
 	s13, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{3, 3, 2})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	sm.leaveSession(s12)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 
 	sm.leaveSession(s21)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 
 	sm.leaveSession(s13)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 }
 
@@ -158,7 +156,7 @@ func TestSessionWatcherReleasesIdleSession(t *testing.T) {
 	sm.leaveSession(s)
 
 	// With zero timeouts, watch should remove the idle session
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 }
 
@@ -169,23 +167,10 @@ func TestSessionWatcherPreservesInUseSessions(t *testing.T) {
 	// Don't leave — session is in use
 
 	// Watcher should NOT remove in-use sessions
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 
 	sm.leaveSession(s)
-}
-
-func TestSessionWatcherConnTimeout(t *testing.T) {
-	sm := newTestSessionManager()
-
-	s, _ := sm.getSession("k")
-	// Session has no DbConn — simulate that it was never acquired
-	sm.leaveSession(s)
-
-	// With a long conn timeout but zero session timeout, session is deleted
-	// (because DbConn is nil and sessionTimeout is 0)
-	sm.watch(0, time.Hour)
-	checkStats(t, sm, SessionStatistics{0, 0, 0})
 }
 
 func TestSessionNotReusedWhileInUse(t *testing.T) {
@@ -279,7 +264,7 @@ func TestSessionConcurrentWithWatcher(t *testing.T) {
 			case <-done:
 				return
 			default:
-				sm.watch(5*time.Second, 1*time.Second)
+				sm.watch(5 * time.Second)
 				time.Sleep(time.Millisecond)
 			}
 		}
@@ -399,7 +384,7 @@ func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
 		t.Fatal("expected a new session")
 	}
 	sm.dropSession(s)
-	sm.watch(time.Hour, time.Hour)
+	sm.watch(time.Hour)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 	if _, isNew := sm.getSession("k"); !isNew {
 		t.Fatal("a dropped session must not be found again")
@@ -424,7 +409,7 @@ func TestSessionCapHandsOutTransientSessions(t *testing.T) {
 	}
 	sm.leaveSession(c)
 	sm.dropSession(c)
-	sm.watch(time.Hour, time.Hour)
+	sm.watch(time.Hour)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 	// once a stored session is gone, the slot is available again
 	sm.dropSession(a)
@@ -467,57 +452,15 @@ func TestClaimsExpired(t *testing.T) {
 	}
 }
 
-// The watcher used to hold the manager's lock while it released the
-// connections of idle sessions: a round trip each, with no timeout, while
-// every request waited in getSession or leaveSession for the same lock.
-// Card 35447 (the session watcher blocks requests while releasing).
-func TestWatcherReleasesOutsideTheLock(t *testing.T) {
-	sm := newTestSessionManager()
-	started, unblock := make(chan struct{}), make(chan struct{})
-	sm.release = func(*database.DbPoolConn) {
-		close(started)
-		<-unblock
-	}
-	s, _ := sm.getSession("idle")
-	s.DbConn = &pgxpool.Conn{}
-	sm.leaveSession(s)
-
-	watched := make(chan struct{})
-	go func() {
-		sm.watch(time.Hour, 0) // the connection is past its timeout
-		close(watched)
-	}()
-	<-started
-	served := make(chan struct{})
-	go func() {
-		s, _ := sm.getSession("other")
-		sm.leaveSession(s)
-		close(served)
-	}()
-	select {
-	case <-served:
-	case <-time.After(time.Second):
-		t.Error("a request waited for the watcher's release of another session's connection")
-	}
-	close(unblock)
-	<-watched
-	<-served
-}
-
-// On shutdown the watcher released the connections of every session, those
-// of requests still running included, and emptied the session map without
-// the manager's lock while requests used it. A request in flight keeps its
-// connection until it leaves, and then gives it back. Run with -race.
+// On shutdown the watcher emptied the session map without the manager's
+// lock while requests used it. A request in flight leaves its session after
+// the shutdown, and the requests after it get sessions that are not stored.
+// Run with -race.
 func TestShutdownLeavesTheRequestsInFlightAlone(t *testing.T) {
 	shutdown := make(chan struct{})
 	sm := newSessionManager(nil, true, shutdown)
-	var released atomic.Int32
-	sm.release = func(*database.DbPoolConn) { released.Add(1) }
-
 	inFlight, _ := sm.getSession("busy")
-	inFlight.DbConn = &pgxpool.Conn{}
 	idle, _ := sm.getSession("idle")
-	idle.DbConn = &pgxpool.Conn{}
 	sm.leaveSession(idle)
 
 	stop := make(chan struct{})
@@ -548,80 +491,11 @@ func TestShutdownLeavesTheRequestsInFlightAlone(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	if n := released.Load(); n != 1 {
-		t.Errorf("shutdown released %d connections, want 1 (the idle session's)", n)
-	}
 	sm.leaveSession(inFlight)
-	if n := released.Load(); n != 2 {
-		t.Errorf("the request in flight left after the shutdown: %d connections released, want 2", n)
+	if _, isNew := sm.getSession("idle"); !isNew {
+		t.Error("a session stored before the shutdown was found after it")
 	}
-}
-
-// newWaiter is a request of session waiting for a connection, registered with
-// the manager after the scan of the idle sessions found none (takeConnection).
-func newWaiter(t *testing.T, sm *SessionManager, session *Session) *waiter {
-	t.Helper()
-	w := &waiter{conn: make(chan *database.DbPoolConn, 1), cancel: func() {}}
-	if c := sm.takeConnection(session, w, true); c != nil {
-		t.Fatal("an idle connection was there to take")
-	}
-	return w
-}
-
-// A request registers its wait, and only then waits on the pool: a session
-// of another token leaving in between saw no waiter of its token and no
-// acquire in progress, kept its connection idle, and the request waited on
-// the pool until the watcher idled the connection out, or a 504. The
-// registered wait is demand on the pool already.
-func TestALeavingSessionSeesARequestThatRegisteredItsWait(t *testing.T) {
-	sm := newTestSessionManager()
-	released := make(chan struct{}, 1)
-	sm.release = func(*database.DbPoolConn) { released <- struct{}{} }
-	a, _ := sm.getSession("A")
-	a.DbConn = &pgxpool.Conn{} // the pool's only connection
-	b, _ := sm.getSession("B")
-	newWaiter(t, sm, b)
-	sm.leaveSession(a)
-	select {
-	case <-released:
-	case <-time.After(time.Second):
-		t.Error("the session kept its connection idle while a request of another token waited")
-	}
-}
-
-// A session leaving hands its connection to a waiting request of its token
-// only when no request of another token waits for one: otherwise a token
-// whose requests keep coming takes every connection, and the others wait
-// until they time out. Then the connection goes to the pool, where the
-// requests (of its token too) wait in turn.
-func TestAHandOverGivesWayToAnotherTokenWaiting(t *testing.T) {
-	sm := newTestSessionManager()
-	released := make(chan struct{}, 1)
-	sm.release = func(*database.DbPoolConn) { released <- struct{}{} }
-	a1, _ := sm.getSession("A")
-	a1.DbConn = &pgxpool.Conn{}
-	a2, _ := sm.getSession("A")
-	wa := newWaiter(t, sm, a2)
-
-	// control: no one else waits, the connection goes to the token's request
-	sm.leaveSession(a1)
-	select {
-	case c := <-wa.conn:
-		a2.DbConn = c
-	default:
-		t.Fatal("the waiting request of the token was not handed the connection")
-	}
-
-	a1, _ = sm.getSession("A")
-	wa = newWaiter(t, sm, a1)
-	b, _ := sm.getSession("B")
-	newWaiter(t, sm, b)
-	sm.leaveSession(a2)
-	select {
-	case <-wa.conn:
-		t.Error("the connection went to the token's own request while another token waited")
-	case <-released:
-	case <-time.After(time.Second):
-		t.Error("the connection went nowhere")
+	if total := sm.total; total != 0 {
+		t.Errorf("%d sessions stored after the shutdown", total)
 	}
 }

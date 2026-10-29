@@ -12,10 +12,6 @@ import (
 type DbPoolConn = pgxpool.Conn
 type DbConn = pgx.Conn
 
-func HasTX(c *DbPoolConn) bool {
-	return c.Conn().PgConn().TxStatus() != 'I'
-}
-
 // readOnlyGUC makes every implicit (autocommit) transaction of a session READ
 // ONLY: it is how a request runs read-only with TransactionMode "none", where
 // there is no BEGIN to qualify. PostgreSQL reports the setting to the client
@@ -49,7 +45,7 @@ func setSessionReadOnly(ctx context.Context, conn *DbConn, readOnly bool) error 
 	_, err := conn.Exec(ctx, "SET "+readOnlyGUC+" = "+want)
 	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; err == nil && readOnly && !marked {
 		// a session setting to reset before the pool hands it out again
-		markSession(conn, "")
+		markSession(conn)
 	}
 	return err
 }
@@ -132,9 +128,8 @@ func acquireBounded(ctx context.Context, db *Database) (*DbPoolConn, error) {
 // In a transaction they are transaction-local, so they end with it whatever
 // becomes of the connection, and the transaction takes the role's isolation.
 // With autocommit there is no transaction to hold them: they are session
-// settings, which the connection keeps while its session (same token, so same
-// role) retains it, and which ReleaseConnection resets before the pool hands
-// it to anyone else.
+// settings, which ReleaseConnection resets before the pool hands the
+// connection to anyone else.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool, readOnly bool) error {
 	return prepareConnection(ctx, conn.Conn(), role, claims, newAcquire, readOnly)
 }
@@ -182,18 +177,11 @@ func prepareConnection(ctx context.Context, conn *DbConn, role string, claims st
 		if !needTX {
 			// session-level now: reset when the connection goes back to the
 			// pool
-			markSession(conn, "")
-		}
-	} else if needTX && rc != nil && rc.sqlTXSettings != "" {
-		// a connection kept by its session, already switched: the settings
-		// last only as long as each transaction
-		_, err := conn.Exec(ctx, rc.sqlTXSettings, rc.txArgs...)
-		if err != nil {
-			return err
+			markSession(conn)
 		}
 	} else if !needTX {
-		// a connection kept by its session between requests (or one prepared
-		// with no role): flip the setting only if it was left the other way
+		// a connection prepared with no role: flip the setting only if it was
+		// left the other way
 		err := setSessionReadOnly(ctx, conn, readOnly)
 		if err != nil {
 			return err
@@ -268,18 +256,10 @@ func ReleaseConn(ctx context.Context, conn *DbPoolConn) error {
 const sessionMarkKey = "smoothdb.session"
 
 // markSession records that conn carries, session-level, the role, the claims
-// and the role settings of a request: key is the session that keeps the
-// connection between its requests ("role" mode), "" a request's own, to reset
-// when the connection goes back to the pool.
-func markSession(conn *DbConn, key string) {
-	conn.PgConn().CustomData()[sessionMarkKey] = key
-}
-
-// SessionMark says whether conn carries a role and claims session-level, and
-// for which session (see markSession).
-func SessionMark(conn *DbPoolConn) (key string, marked bool) {
-	key, marked = conn.Conn().PgConn().CustomData()[sessionMarkKey].(string)
-	return
+// and the role settings of a request, to reset when the connection goes back
+// to the pool.
+func markSession(conn *DbConn) {
+	conn.PgConn().CustomData()[sessionMarkKey] = true
 }
 
 // resetSession takes off conn what a request set on it session-level: the

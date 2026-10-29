@@ -36,37 +36,26 @@ type requestVars struct {
 	role, claims string
 	readOnly     bool
 	rc           *roleConfig
-	// keep is the session that keeps the connection between its requests
-	// ("role" mode): there the variables are applied session-level, once
-	keep    string
-	applied bool
+	applied      bool
 }
 
 // PrepareRequest gets the connection of the request in ctx (FillContext) ready
-// for role and claims, and for a read-only request if readOnly. keep is the
-// session that keeps the connection after the request, if any ("role" mode).
-// With deferred the variables wait for the first statement of the request
-// (see requestVars), otherwise they are applied now, as PrepareConnection does.
-func PrepareRequest(ctx context.Context, role, claims string, readOnly bool, keep string, deferred bool) error {
+// for role and claims, and for a read-only request if readOnly. With deferred
+// the variables wait for the first statement of the request (see
+// requestVars), otherwise they are applied now, as PrepareConnection does.
+func PrepareRequest(ctx context.Context, role, claims string, readOnly bool, deferred bool) error {
 	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	if role == "" {
 		// no role to switch to (a library user): the connection as it is
 		return prepareConnection(ctx, conn, role, claims, true, readOnly)
 	}
-	gi.vars = &requestVars{role: role, claims: claims, readOnly: readOnly, rc: roleConfigOf(role), keep: keep}
+	gi.vars = &requestVars{role: role, claims: claims, readOnly: readOnly, rc: roleConfigOf(role)}
 	if !deferred {
 		_, err := gi.conn(ctx)
 		return err
 	}
 	return nil
-}
-
-// Transactional says whether every request runs in a transaction of its own
-// (a TransactionMode other than "none"): its variables end with it, and no
-// connection can keep them between requests.
-func Transactional() bool {
-	return dbe.config.TransactionMode != "none"
 }
 
 // PrepareNow applies the deferred variables of the request in ctx, for a
@@ -102,13 +91,11 @@ func (gi *SmoothContext) conn(ctx context.Context) (*DbConn, error) {
 		v.applied = true
 		return conn, nil
 	}
-	// session-level. A connection that still carries a role (another
-	// session's) loses it first: the settings of that role are not all
-	// overwritten by this one's. The session's own is switched again.
-	if !v.kept(conn) {
-		if err := resetSession(ctx, conn); err != nil {
-			return nil, err
-		}
+	// session-level. A connection that still carries a role (a function of
+	// an earlier request set it) loses it first: the settings of that role
+	// are not all overwritten by this one's.
+	if err := resetSession(ctx, conn); err != nil {
+		return nil, err
 	}
 	var err error
 	if v.rc != nil {
@@ -119,7 +106,7 @@ func (gi *SmoothContext) conn(ctx context.Context) (*DbConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	markSession(conn, v.keep)
+	markSession(conn)
 	v.applied = true
 	return conn, nil
 }
@@ -134,28 +121,6 @@ func (v *requestVars) begin() string {
 		begin += " READ ONLY"
 	}
 	return begin
-}
-
-// kept says whether conn is the connection the session keeps, switched to
-// its role session-level by an earlier request (see markSession).
-func (v *requestVars) kept(conn *DbConn) bool {
-	if v.keep == "" || sessionUserChanged(conn) {
-		return false
-	}
-	mark, ok := conn.PgConn().CustomData()[sessionMarkKey].(string)
-	return ok && mark == v.keep
-}
-
-// queueKept queues the variables for the connection a session keeps:
-// session-level again, the role, the claims and the role's settings (a
-// function of the previous request may have changed them), and the access
-// mode of this batch's transaction.
-func (v *requestVars) queueKept(b *pgx.Batch) {
-	if v.rc != nil {
-		b.Queue(v.rc.sqlKeep, append(v.rc.autoArgs[:len(v.rc.autoArgs):len(v.rc.autoArgs)], v.role, v.claims, onOff(v.readOnly))...)
-	} else {
-		b.Queue(prepareKeep, v.role, v.claims, onOff(v.readOnly))
-	}
 }
 
 // queueLocal queues the transaction-local variables, with the access mode if
@@ -196,7 +161,7 @@ type requestBatch struct {
 	pgx.Batch
 	lead   int  // the statements of the variables, before the request's own
 	commit bool // a transaction of the batch's own, to commit after them
-	tx     bool // the variables last after the batch: the request's transaction, or session-level
+	tx     bool // the batch begins the request's transaction
 }
 
 // newBatch starts the batch of the request's statements sqls (the empty ones
@@ -209,19 +174,11 @@ func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*request
 	if v == nil {
 		return b, nil
 	}
-	// on a session that defaults to READ ONLY (a function set it, or the
-	// session's last request was a read), a write cannot turn its
-	// transaction back once the variables have run: they go first
-	writeOnReadOnly := !v.readOnly && gi.Conn.PgConn().ParameterStatus(readOnlyGUC) == "on"
-	if (v.keep != "" && !v.kept(gi.Conn)) || writeOnReadOnly || !gi.prepared(sqls) {
+	if !gi.prepared(sqls) {
 		_, err := gi.conn(ctx)
 		return b, err
 	}
 	switch {
-	case v.keep != "":
-		// session-level: after the batch the connection keeps them
-		v.queueKept(&b.Batch)
-		b.lead, b.tx = 1, true
 	case dbe.config.TransactionMode != "none":
 		b.Queue(v.begin())
 		v.queueLocal(&b.Batch, false)

@@ -9,10 +9,9 @@ import (
 	"github.com/sted/smoothdb/test"
 )
 
-// What a session hit saves per request: the JWT verification and the two
-// round trips that prepare the connection (SET ROLE, set_config of the claims).
-// "role" skips all of them on a hit, "claims" skips only the verification,
-// "none" pays everything every time. Run with:
+// What a session hit saves per request: the JWT verification. "claims" skips
+// it on a hit ("role" is its deprecated alias), "none" verifies every time.
+// Run with:
 //
 //	go test ./server -run '^$' -bench BenchmarkSessionModeRequest -benchtime=500x
 func BenchmarkSessionModeRequest(b *testing.B) {

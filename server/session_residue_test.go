@@ -88,13 +88,13 @@ func identityOf(t *testing.T, s *Server) (session, current, claims string) {
 	return
 }
 
-// In "role" mode a session keeps its connection, switched to its role, from
-// one request to the next, and hands it to a waiting request of its token.
-// A request may switch the role of the session itself (back to the
+// A request may switch the role of its session itself (back to the
 // authenticator, or to another role the authenticator may become) or rewrite
-// its claims, and the next request of the token on that connection ran with
-// them. Every request must run as its token's role with its token's claims.
-func TestRetainedConnectionRunsEachRequestAsItsToken(t *testing.T) {
+// its claims. In "role" mode the session kept its connection and the next
+// request of the token ran with them; "role" is now an alias of "claims", and
+// with a pool of one the next request still gets that connection. Every
+// request must run as its token's role with its token's claims.
+func TestEachRequestRunsAsItsToken(t *testing.T) {
 	residueSetup(t)
 	s := newAuthzServer(t, "8166", map[string]any{
 		"SessionMode":                 "role",

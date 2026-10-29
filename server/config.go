@@ -37,7 +37,7 @@ type Config struct {
 	JWTAud                  string          `comment:"Audience the JWT aud claim must contain, when present (default: '' for any)"`
 	JWTRoleClaimKey         string          `comment:"JSONPath of the role in the JWT claims (default: $.role)"`
 	JWTKeys                 string          `comment:"Key catalog verifying JWT tokens instead of JWTSecret: a JSON array of JWKs with kid (default: '')"`
-	SessionMode             string          `comment:"Session mode: none, role, claims (default: role)"`
+	SessionMode             string          `comment:"Session mode: none, claims (default: claims); role is a deprecated alias of claims"`
 	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
 	EnableAdminUI           bool            `comment:"Enable Admin dashboard (default: false)"`
@@ -76,7 +76,7 @@ func defaultConfig() *Config {
 		JWTAud:                  "",
 		JWTRoleClaimKey:         authn.DefaultRoleClaimKey,
 		JWTKeys:                 "",
-		SessionMode:             "role",
+		SessionMode:             "claims",
 		MaxSessions:             10000,
 		EnableAdminRoute:        false,
 		EnableAdminUI:           false,
@@ -304,9 +304,15 @@ func jwtConfig(cfg *Config) authn.JWTConfig {
 
 func checkConfig(cfg *Config) error {
 	switch cfg.SessionMode {
-	case "none", "role", "claims":
+	case "none", "claims":
+	case "role":
+		// it kept the prepared connection on the session between requests:
+		// with transaction-local request variables that saved nothing
+		// measurable, and the requests beyond the pool size starved
+		fmt.Println("Warning: 'SessionMode' \"role\" is deprecated and now means \"claims\"")
+		cfg.SessionMode = "claims"
 	default:
-		return fmt.Errorf("invalid 'SessionMode' %q: must be none, role or claims", cfg.SessionMode)
+		return fmt.Errorf("invalid 'SessionMode' %q: must be none or claims", cfg.SessionMode)
 	}
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")

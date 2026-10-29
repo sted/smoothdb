@@ -130,13 +130,13 @@ func checkBurst(t *testing.T, res *loadResult, clients []whoClient, bound time.D
 	}
 }
 
-// In "role" mode a session keeps its connection between its requests. The
+// In "role" mode a session kept its connection between its requests. The
 // requests of one token beyond the pool size each built another session,
 // which waited for a connection that the busy sessions never gave back: with
 // 50 concurrent anonymous clients on a pool of 10, 40 waited until the load
 // stopped, or until the acquisition timeout answered them 504. PostgREST,
-// which keeps no connection between requests, serves all of them. A waiting
-// request must get the connection a session of its token leaves.
+// which keeps no connection between requests, serves all of them. "role" is
+// now an alias of "claims", and must behave like it.
 func TestRoleSessionsOfOneTokenBeyondThePool(t *testing.T) {
 	s, base := roleSessionsServer(t, "8164")
 	clients := []whoClient{{"anonymous", "", "authz_anon", ""}}
