@@ -51,7 +51,7 @@ func PrepareRequest(ctx context.Context, role, claims string, readOnly bool, kee
 	gi := GetSmoothContext(ctx)
 	conn := gi.Conn
 	needTX := dbe.config.TransactionMode != "none"
-	if keep != "" && !needTX {
+	if keep != "" && !needTX && !sessionUserChanged(conn) {
 		if mark, ok := conn.PgConn().CustomData()[sessionMarkKey].(string); ok && mark == keep {
 			// the session's own connection, already switched: only the access
 			// mode may differ

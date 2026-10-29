@@ -272,12 +272,24 @@ func SessionMark(conn *DbPoolConn) (key string, marked bool) {
 // cancelled (a client that hangs up), and a connection it fails on is closed,
 // so the pool destroys it instead of handing out a client's role.
 func resetSession(ctx context.Context, conn *DbConn) error {
-	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; !marked {
+	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; !marked && !sessionUserChanged(conn) {
 		return nil
 	}
+	return cleanSession(ctx, conn)
+}
+
+// sessionCleanup is the statement of cleanSession. The session authorization
+// goes first: a function of a superuser authenticator may have changed it,
+// and SET ROLE NONE would go back to that user. Any user may set it back to
+// the one it logged in as.
+const sessionCleanup = "SET SESSION AUTHORIZATION DEFAULT; SET ROLE NONE; RESET request.jwt.claims; RESET " + readOnlyGUC
+
+// cleanSession resets the session of conn to the authenticator's, whatever
+// set it (see resetSession).
+func cleanSession(ctx context.Context, conn *DbConn) error {
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	_, err := conn.Exec(rctx, "SET ROLE NONE; RESET request.jwt.claims; RESET "+readOnlyGUC+roleSettingsReset())
+	_, err := conn.Exec(rctx, sessionCleanup+roleSettingsReset())
 	if err != nil {
 		conn.Close(rctx)
 		return err
@@ -285,3 +297,15 @@ func resetSession(ctx context.Context, conn *DbConn) error {
 	delete(conn.PgConn().CustomData(), sessionMarkKey)
 	return nil
 }
+
+// sessionUserChanged says whether the session authorization of conn is no
+// longer the user it logged in as. The server reports the setting whenever
+// it changes, so this costs no round trip.
+func sessionUserChanged(conn *DbConn) bool {
+	login, ok := conn.PgConn().CustomData()[loginUserKey].(string)
+	return ok && conn.PgConn().ParameterStatus("session_authorization") != login
+}
+
+// loginUserKey names, in the custom data of a pooled connection, the session
+// authorization it was opened with (see sessionUserChanged).
+const loginUserKey = "smoothdb.login"

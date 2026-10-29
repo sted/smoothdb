@@ -190,6 +190,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	// starts another), so it reads nothing of the engine
 	searchPath := searchPathSet()
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		conn.PgConn().CustomData()[loginUserKey] = conn.PgConn().ParameterStatus("session_authorization")
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
 		// the composites below, so that a composite with such a field is
