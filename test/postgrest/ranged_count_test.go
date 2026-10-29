@@ -12,7 +12,7 @@ import (
 // ComputedRelsSpec, RpcSpec) only ask for counts that way; none asks for a
 // ranged count with an !inner embed or an aggregate, so these cases are ours.
 //
-// The expected values come from PostgREST 14.15 run against these fixtures.
+// The expected values come from PostgREST 16.4 run against these fixtures.
 // Main 2697ea0 builds the same total: readPlanToCountQuery (QueryBuilder.hs)
 // counts the base rows with their filters and one EXISTS per !inner embed,
 // nested ones included, ignores left embeds, and has no GROUP BY.
@@ -219,7 +219,7 @@ func TestPostgREST_RangedCount(t *testing.T) {
 		// An !inner embed whose select is an aggregate: the total counts the
 		// root rows with a row in the embed (readPlanToCountQuery's SELECT 1),
 		// not an EXISTS over the aggregate, which always has its one row.
-		// Values from PostgREST 14.15 on the fixtures; like smoothdb's, its
+		// Values from PostgREST 16.4 on the fixtures; like smoothdb's, its
 		// rows keep project 5 with a count of 0.
 		{
 			Description:     "ranged count of an !inner embed selecting an aggregate",
@@ -239,7 +239,7 @@ func TestPostgREST_RangedCount(t *testing.T) {
 		},
 		// A nested !inner embed restricts through an EXISTS at its own level,
 		// whatever its select: readPlanToCountQuery is recursive, SELECT 1 and
-		// one EXISTS per !inner child (PostgREST 14.15 on the fixtures)
+		// one EXISTS per !inner child (PostgREST 16.4 on the fixtures)
 		{
 			Description:     "ranged count of a nested !inner aggregate that matches nothing",
 			Query:           "/clients?select=id,projects!inner(id,tasks!inner(count()))&projects.tasks.id=eq.999&order=id&limit=1",
