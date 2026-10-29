@@ -7,8 +7,9 @@ import (
 )
 
 // TestRangedCountTotal checks the count of a ranged count=exact request, the
-// Total CTE: PostgREST's readPlanToCountQuery, the root rows with their
-// filters and one EXISTS per !inner embed of the root, no GROUP BY.
+// statement sent after the page: PostgREST's readPlanToCountQuery, the root
+// rows with their filters and one EXISTS per !inner embed of the root, no
+// GROUP BY.
 func TestRangedCountTotal(t *testing.T) {
 	info := &SchemaInfo{
 		cachedRelationships: map[string][]Relationship{
@@ -32,55 +33,55 @@ func TestRangedCountTotal(t *testing.T) {
 			name:  "a filtered !inner embed restricts the total",
 			table: "projects",
 			query: "?select=id,clients!inner(id)&clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "projects" WHERE EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id" AND "clients_1"."id" = '1')`,
+			total: `SELECT COUNT(*) FROM "projects" WHERE EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id" AND "clients_1"."id" = '1')`,
 		},
 		{
 			name:  "the root filters and the !inner embed are both applied",
 			table: "projects",
 			query: "?select=id,clients!inner(id)&or=(id.eq.2,id.eq.5)&offset=1",
-			total: `SELECT COUNT(*) AS __count FROM "projects" WHERE ("projects"."id" = $1 OR "projects"."id" = $2) AND EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id")`,
+			total: `SELECT COUNT(*) FROM "projects" WHERE ("projects"."id" = $1 OR "projects"."id" = $2) AND EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id")`,
 		},
 		{
 			name:  "a to-many !inner embed is an EXISTS on its rows",
 			table: "clients",
 			query: "?select=id,projects!inner(id)&projects.id=gt.3&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND "projects_1"."id" > '3')`,
+			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND "projects_1"."id" > '3')`,
 		},
 		{
 			name:  "a nested !inner embed restricts through its parent",
 			table: "tasks",
 			query: "?select=id,projects!inner(id,clients!inner(id))&projects.clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "tasks" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."id" = "tasks"."project_id" AND EXISTS ( SELECT 1 FROM "clients" AS "clients_2" WHERE "clients_2"."id" = "projects_1"."client_id" AND "clients_2"."id" = '1'))`,
+			total: `SELECT COUNT(*) FROM "tasks" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."id" = "tasks"."project_id" AND EXISTS ( SELECT 1 FROM "clients" AS "clients_2" WHERE "clients_2"."id" = "projects_1"."client_id" AND "clients_2"."id" = '1'))`,
 		},
 		{
 			name:  "an aggregate in the !inner embed's select is dropped from the EXISTS",
 			table: "clients",
 			query: "?select=id,projects!inner(count())&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id")`,
+			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id")`,
 		},
 		{
 			name:  "a nested aggregate is an EXISTS at its own level",
 			table: "clients",
 			query: "?select=id,projects!inner(id,tasks!inner(count()))&projects.tasks.id=eq.999&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND EXISTS ( SELECT 1 FROM "tasks" AS "tasks_2" WHERE "tasks_2"."project_id" = "projects_1"."id" AND "tasks_2"."id" = '999'))`,
+			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND EXISTS ( SELECT 1 FROM "tasks" AS "tasks_2" WHERE "tasks_2"."project_id" = "projects_1"."id" AND "tasks_2"."id" = '999'))`,
 		},
 		{
 			name:  "a left embed does not restrict the total",
 			table: "projects",
 			query: "?select=id,clients(id)&clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "projects"`,
+			total: `SELECT COUNT(*) FROM "projects"`,
 		},
 		{
 			name:  "an !inner embed under a left one does not restrict the total",
 			table: "tasks",
 			query: "?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "tasks"`,
+			total: `SELECT COUNT(*) FROM "tasks"`,
 		},
 		{
 			name:  "a grouped aggregate totals its rows, without GROUP BY",
 			table: "tasks",
 			query: "?select=project_id,count()&project_id=gt.2&limit=1",
-			total: `SELECT COUNT(*) AS __count FROM "tasks" WHERE "tasks"."project_id" > $1`,
+			total: `SELECT COUNT(*) FROM "tasks" WHERE "tasks"."project_id" > $1`,
 		},
 	}
 	for _, test := range tests {
@@ -93,17 +94,12 @@ func TestRangedCountTotal(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			query, _, err := DirectQueryBuilder{}.BuildSelect(test.table, parts, &QueryOptions{Count: "exact"}, info)
-			if err != nil {
+			options := &QueryOptions{Count: "exact"}
+			if _, _, err := (DirectQueryBuilder{}).BuildSelect(test.table, parts, options, info); err != nil {
 				t.Fatalf("build: %v", err)
 			}
-			start := strings.Index(query, "WITH Total AS (")
-			end := strings.Index(query, "), Data AS (")
-			if start == -1 || end == -1 {
-				t.Fatalf("no Total CTE in\n\t%s", query)
-			}
-			if got := query[start+len("WITH Total AS (") : end]; got != test.total {
-				t.Errorf("total\n\twant %s\n\tgot  %s", test.total, got)
+			if options.totalQuery != test.total {
+				t.Errorf("total\n\twant %s\n\tgot  %s", test.total, options.totalQuery)
 			}
 		})
 	}

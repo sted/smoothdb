@@ -406,6 +406,15 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	return records, jsonBody, status, err
 }
 
+// readTotal is the count SetResponseHeaders takes for a read that answered
+// rows: the total when the request counts them.
+func readTotal(ctx context.Context, rows int64) int64 {
+	if options := database.GetQueryOptions(ctx); options.Count != "" {
+		return options.Total
+	}
+	return rows
+}
+
 // SetResponseHeaders sets the response headers (for now Content-Range and Content-Location).
 // It returns a status != 0 if some contraints are not satisfied and we need to include an error status
 // in the response (eg 416 for RequestedRangeNotSatisfiable)

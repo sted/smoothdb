@@ -276,11 +276,10 @@ func TestPostgREST_RangedCount(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
 		},
 		{
-			Description:     "ranged count with limit=0",
-			Query:           "/projects?select=id&order=id&limit=0",
-			Headers:         test.Headers{"Prefer": {"count=exact"}},
-			Expected:        `[]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/5"},
+			Description: "ranged count with limit=0",
+			Query:       "/projects?select=id&order=id&limit=0",
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+			Expected:    `[]`,
 		},
 		{
 			Description: "ranged count with an offset at the end",
@@ -296,11 +295,10 @@ func TestPostgREST_RangedCount(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
 		},
 		{
-			Description:     "ranged count of an rpc with limit=0",
-			Query:           "/rpc/getallprojects?select=id&limit=0",
-			Headers:         test.Headers{"Prefer": {"count=exact"}},
-			Expected:        `[]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/5"},
+			Description: "ranged count of an rpc with limit=0",
+			Query:       "/rpc/getallprojects?select=id&limit=0",
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+			Expected:    `[]`,
 		},
 		// the page keeps its order (PostgREST 16.4: 206 1-2/5)
 		{

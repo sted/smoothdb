@@ -1700,7 +1700,85 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 	return delete, valueList, nil
 }
 
-func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+// totalSetting is the transaction-local setting through which the page of a
+// ranged count on a function hands its total to the statement that follows
+// it (see buildAfterSelect)
+const totalSetting = "smoothdb.total"
+
+// buildAfterSelect completes a read: the source (from), its joins, the WHERE,
+// GROUP BY, ORDER BY, LIMIT and OFFSET. call says that the source is a
+// function call, FROM fn(...) t.
+//
+// The total of a ranged count (count=exact with a limit, an offset or a Range
+// header) is PostgREST's readPlanToCountQuery: the root rows that pass the
+// filters and have a row in each !inner embed. The left embeds do not
+// restrict them, and the GROUP BY is left out: a grouped aggregate totals the
+// rows it groups. Without a range the total is the number of rows read, as
+// PostgREST's page count.
+//
+// The total travels outside the rows, in a second statement that the
+// executor sends in the same batch (options.totalQuery): the page is the
+// query a request without a count runs, so its rows and their order are the
+// same, and an empty page is empty. On a table the second statement counts
+// the table again, as PostgREST's count CTE does. A function must run once
+// (PostgREST reads both from its pgrst_source CTE): the page reads it through
+// a materialized CTE and stores the count of that CTE in totalSetting, from
+// a scalar subquery that PostgreSQL evaluates once, as a one-time filter,
+// before the first row; the second statement reads the setting back. With
+// limit=0 PostgreSQL reads nothing for the page, and the second statement
+// counts the function itself.
+func buildAfterSelect(query, from string, call bool, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+	options.totalQuery, options.totalValues = "", nil
+	var limit int64 = -1
+	hasLimit := parts.limit != "" || options.HasRange && options.RangeMax != -1
+	if hasLimit {
+		if options.HasRange {
+			limit = options.RangeMax - options.RangeMin + 1
+		} else {
+			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
+			options.RangeMax = limit - 1
+		}
+	}
+	var offset int64 = -1
+	hasOffset := parts.offset != "" || options.HasRange
+	if hasOffset {
+		if options.HasRange {
+			offset = options.RangeMin
+		} else {
+			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
+			options.RangeMin = offset
+			if options.RangeMax == -1 {
+				options.RangeMax = 0
+			}
+			options.RangeMax += options.RangeMin
+		}
+	}
+
+	if options.Count != "" && (limit != -1 || offset > 0) {
+		conds := parts.innerEmbedConds
+		if whereClause != "" {
+			conds = append([]string{whereClause}, conds...)
+		}
+		var countWhere string
+		if len(conds) > 0 {
+			countWhere = " WHERE " + strings.Join(conds, " AND ")
+		}
+		if !call || limit == 0 {
+			options.totalQuery = "SELECT COUNT(*) " + from + countWhere
+			options.totalValues = valueList
+		} else {
+			query = "WITH __source AS MATERIALIZED (SELECT * " + strings.TrimSpace(from) + ") " + query
+			from = "FROM __source t"
+			gate := "(SELECT set_config('" + totalSetting + "', COUNT(*)::text, true) FROM __source t" + countWhere + ") IS NOT NULL"
+			if whereClause != "" {
+				whereClause = gate + " AND (" + whereClause + ")"
+			} else {
+				whereClause = gate
+			}
+			options.totalQuery = "SELECT current_setting('" + totalSetting + "')::bigint"
+		}
+	}
+
 	nmarker := len(valueList)
 	query += " " + from
 	if joins != "" {
@@ -1715,60 +1793,15 @@ func buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClaus
 	if orderClause != "" {
 		query += " ORDER BY " + orderClause
 	}
-	var limit int64 = -1
-	if parts.limit != "" || options.HasRange && options.RangeMax != -1 {
+	if hasLimit {
 		nmarker += 1
 		query += " LIMIT $" + strconv.Itoa(nmarker)
-		if options.HasRange {
-			limit = options.RangeMax - options.RangeMin + 1
-		} else {
-			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
-			options.RangeMax = limit - 1
-		}
 		valueList = append(valueList, limit)
 	}
-	var offset int64 = -1
-	if parts.offset != "" || options.HasRange {
+	if hasOffset {
 		nmarker += 1
 		query += " OFFSET $" + strconv.Itoa(nmarker)
-		if options.HasRange {
-			offset = options.RangeMin
-		} else {
-			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
-			options.RangeMin = offset
-			if options.RangeMax == -1 {
-				options.RangeMax = 0
-			}
-			options.RangeMax += options.RangeMin
-		}
 		valueList = append(valueList, offset)
-	}
-	if options.Count != "" && (limit != -1 || offset > 0) {
-		// The total of a ranged request is PostgREST's (readPlanToCountQuery):
-		// the root rows that pass the filters and have a row in each !inner
-		// embed. The left embeds do not restrict them, and the GROUP BY is
-		// left out: a grouped aggregate totals the rows it groups. Without a
-		// range the total is the number of rows read, as PostgREST's page count.
-		conds := parts.innerEmbedConds
-		if whereClause != "" {
-			conds = append([]string{whereClause}, conds...)
-		}
-		countQuery := "WITH Total AS (SELECT COUNT(*) AS __count " + from
-		if len(conds) > 0 {
-			countQuery += " WHERE " + strings.Join(conds, " AND ")
-		}
-		query = countQuery +
-			"), Data AS (" + query +
-			`),
-			PseudoRow AS (
-				SELECT 1 AS Dummy
-			)
-			SELECT 
-				__t.__count,
-				d.*
-			FROM PseudoRow
-			CROSS JOIN Total __t
-			LEFT JOIN Data d ON true;`
 	}
 	return query, valueList, nil
 }
@@ -2236,7 +2269,7 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, true, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {
@@ -2271,7 +2304,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	query := "SELECT " + selectClause
 	from := "FROM " + _sq(table, schema)
 
-	return buildAfterSelect(query, from, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, false, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 // preferredSerializer: the response is written in Go from the raw row values

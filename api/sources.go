@@ -30,7 +30,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
-			status := SetResponseHeaders(c, w, r, count)
+			status := SetResponseHeaders(c, w, r, readTotal(c, count))
 			if status >= http.StatusBadRequest {
 				return heligo.WriteHeader(w, status)
 			}
@@ -114,7 +114,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
-			status := SetResponseHeaders(c, w, r, count)
+			status := SetResponseHeaders(c, w, r, readTotal(c, count))
 			if status >= http.StatusBadRequest {
 				return heligo.WriteHeader(w, status)
 			}
@@ -138,7 +138,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			data, err = database.JQTransformResponse(c, data)
 		}
 		if err == nil {
-			SetResponseHeaders(c, w, r, count)
+			SetResponseHeaders(c, w, r, readTotal(c, count))
 			if data == nil {
 				return heligo.WriteJSON(w, http.StatusOK, count)
 			} else {

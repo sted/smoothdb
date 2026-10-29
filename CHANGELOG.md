@@ -1,5 +1,12 @@
 # Change Log
 
+## Unreleased
+
+### Fixed
+* **Ranged `count=exact` on `/rpc`** — the function runs once, as in PostgREST: a VOLATILE one wrote twice.
+* **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
+* **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
+
 ## 0.10.2 - 2026-10-28
 
 ### Security
