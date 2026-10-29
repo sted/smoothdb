@@ -301,3 +301,144 @@ func TestLibraryAcquireGetsACleanConnection(t *testing.T) {
 		}
 	}
 }
+
+// A library user takes a connection (AcquireConnection), prepares it for a
+// role (PrepareConnection), calls a function that sets a role and claims
+// session-level, and gives it back (ReleaseConn). With a transaction the
+// preparation is transaction-local and marks nothing, and the library's
+// acquire did not record the lease: the next library user got the role.
+func TestLibraryLeaseIsCleanedForTheNextUser(t *testing.T) {
+	residueSetup(t)
+	s := newAuthzServer(t, "8175", map[string]any{
+		"SessionMode":                 "none",
+		"Database.TransactionMode":    "commit",
+		"Database.MinPoolConnections": int32(1),
+		"Database.MaxPoolConnections": int32(1),
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for i := 0; i < 2; i++ {
+		conn, err := database.AcquireConnection(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.PrepareConnection(ctx, conn, "authz_user", `{"sub":"lib"}`, true, false); err != nil {
+			conn.Release()
+			t.Fatal(err)
+		}
+		if _, err := conn.Exec(ctx, `SELECT authz_poison('authz_anon', '{"sub":"other"}')`); err != nil {
+			conn.Release()
+			t.Fatal(err)
+		}
+		if err := database.ReleaseConn(ctx, conn); err != nil {
+			t.Fatal(err)
+		}
+		conn, err = database.AcquireConnection(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var current, claims string
+		err = conn.QueryRow(ctx, "SELECT current_user::text, coalesce(current_setting('request.jwt.claims', true), '')").Scan(&current, &claims)
+		conn.Release()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current != "authz_authn" || claims != "" {
+			t.Errorf("the next library user (%d) got %s with claims %q", i, current, claims)
+		}
+	}
+}
+
+// A role setting only the authenticator may set (GRANT SET ON PARAMETER to
+// it, not to the role) is applied before the role switch, as in PostgREST.
+// When a function of an earlier request left another role on the session,
+// the setting was applied as that role, and refused (42501).
+func TestRoleSettingsApplyAsTheAuthenticator(t *testing.T) {
+	residueSetup(t)
+	superuserSetup(t, []string{
+		"ALTER ROLE authz_user RESET log_min_messages",
+		"REVOKE SET ON PARAMETER log_min_messages FROM authz_authn",
+	}, []string{
+		"GRANT SET ON PARAMETER log_min_messages TO authz_authn",
+		"ALTER ROLE authz_user SET log_min_messages = 'error'",
+	})
+	s := newAuthzServer(t, "8176", map[string]any{
+		"SessionMode":                 "none",
+		"Database.MinPoolConnections": int32(1),
+		"Database.MaxPoolConnections": int32(1),
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	base := "http://localhost:8176/api/postgres"
+	user := signClaims(t, map[string]any{"role": "authz_user", "sub": "me"}, postgrestJWTSecret)
+	// control: the setting applies on a clean connection
+	if u, _ := whoami(t, base, user); u != "authz_user" {
+		t.Fatalf("control: %s", u)
+	}
+	// twice: the second time from the connection's statement cache
+	for i := 0; i < 2; i++ {
+		poison(t, base+"/rpc/authz_poison?r=authz_user&c=%7B%7D", "")
+		if u, _ := whoami(t, base, user); u != "authz_user" {
+			t.Errorf("after a function left authz_user on the session (%d): %s", i, u)
+		}
+	}
+}
+
+// An authenticator whose sessions default to READ ONLY (ALTER ROLE ... SET
+// default_transaction_read_only = on): a write turns its transaction to read
+// write. Verified against PostgREST 16.4 with such an authenticator: POST
+// answers 201, every time (its write transactions begin READ WRITE). With
+// TransactionMode "none" the variables run first in the batch, and
+// PostgreSQL refuses the turn after the transaction's first query: the write
+// failed the second time, once its statement was in the connection's cache.
+// With a transaction, BEGIN without READ WRITE took the READ ONLY default.
+func TestWritesWithAReadOnlyAuthenticator(t *testing.T) {
+	residueSetup(t)
+	superuserSetup(t, []string{
+		"ALTER ROLE authz_authn RESET default_transaction_read_only",
+		"DROP TABLE IF EXISTS authz_rw",
+	}, []string{
+		"ALTER ROLE authz_authn SET default_transaction_read_only = on",
+		"CREATE TABLE authz_rw (note text)",
+		"GRANT SELECT, INSERT ON authz_rw TO authz_user",
+	})
+	cases := []struct{ tx, port string }{{"none", "8177"}, {"commit", "8180"}}
+	for _, c := range cases {
+		t.Run(c.tx, func(t *testing.T) {
+			s := newAuthzServer(t, c.port, map[string]any{
+				"SessionMode":                 "none",
+				"Database.TransactionMode":    c.tx,
+				"Database.MinPoolConnections": int32(1),
+				"Database.MaxPoolConnections": int32(1),
+			})
+			done := startTestServer(t, s)
+			defer func() {
+				s.Shutdown(context.Background())
+				<-done
+			}()
+			user := signClaims(t, map[string]any{"role": "authz_user"}, postgrestJWTSecret)
+			for i := 0; i < 3; i++ {
+				req, _ := http.NewRequest("POST", "http://localhost:"+c.port+"/api/postgres/authz_rw", strings.NewReader(`{"note":"w"}`))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+user)
+				resp, err := slowClient.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if resp.StatusCode != 201 {
+					t.Errorf("write %d: %d %s", i, resp.StatusCode, body)
+				}
+			}
+		})
+	}
+}
