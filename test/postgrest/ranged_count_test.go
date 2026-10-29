@@ -257,6 +257,51 @@ func TestPostgREST_RangedCount(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/8"},
 			Status:          206,
 		},
+		// An empty page is [], with the total in Content-Range: no row of
+		// nulls stands for it (PostgREST 16.4 on the fixtures; it answers 206
+		// to the limit=0 and offset=5 cases, whose page is shorter than the
+		// total)
+		{
+			Description:     "ranged count of a filter that matches nothing",
+			Query:           "/projects?select=id&id=eq.999&limit=10",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+		},
+		{
+			Description:     "ranged count of an ordered filter that matches nothing",
+			Query:           "/projects?select=id,name&id=eq.999&order=id&limit=10",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+		},
+		{
+			Description:     "ranged count with limit=0",
+			Query:           "/projects?select=id&order=id&limit=0",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/5"},
+		},
+		{
+			Description: "ranged count with an offset at the end",
+			Query:       "/projects?select=id&order=id&offset=5",
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+			Expected:    `[]`,
+		},
+		{
+			Description:     "ranged count of an rpc with a filter that matches nothing",
+			Query:           "/rpc/getallprojects?select=id&id=eq.999&limit=10",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+		},
+		{
+			Description:     "ranged count of an rpc with limit=0",
+			Query:           "/rpc/getallprojects?select=id&limit=0",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/5"},
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

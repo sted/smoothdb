@@ -72,6 +72,30 @@ func TestRangedCountRunsFunctionOnce(t *testing.T) {
 			Expected:    `[{"n":7},{"n":8}]`,
 			Status:      200,
 		},
+		// an empty page runs the function once too (PostgREST 16.4 writes one
+		// row for each: limit=0 answers 206 */10, an offset past the end 416)
+		{
+			Description: "a ranged count of a function, limit=0",
+			Method:      "POST",
+			Query:       "/rpc/probe_log?limit=0",
+			Body:        `{"n": 10}`,
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+			Expected:    `[]`,
+		},
+		{
+			Description: "a ranged count of a function, offset past the end",
+			Method:      "POST",
+			Query:       "/rpc/probe_log?offset=20",
+			Body:        `{"n": 11}`,
+			Headers:     test.Headers{"Prefer": {"count=exact"}},
+		},
+		{
+			Description: "ran the function once for each",
+			Method:      "GET",
+			Query:       "/calls?select=n",
+			Expected:    `[{"n":7},{"n":8},{"n":10},{"n":11}]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
