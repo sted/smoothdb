@@ -343,3 +343,60 @@ func TestRoleDateStyleKeepsISOTimestamps(t *testing.T) {
 		t.Errorf("authz_dmy: got %s, want %s", got, want)
 	}
 }
+
+// The first request to a database activates it, reading the database from
+// the main pool: that wait is bounded by PoolAcquisitionTimeout like every
+// acquire of the request, and runs out with the same 504 PGRST003. It waited
+// for as long as the main pool stayed saturated, and any error there was a
+// 404.
+func TestDatabaseActivationAcquisitionTimeout(t *testing.T) {
+	superuserSetup(t, []string{"DROP DATABASE IF EXISTS acq_inactive WITH (FORCE)"},
+		[]string{"CREATE DATABASE acq_inactive"})
+	s := newSingleConnectionServer(t, map[string]any{
+		"Address":                         "localhost:8123",
+		"AllowAnon":                       true,
+		"Database.AnonRole":               "postgres",
+		"Database.PoolAcquisitionTimeout": 1,
+		"EnableAdminRoute":                false,
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	base := "http://localhost:8123/api/acq_inactive"
+
+	conn, err := s.DBE.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// given back after the timeout, so that an unbounded wait ends too
+	released := make(chan struct{})
+	go func() {
+		time.Sleep(4 * time.Second)
+		conn.Release()
+		close(released)
+	}()
+	start := time.Now()
+	test.Execute(t, test.Config{BaseUrl: base}, []test.Test{
+		{
+			Description: "a saturated main pool answers 504 to the activation of a database",
+			Query:       "",
+			Expected:    `{"subsystem":"database","message":"Timed out acquiring connection from connection pool.","code":"PGRST003","hint":"","details":null,"position":0}`,
+			Status:      504,
+		},
+	})
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("the request waited %v, want about the 1 s timeout", elapsed)
+	}
+	<-released
+
+	// positive control: with the connection back the database activates
+	test.Execute(t, test.Config{BaseUrl: base}, []test.Test{
+		{
+			Description: "the database activates once the connection is back",
+			Query:       "",
+			Status:      200,
+		},
+	})
+}
