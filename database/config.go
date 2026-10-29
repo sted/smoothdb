@@ -13,6 +13,7 @@ type Config struct {
 	TransactionMode    string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
 	AggregatesEnabled  bool     `comment:"Enable aggregate functions (default: true)"`
 	MaxRecursiveDepth  int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
+	MaxRows            int64    `comment:"Maximum rows a read answers, at the top level and in each embed, as PostgREST's db-max-rows (default: 0 for no limit)"`
 }
 
 func DefaultConfig() *Config {
