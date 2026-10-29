@@ -341,7 +341,7 @@ func checkConfig(cfg *Config) error {
 	}
 	if k, _ := authn.ParseRoleClaimKey(cfg.JWTRoleClaimKey); k != nil && k.Deprecated() {
 		fmt.Printf("Warning: 'JWTRoleClaimKey' %q uses the deprecated JSPath syntax of PostgREST 15; "+
-			"use JSONPath (RFC 9535), e.g. $.role\n", cfg.JWTRoleClaimKey)
+			"use the JSONPath form (the subset in the README), e.g. $.role\n", cfg.JWTRoleClaimKey)
 	}
 	if cfg.CORSAllowCredentials {
 		for _, origin := range cfg.CORSAllowedOrigins {
