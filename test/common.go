@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -59,12 +60,13 @@ type Test struct {
 }
 
 // counts of the cases Execute ran and skipped, for the compatibility number
-// a suite prints at the end (see test/postgrest/main_test.go)
-var executed, skipped int
+// a suite prints at the end (see test/postgrest/main_test.go); atomic, since
+// some suites call Execute from several goroutines
+var executed, skipped atomic.Int64
 
 // Counts returns how many cases Execute has run and skipped so far.
 func Counts() (run, skip int) {
-	return executed, skipped
+	return int(executed.Load()), int(skipped.Load())
 }
 
 // InitClient is the client of every suite request: with a timeout, so that a
@@ -177,11 +179,11 @@ func Execute(t *testing.T, config Config, tests []Test) {
 	client := InitClient()
 	for i, test := range tests {
 		if test.Skip != "" {
-			skipped++
+			skipped.Add(1)
 			t.Logf("SKIP %d. %v: %v", i, test.Description, test.Skip)
 			continue
 		}
-		executed++
+		executed.Add(1)
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
 		body, headers, status, err := Exec(client, config, command)
 		if err != nil {
@@ -209,17 +211,15 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				// every non-JSON pair equal, null against null)
 				s1 = test.Expected
 				s2 = string(body)
+			} else if v1, ok := decodeJSON([]byte(test.Expected)); !ok {
+				// not JSON (text/plain, text/xml, ...): compared as it is,
+				// since decoding both sides would make every pair equal
+				s1 = test.Expected
+				s2 = string(body)
 			} else {
-				var v1, v2 any
-				var j1, j2 []byte
-				d1 := json.NewDecoder(bytes.NewBuffer([]byte(test.Expected)))
-				d1.UseNumber()
-				d1.Decode(&v1)
-				j1, _ = json.Marshal(v1)
-				d2 := json.NewDecoder(bytes.NewBuffer(body))
-				d2.UseNumber()
-				d2.Decode(&v2)
-				j2, _ = json.Marshal(v2)
+				j1, _ := json.Marshal(v1)
+				v2, _ := decodeJSON(body)
+				j2, _ := json.Marshal(v2)
 				s1, s2 = string(j1), string(j2)
 			}
 			if s1 != s2 {
@@ -247,4 +247,15 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				test.Description, test.Status, status)
 		}
 	}
+}
+
+// decodeJSON decodes one JSON value, numbers kept as written; ok is false when
+// b is not a JSON document.
+func decodeJSON(b []byte) (v any, ok bool) {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	if err := d.Decode(&v); err != nil {
+		return nil, false
+	}
+	return v, true
 }
