@@ -2,12 +2,44 @@ package authn
 
 import (
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sted/smoothdb/database"
 )
+
+// tickingClock is a clock that moves forward a millisecond at each reading, so
+// that the session times compare the same way however fast the test runs.
+type tickingClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *tickingClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(time.Millisecond)
+	return c.t
+}
+
+func (c *tickingClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// newTestSessionManager is a session manager without the watcher's goroutine
+// (the tests call watch themselves) and with a tickingClock.
+func newTestSessionManager() *SessionManager {
+	sm := newSessionManager(nil, true, nil)
+	clock := &tickingClock{t: time.Unix(1_000_000, 0)}
+	sm.now = clock.now
+	return sm
+}
 
 func checkStats(t *testing.T, sm *SessionManager, expected SessionStatistics) {
 	t.Helper()
@@ -39,7 +71,7 @@ func TestWatchDoesNotLeakLockWhenPaused(t *testing.T) {
 
 func TestSessionManager(t *testing.T) {
 
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 
@@ -89,7 +121,7 @@ func TestSessionManager(t *testing.T) {
 }
 
 func TestSessionReuse(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	// Create a session and set Claims on it
 	s1, isNew := sm.getSession("key1")
@@ -120,7 +152,7 @@ func TestSessionReuse(t *testing.T) {
 }
 
 func TestSessionWatcherReleasesIdleSession(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	s, _ := sm.getSession("k")
 	sm.leaveSession(s)
@@ -131,7 +163,7 @@ func TestSessionWatcherReleasesIdleSession(t *testing.T) {
 }
 
 func TestSessionWatcherPreservesInUseSessions(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	s, _ := sm.getSession("k")
 	// Don't leave — session is in use
@@ -144,7 +176,7 @@ func TestSessionWatcherPreservesInUseSessions(t *testing.T) {
 }
 
 func TestSessionWatcherConnTimeout(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	s, _ := sm.getSession("k")
 	// Session has no DbConn — simulate that it was never acquired
@@ -157,7 +189,7 @@ func TestSessionWatcherConnTimeout(t *testing.T) {
 }
 
 func TestSessionNotReusedWhileInUse(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	// Get session for key "k" — it's in use
 	s1, isNew := sm.getSession("k")
@@ -203,7 +235,7 @@ func TestSessionDisabledManager(t *testing.T) {
 }
 
 func TestSessionConcurrentAccess(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	const goroutines = 20
 	const iterations = 500
 
@@ -231,7 +263,7 @@ func TestSessionConcurrentAccess(t *testing.T) {
 }
 
 func TestSessionConcurrentWithWatcher(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	const goroutines = 10
 	const iterations = 200
 
@@ -361,7 +393,7 @@ func BenchmarkSessionWithWatcher(b *testing.B) {
 // the next request with the same token would find it, skip verification, and
 // run with nil claims or a nil database.
 func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	s, isNew := sm.getSession("k")
 	if !isNew {
 		t.Fatal("expected a new session")
@@ -379,7 +411,7 @@ func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
 // hands out transient sessions that are never stored, and leaving or dropping
 // one is a no-op instead of a nil-list panic.
 func TestSessionCapHandsOutTransientSessions(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	sm.SetMaxSessions(2)
 	a, _ := sm.getSession("a")
 	b, _ := sm.getSession("b")
@@ -432,5 +464,95 @@ func TestClaimsExpired(t *testing.T) {
 	claims.ExpiresAt = jwt.NewNumericDate(now.Add(-30 * time.Second))
 	if claimsExpired(claims, now.Add(999*time.Millisecond)) {
 		t.Error("a fraction of a second past the edge is still within the skew")
+	}
+}
+
+// The watcher used to hold the manager's lock while it released the
+// connections of idle sessions: a round trip each, with no timeout, while
+// every request waited in getSession or leaveSession for the same lock.
+// Card 35447 (the session watcher blocks requests while releasing).
+func TestWatcherReleasesOutsideTheLock(t *testing.T) {
+	sm := newTestSessionManager()
+	started, unblock := make(chan struct{}), make(chan struct{})
+	sm.release = func(*database.DbPoolConn) {
+		close(started)
+		<-unblock
+	}
+	s, _ := sm.getSession("idle")
+	s.DbConn = &pgxpool.Conn{}
+	sm.leaveSession(s)
+
+	watched := make(chan struct{})
+	go func() {
+		sm.watch(time.Hour, 0) // the connection is past its timeout
+		close(watched)
+	}()
+	<-started
+	served := make(chan struct{})
+	go func() {
+		s, _ := sm.getSession("other")
+		sm.leaveSession(s)
+		close(served)
+	}()
+	select {
+	case <-served:
+	case <-time.After(time.Second):
+		t.Error("a request waited for the watcher's release of another session's connection")
+	}
+	close(unblock)
+	<-watched
+	<-served
+}
+
+// On shutdown the watcher released the connections of every session, those
+// of requests still running included, and emptied the session map without
+// the manager's lock while requests used it. A request in flight keeps its
+// connection until it leaves, and then gives it back. Run with -race.
+func TestShutdownLeavesTheRequestsInFlightAlone(t *testing.T) {
+	shutdown := make(chan struct{})
+	sm := newSessionManager(nil, true, shutdown)
+	var released atomic.Int32
+	sm.release = func(*database.DbPoolConn) { released.Add(1) }
+
+	inFlight, _ := sm.getSession("busy")
+	inFlight.DbConn = &pgxpool.Conn{}
+	idle, _ := sm.getSession("idle")
+	idle.DbConn = &pgxpool.Conn{}
+	sm.leaveSession(idle)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				s, _ := sm.getSession(fmt.Sprint("k", i%3))
+				sm.leaveSession(s)
+			}
+		}(i)
+	}
+	watcher := make(chan struct{})
+	go func() {
+		sm.sessionWatcher()
+		close(watcher)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	close(shutdown)
+	<-watcher
+	close(stop)
+	wg.Wait()
+
+	if n := released.Load(); n != 1 {
+		t.Errorf("shutdown released %d connections, want 1 (the idle session's)", n)
+	}
+	sm.leaveSession(inFlight)
+	if n := released.Load(); n != 2 {
+		t.Errorf("the request in flight left after the shutdown: %d connections released, want 2", n)
 	}
 }
