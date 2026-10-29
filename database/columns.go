@@ -270,15 +270,22 @@ func GetColumnTypes(ctx context.Context) (types []ColumnType, err error) {
 // path, before the read empties it. No relation, no columns.
 func columnTypesOf(ctx context.Context, relation string) ([]ColumnType, error) {
 	var oid *uint32
-	if err := GetConn(ctx).QueryRow(ctx, "SELECT to_regclass($1)::oid", relation).Scan(&oid); err != nil || oid == nil {
+	conn, err := GetSmoothContext(ctx).conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.QueryRow(ctx, "SELECT to_regclass($1)::oid", relation).Scan(&oid); err != nil || oid == nil {
 		return nil, err
 	}
 	return readColumnTypes(ctx, columnTypesQuery+" AND c.oid = $1 ORDER BY a.attnum", *oid)
 }
 
 func readColumnTypes(ctx context.Context, query string, args ...any) (types []ColumnType, err error) {
-	conn := GetConn(ctx)
 	types = []ColumnType{}
+	conn, err := GetSmoothContext(ctx).conn(ctx)
+	if err != nil {
+		return types, err
+	}
 	begin, end := "BEGIN", "ROLLBACK"
 	if conn.PgConn().TxStatus() != 'I' {
 		begin, end = "SAVEPOINT column_types", "ROLLBACK TO SAVEPOINT column_types; RELEASE SAVEPOINT column_types"

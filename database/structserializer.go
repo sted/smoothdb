@@ -207,7 +207,11 @@ func GetDynStructures(ctx context.Context, query string) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := gi.Conn.Query(ctx, sel, values...)
+	conn, err := gi.conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := conn.Query(ctx, sel, values...)
 	if err != nil {
 		return nil, err
 	}

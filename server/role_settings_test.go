@@ -66,9 +66,9 @@ func settingsOf(t *testing.T, base, token string) requestSettings {
 func TestRoleSettingsApplyToTheirRequestsOnly(t *testing.T) {
 	authzSetup(t)
 	cases := []struct{ name, port, tx, session string }{
-		{"autocommit, retained connections", "8114", "none", "role"},
+		{"autocommit, sessions", "8114", "none", "role"},
 		{"autocommit, no sessions", "8115", "none", "none"},
-		{"transactions, retained connections", "8116", "rollback", "role"},
+		{"transactions, sessions", "8116", "rollback", "role"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

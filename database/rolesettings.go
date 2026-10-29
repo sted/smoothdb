@@ -24,24 +24,27 @@ type roleSettings struct {
 
 // roleConfig holds one role's settings and the statements that apply them
 // together with the role switch and the claims, in one round trip. In a
-// transaction (sqlTX) the settings are transaction-local and the isolation is
-// the BEGIN's; with autocommit (sqlAuto) they are session settings, the
+// transaction (sqlTX) the settings, the role and the claims are
+// transaction-local and the isolation is the BEGIN's; sqlLocal is sqlTX with
+// the access mode, for the implicit transaction of a batch (see
+// requestvars.go); with autocommit (sqlAuto) they are session settings, the
 // isolation among them, that last while the connection serves the role.
 type roleConfig struct {
-	isolation        string // REPEATABLE READ, SERIALIZABLE, "" for the default
-	txArgs, autoArgs []any  // name, value, name, value, ...
-	sqlTX, sqlAuto   string
-	// sqlTXSettings applies the settings alone, to a transaction on a
-	// connection already switched to the role
-	sqlTXSettings string
+	isolation                string // REPEATABLE READ, SERIALIZABLE, "" for the default
+	txArgs, autoArgs         []any  // name, value, name, value, ...
+	sqlTX, sqlLocal, sqlAuto string
 }
 
 // The statements of a role without settings. The role is set with set_config
 // like the settings, so that the whole preparation is one statement: with
-// autocommit a refused switch then rolls back the settings before it.
+// autocommit a refused switch then rolls back the settings before it. In a
+// transaction everything is transaction-local, as in PostgREST (txVarQuery):
+// it ends with the transaction, and the connection goes back to the pool with
+// nothing of the request.
 const (
-	prepareTX   = "SELECT set_config('role', $1, false), set_config('request.jwt.claims', $2, false)"
-	prepareAuto = "SELECT set_config('role', $1, false), set_config('request.jwt.claims', $2, false), set_config('" + readOnlyGUC + "', $3, false)"
+	prepareTX    = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true)"
+	prepareLocal = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true), set_config('" + txReadOnlyGUC + "', $3, true)"
+	prepareAuto  = "SELECT set_config('role', $1, false), set_config('request.jwt.claims', $2, false), set_config('" + readOnlyGUC + "', $3, false)"
 )
 
 // roleSettingsQuery is PostgREST's queryRoleSettings, as rows. The
@@ -142,28 +145,33 @@ func loadRoleSettings(ctx context.Context, conn *DbConn, version int, prev *role
 	}
 	for _, rc := range rs.roles {
 		rc.sqlTX = prepareStatement(rc.txArgs, true, withSwitch)
+		rc.sqlLocal = prepareStatement(rc.txArgs, true, withTxAccessMode)
 		rc.sqlAuto = prepareStatement(rc.autoArgs, false, withAccessMode)
-		if len(rc.txArgs) != 0 {
-			rc.sqlTXSettings = prepareStatement(rc.txArgs, true, settingsOnly)
-		}
 	}
 	return rs, nil
 }
 
 // The ends of a preparation statement.
 const (
-	settingsOnly   = iota // the settings alone
-	withSwitch            // the role switch and the claims
-	withAccessMode        // those, and the access mode of an autocommit session
+	withSwitch       = iota // the role switch and the claims
+	withAccessMode          // those, and the access mode of an autocommit session
+	withTxAccessMode        // those, and the access mode of the transaction
 )
 
 // prepareStatement writes a statement that applies the settings in args
 // before the role switch, as PostgREST orders them: a GRANT SET ON PARAMETER
 // to the authenticator is what lets it set a superuser setting, so it has to
-// come before the switch. With no settings it is prepareTX or prepareAuto.
+// come before the switch. With no settings it is prepareTX, prepareLocal or
+// prepareAuto. local makes every set_config of the statement
+// transaction-local. The settings are applied as the authenticator: a role a
+// function of an earlier request left on the session is set aside first,
+// for the statement only.
 func prepareStatement(args []any, local bool, end int) string {
 	var b strings.Builder
 	b.WriteString("SELECT ")
+	if len(args) > 0 {
+		b.WriteString("set_config('role', 'none', true), ")
+	}
 	p := 1
 	for ; p < len(args); p += 2 {
 		if p > 1 {
@@ -171,15 +179,15 @@ func prepareStatement(args []any, local bool, end int) string {
 		}
 		fmt.Fprintf(&b, "set_config($%d, $%d, %t)", p, p+1, local)
 	}
-	if end == settingsOnly {
-		return b.String()
-	}
 	if p > 1 {
 		b.WriteString(", ")
 	}
-	fmt.Fprintf(&b, "set_config('role', $%d, false), set_config('request.jwt.claims', $%d, false)", p, p+1)
-	if end == withAccessMode {
-		fmt.Fprintf(&b, ", set_config('%s', $%d, false)", readOnlyGUC, p+2)
+	fmt.Fprintf(&b, "set_config('role', $%d, %t), set_config('request.jwt.claims', $%d, %t)", p, local, p+1, local)
+	switch end {
+	case withAccessMode:
+		fmt.Fprintf(&b, ", set_config('%s', $%d, %t)", readOnlyGUC, p+2, local)
+	case withTxAccessMode:
+		fmt.Fprintf(&b, ", set_config('%s', $%d, %t)", txReadOnlyGUC, p+2, local)
 	}
 	return b.String()
 }
@@ -206,7 +214,7 @@ func roleSettingsReset() string {
 // ReloadRoleSettings reads the role settings again, with a connection of the
 // main pool.
 func (dbe *DbEngine) ReloadRoleSettings(ctx context.Context) error {
-	conn, err := dbe.mainDb.pool.Acquire(ctx)
+	conn, err := dbe.mainDb.AcquireConnection(ctx)
 	if err != nil {
 		return err
 	}

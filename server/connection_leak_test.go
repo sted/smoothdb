@@ -59,12 +59,12 @@ func TestPanicInHandlerReleasesConnection(t *testing.T) {
 	}
 }
 
-// In "role" mode the connection stays attached to the session for about a
-// second after the request. A request that hits the session with a token
-// expired meanwhile drops the session; the connection attached to it must go
-// back to the pool then, since a dropped session is no longer seen by the
-// watcher that would otherwise release it. The control is the same flow with
-// a valid token: the watcher releases the idle connection.
+// A request that hits the session with a token expired meanwhile drops the
+// session, and must leave no connection behind. "role" kept the connection on
+// the session for about a second, and a dropped session took it out of the
+// watcher's sight; it is now a deprecated alias of "claims", which keeps no
+// connection, and the test checks that the alias does not either. The
+// control is the same flow with a valid token.
 func TestExpiredTokenOnSessionHitReleasesConnection(t *testing.T) {
 	s := newSingleConnectionServer(t, map[string]any{
 		"Address":          "localhost:8179",

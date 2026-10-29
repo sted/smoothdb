@@ -122,10 +122,10 @@ func newAuthzServer(t *testing.T, port string, config map[string]any) *Server {
 // pgErrorStatus. They used to be 500 with {"error": ...}.
 func TestAuthorizationStatusFollowsPostgREST(t *testing.T) {
 	authzSetup(t)
-	modes := []struct{ mode, port string }{{"none", "8110"}, {"role", "8111"}}
+	modes := []struct{ mode, tx, port string }{{"none", "none", "8110"}, {"role", "none", "8111"}, {"none", "commit", "8161"}}
 	for _, m := range modes {
-		t.Run(m.mode, func(t *testing.T) {
-			s := newAuthzServer(t, m.port, map[string]any{"SessionMode": m.mode})
+		t.Run(m.mode+"/"+m.tx, func(t *testing.T) {
+			s := newAuthzServer(t, m.port, map[string]any{"SessionMode": m.mode, "Database.TransactionMode": m.tx})
 			done := startTestServer(t, s)
 			defer func() {
 				s.Shutdown(context.Background())

@@ -12,12 +12,16 @@ var smoothTag = smoothCtxKey{}
 // SmoothContext contains all the information needed to perform database commands
 // as well as configured parser and query builder
 type SmoothContext struct {
-	Db            *Database
+	Db *Database
+	// Conn is the request's connection. With deferred variables (see
+	// PrepareRequest) the role is not on it yet: take it with GetConn, which
+	// applies them, unless the statement goes through the query executor.
 	Conn          *DbConn
 	Role          string
 	RequestParser RequestParser
 	QueryBuilder  QueryBuilder
 	QueryOptions  QueryOptions
+	vars          *requestVars
 }
 
 // FillContext compiles and inserts the information related to the database, cresting a new derived context
@@ -26,7 +30,7 @@ func FillContext(ctx context.Context, r *http.Request, db *Database, conn *DbCon
 	defaultBuilder := DirectQueryBuilder{}
 	queryOptions := defaultParser.getQueryOptions(r)
 	return context.WithValue(ctx, smoothTag,
-		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
+		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions, nil})
 }
 
 // GetSmoothContext gets SmoothContext from the standard context
@@ -80,12 +84,19 @@ func contextImpl(parent context.Context, db *Database, conn *DbConn, role string
 	defaultBuilder := DirectQueryBuilder{}
 
 	return context.WithValue(parent, smoothTag,
-		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions})
+		&SmoothContext{db, conn, role, defaultParser, defaultBuilder, queryOptions, nil})
 }
 
-// GetConn gets the database connection from the current context
+// GetConn gets the database connection from the current context, with the
+// request's role and claims in force (see PrepareRequest). If they cannot be
+// applied, the connection is closed: no statement may run on it without
+// them, and the pool discards it. Code on the path of a request uses
+// conn(ctx), which returns that error.
 func GetConn(ctx context.Context) *DbConn {
 	gi := GetSmoothContext(ctx)
+	if _, err := gi.conn(ctx); err != nil {
+		gi.Conn.Close(context.WithoutCancel(ctx))
+	}
 	return gi.Conn
 }
 
@@ -110,7 +121,7 @@ func GetQueryOptions(ctx context.Context) *QueryOptions {
 // GetConnAndSchema gets the database connection and the schema from the current context
 func GetConnAndSchema(ctx context.Context) (*DbConn, string) {
 	gi := GetSmoothContext(ctx)
-	return gi.Conn, gi.QueryOptions.Schema
+	return GetConn(ctx), gi.QueryOptions.Schema
 }
 
 // SetRequestParser allows changing the request parser in the current context

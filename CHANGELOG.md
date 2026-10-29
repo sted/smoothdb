@@ -11,6 +11,10 @@
 * **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.
 
 ### Fixed
+* **Pooled connections keep nothing of a request** — the role, claims, access mode and role settings of a request are transaction-local, as in PostgREST, or reset when the connection goes back to the pool: the next user of the connection (the schema reload, a library caller) no longer runs as the previous client.
+* **Nothing a function sets survives its request** — a role, claims or session authorization a function sets session-level no longer reaches an internal user of the pool (the schema reload, `ContextWithDb`, `AcquireConnection`): the connection is cleaned first, after the request's transaction has ended.
+* **Writes with a read-only authenticator** — a write begins `READ WRITE` whatever the authenticator's `default_transaction_read_only`, as in PostgREST.
+* **Session watcher** — a shutdown no longer empties the sessions under the requests still running.
 * **Ranged `count=exact` on `/rpc`** — a VOLATILE function runs once, as in PostgREST (it wrote twice); a STABLE or IMMUTABLE one is counted like a table.
 * **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
 * **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
@@ -18,10 +22,15 @@
 * **A first column named `__count`** — serialized like any other column in JSON and CSV, no longer taken for the total.
 
 ### Changed
+* **`SessionMode` defaults to `claims`** — the verified claims are cached per token, and no connection is kept between requests.
+* **Request preparation in one round trip** — on the data routes the role, claims and access mode travel with the request's first statement, in the same batch, and need no reset afterwards (`SessionMode: "none"` serves about 1.7x the requests); a request refused on its own parameters fails before the role switch, as in PostgREST.
 * **Ported PostgREST spec suite** — targets PostgREST 16.4; a case smoothdb does not pass is skipped with its reason and card, and the suite prints how many run.
 * **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
 * **Tokens with a `kid`** — refused against a passphrase `JWTSecret`, which is a key without `kid` as in PostgREST.
-* **Go API** — `authn.MiddlewareConfig` replaces `JWTSecret()` with `JWTVerifier()` and adds `AuthErrorWriter()`.
+* **Go API** — `authn.MiddlewareConfig` replaces `JWTSecret()` with `JWTVerifier()` and adds `AuthErrorWriter()`; `database.HasTX` and `SessionManager.SetRetainConnections` are gone.
+
+### Deprecated
+* **`SessionMode: "role"`** — an alias of `claims`, with a warning at startup: the connection it kept on the session saved nothing measurable once the request variables travel with the first statement, and starved the requests beyond the pool size.
 
 ## 0.10.2 - 2026-10-28
 

@@ -12,10 +12,6 @@ import (
 type DbPoolConn = pgxpool.Conn
 type DbConn = pgx.Conn
 
-func HasTX(c *DbPoolConn) bool {
-	return c.Conn().PgConn().TxStatus() != 'I'
-}
-
 // readOnlyGUC makes every implicit (autocommit) transaction of a session READ
 // ONLY: it is how a request runs read-only with TransactionMode "none", where
 // there is no BEGIN to qualify. PostgreSQL reports the setting to the client
@@ -24,6 +20,12 @@ func HasTX(c *DbPoolConn) bool {
 // server's own word, tracked per physical connection for free, and it cannot
 // go stale the way a flag of ours could.
 const readOnlyGUC = "default_transaction_read_only"
+
+// txReadOnlyGUC is the access mode of the current transaction alone: set
+// transaction-local, it makes a batch's implicit transaction READ ONLY and
+// ends with it (PostgreSQL refuses only the way back to read-write once the
+// transaction has run a query).
+const txReadOnlyGUC = "transaction_read_only"
 
 func onOff(b bool) string {
 	if b {
@@ -41,6 +43,10 @@ func setSessionReadOnly(ctx context.Context, conn *DbConn, readOnly bool) error 
 		return nil
 	}
 	_, err := conn.Exec(ctx, "SET "+readOnlyGUC+" = "+want)
+	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; err == nil && readOnly && !marked {
+		// a session setting to reset before the pool hands it out again
+		markSession(conn)
+	}
 	return err
 }
 
@@ -50,6 +56,11 @@ func setSessionReadOnly(ctx context.Context, conn *DbConn, readOnly bool) error 
 // STABLE or IMMUTABLE function); the next request on the connection sets the
 // mode it needs again through PrepareConnection.
 func SetReadOnly(ctx context.Context) error {
+	if v := GetSmoothContext(ctx).pending(); v != nil {
+		// not on the connection yet: the variables carry it
+		v.readOnly = true
+		return nil
+	}
 	conn := GetConn(ctx)
 	if conn.PgConn().TxStatus() != 'I' {
 		_, err := conn.Exec(ctx, "SET TRANSACTION READ ONLY")
@@ -62,7 +73,8 @@ func SetReadOnly(ctx context.Context) error {
 // PoolAcquisitionTimeout, with PostgREST's message (PGRST003).
 var ErrAcquisitionTimeout = errors.New("Timed out acquiring connection from connection pool.")
 
-// AcquireConnection takes a connection from a database pool.
+// AcquireConnection takes a connection from a database pool, clean of
+// anything a request left on its session (see Database.AcquireConnection).
 // If the db parameter is nil, it uses the main db pool.
 // The wait is bounded by PoolAcquisitionTimeout (see acquireBounded).
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
@@ -71,6 +83,15 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 	}
 	return acquireBounded(ctx, db)
 }
+
+// AcquireRequestConnection is AcquireConnection for a request, which applies
+// its own role and claims (PrepareRequest) over whatever the session of the
+// connection carries: it skips the cleanup.
+func AcquireRequestConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
+	return AcquireConnection(context.WithValue(ctx, requestAcquireKey{}, true), db)
+}
+
+type requestAcquireKey struct{}
 
 // acquireBounded takes a connection from the pool of db, waiting at most
 // PoolAcquisitionTimeout, as PostgREST bounds it by
@@ -107,10 +128,13 @@ func acquireBounded(ctx context.Context, db *Database) (*DbPoolConn, error) {
 // In a transaction they are transaction-local, so they end with it whatever
 // becomes of the connection, and the transaction takes the role's isolation.
 // With autocommit there is no transaction to hold them: they are session
-// settings, which the connection keeps while its session (same token, so same
-// role) retains it, and which ReleaseConnection resets before the pool hands
-// it to anyone else.
+// settings, which ReleaseConnection resets before the pool hands the
+// connection to anyone else.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool, readOnly bool) error {
+	return prepareConnection(ctx, conn.Conn(), role, claims, newAcquire, readOnly)
+}
+
+func prepareConnection(ctx context.Context, conn *DbConn, role string, claims string, newAcquire bool, readOnly bool) error {
 	rc := roleConfigOf(role)
 	// transaction
 	needTX := dbe.config.TransactionMode != "none"
@@ -121,6 +145,9 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 		}
 		if readOnly {
 			begin += " READ ONLY"
+		} else {
+			// whatever the authenticator's default, as in PostgREST
+			begin += " READ WRITE"
 		}
 		_, err := conn.Exec(ctx, begin)
 		if err != nil {
@@ -150,17 +177,15 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 		if err != nil {
 			return err
 		}
-	} else if needTX && rc != nil && rc.sqlTXSettings != "" {
-		// a connection kept by its session, already switched: the settings
-		// last only as long as each transaction
-		_, err := conn.Exec(ctx, rc.sqlTXSettings, rc.txArgs...)
-		if err != nil {
-			return err
+		if !needTX {
+			// session-level now: reset when the connection goes back to the
+			// pool
+			markSession(conn)
 		}
 	} else if !needTX {
-		// a connection kept by its session between requests (or one prepared
-		// with no role): flip the setting only if it was left the other way
-		err := setSessionReadOnly(ctx, conn.Conn(), readOnly)
+		// a connection prepared with no role: flip the setting only if it was
+		// left the other way
+		err := setSessionReadOnly(ctx, conn, readOnly)
 		if err != nil {
 			return err
 		}
@@ -169,23 +194,25 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 }
 
 // ReleaseConnection releases a connection to the proper pool.
-// It resets its role if requested and closes the transaction, based on the configuration.
+// It closes the transaction, based on the configuration, and then, if
+// requested, resets the session-level role and claims a request left on it:
+// after, so that a ROLLBACK cannot undo the reset.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, resetRole bool) error {
 	defer conn.Release()
-	hasTX := dbe.config.TransactionMode != "none"
-
-	if resetRole && !hasTX {
-		// one round trip: the role reset and, so that the pool never hands out
-		// a read-only connection (the schema reload and library users take
-		// connections without PrepareConnection), the access mode reset, and
-		// the reset of the role settings PrepareConnection applied
-		_, err := conn.Exec(ctx, "SET ROLE NONE; RESET "+readOnlyGUC+roleSettingsReset())
-		if err != nil {
-			return err
-		}
+	if err := endTransaction(ctx, conn, httpErr); err != nil {
+		return err
 	}
+	if resetRole {
+		return resetSession(ctx, conn.Conn())
+	}
+	return nil
+}
 
-	if hasTX {
+// endTransaction ends the request's transaction, if one is open, as the
+// configuration says.
+func endTransaction(ctx context.Context, conn *DbPoolConn, httpErr bool) error {
+	hasTX := dbe.config.TransactionMode != "none"
+	if hasTX && conn.Conn().PgConn().TxStatus() != 'I' {
 		var end string
 
 		if !httpErr {
@@ -226,3 +253,74 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, rese
 func ReleaseConn(ctx context.Context, conn *DbPoolConn) error {
 	return ReleaseConnection(ctx, conn, false, true)
 }
+
+// sessionMarkKey names, in the custom data of a connection, the mark of a
+// role and claims set on it session-level (see markSession).
+const sessionMarkKey = "smoothdb.session"
+
+// markSession records that conn carries, session-level, the role, the claims
+// and the role settings of a request, to reset when the connection goes back
+// to the pool.
+func markSession(conn *DbConn) {
+	conn.PgConn().CustomData()[sessionMarkKey] = true
+}
+
+// resetSession takes off conn what a request set on it session-level: the
+// role, the claims, the access mode and the role settings, in one round trip
+// and only when there is something to reset. The reset runs even when ctx is
+// cancelled (a client that hangs up), and a connection it fails on is closed,
+// so the pool destroys it instead of handing out a client's role.
+func resetSession(ctx context.Context, conn *DbConn) error {
+	// unmarked, a connection may still carry what a function set: the
+	// settings the server reports, read without a round trip
+	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; !marked && !sessionUserChanged(conn) &&
+		conn.PgConn().ParameterStatus(readOnlyGUC) != "on" {
+		return nil
+	}
+	return cleanSession(ctx, conn)
+}
+
+// sessionCleanup is the statement of cleanSession. The session authorization
+// goes first: a function of a superuser authenticator may have changed it,
+// and SET ROLE NONE would go back to that user. Any user may set it back to
+// the one it logged in as.
+const sessionCleanup = "SET SESSION AUTHORIZATION DEFAULT; SET ROLE NONE; RESET request.jwt.claims; RESET " + readOnlyGUC
+
+// cleanSession resets the session of conn to the authenticator's, whatever
+// set it (see resetSession).
+func cleanSession(ctx context.Context, conn *DbConn) error {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if conn.PgConn().TxStatus() != 'I' {
+		// in a transaction the cleanup could still be rolled back: the
+		// connection is discarded instead
+		conn.Close(rctx)
+		return errors.New("a connection in a transaction cannot be cleaned")
+	}
+	_, err := conn.Exec(rctx, sessionCleanup+roleSettingsReset())
+	if err != nil {
+		conn.Close(rctx)
+		return err
+	}
+	delete(conn.PgConn().CustomData(), sessionMarkKey)
+	delete(conn.PgConn().CustomData(), requestUsedKey)
+	return nil
+}
+
+// requestUsedKey marks, in the custom data of a connection, that a request
+// ran on it since its session was last cleaned: a function it called may
+// have set a role or claims session-level, which a request overrides with
+// its own but an internal user would run as (see Database.AcquireConnection).
+const requestUsedKey = "smoothdb.used"
+
+// sessionUserChanged says whether the session authorization of conn is no
+// longer the user it logged in as. The server reports the setting whenever
+// it changes, so this costs no round trip.
+func sessionUserChanged(conn *DbConn) bool {
+	login, ok := conn.PgConn().CustomData()[loginUserKey].(string)
+	return ok && conn.PgConn().ParameterStatus("session_authorization") != login
+}
+
+// loginUserKey names, in the custom data of a pooled connection, the session
+// authorization it was opened with (see sessionUserChanged).
+const loginUserKey = "smoothdb.login"

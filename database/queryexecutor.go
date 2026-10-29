@@ -102,29 +102,50 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
-	if options.totalQuery == "" {
+	// the request's variables ride in front of the statements when they are
+	// still pending (see requestVars)
+	batch, err := gi.newBatch(ctx, options.totalPrelude, query, options.totalQuery)
+	if err != nil {
+		return nil, 0, err
+	}
+	if options.totalQuery == "" && batch.lead == 0 {
 		rows, err := gi.Conn.Query(ctx, query, values...)
 		if err != nil {
 			return nil, 0, err
 		}
 		defer rows.Close()
 		out, n, err := serializer.Serialize(rows, scalar, single, info)
-		if err == nil && options.Count != "" {
-			options.Total = n
+		if err == nil {
+			gi.remember1(query)
+			if options.Count != "" {
+				options.Total = n
+			}
 		}
 		return out, n, err
 	}
-	batch := &pgx.Batch{}
 	if options.totalPrelude != "" {
 		batch.Queue(options.totalPrelude)
 	}
 	batch.Queue(query, values...)
-	batch.Queue(options.totalQuery, options.totalValues...)
-	br := gi.Conn.SendBatch(ctx, batch)
-	// closed again below, after the total: with autocommit the end of the
-	// batch is the commit, and its error (a deferred constraint) is the
-	// request's; this one covers the early returns
-	defer br.Close()
+	if options.totalQuery != "" {
+		batch.Queue(options.totalQuery, options.totalValues...)
+	}
+	br, err := gi.send(ctx, batch)
+	if err != nil {
+		return nil, 0, err
+	}
+	// with autocommit the end of the batch is the commit, and its error (a
+	// deferred constraint) is the request's: end reads it
+	out, n, err := readBatch(br, options, serializer, scalar, single, info)
+	if err := gi.end(ctx, br, batch, err); err != nil {
+		return nil, 0, err
+	}
+	return out, n, nil
+}
+
+// readBatch reads the results of runRead's batch: the total's prelude, the
+// rows, the total.
+func readBatch(br pgx.BatchResults, options *QueryOptions, serializer TextSerializer, scalar, single bool, info *SchemaInfo) ([]byte, int64, error) {
 	if options.totalPrelude != "" {
 		if _, err := br.Exec(); err != nil {
 			return nil, 0, err
@@ -136,13 +157,17 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	}
 	out, n, err := serializer.Serialize(rows, scalar, single, info)
 	rows.Close()
+	if err == nil {
+		err = rows.Err()
+	}
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := br.QueryRow().Scan(&options.Total); err != nil {
-		return nil, 0, err
-	}
-	if err := br.Close(); err != nil {
+	if options.totalQuery == "" {
+		if options.Count != "" {
+			options.Total = n
+		}
+	} else if err := br.QueryRow().Scan(&options.Total); err != nil {
 		return nil, 0, err
 	}
 	return out, n, nil
@@ -197,7 +222,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	if options.ReturnRepresentation {
 		return querySerialize(ctx, insert, values)
 	} else {
-		tag, err := gi.Conn.Exec(ctx, insert, values...)
+		tag, err := gi.exec(ctx, insert, values...)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -223,7 +248,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	if options.ReturnRepresentation {
 		return querySerialize(ctx, update, values)
 	} else {
-		tag, err := gi.Conn.Exec(ctx, update, values...)
+		tag, err := gi.exec(ctx, update, values...)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -249,7 +274,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	if options.ReturnRepresentation {
 		return querySerialize(ctx, delete, values)
 	} else {
-		tag, err := gi.Conn.Exec(ctx, delete, values...)
+		tag, err := gi.exec(ctx, delete, values...)
 		if err != nil {
 			return nil, 0, err
 		}

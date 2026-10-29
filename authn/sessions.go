@@ -1,7 +1,6 @@
 package authn
 
 import (
-	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -101,31 +100,40 @@ type SessionManager struct {
 	// total is the live number of stored sessions (count is refreshed by watch)
 	total       int
 	maxSessions int
-	// retainConnections keeps the prepared connection attached to the session
-	// between requests ("role" mode); "claims" mode caches only the claims
-	retainConnections bool
+	// closed is set on shutdown: no session is stored any more
+	closed bool
+	// now is the clock of the session times (the tests replace it)
+	now func() time.Time
 }
 
 // DefaultMaxSessions bounds the session map when no MaxSessions is configured
 const DefaultMaxSessions = 10000
 
 func NewSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
-	sm := &SessionManager{
-		slots:             map[string]*SessionList{},
-		logger:            logger,
-		enabled:           enabled,
-		shutdown:          shutdown,
-		maxSessions:       DefaultMaxSessions,
-		retainConnections: true,
-	}
+	sm := newSessionManager(logger, enabled, shutdown)
 	if enabled {
 		go sm.sessionWatcher()
 	}
 	return sm
 }
 
-func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.Duration) {
-	now := time.Now()
+// newSessionManager is NewSessionManager without the watcher's goroutine.
+func newSessionManager(logger *logging.Logger, enabled bool, shutdown chan struct{}) *SessionManager {
+	return &SessionManager{
+		slots:       map[string]*SessionList{},
+		logger:      logger,
+		enabled:     enabled,
+		shutdown:    shutdown,
+		maxSessions: DefaultMaxSessions,
+		now:         time.Now,
+	}
+}
+
+// watch deletes the sessions unused for sessionTimeout, and counts the others.
+// A session caches the verified claims of its token; the connection of its
+// request goes back to the pool at the end of the request.
+func (sm *SessionManager) watch(sessionTimeout time.Duration) {
+	now := sm.clock()
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 
@@ -136,38 +144,16 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 	sm.inUse = 0
 
 	for k, list := range sm.slots {
-
 		for session := list.head; session != nil; session = session.next {
-
 			sm.count += 1
-
 			if session.inUse.Load() {
 				sm.inUse += 1
 				continue
 			}
-			// Here we have a session not in use, which cannot be used now
-			// because we hold a lock on the session manager and making
-			// the session usable requires a lock
-
-			spentTime := now.Sub(session.LastUsedAt)
-
-			if spentTime > sessionTimeout && session.DbConn == nil {
-
-				// Delete the session
+			if now.Sub(session.LastUsedAt) > sessionTimeout {
 				list.remove(session)
 				sm.count -= 1
 				sm.total -= 1
-
-			} else if spentTime > connTimeout && session.DbConn != nil {
-
-				// Release and detach the database connection from the session
-				// (Acquire and attach are done in the auth middleware)
-				// The session is preserved and can be reused
-				err := database.ReleaseConnection(context.Background(), session.DbConn, false, true)
-				if err != nil {
-					sm.logger.Err(err).Msg("error releasing an expired session")
-				}
-				session.DbConn = nil
 			}
 		}
 		if list.isEmpty() {
@@ -179,27 +165,32 @@ func (sm *SessionManager) watch(sessionTimeout time.Duration, connTimeout time.D
 func (sm *SessionManager) sessionWatcher() {
 
 	ticker := time.NewTicker(1000 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			sm.watch(5*time.Second, 1*time.Second)
+			sm.watch(5 * time.Second)
 		case <-sm.shutdown:
-			for k, list := range sm.slots {
-				for session := list.head; session != nil; session = session.next {
-					if session.DbConn != nil {
-						database.ReleaseConnection(context.Background(), session.DbConn, false, false)
-					}
-					delete(sm.slots, k)
-				}
-			}
+			sm.close()
 			return
 		}
 	}
 }
 
+// close empties the manager on shutdown, under its lock: a request in flight
+// leaves its session as usual (see leaveSession), and the requests that come
+// after get transient sessions.
+func (sm *SessionManager) close() {
+	sm.mtx.Lock()
+	defer sm.mtx.Unlock()
+	sm.closed = true
+	sm.slots = map[string]*SessionList{}
+	sm.total = 0
+}
+
 func (sm *SessionManager) newSession(key string) *Session {
-	now := time.Now()
+	now := sm.clock()
 	session := &Session{key: key}
 	session.inUse.Store(true)
 	session.LastUsedAt = now
@@ -220,7 +211,7 @@ func (sm *SessionManager) getSession(key string) (*Session, bool) {
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
 	list := sm.slots[key]
-	if list == nil || list.isEmpty() {
+	if list == nil || list.isEmpty() || sm.closed {
 		return sm.newSessionOrTransient(key), true
 	}
 	session := list.head
@@ -238,9 +229,13 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	}
 	sm.mtx.Lock()
 	defer sm.mtx.Unlock()
+	if sm.closed {
+		// emptied by the shutdown while the request ran
+		return true
+	}
 	list := sm.slots[session.key]
 	list.toFront(session)
-	session.LastUsedAt = time.Now()
+	session.LastUsedAt = sm.clock()
 	swapped := session.inUse.CompareAndSwap(true, false)
 	return swapped
 }
@@ -268,7 +263,7 @@ func (sm *SessionManager) Statistics() SessionStatistics {
 // were disabled, and the map cannot grow without bound under a scan of tokens.
 // Must be called with the lock held.
 func (sm *SessionManager) newSessionOrTransient(key string) *Session {
-	if sm.total >= sm.maxSessions {
+	if sm.total >= sm.maxSessions || sm.closed {
 		s := &Session{key: key, transient: true}
 		s.inUse.Store(true)
 		return s
@@ -293,18 +288,7 @@ func (sm *SessionManager) dropSession(session *Session) {
 		}
 	}
 	session.transient = true // later leave/drop calls are no-ops
-	conn := session.DbConn
-	session.DbConn = nil
 	sm.mtx.Unlock()
-	// A connection the session kept between requests ("role" mode, see the
-	// watcher) goes back to the pool now: once dropped, the session is out of
-	// the watcher's sight and nothing else would release it.
-	if conn != nil {
-		err := database.ReleaseConnection(context.Background(), conn, false, true)
-		if err != nil && sm.logger != nil {
-			sm.logger.Err(err).Msg("error releasing the connection of a dropped session")
-		}
-	}
 }
 
 // SetMaxSessions bounds the number of stored sessions (non-positive: default)
@@ -317,16 +301,6 @@ func (sm *SessionManager) SetMaxSessions(n int) {
 	sm.maxSessions = n
 }
 
-// SetRetainConnections selects between "role" mode (true: the prepared
-// connection stays attached to the session between requests) and "claims"
-// mode (false: only the verified claims are cached, the connection goes back
-// to the pool at the end of every request).
-func (sm *SessionManager) SetRetainConnections(retain bool) {
-	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
-	sm.retainConnections = retain
-}
-
 // claimsExpired reports whether cached claims are past their exp, with the
 // same rule and 30 s skew as the verifier (PostgREST's checkForErrors: expired
 // when now - 30 > exp, in whole seconds). A session hit skips token
@@ -336,4 +310,12 @@ func claimsExpired(c *Claims, now time.Time) bool {
 		return false
 	}
 	return now.Unix()-allowedSkew > c.ExpiresAt.Unix()
+}
+
+// clock is the time of the session manager (its now, time.Now by default).
+func (sm *SessionManager) clock() time.Time {
+	if sm.now == nil {
+		return time.Now()
+	}
+	return sm.now()
 }

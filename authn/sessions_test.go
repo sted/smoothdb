@@ -2,12 +2,42 @@ package authn
 
 import (
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
+
+// tickingClock is a clock that moves forward a millisecond at each reading, so
+// that the session times compare the same way however fast the test runs.
+type tickingClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *tickingClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(time.Millisecond)
+	return c.t
+}
+
+func (c *tickingClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// newTestSessionManager is a session manager without the watcher's goroutine
+// (the tests call watch themselves) and with a tickingClock.
+func newTestSessionManager() *SessionManager {
+	sm := newSessionManager(nil, true, nil)
+	clock := &tickingClock{t: time.Unix(1_000_000, 0)}
+	sm.now = clock.now
+	return sm
+}
 
 func checkStats(t *testing.T, sm *SessionManager, expected SessionStatistics) {
 	t.Helper()
@@ -23,7 +53,7 @@ func checkStats(t *testing.T, sm *SessionManager, expected SessionStatistics) {
 func TestWatchDoesNotLeakLockWhenPaused(t *testing.T) {
 	sm := &SessionManager{slots: map[string]*SessionList{}}
 	sm.pauseWatcher(true)
-	sm.watch(time.Second, time.Second)
+	sm.watch(time.Second)
 
 	done := make(chan struct{})
 	go func() {
@@ -39,57 +69,57 @@ func TestWatchDoesNotLeakLockWhenPaused(t *testing.T) {
 
 func TestSessionManager(t *testing.T) {
 
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 
 	s11, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	s12, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 1})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	s21, n := sm.getSession("2")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{3, 3, 2})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	sm.leaveSession(s11)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 
 	s13, n := sm.getSession("1")
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{3, 3, 2})
 	if !n {
 		t.Error("expected new session")
 	}
 
 	sm.leaveSession(s12)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 
 	sm.leaveSession(s21)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 
 	sm.leaveSession(s13)
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 }
 
 func TestSessionReuse(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	// Create a session and set Claims on it
 	s1, isNew := sm.getSession("key1")
@@ -120,44 +150,31 @@ func TestSessionReuse(t *testing.T) {
 }
 
 func TestSessionWatcherReleasesIdleSession(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	s, _ := sm.getSession("k")
 	sm.leaveSession(s)
 
 	// With zero timeouts, watch should remove the idle session
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 }
 
 func TestSessionWatcherPreservesInUseSessions(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	s, _ := sm.getSession("k")
 	// Don't leave — session is in use
 
 	// Watcher should NOT remove in-use sessions
-	sm.watch(0, 0)
+	sm.watch(0)
 	checkStats(t, sm, SessionStatistics{1, 1, 1})
 
 	sm.leaveSession(s)
 }
 
-func TestSessionWatcherConnTimeout(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
-
-	s, _ := sm.getSession("k")
-	// Session has no DbConn — simulate that it was never acquired
-	sm.leaveSession(s)
-
-	// With a long conn timeout but zero session timeout, session is deleted
-	// (because DbConn is nil and sessionTimeout is 0)
-	sm.watch(0, time.Hour)
-	checkStats(t, sm, SessionStatistics{0, 0, 0})
-}
-
 func TestSessionNotReusedWhileInUse(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 
 	// Get session for key "k" — it's in use
 	s1, isNew := sm.getSession("k")
@@ -203,7 +220,7 @@ func TestSessionDisabledManager(t *testing.T) {
 }
 
 func TestSessionConcurrentAccess(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	const goroutines = 20
 	const iterations = 500
 
@@ -231,7 +248,7 @@ func TestSessionConcurrentAccess(t *testing.T) {
 }
 
 func TestSessionConcurrentWithWatcher(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	const goroutines = 10
 	const iterations = 200
 
@@ -247,7 +264,7 @@ func TestSessionConcurrentWithWatcher(t *testing.T) {
 			case <-done:
 				return
 			default:
-				sm.watch(5*time.Second, 1*time.Second)
+				sm.watch(5 * time.Second)
 				time.Sleep(time.Millisecond)
 			}
 		}
@@ -361,13 +378,13 @@ func BenchmarkSessionWithWatcher(b *testing.B) {
 // the next request with the same token would find it, skip verification, and
 // run with nil claims or a nil database.
 func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	s, isNew := sm.getSession("k")
 	if !isNew {
 		t.Fatal("expected a new session")
 	}
 	sm.dropSession(s)
-	sm.watch(time.Hour, time.Hour)
+	sm.watch(time.Hour)
 	checkStats(t, sm, SessionStatistics{0, 0, 0})
 	if _, isNew := sm.getSession("k"); !isNew {
 		t.Fatal("a dropped session must not be found again")
@@ -379,7 +396,7 @@ func TestDropSessionRemovesAHalfBuiltSession(t *testing.T) {
 // hands out transient sessions that are never stored, and leaving or dropping
 // one is a no-op instead of a nil-list panic.
 func TestSessionCapHandsOutTransientSessions(t *testing.T) {
-	sm := NewSessionManager(nil, true, nil)
+	sm := newTestSessionManager()
 	sm.SetMaxSessions(2)
 	a, _ := sm.getSession("a")
 	b, _ := sm.getSession("b")
@@ -392,7 +409,7 @@ func TestSessionCapHandsOutTransientSessions(t *testing.T) {
 	}
 	sm.leaveSession(c)
 	sm.dropSession(c)
-	sm.watch(time.Hour, time.Hour)
+	sm.watch(time.Hour)
 	checkStats(t, sm, SessionStatistics{2, 2, 2})
 	// once a stored session is gone, the slot is available again
 	sm.dropSession(a)
@@ -432,5 +449,53 @@ func TestClaimsExpired(t *testing.T) {
 	claims.ExpiresAt = jwt.NewNumericDate(now.Add(-30 * time.Second))
 	if claimsExpired(claims, now.Add(999*time.Millisecond)) {
 		t.Error("a fraction of a second past the edge is still within the skew")
+	}
+}
+
+// On shutdown the watcher emptied the session map without the manager's
+// lock while requests used it. A request in flight leaves its session after
+// the shutdown, and the requests after it get sessions that are not stored.
+// Run with -race.
+func TestShutdownLeavesTheRequestsInFlightAlone(t *testing.T) {
+	shutdown := make(chan struct{})
+	sm := newSessionManager(nil, true, shutdown)
+	inFlight, _ := sm.getSession("busy")
+	idle, _ := sm.getSession("idle")
+	sm.leaveSession(idle)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				s, _ := sm.getSession(fmt.Sprint("k", i%3))
+				sm.leaveSession(s)
+			}
+		}(i)
+	}
+	watcher := make(chan struct{})
+	go func() {
+		sm.sessionWatcher()
+		close(watcher)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	close(shutdown)
+	<-watcher
+	close(stop)
+	wg.Wait()
+
+	sm.leaveSession(inFlight)
+	if _, isNew := sm.getSession("idle"); !isNew {
+		t.Error("a session stored before the shutdown was found after it")
+	}
+	if total := sm.total; total != 0 {
+		t.Errorf("%d sessions stored after the shutdown", total)
 	}
 }

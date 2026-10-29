@@ -19,13 +19,14 @@ func TestPrepareStatement(t *testing.T) {
 		want  string
 	}{
 		{"no settings, transaction", nil, true, withSwitch, prepareTX},
+		{"no settings, batch", nil, true, withTxAccessMode, prepareLocal},
 		{"no settings, autocommit", nil, false, withAccessMode, prepareAuto},
 		{"transaction", two, true, withSwitch,
-			"SELECT set_config($1, $2, true), set_config($3, $4, true), set_config('role', $5, false), set_config('request.jwt.claims', $6, false)"},
+			"SELECT set_config('role', 'none', true), set_config($1, $2, true), set_config($3, $4, true), set_config('role', $5, true), set_config('request.jwt.claims', $6, true)"},
+		{"batch", two, true, withTxAccessMode,
+			"SELECT set_config('role', 'none', true), set_config($1, $2, true), set_config($3, $4, true), set_config('role', $5, true), set_config('request.jwt.claims', $6, true), set_config('transaction_read_only', $7, true)"},
 		{"autocommit", two, false, withAccessMode,
-			"SELECT set_config($1, $2, false), set_config($3, $4, false), set_config('role', $5, false), set_config('request.jwt.claims', $6, false), set_config('default_transaction_read_only', $7, false)"},
-		{"settings only", two, true, settingsOnly,
-			"SELECT set_config($1, $2, true), set_config($3, $4, true)"},
+			"SELECT set_config('role', 'none', true), set_config($1, $2, false), set_config($3, $4, false), set_config('role', $5, false), set_config('request.jwt.claims', $6, false), set_config('default_transaction_read_only', $7, false)"},
 	}
 	for _, tt := range tests {
 		if got := prepareStatement(tt.args, tt.local, tt.end); got != tt.want {

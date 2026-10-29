@@ -147,6 +147,9 @@ type Database struct {
 	// call info.Load(), the reloader calls info.Store(). Never copy Database by
 	// value (the atomic makes that unsafe).
 	info atomic.Pointer[SchemaInfo]
+	// statements says how the connections of the pool prepare the statements
+	// of a batch (see statementsInBatch)
+	statements int
 }
 
 // activate initializes a database and starts its connection pool
@@ -167,6 +170,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	config.MinConns = dbe.config.MinPoolConnections
 	config.MaxConns = dbe.config.MaxPoolConnections
 	config.ConnConfig.Tracer = dbe.dbtracer
+	db.statements = statementsInBatch(config.ConnConfig)
 	// The text form of a timestamp or a date (a field of a composite that
 	// arrives in text) is converted to what to_json prints on the assumption
 	// that it is ISO, the output style pgx assumes as well: pin it at startup
@@ -181,6 +185,7 @@ func (db *Database) activate(ctx context.Context) (err error) {
 	// starts another), so it reads nothing of the engine
 	searchPath := searchPathSet()
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		conn.PgConn().CustomData()[loginUserKey] = conn.PgConn().ParameterStatus("session_authorization")
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
 		// the composites below, so that a composite with such a field is
@@ -266,7 +271,7 @@ func (db *Database) refreshTable(ctx context.Context, name string) {
 
 // ReloadSchemaCache reloads the schema cache without restarting the server
 func (db *Database) ReloadSchemaCache(ctx context.Context) error {
-	conn, err := db.pool.Acquire(ctx)
+	conn, err := db.AcquireConnection(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire connection: %w", err)
 	}
@@ -296,6 +301,25 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 	return nil
 }
 
+// AcquireConnection takes a connection from the pool. Unless the acquire is a
+// request's (see the package's AcquireConnection), a connection used since
+// its last cleanup is cleaned first: a function may have left its role or
+// claims on the session, and an internal user (the schema reload, the
+// activation of a database, a library caller) would run as them. Every lease
+// counts as a use, a library caller's too: it may prepare the connection for
+// a role and call such a function as well.
 func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
-	return db.pool.Acquire(ctx)
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := conn.Conn().PgConn().CustomData()
+	if ctx.Value(requestAcquireKey{}) == nil && data[requestUsedKey] != nil {
+		if err := cleanSession(ctx, conn.Conn()); err != nil {
+			conn.Release()
+			return nil, err
+		}
+	}
+	data[requestUsedKey] = true
+	return conn, nil
 }
