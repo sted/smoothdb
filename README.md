@@ -280,6 +280,8 @@ Content-Range: 30-44/*
 
 If both limit or offset parameters and range are present, the latter has precedence.
 
+With `Prefer: count=exact` the total replaces the `*`. On a table, and on a STABLE or IMMUTABLE function, a ranged request reads the page and the total with two statements, so under READ COMMITTED a write committed between them can make the total differ from the page by that write (PostgREST reads both in one statement); a VOLATILE function is read once for both.
+
 ### Relationships
 
 You can include related resources in a single API call.
