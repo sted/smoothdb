@@ -1,5 +1,25 @@
 # Change Log
 
+## Unreleased
+
+### Added
+* **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests (a `DateStyle` keeps ISO output), and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
+* **JWT claims as in PostgREST** — `JWTRoleClaimKey` (a subset of PostgREST's JSONPath, the rest refused at startup; the default one with `LoginMode: "db"`), `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
+* **JWK set verification** — `JWTKeys` verifies tokens against a key catalog by `kid`, HS256 and ES256 at once; `JWTSecret` also takes a JWK or a JWK set, as in PostgREST.
+* **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.
+
+### Fixed
+* **Ranged `count=exact` on `/rpc`** — a VOLATILE function runs once, as in PostgREST (it wrote twice); a STABLE or IMMUTABLE one is counted like a table.
+* **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
+* **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
+* **Range status with `count=exact`** — 206 whenever the page is shorter than the total (`limit`, `offset`, `POST /rpc` too), an offset alone ends the range at the last row read, and an offset past the total answers PostgREST's `PGRST103` error.
+* **A first column named `__count`** — serialized like any other column in JSON and CSV, no longer taken for the total.
+
+### Changed
+* **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
+* **Tokens with a `kid`** — refused against a passphrase `JWTSecret`, which is a key without `kid` as in PostgREST.
+* **Go API** — `authn.MiddlewareConfig` replaces `JWTSecret()` with `JWTVerifier()` and adds `AuthErrorWriter()`.
+
 ## 0.10.2 - 2026-10-28
 
 ### Security
@@ -75,7 +95,7 @@
 * **Anonymous requests never run as the authenticator** — with `AllowAnon: true` and an empty `Database.AnonRole` the request ran as the connecting role with no `SET ROLE` and no claims GUC. It is now refused with `401 "Anonymous access is disabled"`, as PostgREST does; with a configured anon role the `request.jwt.claims` GUC is set for anonymous requests too.
 
 ### Fixed
-* **SQLSTATE to HTTP status** — the mapping follows PostgREST's `mapSQLtoHTTP`: an explicit list of codes and classes (foreign-key violation 409, read-only transaction 405, connection and resource errors 503, `PTxyz` chooses its status) and 400 for everything else, where a client-caused error (type mismatch, bad literal, violated constraint, `raise`) used to be a 500. `42501` stays 401 and the DDL "already exists" codes 409.
+* **SQLSTATE to HTTP status** — the mapping follows PostgREST's `mapSQLtoHTTP`: an explicit list of codes and classes (foreign-key violation 409, read-only transaction 405, connection and resource errors 503, `PTxyz` chooses its status) and 400 for everything else, where a client-caused error (type mismatch, bad literal, violated constraint, `raise`) used to be a 500. The DDL "already exists" codes are 409.
 * **Bulk insert with mismatched keys** — an array whose objects do not share one key set is refused with 400 (`All object keys must match`, as PostgREST) instead of silently dropping the keys the first object lacked. With `?columns=` the listed columns are inserted for every row, an absent key as NULL (it used to get the column default).
 * **`order=` on writes** — `order` now orders the representation of `POST`, `PATCH` and `DELETE`, as PostgREST does since 13.0; it was parsed and dropped. `limit`/`offset` on `PATCH`/`DELETE` stay ignored like in PostgREST, which dropped limited updates in the same release.
 * **Generated columns** — `attgenerated` is introspected: `$info` and the admin column listing report `"generated"` and `"readonly": true`, and writing such a column is refused with 400 and PostgreSQL's message (`428C9`) instead of a 500, as PostgREST does.

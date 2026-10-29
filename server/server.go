@@ -29,6 +29,7 @@ type Server struct {
 	tlsConfig         *tls.Config
 	router            *heligo.Router
 	sessionManager    *authn.SessionManager
+	jwtVerifier       *authn.JWTVerifier
 	shutdown          chan struct{}
 	shutdownCompleted chan struct{}
 	shutdownOnce      sync.Once
@@ -51,6 +52,11 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 		return nil, err
 	}
 
+	jwtVerifier, err := authn.NewJWTVerifier(jwtConfig(cfg))
+	if err != nil {
+		return nil, err
+	}
+
 	// Logger
 	logger := logging.InitLogger(&cfg.Logging)
 
@@ -67,6 +73,7 @@ func NewServerWithConfig(config map[string]any, configOpts *ConfigOptions) (*Ser
 	s := &Server{
 		Config:            cfg,
 		logger:            logger,
+		jwtVerifier:       jwtVerifier,
 		DBE:               dbe,
 		shutdown:          make(chan struct{}),
 		shutdownCompleted: make(chan struct{}),
@@ -222,8 +229,14 @@ func (s *Server) GetMainDatabase(ctx context.Context) (*database.Database, error
 	return s.DBE.GetMainDatabase(ctx)
 }
 
+// JWTSecret is the HMAC key that /token signs with: JWTSecret, decoded when
+// JWTSecretIsBase64 is set.
 func (s *Server) JWTSecret() string {
-	return s.Config.JWTSecret
+	return s.jwtVerifier.SigningSecret()
+}
+
+func (s *Server) JWTVerifier() *authn.JWTVerifier {
+	return s.jwtVerifier
 }
 
 func (s *Server) AllowAnon() bool {

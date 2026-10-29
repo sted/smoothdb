@@ -3,26 +3,29 @@ package database
 const DEFAULT_ANON = "anon"
 
 type Config struct {
-	URL                string   `comment:"Database URL"`
-	MinPoolConnections int32    `comment:"Miminum connections per pool (default: 10)"`
-	MaxPoolConnections int32    `comment:"Maximum connections per pool (default: 100)"`
-	AnonRole           string   `comment:"Anonymous role (default: '' for no anon)"`
-	AllowedDatabases   []string `comment:"Allowed databases (default: [] for all)"`
-	SchemaSearchPath   []string `comment:"Schema search path (default: [] for Postgres search path)"`
-	ExposedSchemas     []string `comment:"Schemas a Profile header may select, the first is the default (default: [] for every schema, the first of the search path as default)"`
-	TransactionMode    string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
-	AggregatesEnabled  bool     `comment:"Enable aggregate functions (default: true)"`
-	MaxRecursiveDepth  int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
+	URL                    string   `comment:"Database URL"`
+	MinPoolConnections     int32    `comment:"Miminum connections per pool (default: 10)"`
+	MaxPoolConnections     int32    `comment:"Maximum connections per pool (default: 100)"`
+	AnonRole               string   `comment:"Anonymous role (default: '' for no anon)"`
+	AllowedDatabases       []string `comment:"Allowed databases (default: [] for all)"`
+	SchemaSearchPath       []string `comment:"Schema search path (default: [] for Postgres search path)"`
+	ExposedSchemas         []string `comment:"Schemas a Profile header may select, the first is the default (default: [] for every schema, the first of the search path as default)"`
+	TransactionMode        string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
+	AggregatesEnabled      bool     `comment:"Enable aggregate functions (default: true)"`
+	MaxRecursiveDepth      int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
+	PoolAcquisitionTimeout int      `comment:"Seconds a request waits for a pool connection before answering 504, 0 to wait without a bound (default: 10)"`
+	MaxRows                int64    `comment:"Maximum rows a read answers, at the top level and in each embed, as PostgREST's db-max-rows (default: 0 for no limit)"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		URL:                "",
-		MinPoolConnections: 10,
-		MaxPoolConnections: 100,
-		AnonRole:           "",
-		TransactionMode:    "none",
-		AggregatesEnabled:  true,
-		MaxRecursiveDepth:  100,
+		URL:                    "",
+		MinPoolConnections:     10,
+		MaxPoolConnections:     100,
+		AnonRole:               "",
+		TransactionMode:        "none",
+		AggregatesEnabled:      true,
+		MaxRecursiveDepth:      100,
+		PoolAcquisitionTimeout: 10,
 	}
 }

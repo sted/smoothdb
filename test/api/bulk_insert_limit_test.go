@@ -55,7 +55,7 @@ func TestBulkInsertOverParameterLimit(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"count=exact"}},
 			Expected:        `[{"a":0}]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/33000"},
-			Status:          200,
+			Status:          206, // a page shorter than the total, as in PostgREST
 		},
 		{
 			Description: "with its values",

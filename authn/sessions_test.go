@@ -402,25 +402,35 @@ func TestSessionCapHandsOutTransientSessions(t *testing.T) {
 }
 
 // A session hit skips token verification, so the one thing verification would
-// have caught meanwhile must be checked by hand: the expiry.
+// have caught meanwhile must be checked by hand: the expiry, with the same 30 s
+// clock skew PostgREST allows (Auth/Jwt.hs:70-76, checkForErrors: a token is
+// expired when now - allowedSkewSeconds > exp).
 func TestClaimsExpired(t *testing.T) {
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	if claimsExpired(&Claims{}, now) {
 		t.Error("claims without exp never expire")
 	}
-	past := &Claims{}
-	past.ExpiresAt = jwt.NewNumericDate(now.Add(-time.Second))
-	if !claimsExpired(past, now) {
-		t.Error("exp in the past must be expired")
+	cases := []struct {
+		exp     time.Duration
+		expired bool
+	}{
+		{-31 * time.Second, true},
+		{-30 * time.Second, false}, // now - 30 > exp is false at the edge
+		{-time.Second, false},
+		{0, false},
+		{time.Second, false},
 	}
-	edge := &Claims{}
-	edge.ExpiresAt = jwt.NewNumericDate(now)
-	if !claimsExpired(edge, now) {
-		t.Error("exp == now is expired, as in the jwt validator")
+	for _, c := range cases {
+		claims := &Claims{}
+		claims.ExpiresAt = jwt.NewNumericDate(now.Add(c.exp))
+		if got := claimsExpired(claims, now); got != c.expired {
+			t.Errorf("exp = now %+v: expired %v, want %v", c.exp, got, c.expired)
+		}
 	}
-	future := &Claims{}
-	future.ExpiresAt = jwt.NewNumericDate(now.Add(time.Second))
-	if claimsExpired(future, now) {
-		t.Error("exp in the future is valid")
+	// the clock is read in whole seconds, as PostgREST floors it
+	claims := &Claims{}
+	claims.ExpiresAt = jwt.NewNumericDate(now.Add(-30 * time.Second))
+	if claimsExpired(claims, now.Add(999*time.Millisecond)) {
+		t.Error("a fraction of a second past the edge is still within the skew")
 	}
 }

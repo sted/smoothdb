@@ -120,6 +120,23 @@ func isoDateStyle(params map[string]string) string {
 	return "ISO, " + order
 }
 
+// searchPathSet is the set_config that gives a connection
+// Database.SchemaSearchPath, "" when none is configured. It is a session
+// setting set with SQL, not a startup parameter, which a pooler such as
+// PgBouncer refuses by default; so a RESET does not restore it, and the
+// release of an autocommit connection runs this instead (see roleSettings).
+func searchPathSet() string {
+	if len(dbe.config.SchemaSearchPath) == 0 {
+		return ""
+	}
+	// an escape-string literal, read the same whatever
+	// standard_conforming_strings says: a backslash or an apostrophe in a
+	// quoted schema name is escaped
+	path := strings.Join(dbe.config.SchemaSearchPath, ", ")
+	path = strings.NewReplacer(`\`, `\\`, "'", "''").Replace(path)
+	return "set_config('search_path', E'" + path + "', false)"
+}
+
 type Database struct {
 	DatabaseInfo
 	activation    chan struct{}
@@ -159,6 +176,10 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		config.ConnConfig.RuntimeParams = map[string]string{}
 	}
 	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
+	// built here: AfterConnect runs on the pool's goroutines, also after the
+	// engine that created the pool is replaced (a library or a test that
+	// starts another), so it reads nothing of the engine
+	searchPath := searchPathSet()
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
@@ -176,19 +197,8 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
 			})
 		}
-		var set string
-		var err error
-		if len(dbe.config.SchemaSearchPath) != 0 {
-			set = "set_config('search_path', '"
-			for i, schema := range dbe.config.SchemaSearchPath {
-				if i != 0 {
-					set += ", "
-				}
-				set += schema
-			}
-			set += "', false)"
-			_, err = conn.Exec(ctx, "SELECT "+set)
-			if err != nil {
+		if searchPath != "" {
+			if _, err := conn.Exec(ctx, "SELECT "+searchPath); err != nil {
 				return err
 			}
 		}

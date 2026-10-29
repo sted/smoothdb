@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/api"
 	"github.com/sted/smoothdb/authn"
 )
 
@@ -37,4 +38,10 @@ func (s *Server) MiddlewareWithDbName(dbname string) heligo.Middleware {
 
 func (s *Server) SessionStatistics() authn.SessionStatistics {
 	return s.sessionManager.Statistics()
+}
+
+// AuthErrorWriter reports the refusals of the auth middleware like the API's
+// own errors: the same status mapping, body and verbosity.
+func (s *Server) AuthErrorWriter() authn.ErrorWriter {
+	return api.WriteAuthError
 }

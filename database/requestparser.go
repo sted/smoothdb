@@ -124,6 +124,15 @@ type QueryOptions struct {
 	Count                string // exact, planned, estimated
 	JQ                   string // jq program from the jq= query parameter
 	JQArgs               string // raw JSON object from the jq_args= query parameter
+	// Total is the total of a counted read (Count set), written by the
+	// executor: the rows that the request selects, whatever its range
+	Total int64
+	// set by buildAfterSelect for a ranged count: the statement that answers
+	// the total, sent in the same batch after the page (see runRead), and,
+	// when the page stores the total, the statement that clears it first
+	totalQuery   string
+	totalValues  []any
+	totalPrelude string
 }
 
 // RequestParser is the interface used to parse the query string in the request and

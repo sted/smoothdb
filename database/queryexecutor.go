@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type RangeError struct {
@@ -75,15 +77,22 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	if options.ContentType == "unknown/unknown" {
 		return nil, 0, &ContentTypeError{msg: "Content type not available"}
 	}
+	return runRead(ctx, query, values, false, options.Singular)
+}
+
+// runRead runs a query and serializes its rows in the content type of the
+// request. It answers the serialized rows and their number; with a count
+// it sets options.Total, the number of rows read or, for a ranged count, the
+// answer of options.totalQuery, which it sends in the same batch after the
+// query (and options.totalPrelude, if any, before it): one round trip, and
+// the page needs no row of its own to carry the total (see buildAfterSelect).
+func runRead(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
+	gi := GetSmoothContext(ctx)
+	options := &gi.QueryOptions
 	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
 		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
 	}
 	info := gi.Db.info.Load()
-	rows, err := gi.Conn.Query(ctx, query, values...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
 	var serializer TextSerializer
 	switch options.ContentType {
 	case "text/csv":
@@ -93,7 +102,50 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
-	return serializer.Serialize(rows, false, options.Singular, info)
+	if options.totalQuery == "" {
+		rows, err := gi.Conn.Query(ctx, query, values...)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer rows.Close()
+		out, n, err := serializer.Serialize(rows, scalar, single, info)
+		if err == nil && options.Count != "" {
+			options.Total = n
+		}
+		return out, n, err
+	}
+	batch := &pgx.Batch{}
+	if options.totalPrelude != "" {
+		batch.Queue(options.totalPrelude)
+	}
+	batch.Queue(query, values...)
+	batch.Queue(options.totalQuery, options.totalValues...)
+	br := gi.Conn.SendBatch(ctx, batch)
+	// closed again below, after the total: with autocommit the end of the
+	// batch is the commit, and its error (a deferred constraint) is the
+	// request's; this one covers the early returns
+	defer br.Close()
+	if options.totalPrelude != "" {
+		if _, err := br.Exec(); err != nil {
+			return nil, 0, err
+		}
+	}
+	rows, err := br.Query()
+	if err != nil {
+		return nil, 0, err
+	}
+	out, n, err := serializer.Serialize(rows, scalar, single, info)
+	rows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := br.QueryRow().Scan(&options.Total); err != nil {
+		return nil, 0, err
+	}
+	if err := br.Close(); err != nil {
+		return nil, 0, err
+	}
+	return out, n, nil
 }
 
 func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
@@ -252,11 +304,6 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := gi.Conn.Query(ctx, exec, values...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
 	var scalar bool
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
@@ -265,14 +312,5 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		}
 	}
 	single := f != nil && !f.ReturnIsSet
-	var serializer TextSerializer
-	switch options.ContentType {
-	case "text/csv":
-		serializer = &CSVSerializer{}
-	case "application/octet-stream":
-		serializer = &BinarySerializer{}
-	default:
-		serializer = gi.QueryBuilder.preferredSerializer()
-	}
-	return serializer.Serialize(rows, scalar, single, info)
+	return runRead(ctx, exec, values, scalar, single)
 }

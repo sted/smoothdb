@@ -26,7 +26,9 @@ func TestMain(m *testing.M) {
 	if url := os.Getenv("SMOOTHDB_DATABASE_URL"); url != "" {
 		config.URL = url
 	}
-	dbe, err = InitDbEngine(config, nil)
+	// InitDbEngine sets dbe itself, before the pool it creates starts
+	// connecting: assigning its result again races with those connections.
+	_, err = InitDbEngine(config, nil)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)

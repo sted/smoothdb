@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -56,15 +58,37 @@ func SetReadOnly(ctx context.Context) error {
 	return setSessionReadOnly(ctx, conn, true)
 }
 
+// ErrAcquisitionTimeout is the error of an acquire that ran out of
+// PoolAcquisitionTimeout, with PostgREST's message (PGRST003).
+var ErrAcquisitionTimeout = errors.New("Timed out acquiring connection from connection pool.")
+
 // AcquireConnection takes a connection from a database pool.
 // If the db parameter is nil, it uses the main db pool.
+// The wait is bounded by PoolAcquisitionTimeout (see acquireBounded).
 func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err error) {
-	if db != nil {
-		conn, err = db.AcquireConnection(ctx)
-	} else {
-		conn, err = dbe.AcquireConnection(ctx)
+	if db == nil {
+		db = dbe.mainDb
 	}
+	return acquireBounded(ctx, db)
+}
+
+// acquireBounded takes a connection from the pool of db, waiting at most
+// PoolAcquisitionTimeout, as PostgREST bounds it by
+// db-pool-acquisition-timeout: a saturated pool answers instead of holding the
+// request until the client gives up. Every acquire on the path of a request
+// goes through it.
+func acquireBounded(ctx context.Context, db *Database) (*DbPoolConn, error) {
+	actx := ctx
+	if timeout := dbe.config.PoolAcquisitionTimeout; timeout > 0 {
+		var cancel context.CancelFunc
+		actx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+	}
+	conn, err := db.AcquireConnection(actx)
 	if err != nil {
+		if ctx.Err() == nil && errors.Is(actx.Err(), context.DeadlineExceeded) {
+			return nil, ErrAcquisitionTimeout
+		}
 		return nil, err
 	}
 	return conn, nil
@@ -77,13 +101,26 @@ func AcquireConnection(ctx context.Context, db *Database) (conn *DbPoolConn, err
 // whatever it reaches cannot write: the transaction is begun READ ONLY, or,
 // with TransactionMode "none", the session is set read-only for it and back
 // for the next write on the same connection.
+//
+// The role's own settings (ALTER ROLE ... SET) apply to the request, as in
+// PostgREST, in the statement that switches the role: no extra round trip.
+// In a transaction they are transaction-local, so they end with it whatever
+// becomes of the connection, and the transaction takes the role's isolation.
+// With autocommit there is no transaction to hold them: they are session
+// settings, which the connection keeps while its session (same token, so same
+// role) retains it, and which ReleaseConnection resets before the pool hands
+// it to anyone else.
 func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claims string, newAcquire bool, readOnly bool) error {
+	rc := roleConfigOf(role)
 	// transaction
 	needTX := dbe.config.TransactionMode != "none"
 	if needTX {
 		begin := "BEGIN"
+		if rc != nil && rc.isolation != "" {
+			begin += " ISOLATION LEVEL " + rc.isolation
+		}
 		if readOnly {
-			begin = "BEGIN READ ONLY"
+			begin += " READ ONLY"
 		}
 		_, err := conn.Exec(ctx, begin)
 		if err != nil {
@@ -93,22 +130,30 @@ func PrepareConnection(ctx context.Context, conn *DbPoolConn, role string, claim
 
 	// set role and other configurations only on the first acquire
 	if newAcquire && role != "" {
-		// role comes from the JWT claim; quote it as an identifier so it cannot
-		// break out of the SET ROLE statement (it is otherwise unvalidated).
-		_, err := conn.Exec(ctx, "SET ROLE "+quote(role))
+		// One statement: the role's settings, the switch (set_config takes the
+		// role from the JWT claim as a value, nothing in it is parsed as SQL),
+		// the claims and, with autocommit, the access mode, so that a
+		// connection taken from the pool always starts in the requested one.
+		// With autocommit the statement is its own transaction: a refused
+		// switch rolls back the settings it follows.
+		var err error
+		switch {
+		case needTX && rc != nil:
+			_, err = conn.Exec(ctx, rc.sqlTX, append(rc.txArgs[:len(rc.txArgs):len(rc.txArgs)], role, claims)...)
+		case needTX:
+			_, err = conn.Exec(ctx, prepareTX, role, claims)
+		case rc != nil:
+			_, err = conn.Exec(ctx, rc.sqlAuto, append(rc.autoArgs[:len(rc.autoArgs):len(rc.autoArgs)], role, claims, onOff(readOnly))...)
+		default:
+			_, err = conn.Exec(ctx, prepareAuto, role, claims, onOff(readOnly))
+		}
 		if err != nil {
 			return err
 		}
-
-		if needTX {
-			set := "SELECT set_config($1, $2, false)"
-			_, err = conn.Exec(ctx, set, "request.jwt.claims", claims)
-		} else {
-			// the access mode travels with the claims, in the same round trip:
-			// a connection taken from the pool always starts in the requested one
-			set := "SELECT set_config($1, $2, false), set_config($3, $4, false)"
-			_, err = conn.Exec(ctx, set, "request.jwt.claims", claims, readOnlyGUC, onOff(readOnly))
-		}
+	} else if needTX && rc != nil && rc.sqlTXSettings != "" {
+		// a connection kept by its session, already switched: the settings
+		// last only as long as each transaction
+		_, err := conn.Exec(ctx, rc.sqlTXSettings, rc.txArgs...)
 		if err != nil {
 			return err
 		}
@@ -132,8 +177,9 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, rese
 	if resetRole && !hasTX {
 		// one round trip: the role reset and, so that the pool never hands out
 		// a read-only connection (the schema reload and library users take
-		// connections without PrepareConnection), the access mode reset
-		_, err := conn.Exec(ctx, "SET ROLE NONE; RESET "+readOnlyGUC)
+		// connections without PrepareConnection), the access mode reset, and
+		// the reset of the role settings PrepareConnection applied
+		_, err := conn.Exec(ctx, "SET ROLE NONE; RESET "+readOnlyGUC+roleSettingsReset())
 		if err != nil {
 			return err
 		}

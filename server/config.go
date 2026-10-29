@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/config"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/jqeval"
@@ -31,7 +32,11 @@ type Config struct {
 	AuthURL                 string          `comment:"URL of the external AuthN service (default: '')"`
 	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
-	JWTSecret               string          `comment:"Secret for JWT tokens"`
+	JWTSecret               string          `comment:"Secret for JWT tokens: a passphrase, a JWK or a JWK set"`
+	JWTSecretIsBase64       bool            `comment:"JWTSecret is base64-encoded (default: false)"`
+	JWTAud                  string          `comment:"Audience the JWT aud claim must contain, when present (default: '' for any)"`
+	JWTRoleClaimKey         string          `comment:"JSONPath of the role in the JWT claims (default: $.role)"`
+	JWTKeys                 string          `comment:"Key catalog verifying JWT tokens instead of JWTSecret: a JSON array of JWKs with kid (default: '')"`
 	SessionMode             string          `comment:"Session mode: none, role, claims (default: role)"`
 	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
@@ -67,6 +72,10 @@ func defaultConfig() *Config {
 		LoginRateLimit:          30,
 		AllowAnon:               false,
 		JWTSecret:               "",
+		JWTSecretIsBase64:       false,
+		JWTAud:                  "",
+		JWTRoleClaimKey:         authn.DefaultRoleClaimKey,
+		JWTKeys:                 "",
 		SessionMode:             "role",
 		MaxSessions:             10000,
 		EnableAdminRoute:        false,
@@ -106,6 +115,22 @@ func getEnvironment(c *Config) {
 	if jwtSecret != "" {
 		c.JWTSecret = jwtSecret
 	}
+	jwtSecretIsBase64 := os.Getenv("SMOOTHDB_JWT_SECRET_IS_BASE64")
+	if jwtSecretIsBase64 != "" {
+		c.JWTSecretIsBase64 = strings.ToLower(jwtSecretIsBase64) == "true"
+	}
+	jwtAud := os.Getenv("SMOOTHDB_JWT_AUD")
+	if jwtAud != "" {
+		c.JWTAud = jwtAud
+	}
+	jwtRoleClaimKey := os.Getenv("SMOOTHDB_JWT_ROLE_CLAIM_KEY")
+	if jwtRoleClaimKey != "" {
+		c.JWTRoleClaimKey = jwtRoleClaimKey
+	}
+	jwtKeys := os.Getenv("SMOOTHDB_JWT_KEYS")
+	if jwtKeys != "" {
+		c.JWTKeys = jwtKeys
+	}
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
@@ -125,6 +150,13 @@ func getEnvironment(c *Config) {
 	allowAnon := os.Getenv("SMOOTHDB_ALLOW_ANON")
 	if allowAnon != "" {
 		c.AllowAnon = strings.ToLower(allowAnon) == "true"
+	}
+	if maxRows := os.Getenv("SMOOTHDB_DATABASE_MAX_ROWS"); maxRows != "" {
+		if n, err := strconv.ParseInt(maxRows, 10, 64); err == nil && n >= 0 {
+			c.Database.MaxRows = n
+		} else {
+			fmt.Println("Warning: SMOOTHDB_DATABASE_MAX_ROWS is not a non-negative integer, ignored")
+		}
 	}
 	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {
@@ -154,8 +186,13 @@ Server Options:
 
 Environment Variables:
 	SMOOTHDB_DATABASE_URL         Database URL
+	SMOOTHDB_DATABASE_MAX_ROWS    Maximum rows a read answers, as PostgREST's db-max-rows (0 for no limit)
 	SMOOTHDB_AUTH_URL             URL of the external AuthN service
 	SMOOTHDB_JWT_SECRET           Secret for JWT tokens
+	SMOOTHDB_JWT_SECRET_IS_BASE64 JWTSecret is base64-encoded (true/false)
+	SMOOTHDB_JWT_AUD              Audience the JWT aud claim must contain
+	SMOOTHDB_JWT_ROLE_CLAIM_KEY   JSONPath of the role in the JWT claims
+	SMOOTHDB_JWT_KEYS             Key catalog verifying JWT tokens (JSON array of JWKs)
 	SMOOTHDB_DEBUG                Enable debug mode (true/false)
 	SMOOTHDB_ALLOW_ANON           Allow unauthenticated connections (true/false)
 	SMOOTHDB_ENABLE_ADMIN_ROUTE   Enable administration of databases and tables (true/false)
@@ -254,6 +291,17 @@ func randomSecret() string {
 	return hex.EncodeToString(b)
 }
 
+// jwtConfig is the JWT part of the configuration.
+func jwtConfig(cfg *Config) authn.JWTConfig {
+	return authn.JWTConfig{
+		Secret:         cfg.JWTSecret,
+		SecretIsBase64: cfg.JWTSecretIsBase64,
+		Aud:            cfg.JWTAud,
+		RoleClaimKey:   cfg.JWTRoleClaimKey,
+		Keys:           cfg.JWTKeys,
+	}
+}
+
 func checkConfig(cfg *Config) error {
 	switch cfg.SessionMode {
 	case "none", "role", "claims":
@@ -264,9 +312,36 @@ func checkConfig(cfg *Config) error {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
 	}
-	if cfg.LoginMode != "none" && cfg.JWTSecret == "" {
+	// "db" signs the /token tokens with JWTSecret; the other modes only
+	// verify, which JWTKeys can do alone
+	if cfg.LoginMode != "none" && cfg.JWTSecret == "" && (cfg.LoginMode == "db" || cfg.JWTKeys == "") {
 		return fmt.Errorf("'JWTSecret' is empty while authentication is enabled (LoginMode: %s): "+
 			"an empty secret lets anyone forge tokens for any role; set 'JWTSecret' or SMOOTHDB_JWT_SECRET", cfg.LoginMode)
+	}
+	verifier, err := authn.NewJWTVerifier(jwtConfig(cfg))
+	if err != nil {
+		return fmt.Errorf("invalid JWT configuration ('JWTSecret', 'JWTSecretIsBase64', 'JWTAud', 'JWTRoleClaimKey', 'JWTKeys'): %w", err)
+	}
+	if cfg.LoginMode == "db" && verifier.SigningSecret() == "" {
+		return fmt.Errorf("'JWTSecret' has no HMAC key for /token to sign with: " +
+			"a JWK or JWK set needs exactly one oct key that verifies HS256")
+	}
+	// /token puts the role in a top-level "role" claim, the one key that
+	// reads it (in either spelling)
+	if cfg.LoginMode == "db" {
+		switch cfg.JWTRoleClaimKey {
+		case "", authn.DefaultRoleClaimKey, ".role":
+		default:
+			return fmt.Errorf("'JWTRoleClaimKey' %q cannot read the role of the tokens /token issues with LoginMode \"db\", "+
+				"a top-level \"role\" claim: use %s, or another LoginMode", cfg.JWTRoleClaimKey, authn.DefaultRoleClaimKey)
+		}
+	}
+	if cfg.LoginMode == "db" && cfg.JWTKeys != "" && !verifier.SignsWithCatalogKey() {
+		fmt.Println("Warning: 'JWTKeys' holds no oct key equal to 'JWTSecret': the tokens of /token will not verify")
+	}
+	if k, _ := authn.ParseRoleClaimKey(cfg.JWTRoleClaimKey); k != nil && k.Deprecated() {
+		fmt.Printf("Warning: 'JWTRoleClaimKey' %q uses the deprecated JSPath syntax of PostgREST 15; "+
+			"use the JSONPath form (the subset in the README), e.g. $.role\n", cfg.JWTRoleClaimKey)
 	}
 	if cfg.CORSAllowCredentials {
 		for _, origin := range cfg.CORSAllowedOrigins {

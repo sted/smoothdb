@@ -210,7 +210,7 @@ func Execute(t *testing.T, config Config, tests []Test) {
 		}
 		if test.ExpectedHeaders != nil {
 			for k, v := range test.ExpectedHeaders {
-				header := (*headers)[k]
+				header := (*headers)[http.CanonicalHeaderKey(k)]
 				var first string
 				if header != nil {
 					first = header[0]
