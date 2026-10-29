@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -168,7 +169,11 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 			session.DbConn = nil
 		}
 		dbconn, err = database.AcquireConnection(ctx, db)
-		if err != nil {
+		if errors.Is(err, database.ErrAcquisitionTimeout) {
+			// PostgREST's AcquisitionTimeoutUsageError
+			return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
+				Message: err.Error()}
+		} else if err != nil {
 			// PostgREST's ConnectionUsageError: the database is unreachable
 			return nil, nil, false, &Error{Status: http.StatusServiceUnavailable, Code: "PGRST000",
 				Message: "Database connection error.", Err: err}

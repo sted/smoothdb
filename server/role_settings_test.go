@@ -107,10 +107,11 @@ func TestRoleSettingsApplyToTheirRequestsOnly(t *testing.T) {
 			}
 
 			// the statement timeout is in force: PostgREST answers 500 57014
+			// (the time is not a measure: in "role" mode the request first
+			// waits for the connection the previous session retains)
 			req, _ := http.NewRequest("POST", base+"/rpc/authz_sleep", strings.NewReader(`{"s": 2}`))
 			req.Header.Set("Authorization", "Bearer "+user)
 			req.Header.Set("Content-Type", "application/json")
-			start := time.Now()
 			resp, err := slowClient.Do(req)
 			if err != nil {
 				t.Fatal(err)
@@ -119,9 +120,6 @@ func TestRoleSettingsApplyToTheirRequestsOnly(t *testing.T) {
 			resp.Body.Close()
 			if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), `"57014"`) {
 				t.Errorf("sleep past the role's statement timeout: got %d %s", resp.StatusCode, body)
-			}
-			if elapsed := time.Since(start); elapsed > 1500*time.Millisecond {
-				t.Errorf("the sleep ran %v: the statement timeout did not stop it", elapsed)
 			}
 			if got := settingsOf(t, base, ""); got != defaults {
 				t.Errorf("anonymous after the timeout: got %+v, want %+v", got, defaults)

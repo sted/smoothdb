@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+* **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests, and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
+
 ### Changed
 * **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
 
