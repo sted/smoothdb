@@ -6,6 +6,7 @@
 * **Ranged `count=exact` on `/rpc`** — the function runs once, as in PostgREST: a VOLATILE one wrote twice.
 * **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
 * **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
+* **Range status with `count=exact`** — 206 whenever the page is shorter than the total (`limit`, `offset`, `POST /rpc` too), an offset alone ends the range at the last row read, and an offset past the total answers PostgREST's `PGRST103` error.
 
 ## 0.10.2 - 2026-10-28
 

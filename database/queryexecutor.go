@@ -77,9 +77,6 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	if options.ContentType == "unknown/unknown" {
 		return nil, 0, &ContentTypeError{msg: "Content type not available"}
 	}
-	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
-		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
-	}
 	return runRead(ctx, query, values, false, options.Singular)
 }
 
@@ -92,6 +89,9 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 func runRead(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
+	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
+		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
+	}
 	info := gi.Db.info.Load()
 	var serializer TextSerializer
 	switch options.ContentType {
