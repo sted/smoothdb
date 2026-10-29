@@ -163,10 +163,15 @@ const (
 // to the authenticator is what lets it set a superuser setting, so it has to
 // come before the switch. With no settings it is prepareTX, prepareLocal or
 // prepareAuto. local makes every set_config of the statement
-// transaction-local.
+// transaction-local. The settings are applied as the authenticator: a role a
+// function of an earlier request left on the session is set aside first,
+// for the statement only.
 func prepareStatement(args []any, local bool, end int) string {
 	var b strings.Builder
 	b.WriteString("SELECT ")
+	if len(args) > 0 {
+		b.WriteString("set_config('role', 'none', true), ")
+	}
 	p := 1
 	for ; p < len(args); p += 2 {
 		if p > 1 {
