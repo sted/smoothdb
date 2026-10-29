@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/sted/smoothdb/database"
 )
 
 // residueSetup adds to authzSetup the functions a client calls to leave its
@@ -21,6 +24,7 @@ func residueSetup(t *testing.T) {
 		"DROP FUNCTION IF EXISTS authz_whoami()",
 		"DROP FUNCTION IF EXISTS authz_poison(text, text)",
 		"DROP FUNCTION IF EXISTS authz_become(text)",
+		"DROP FUNCTION IF EXISTS authz_ro()",
 	}, []string{
 		`CREATE FUNCTION authz_whoami() RETURNS json LANGUAGE sql AS $$
 			SELECT json_build_object('user', current_user,
@@ -31,6 +35,9 @@ func residueSetup(t *testing.T) {
 			$$`,
 		`CREATE FUNCTION authz_become(u text) RETURNS text LANGUAGE sql AS $$
 			SELECT set_config('session_authorization', u, false)
+			$$`,
+		`CREATE FUNCTION authz_ro() RETURNS text LANGUAGE sql AS $$
+			SELECT set_config('default_transaction_read_only', 'on', false)
 			$$`,
 	})
 }
@@ -211,5 +218,86 @@ func TestPooledConnectionKeepsNoSessionAuthorization(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The cleanup of a connection runs when the request ends. It ran inside the
+// request's transaction, before its COMMIT or ROLLBACK: a rolled back
+// request (Prefer: tx=rollback) undid it, together with the record that the
+// connection needed one, and the next internal user of the pool got the role
+// and claims a function of an earlier request had left on the session.
+func TestCleanupOutlivesARolledBackTransaction(t *testing.T) {
+	residueSetup(t)
+	s := newAuthzServer(t, "8173", map[string]any{
+		"SessionMode":                 "none",
+		"Database.TransactionMode":    "commit-allow-override",
+		"Database.MinPoolConnections": int32(1),
+		"Database.MaxPoolConnections": int32(1),
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	base := "http://localhost:8173/api/postgres"
+	user := signClaims(t, map[string]any{"role": "authz_user", "sub": "me"}, postgrestJWTSecret)
+	poison(t, base+"/rpc/authz_poison?r=authz_anon&c=%7B%22sub%22%3A%22other%22%7D", user)
+	// a request whose function leaves a setting the release resets, rolled back
+	req, _ := http.NewRequest("POST", base+"/rpc/authz_ro", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+user)
+	req.Header.Set("Prefer", "tx=rollback")
+	resp, err := slowClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("authz_ro: %d %s", resp.StatusCode, body)
+	}
+	if session, current, claims := identityOf(t, s); session != "authz_authn" || current != "authz_authn" || claims != "" {
+		t.Errorf("after a rolled back request: the pool hands out %s/%s with claims %q", session, current, claims)
+	}
+}
+
+// database.AcquireConnection is exported: a library user takes a connection
+// with it and runs its own statements, with no request variables. It was the
+// middleware's acquire, which skips the cleanup since a request applies its
+// own role and claims: the library user got whatever a function of an
+// earlier request had left on the session.
+func TestLibraryAcquireGetsACleanConnection(t *testing.T) {
+	residueSetup(t)
+	s := newAuthzServer(t, "8174", map[string]any{
+		"SessionMode":                 "none",
+		"Database.MinPoolConnections": int32(1),
+		"Database.MaxPoolConnections": int32(1),
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	base := "http://localhost:8174/api/postgres"
+	user := signClaims(t, map[string]any{"role": "authz_user", "sub": "me"}, postgrestJWTSecret)
+	// twice: the second time from the connection's statement cache
+	for i := 0; i < 2; i++ {
+		poison(t, base+"/rpc/authz_poison?r=authz_anon&c=%7B%22sub%22%3A%22other%22%7D", user)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		conn, err := database.AcquireConnection(ctx, nil)
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		var current, claims string
+		err = conn.QueryRow(ctx, "SELECT current_user::text, coalesce(current_setting('request.jwt.claims', true), '')").Scan(&current, &claims)
+		conn.Release()
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current != "authz_authn" || claims != "" {
+			t.Errorf("a library acquire (%d) got %s with claims %q", i, current, claims)
+		}
 	}
 }

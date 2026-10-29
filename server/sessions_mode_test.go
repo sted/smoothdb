@@ -48,7 +48,8 @@ func TestSessionModeConnectionRetention(t *testing.T) {
 		port      string
 		available bool // is the only connection back in the pool right after a request?
 	}{
-		{"role", "8097", false},
+		// "role" is a deprecated alias of "claims": it keeps no connection
+		{"role", "8097", true},
 		{"claims", "8098", true},
 	}
 	for _, c := range cases {

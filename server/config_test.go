@@ -68,6 +68,15 @@ func TestCheckConfigValidatesSessionMode(t *testing.T) {
 	}
 }
 
+// The default SessionMode caches the verified claims and keeps no
+// connection: "role", which kept the prepared connection on the session, is a
+// deprecated alias of it.
+func TestSessionModeDefaultsToClaims(t *testing.T) {
+	if got := defaultConfig().SessionMode; got != "claims" {
+		t.Errorf("default SessionMode: got %q, want \"claims\"", got)
+	}
+}
+
 // The JWT settings of PostgREST (jwt-role-claim-key, jwt-aud,
 // jwt-secret-is-base64) are checked at startup, as PostgREST refuses to start
 // on an invalid value, before the database check.

@@ -138,10 +138,21 @@ func checkBurst(t *testing.T, res *loadResult, clients []whoClient, bound time.D
 // which keeps no connection between requests, serves all of them. A waiting
 // request must get the connection a session of its token leaves.
 func TestRoleSessionsOfOneTokenBeyondThePool(t *testing.T) {
-	_, base := roleSessionsServer(t, "8164")
+	s, base := roleSessionsServer(t, "8164")
 	clients := []whoClient{{"anonymous", "", "authz_anon", ""}}
 	res := burst(t, base, clients, 50, 4*time.Second)
 	checkBurst(t, res, clients, 2*time.Second)
+	// "role" is now an alias of "claims": no session keeps a connection, the
+	// whole pool is free as soon as the requests are answered
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	for i := 0; i < 10; i++ {
+		conn, err := s.DBE.AcquireConnection(ctx)
+		if err != nil {
+			t.Fatalf("connection %d of 10 is still kept by a session: %v", i+1, err)
+		}
+		defer conn.Release()
+	}
 }
 
 // The same with many tokens, more than the pool has connections, under two
