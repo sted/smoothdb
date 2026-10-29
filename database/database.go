@@ -178,6 +178,10 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		config.ConnConfig.RuntimeParams = map[string]string{}
 	}
 	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
+	// built here: AfterConnect runs on the pool's goroutines, also after the
+	// engine that created the pool is replaced (a library or a test that
+	// starts another), so it reads nothing of the engine
+	searchPath := searchPathSet()
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
@@ -195,8 +199,8 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
 			})
 		}
-		if set := searchPathSet(); set != "" {
-			if _, err := conn.Exec(ctx, "SELECT "+set); err != nil {
+		if searchPath != "" {
+			if _, err := conn.Exec(ctx, "SELECT "+searchPath); err != nil {
 				return err
 			}
 		}
