@@ -147,7 +147,11 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
 			db, err = m.GetDatabase(ctx, dbname)
-			if err != nil {
+			if errors.Is(err, database.ErrAcquisitionTimeout) {
+				// activating the database read it from a saturated main pool
+				return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
+					Message: err.Error()}
+			} else if err != nil {
 				return nil, nil, false, &Error{Status: http.StatusNotFound, Message: err.Error(), Err: err}
 			}
 			session.Db = db
@@ -202,7 +206,11 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 
 func (m middleware) releaseSession(ctx context.Context, status int, session *Session) {
 	var err error
-	httpErr := status >= http.StatusBadRequest
+	// An error status rolls the transaction back, except a 416: like
+	// PostgREST (Response.hs, actionResponse), the 416 of an offset past the
+	// total is the answer of a call that ran, and its writes commit. The 416
+	// of a Range header refused before execution has nothing to commit.
+	httpErr := status >= http.StatusBadRequest && status != http.StatusRequestedRangeNotSatisfiable
 	// Release the connection only if:
 	// - the sessionmanager is not enabled
 	// - the connection has an open transaction

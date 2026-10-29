@@ -118,6 +118,9 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	batch.Queue(query, values...)
 	batch.Queue(options.totalQuery, options.totalValues...)
 	br := gi.Conn.SendBatch(ctx, batch)
+	// closed again below, after the total: with autocommit the end of the
+	// batch is the commit, and its error (a deferred constraint) is the
+	// request's; this one covers the early returns
 	defer br.Close()
 	rows, err := br.Query()
 	if err != nil {
@@ -129,6 +132,9 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 		return nil, 0, err
 	}
 	if err := br.QueryRow().Scan(&options.Total); err != nil {
+		return nil, 0, err
+	}
+	if err := br.Close(); err != nil {
 		return nil, 0, err
 	}
 	return out, n, nil

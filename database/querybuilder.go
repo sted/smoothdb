@@ -1728,8 +1728,9 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 const totalSetting = "smoothdb.total"
 
 // buildAfterSelect completes a read: the source (from), its joins, the WHERE,
-// GROUP BY, ORDER BY, LIMIT and OFFSET. call says that the source is a
-// function call, FROM fn(...) t.
+// GROUP BY, ORDER BY, LIMIT and OFFSET. once says that the source is a call
+// to a function that must run once, FROM fn(...) t: a VOLATILE function, or
+// one missing from the cache.
 //
 // The total of a ranged count (count=exact with a limit, an offset or a Range
 // header) is PostgREST's readPlanToCountQuery: the root rows that pass the
@@ -1742,14 +1743,15 @@ const totalSetting = "smoothdb.total"
 // executor sends in the same batch (options.totalQuery): the page is the
 // query a request without a count runs, so its rows and their order are the
 // same, and an empty page is empty. On a table the second statement counts
-// the table again, as PostgREST's count CTE does. A function must run once
-// (PostgREST reads both from its pgrst_source CTE): the page reads it through
-// a materialized CTE and stores the count of that CTE in totalSetting, from
-// a scalar subquery that PostgreSQL evaluates once, as a one-time filter,
-// before the first row; the second statement reads the setting back. With
-// limit=0 PostgreSQL reads nothing for the page, and the second statement
-// counts the function itself.
-func buildAfterSelect(query, from string, call bool, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+// the table again, as PostgREST's count CTE does, and so on a STABLE or
+// IMMUTABLE function, which PostgreSQL may inline into both statements. A
+// VOLATILE function must run once (PostgREST reads both from its
+// pgrst_source CTE): the page reads it through a materialized CTE and stores
+// the count of that CTE in totalSetting, from a scalar subquery that
+// PostgreSQL evaluates once, as a one-time filter, before the first row; the
+// second statement reads the setting back. With limit=0 PostgreSQL reads
+// nothing for the page, and the second statement counts the function itself.
+func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	options.totalQuery, options.totalValues = "", nil
 	var limit int64 = -1
 	hasLimit := parts.limit != "" || options.HasRange && options.RangeMax != -1
@@ -1788,8 +1790,8 @@ func buildAfterSelect(query, from string, call bool, joins, whereClause, groupBy
 		if len(conds) > 0 {
 			countWhere = " WHERE " + strings.Join(conds, " AND ")
 		}
-		if !call || limit == 0 {
-			options.totalQuery = "SELECT COUNT(*) " + from + countWhere
+		if !once || limit == 0 {
+			options.totalQuery = "SELECT COUNT(*) " + strings.TrimSpace(from) + countWhere
 			options.totalValues = valueList
 		} else {
 			query = "WITH __source AS MATERIALIZED (SELECT * " + strings.TrimSpace(from) + ") " + query
@@ -1800,7 +1802,11 @@ func buildAfterSelect(query, from string, call bool, joins, whereClause, groupBy
 			} else {
 				whereClause = gate
 			}
-			options.totalQuery = "SELECT current_setting('" + totalSetting + "')::bigint"
+			// a filter that PostgreSQL folds to a constant false drops the
+			// one-time filter with it, and the total stays unset (or '', the
+			// value of a setting defined earlier in the session): the count
+			// over a false filter is 0
+			options.totalQuery = "SELECT coalesce(nullif(current_setting('" + totalSetting + "', true), ''), '0')::bigint"
 		}
 	}
 
@@ -2300,7 +2306,8 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, true, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
+	once := f == nil || f.Volatility == "v"
+	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
 }
 
 type DirectQueryBuilder struct {

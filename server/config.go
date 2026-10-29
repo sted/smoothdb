@@ -326,6 +326,16 @@ func checkConfig(cfg *Config) error {
 		return fmt.Errorf("'JWTSecret' has no HMAC key for /token to sign with: " +
 			"a JWK or JWK set needs exactly one oct key that verifies HS256")
 	}
+	// /token puts the role in a top-level "role" claim, the one key that
+	// reads it (in either spelling)
+	if cfg.LoginMode == "db" {
+		switch cfg.JWTRoleClaimKey {
+		case "", authn.DefaultRoleClaimKey, ".role":
+		default:
+			return fmt.Errorf("'JWTRoleClaimKey' %q cannot read the role of the tokens /token issues with LoginMode \"db\", "+
+				"a top-level \"role\" claim: use %s, or another LoginMode", cfg.JWTRoleClaimKey, authn.DefaultRoleClaimKey)
+		}
+	}
 	if cfg.LoginMode == "db" && cfg.JWTKeys != "" && !verifier.SignsWithCatalogKey() {
 		fmt.Println("Warning: 'JWTKeys' holds no oct key equal to 'JWTSecret': the tokens of /token will not verify")
 	}

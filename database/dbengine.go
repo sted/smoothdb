@@ -228,9 +228,11 @@ func (dbe *DbEngine) getDatabase(ctx context.Context, conn *pgx.Conn, name strin
 }
 
 // GetDatabase gets information about a database.
-// Use GetActiveDatabase to get an active instance of a database
+// Use GetActiveDatabase to get an active instance of a database.
+// The first request to a database activates it through here, so the wait for
+// the main pool is bounded like the request's own (ErrAcquisitionTimeout).
 func (dbe *DbEngine) GetDatabase(ctx context.Context, name string) (*DatabaseInfo, error) {
-	conn, err := dbe.mainDb.pool.Acquire(ctx)
+	conn, err := acquireBounded(ctx, dbe.mainDb)
 	if err != nil {
 		return nil, err
 	}

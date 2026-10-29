@@ -219,3 +219,184 @@ func TestPoolAcquisitionTimeout(t *testing.T) {
 		},
 	})
 }
+
+// superuserSetup runs stmts with a superuser connection of its own and drop
+// when the test ends (before authzSetup's teardown, registered earlier).
+func superuserSetup(t *testing.T, drop, stmts []string) {
+	t.Helper()
+	ctx := context.Background()
+	run := func(qs []string) {
+		conn, err := pgx.Connect(ctx, superuserURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close(ctx)
+		for _, q := range qs {
+			if _, err := conn.Exec(ctx, q); err != nil {
+				t.Errorf("%q: %v", q, err)
+			}
+		}
+	}
+	run(append(drop, stmts...))
+	t.Cleanup(func() { run(drop) })
+}
+
+func getBody(t *testing.T, url, token string) string {
+	t.Helper()
+	req, _ := http.NewRequest("GET", url, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := slowClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s: %d %s", url, resp.StatusCode, body)
+	}
+	return string(body)
+}
+
+// A role's search_path applies to its requests, and the next role on the
+// connection gets Database.SchemaSearchPath back, as each PostgREST request
+// sets the role's settings transaction-locally over the connection's own
+// search path. With autocommit the role settings are session settings that
+// the release RESETs: the configured search path was a session value too, so
+// RESET dropped it for the server's default ("$user", public), and every
+// later request on the connection ran without it.
+func TestRoleSearchPathResetsToTheConfiguredOne(t *testing.T) {
+	authzSetup(t)
+	superuserSetup(t, []string{
+		"DROP FUNCTION IF EXISTS role_search_path()",
+		"DROP ROLE IF EXISTS authz_path",
+	}, []string{
+		"CREATE ROLE authz_path NOLOGIN",
+		"GRANT authz_path TO authz_authn",
+		"ALTER ROLE authz_path SET search_path = public, authz_nowhere",
+		"CREATE FUNCTION role_search_path() RETURNS text LANGUAGE sql AS $$ SELECT current_setting('search_path') $$",
+	})
+	s := newAuthzServer(t, "8121", map[string]any{
+		"SessionMode":                 "none",
+		"Database.TransactionMode":    "none",
+		"Database.SchemaSearchPath":   []string{"public", "information_schema"},
+		"Database.MinPoolConnections": int32(1),
+		"Database.MaxPoolConnections": int32(1),
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	url := "http://localhost:8121/api/postgres/rpc/role_search_path"
+	path := signClaims(t, map[string]any{"role": "authz_path"}, postgrestJWTSecret)
+
+	configured := `"public, information_schema"`
+	if got := getBody(t, url, ""); got != configured {
+		t.Errorf("anonymous, first: got %s, want %s", got, configured)
+	}
+	if got := getBody(t, url, path); got != `"public, authz_nowhere"` {
+		t.Errorf("authz_path: got %s, want the role's search path", got)
+	}
+	if got := getBody(t, url, ""); got != configured {
+		t.Errorf("anonymous after authz_path: got %s, want %s", got, configured)
+	}
+}
+
+// A role's DateStyle (ALTER ROLE ... SET DateStyle) does not reach the JSON:
+// a timestamp in a composite that travels in text (here an array of
+// composites with an int4range field) is read as ISO text, and PostgREST's to_json writes it in ISO whatever the
+// DateStyle. Applied as it is, 'SQL, DMY' made it "31/12/2024T10:00:00".
+func TestRoleDateStyleKeepsISOTimestamps(t *testing.T) {
+	authzSetup(t)
+	superuserSetup(t, []string{
+		"DROP FUNCTION IF EXISTS role_stamp()",
+		"DROP TYPE IF EXISTS role_stamp_t",
+		"DROP ROLE IF EXISTS authz_dmy",
+	}, []string{
+		"CREATE ROLE authz_dmy NOLOGIN",
+		"GRANT authz_dmy TO authz_authn",
+		"ALTER ROLE authz_dmy SET DateStyle = 'SQL, DMY'",
+		"CREATE TYPE role_stamp_t AS (ts timestamp, r int4range)",
+		`CREATE FUNCTION role_stamp() RETURNS TABLE (id int, stamps role_stamp_t[]) LANGUAGE sql AS $$
+			SELECT 1, ARRAY[('2024-12-31 10:00:00'::timestamp, int4range(1, 2))::role_stamp_t] $$`,
+	})
+	s := newAuthzServer(t, "8122", map[string]any{
+		"SessionMode":              "none",
+		"Database.TransactionMode": "none",
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	url := "http://localhost:8122/api/postgres/rpc/role_stamp"
+	dmy := signClaims(t, map[string]any{"role": "authz_dmy"}, postgrestJWTSecret)
+
+	want := `[{"id":1,"stamps":[{"ts":"2024-12-31T10:00:00","r":"[1,2)"}]}]`
+	// control: the anonymous role has no DateStyle of its own
+	if got := getBody(t, url, ""); got != want {
+		t.Errorf("anonymous: got %s, want %s", got, want)
+	}
+	if got := getBody(t, url, dmy); got != want {
+		t.Errorf("authz_dmy: got %s, want %s", got, want)
+	}
+}
+
+// The first request to a database activates it, reading the database from
+// the main pool: that wait is bounded by PoolAcquisitionTimeout like every
+// acquire of the request, and runs out with the same 504 PGRST003. It waited
+// for as long as the main pool stayed saturated, and any error there was a
+// 404.
+func TestDatabaseActivationAcquisitionTimeout(t *testing.T) {
+	superuserSetup(t, []string{"DROP DATABASE IF EXISTS acq_inactive WITH (FORCE)"},
+		[]string{"CREATE DATABASE acq_inactive"})
+	s := newSingleConnectionServer(t, map[string]any{
+		"Address":                         "localhost:8123",
+		"AllowAnon":                       true,
+		"Database.AnonRole":               "postgres",
+		"Database.PoolAcquisitionTimeout": 1,
+		"EnableAdminRoute":                false,
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	base := "http://localhost:8123/api/acq_inactive"
+
+	conn, err := s.DBE.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// given back after the timeout, so that an unbounded wait ends too
+	released := make(chan struct{})
+	go func() {
+		time.Sleep(4 * time.Second)
+		conn.Release()
+		close(released)
+	}()
+	start := time.Now()
+	test.Execute(t, test.Config{BaseUrl: base}, []test.Test{
+		{
+			Description: "a saturated main pool answers 504 to the activation of a database",
+			Query:       "",
+			Expected:    `{"subsystem":"database","message":"Timed out acquiring connection from connection pool.","code":"PGRST003","hint":"","details":null,"position":0}`,
+			Status:      504,
+		},
+	})
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("the request waited %v, want about the 1 s timeout", elapsed)
+	}
+	<-released
+
+	// positive control: with the connection back the database activates
+	test.Execute(t, test.Config{BaseUrl: base}, []test.Test{
+		{
+			Description: "the database activates once the connection is back",
+			Query:       "",
+			Status:      200,
+		},
+	})
+}

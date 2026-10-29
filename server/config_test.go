@@ -144,3 +144,41 @@ func TestMaxRowsFromEnvironment(t *testing.T) {
 		t.Errorf("SMOOTHDB_DATABASE_MAX_ROWS: want 1000, got %d", cfg.Database.MaxRows)
 	}
 }
+
+// The tokens of /token (LoginMode "db") carry the role in a top-level "role"
+// claim: a JWTRoleClaimKey that looks elsewhere could not read the role of the
+// tokens the server itself issues, so that combination stops the server. The
+// default key, in both its spellings, is accepted.
+func TestCheckConfigLoginModeDBNeedsTopLevelRole(t *testing.T) {
+	for _, key := range []string{"$.app.role", "$.roles[0]", ".app.role"} {
+		cfg := defaultConfig()
+		cfg.LoginMode = "db"
+		cfg.JWTSecret = "secret"
+		cfg.JWTRoleClaimKey = key
+		err := checkConfig(cfg)
+		if err == nil || !strings.Contains(err.Error(), "JWTRoleClaimKey") || !strings.Contains(err.Error(), "LoginMode") {
+			t.Errorf("%q: expected an error naming JWTRoleClaimKey and LoginMode, got %v", key, err)
+		}
+	}
+	for _, key := range []string{"$.role", ".role", ""} {
+		cfg := defaultConfig()
+		cfg.LoginMode = "db"
+		cfg.JWTSecret = "secret"
+		cfg.JWTRoleClaimKey = key
+		// the check before the database one: an unreachable database fails
+		// past it
+		cfg.Database.URL = "postgresql://nobody@localhost:1/none"
+		if err := checkConfig(cfg); err == nil || strings.Contains(err.Error(), "JWTRoleClaimKey") {
+			t.Errorf("%q: expected the database error only, got %v", key, err)
+		}
+	}
+	// a custom key is fine when /token is off
+	cfg := defaultConfig()
+	cfg.LoginMode = "gotrue"
+	cfg.JWTSecret = "secret"
+	cfg.JWTRoleClaimKey = "$.app.role"
+	cfg.Database.URL = "postgresql://nobody@localhost:1/none"
+	if err := checkConfig(cfg); err == nil || strings.Contains(err.Error(), "JWTRoleClaimKey") {
+		t.Errorf("gotrue with a custom key: expected the database error only, got %v", err)
+	}
+}
