@@ -109,3 +109,72 @@ func BenchmarkSerialize(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkRangedCount reads a page of ten rows, with and without
+// Prefer: count=exact, from a table of 100000 rows and from a function
+// returning 10000, so that the total is a second read of the source. The
+// nocount cases are the control: their query does not count.
+func BenchmarkRangedCount(b *testing.B) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	dbe.DeleteDatabase(ctx, "bench_count")
+	defer dbe.DeleteDatabase(ctx, "bench_count")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "bench_count")
+	if err != nil {
+		b.Fatal(err)
+	}
+	dctx, dconn, err := ContextWithDb(ctx, db, "test")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ReleaseConn(dctx, dconn)
+	gi := GetSmoothContext(dctx)
+	if _, err := gi.Conn.Exec(dctx, `
+		CREATE TABLE big (id int PRIMARY KEY, grp int, name text);
+		INSERT INTO big SELECT i, i % 100, 'name ' || i FROM generate_series(1, 100000) i;
+		CREATE INDEX ON big (grp);
+		ANALYZE big;
+		CREATE FUNCTION many(n int) RETURNS TABLE (id int, grp int, name text) STABLE LANGUAGE plpgsql AS
+			$$ BEGIN RETURN QUERY SELECT i, i % 100, 'name ' || i FROM generate_series(1, n) i; END $$;`); err != nil {
+		b.Fatal(err)
+	}
+	if err := db.ReloadSchemaCache(dctx); err != nil {
+		b.Fatal(err)
+	}
+	base := gi.QueryOptions
+	for _, c := range []struct {
+		name  string
+		rpc   bool
+		count string
+		query string
+	}{
+		{"table/nocount", false, "", "order=id&limit=10"},
+		{"table/count", false, "exact", "order=id&limit=10"},
+		{"table/count-filter-offset", false, "exact", "grp=eq.5&order=id&limit=10&offset=100"},
+		{"rpc/nocount", true, "", "order=id&limit=10"},
+		{"rpc/count", true, "exact", "order=id&limit=10"},
+	} {
+		q, err := url.ParseQuery(c.query)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				gi.QueryOptions = base
+				gi.QueryOptions.Count = c.count
+				if c.rpc {
+					_, _, err = ExecFunction(dctx, "many", Record{"n": 10000}, maps.Clone(q), false)
+				} else {
+					_, _, err = GetRecords(dctx, "big", maps.Clone(q))
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

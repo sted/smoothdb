@@ -130,3 +130,17 @@ func TestJWTKeysConfig(t *testing.T) {
 		t.Errorf("LoginMode db needs an HMAC key to sign with, got %v", err)
 	}
 }
+
+// Database.MaxRows (PostgREST's db-max-rows) is off by default and can be
+// set from the environment, like the database URL.
+func TestMaxRowsFromEnvironment(t *testing.T) {
+	if defaultConfig().Database.MaxRows != 0 {
+		t.Fatal("Database.MaxRows must default to 0, no limit")
+	}
+	t.Setenv("SMOOTHDB_DATABASE_MAX_ROWS", "1000")
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if cfg.Database.MaxRows != 1000 {
+		t.Errorf("SMOOTHDB_DATABASE_MAX_ROWS: want 1000, got %d", cfg.Database.MaxRows)
+	}
+}

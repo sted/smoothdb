@@ -151,6 +151,13 @@ func getEnvironment(c *Config) {
 	if allowAnon != "" {
 		c.AllowAnon = strings.ToLower(allowAnon) == "true"
 	}
+	if maxRows := os.Getenv("SMOOTHDB_DATABASE_MAX_ROWS"); maxRows != "" {
+		if n, err := strconv.ParseInt(maxRows, 10, 64); err == nil && n >= 0 {
+			c.Database.MaxRows = n
+		} else {
+			fmt.Println("Warning: SMOOTHDB_DATABASE_MAX_ROWS is not a non-negative integer, ignored")
+		}
+	}
 	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {
 		c.EnableAdminRoute = strings.ToLower(enableAdminRoute) == "true"
@@ -179,6 +186,7 @@ Server Options:
 
 Environment Variables:
 	SMOOTHDB_DATABASE_URL         Database URL
+	SMOOTHDB_DATABASE_MAX_ROWS    Maximum rows a read answers, as PostgREST's db-max-rows (0 for no limit)
 	SMOOTHDB_AUTH_URL             URL of the external AuthN service
 	SMOOTHDB_JWT_SECRET           Secret for JWT tokens
 	SMOOTHDB_JWT_SECRET_IS_BASE64 JWTSecret is base64-encoded (true/false)

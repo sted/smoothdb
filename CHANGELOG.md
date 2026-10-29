@@ -6,6 +6,13 @@
 * **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests, and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
 * **JWT claims as in PostgREST** — `JWTRoleClaimKey`, `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
 * **JWK set verification** — `JWTKeys` verifies tokens against a key catalog by `kid`, HS256 and ES256 at once; `JWTSecret` also takes a JWK or a JWK set, as in PostgREST.
+* **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.
+
+### Fixed
+* **Ranged `count=exact` on `/rpc`** — the function runs once, as in PostgREST: a VOLATILE one wrote twice.
+* **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
+* **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
+* **Range status with `count=exact`** — 206 whenever the page is shorter than the total (`limit`, `offset`, `POST /rpc` too), an offset alone ends the range at the last row read, and an offset past the total answers PostgREST's `PGRST103` error.
 
 ### Changed
 * **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).

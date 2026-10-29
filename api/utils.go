@@ -390,47 +390,73 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	return records, jsonBody, status, err
 }
 
-// SetResponseHeaders sets the response headers (for now Content-Range and Content-Location).
-// It returns a status != 0 if some contraints are not satisfied and we need to include an error status
-// in the response (eg 416 for RequestedRangeNotSatisfiable)
+// SetResponseHeaders sets the response headers (Content-Location and
+// Content-Range). A read (GET, HEAD) goes to SetReadResponseHeaders; a write
+// has no range, as PostgREST's contentRangeH 1 0: its Content-Range is */*,
+// or */count with Prefer: count. It returns a status != 0 if the response
+// must take it instead of the usual one (416, 206).
 func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Request, count int64) int {
+	if r.Method == "GET" || r.Method == "HEAD" {
+		return SetReadResponseHeaders(ctx, w, r, count)
+	}
 	sc := database.GetSmoothContext(ctx)
 	options := &sc.QueryOptions
 	// @@ must check if the table has a pk
 	w.Header().Set("Content-Location", r.RequestURI)
-	// Content-Range
-	var rangeString string
-	if count > 0 &&
-		(options.RangeMin <= count || options.Count == "") &&
-		((r.Method == "GET" || r.Method == "HEAD") ||
-			(options.RangeMin > -1 && options.RangeMax > -1)) {
-
-		if options.RangeMin == -1 {
-			options.RangeMin = 0
-		}
-		if options.RangeMax == -1 || options.Count == "" {
-			options.RangeMax = options.RangeMin + count - 1
-		}
-		rangeString = strconv.FormatInt(options.RangeMin, 10) + "-" +
-			strconv.FormatInt(options.RangeMax, 10)
-	} else {
-		rangeString = "*"
-	}
 	if options.Count == "" {
-		rangeString += "/*"
+		w.Header().Set("Content-Range", "*/*")
 	} else {
-		rangeString += "/" + strconv.FormatInt(count, 10)
+		w.Header().Set("Content-Range", "*/"+strconv.FormatInt(count, 10))
+	}
+	return 0
+}
+
+// SetReadResponseHeaders sets the headers of a read, from a table or a
+// function, whatever the method: Content-Location, and the Content-Range of
+// PostgREST's rangeStatusHeader (RangeQuery.hs). rows is the number of rows
+// read; the total is known when the request counts them (QueryOptions.Total).
+// It returns 206 when the page is shorter than the total, 416 when the offset
+// is past it, and 0 otherwise (see WriteRangeNotSatisfiable for the 416).
+func SetReadResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Request, rows int64) int {
+	sc := database.GetSmoothContext(ctx)
+	options := &sc.QueryOptions
+	w.Header().Set("Content-Location", r.RequestURI)
+	lower := max(options.RangeMin, 0) // the offset
+	upper := lower + rows - 1
+	counted := options.Count != ""
+	rangeString := "*"
+	if (!counted || options.Total != 0) && lower <= upper {
+		rangeString = strconv.FormatInt(lower, 10) + "-" + strconv.FormatInt(upper, 10)
+	}
+	if counted {
+		rangeString += "/" + strconv.FormatInt(options.Total, 10)
+	} else {
+		rangeString += "/*"
 	}
 	w.Header().Set("Content-Range", rangeString)
-	if options.RangeMin > count && options.Count != "" ||
-		options.RangeMin > -1 && options.RangeMax > -1 && options.RangeMin > options.RangeMax {
+	switch {
+	case !counted:
+		return 0
+	case lower > options.Total:
 		return http.StatusRequestedRangeNotSatisfiable
-	}
-	if options.Count != "" && options.HasRange &&
-		options.RangeMax-options.RangeMin+1 < count {
+	case rows < options.Total:
 		return http.StatusPartialContent
 	}
 	return 0
+}
+
+// WriteRangeNotSatisfiable writes the 416 of a read whose offset is past its
+// total, with PostgREST's PGRST103 error (Response.hs, InvalidRange OutOfBounds).
+func WriteRangeNotSatisfiable(ctx context.Context, w http.ResponseWriter) (int, error) {
+	options := database.GetQueryOptions(ctx)
+	status := http.StatusRequestedRangeNotSatisfiable
+	return heligo.WriteJSON(w, status, SmoothError{
+		Subsystem: "network",
+		Message:   "Requested range not satisfiable",
+		Code:      "PGRST103",
+		Details: fmt.Sprintf("An offset of %d was requested, but there are only %d rows.",
+			max(options.RangeMin, 0), options.Total),
+	})
 }
 
 // WriteContent writes the response and its content type

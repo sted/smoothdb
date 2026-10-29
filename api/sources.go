@@ -30,14 +30,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
-			status := SetResponseHeaders(c, w, r, count)
-			if status >= http.StatusBadRequest {
-				return heligo.WriteHeader(w, status)
-			}
-			if status == 0 {
-				status = http.StatusOK
-			}
-			return WriteContent(c, w, status, json)
+			return writeRead(c, w, r, json, count)
 		} else {
 			return WriteError(w, err)
 		}
@@ -114,14 +107,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
-			status := SetResponseHeaders(c, w, r, count)
-			if status >= http.StatusBadRequest {
-				return heligo.WriteHeader(w, status)
-			}
-			if status == 0 {
-				status = http.StatusOK
-			}
-			return WriteContent(c, w, status, json)
+			return writeRead(c, w, r, json, count)
 		} else {
 			return WriteError(w, err)
 		}
@@ -138,11 +124,11 @@ func InitSourcesRouter(apiHelper Helper) {
 			data, err = database.JQTransformResponse(c, data)
 		}
 		if err == nil {
-			SetResponseHeaders(c, w, r, count)
 			if data == nil {
+				SetReadResponseHeaders(c, w, r, count)
 				return heligo.WriteJSON(w, http.StatusOK, count)
 			} else {
-				return WriteContent(c, w, http.StatusOK, data)
+				return writeRead(c, w, r, data, count)
 			}
 		} else {
 			return WriteError(w, err)
@@ -161,4 +147,18 @@ func InitSourcesRouter(apiHelper Helper) {
 	api.Handle("DELETE", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PATCH", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PUT", "/rpc/:fname", rpcMethodNotAllowed)
+}
+
+// writeRead answers a read of rows: with 206 when the page is shorter than
+// its total, and with the 416 error instead of the rows when the offset is
+// past it (see SetReadResponseHeaders).
+func writeRead(c context.Context, w http.ResponseWriter, r heligo.Request, content []byte, rows int64) (int, error) {
+	switch status := SetReadResponseHeaders(c, w, r, rows); status {
+	case http.StatusRequestedRangeNotSatisfiable:
+		return WriteRangeNotSatisfiable(c, w)
+	case 0:
+		return WriteContent(c, w, http.StatusOK, content)
+	default:
+		return WriteContent(c, w, status, content)
+	}
 }

@@ -14,6 +14,7 @@ type Config struct {
 	AggregatesEnabled      bool     `comment:"Enable aggregate functions (default: true)"`
 	MaxRecursiveDepth      int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
 	PoolAcquisitionTimeout int      `comment:"Seconds a request waits for a pool connection before answering 504, 0 to wait without a bound (default: 10)"`
+	MaxRows                int64    `comment:"Maximum rows a read answers, at the top level and in each embed, as PostgREST's db-max-rows (default: 0 for no limit)"`
 }
 
 func DefaultConfig() *Config {
