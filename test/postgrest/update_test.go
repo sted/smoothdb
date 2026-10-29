@@ -9,12 +9,19 @@ import (
 func TestPostgREST_Update(t *testing.T) {
 
 	tests := []test.Test{
-		// 		describe "Patching record" $ do
+		//   describe "Patching record" $ do
 		//     context "to unknown uri" $
 		//       it "indicates no table found by returning 404" $
-		//         request methodPatch "/fake" []
+		//         request
+		//           methodPatch
+		//           "/fake"
+		//           []
 		//           [json| { "real": false } |]
-		//             `shouldRespondWith` 404
+		//           `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.fake' in the schema cache"} |]
+		//             { matchStatus = 404
+		//             , matchHeaders = ["Content-Length" <:> "115"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST205 body and its Content-Length (smoothdb answers 42P01); card 32494 (error body)
 		{
 			Description: "indicates no table found by returning 404",
 			Method:      "PATCH",
@@ -25,112 +32,164 @@ func TestPostgREST_Update(t *testing.T) {
 		},
 		//     context "on an empty table" $
 		//       it "succeeds with status code 204" $
-		//         request methodPatch "/empty_table" []
-		//             [json| { "extra":20 } |]
-		//           `shouldRespondWith`
-		//             ""
-		//             { matchStatus  = 204,
-		//               matchHeaders = [matchHeaderAbsent hContentType]
+		//         request
+		//           methodPatch
+		//           "/empty_table"
+		//           []
+		//           [json| { "extra":20 } |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 ]
 		//             }
 		{
-			Description: "on an empty table succeeds with status code 204",
-			Method:      "PATCH",
-			Query:       "/empty_table",
-			Body:        `{ "extra":"20" }`, //@@ changed 20 -> "20"
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "on an empty table succeeds with status code 204",
+			Method:          "PATCH",
+			Query:           "/empty_table",
+			Body:            `{ "extra":20 }`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//     context "with invalid json payload" $
 		//       it "fails with 400 and error" $
 		//         request methodPatch "/simple_pk" [] "}{ x = 2"
-		//           `shouldRespondWith`
-		//           [json|{"message":"Error in $: Failed reading: not a valid json value at '}{x=2'","code":"PGRST102","details":null,"hint":null}|]
-		//           { matchStatus  = 400,
-		//             matchHeaders = [matchContentTypeJson]
-		//           }
+		//           `shouldRespondWith` [json|{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}|]
+		//             { matchStatus = 400
+		//             , matchHeaders =
+		//                 [ matchContentTypeJson
+		//                 , "Content-Length" <:> "80"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST102 body "Empty or invalid json" and its Content-Length; card 32494 (error body)
 		{
-			Description: "with invalid json payload fails with 400 and error",
-			Method:      "PATCH",
-			Query:       "/simple_pk",
-			Body:        `}{ x = 2`,
-			Headers:     nil,
-			//Expected:    ``,
-			Status: 400,
+			Description:     "with invalid json payload fails with 400 and error",
+			Method:          "PATCH",
+			Query:           "/simple_pk",
+			Body:            `}{ x = 2`,
+			Headers:         nil,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
 		},
 		//     context "with no payload" $
 		//       it "fails with 400 and error" $
 		//         request methodPatch "/items" [] ""
-		//           `shouldRespondWith`
-		//           [json|{"message":"Error in $: not enough input","code":"PGRST102","details":null,"hint":null}|]
-		//           { matchStatus  = 400,
-		//             matchHeaders = [matchContentTypeJson]
-		//           }
+		//           `shouldRespondWith` [json|{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}|]
+		//             { matchStatus = 400
+		//             , matchHeaders = [matchContentTypeJson]
+		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST102 body "Empty or invalid json"; card 32494 (error body)
 		{
-			Description: "with no payload fails with 400 and error",
-			Method:      "PATCH",
-			Query:       "/items",
-			Body:        ``,
-			Headers:     nil,
-			//Expected:    ``,
-			Status: 400,
+			Description:     "with no payload fails with 400 and error",
+			Method:          "PATCH",
+			Query:           "/items",
+			Body:            ``,
+			Headers:         nil,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
+		},
+		//     context "insignificant whitespace" $ do
+		//       it "ignores it and successfuly updates with json payload" $ do
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.1"
+		//           [("Prefer", "return=representation")]
+		//           "\t \n \r { \"id\": 99 } \t \n \r "
+		//           `shouldRespondWith` [json|[{"id":99}]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = ["Content-Length" <:> "11"]
+		//             }
+		{
+			Description:     "insignificant whitespace: ignores it and successfuly updates with json payload",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1",
+			Body:            "\t \n \r { \"id\": 99 } \t \n \r ",
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":99}]`,
+			ExpectedHeaders: map[string]string{"Content-Length": "11"},
+			Status:          200,
 		},
 		//     context "in a nonempty table" $ do
 		//       it "can update a single item" $ do
-		//         patch "/items?id=eq.2"
-		//             [json| { "id":42 } |]
-		//           `shouldRespondWith`
-		//             ""
-		//             { matchStatus  = 204
-		//             , matchHeaders = [ matchHeaderAbsent hContentType
-		//                              , "Content-Range" <:> "0-0/*" ]
+		//         patch
+		//           "/items?id=eq.2"
+		//           [json| { "id":42 } |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 ]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* (smoothdb answers */*); card 32479 (write headers)
 		{
-			Description: "in a nonempty table can update a single item",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.2",
-			Body:        `{ "id":42 }`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "in a nonempty table can update a single item",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.2",
+			Body:            `{ "id":42 }`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//       it "returns empty array when no rows updated and return=rep" $
-		//         request methodPatch "/items?id=eq.999999"
-		//           [("Prefer", "return=representation")] [json| { "id":999999 } |]
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.999999"
+		//           [("Prefer", "return=representation")]
+		//           [json| { "id":999999 } |]
 		//           `shouldRespondWith` "[]"
-		//           {
-		//             matchStatus  = 200,
-		//             matchHeaders = []
-		//           }
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Preference-Applied" <:> "return=representation"
+		//                 , "Content-Length" <:> "2"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "returns empty array when no rows updated and return=rep",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.999999",
-			Body:        `{ "id":999999 }`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "returns empty array when no rows updated and return=rep",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.999999",
+			Body:            `{ "id":999999 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Length": "2"},
+			Status:          200,
 		},
 		//       it "returns status code 200 when no rows updated" $
-		//         request methodPatch "/items?id=eq.99999999" []
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.99999999"
+		//           []
 		//           [json| { "id": 42 } |]
-		//             `shouldRespondWith` 204
+		//           `shouldRespondWith` 204
 		{
-			Description: "returns status code 204 when no rows updated",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.999999",
-			Body:        `{ "id":42 }`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:   "returns status code 204 when no rows updated",
+			Method:        "PATCH",
+			Query:         "/items?id=eq.99999999",
+			Body:          `{ "id": 42 }`,
+			Headers:       nil,
+			ExpectedEmpty: true,
+			Status:        204,
 		},
 		//       it "returns updated object as array when return=rep" $
-		//         request methodPatch "/items?id=eq.2"
-		//           [("Prefer", "return=representation")] [json| { "id":2 } |]
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.2"
+		//           [("Prefer", "return=representation")]
+		//           [json| { "id":2 } |]
 		//           `shouldRespondWith` [json|[{"id":2}]|]
-		//           { matchStatus  = 200,
-		//             matchHeaders = ["Content-Range" <:> "0-0/*"]
-		//           }
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
 			Description: "returns updated object as array when return=rep",
 			Method:      "PATCH",
@@ -142,8 +201,7 @@ func TestPostgREST_Update(t *testing.T) {
 		},
 		//       it "can update multiple items" $ do
 		//         get "/no_pk?select=a&b=eq.1"
-		//           `shouldRespondWith`
-		//             [json|[]|]
+		//           `shouldRespondWith` [json|[]|]
 		{
 			Description: "can update multiple items: check initial status",
 			Method:      "GET",
@@ -151,331 +209,449 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
-		//         request methodPatch "/no_pk?b=eq.0"
-		//             [("Prefer", "tx=commit")]
-		//             [json| { b: "1" } |]
-		//           `shouldRespondWith`
-		//             ""
-		//             { matchStatus  = 204
-		//             , matchHeaders = [ matchHeaderAbsent hContentType
-		//                              , "Content-Range" <:> "0-1/*"
-		//                              , "Preference-Applied" <:> "tx=commit" ]
+		//         request
+		//           methodPatch
+		//           "/no_pk?b=eq.0"
+		//           [("Prefer", "tx=commit")]
+		//           [json| { b: "1" } |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "0-1/*"
+		//                 , "Preference-Applied" <:> "tx=commit"
+		//                 ]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-1/* and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "can update multiple items",
-			Method:      "PATCH",
-			Query:       "/no_pk?b=eq.0",
-			Body:        `{ "b": "1" }`, // b -> "b"
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "can update multiple items",
+			Method:          "PATCH",
+			Query:           "/no_pk?b=eq.0",
+			Body:            `{ "b": "1" }`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         -- check it really got updated
 		//         get "/no_pk?select=a&b=eq.1"
-		//           `shouldRespondWith`
-		//             [json|[ { a: "1" }, { a: "2" } ]|]
+		//           `shouldRespondWith` [json|[ { a: "1" }, { a: "2" } ]|]
+		// @@ order=a added: the upstream check relies on the physical row order
 		{
 			Description: "check it really got updated",
 			Method:      "GET",
-			Query:       "/no_pk?select=a&b=eq.1&order=a", // adder oreder=a
-			Expected:    `[ { "a": "1" }, { "a": "2" } ]`, // quoted
+			Query:       "/no_pk?select=a&b=eq.1&order=a",
+			Expected:    `[ { "a": "1" }, { "a": "2" } ]`,
 			Status:      200,
 		},
 		//         -- put value back for other tests
-		//         request methodPatch "/no_pk?b=eq.1"
-		//             [("Prefer", "tx=commit")]
-		//             [json| { b: "0" } |]
-		//           `shouldRespondWith`
-		//             ""
+		//         request
+		//           methodPatch
+		//           "/no_pk?b=eq.1"
+		//           [("Prefer", "tx=commit")]
+		//           [json| { b: "0" } |]
+		//           `shouldRespondWith` ""
 		//             { matchStatus = 204
-		//             , matchHeaders = [matchHeaderAbsent hContentType]
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 ]
 		//             }
 		{
-			Description: "put value back for other tests",
-			Method:      "PATCH",
-			Query:       "/no_pk?b=eq.1",
-			Body:        `{ "b": "0" }`, // quoted
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "put value back for other tests",
+			Method:          "PATCH",
+			Query:           "/no_pk?b=eq.1",
+			Body:            `{ "b": "0" }`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//       it "can set a column to NULL" $ do
-		//         request methodPatch "/no_pk?a=eq.1"
-		//             [("Prefer", "return=representation")]
-		//             [json| { b: null } |]
-		//           `shouldRespondWith`
-		//             [json| [{ a: "1", b: null }] |]
+		//         request
+		//           methodPatch
+		//           "/no_pk?a=eq.1"
+		//           [("Prefer", "return=representation")]
+		//           [json| { b: null } |]
+		//           `shouldRespondWith` [json| [{ a: "1", b: null }] |]
 		{
 			Description: "can set a column to NULL",
 			Method:      "PATCH",
 			Query:       "/no_pk?a=eq.1",
-			Body:        `{ "b": null }`, // quoted
+			Body:        `{ "b": null }`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "a": "1", "b": null }]`,
 			Status:      200,
 		},
 		//       context "filtering by a computed column" $ do
 		//         it "is successful" $
-		//           request methodPatch
+		//           request
+		//             methodPatch
 		//             "/items?is_first=eq.true"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 100 } |]
 		//             `shouldRespondWith` [json| [{ id: 100 }] |]
-		//             { matchStatus  = 200,
-		//               matchHeaders = [matchContentTypeJson, "Content-Range" <:> "0-0/*"]
-		//             }
+		//               { matchStatus = 200
+		//               , matchHeaders =
+		//                   [ matchContentTypeJson
+		//                   , "Content-Range" <:> "0-0/*"
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "filtering by a computed column is successful",
-			Method:      "PATCH",
-			Query:       "/items?is_first=eq.true",
-			Body:        `{ "id": 100 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "id": 100 }]`,
-			Status:      200,
+			Description:     "filtering by a computed column is successful",
+			Method:          "PATCH",
+			Query:           "/items?is_first=eq.true",
+			Body:            `{ "id": 100 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "id": 100 }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//         it "returns empty array when no rows updated and return=rep" $
-		//           request methodPatch
+		//           request
+		//             methodPatch
 		//             "/items?always_true=eq.false"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 100 } |]
 		//             `shouldRespondWith` "[]"
-		//             { matchStatus  = 200,
-		//               matchHeaders = []
-		//             }
+		//               { matchStatus = 200
+		//               , matchHeaders = ["Preference-Applied" <:> "return=representation"]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "returns empty array when no rows updated and return=rep",
+			Description: "filtering by a computed column returns empty array when no rows updated and return=rep",
 			Method:      "PATCH",
 			Query:       "/items?always_true=eq.false",
-			Body:        `{ "id": 100 }`, // quoted
+			Body:        `{ "id": 100 }`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[]`,
 			Status:      200,
 		},
 		//       context "with representation requested" $ do
 		//         it "can provide a representation" $ do
-		//           _ <- post "/items"
-		//             [json| { id: 1 } |]
-		//           request methodPatch
+		//           _ <-
+		//             post
+		//               "/items"
+		//               [json| { id: 1 } |]
+		//           request
+		//             methodPatch
 		//             "/items?id=eq.1"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 99 } |]
 		//             `shouldRespondWith` [json| [{id:99}] |]
-		//             { matchHeaders = [matchContentTypeJson] }
-		{
-			Description: "with representation requested can provide a representation",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.1",
-			Body:        `{ "id": 99 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":99}]`,
-			Status:      200,
-		},
+		//               { matchHeaders =
+		//                   [ matchContentTypeJson
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
 		//           -- put value back for other tests
 		//           void $ request methodPatch "/items?id=eq.99" [] [json| { "id":1 } |]
-
+		// @@ the setup POST and the restoring PATCH are not ported: their answers
+		// are not asserted upstream, and every request here rolls back
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
+		{
+			Description:     "with representation requested can provide a representation",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1",
+			Body:            `{ "id": 99 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":99}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 		//         it "can return computed columns" $
-		//           request methodPatch
+		//           request
+		//             methodPatch
 		//             "/items?id=eq.1&select=id,always_true"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, always_true: true }] |]
-		//             { matchHeaders = [matchContentTypeJson] }
+		//               { matchHeaders =
+		//                   [ matchContentTypeJson
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "can return computed columns",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.1&select=id,always_true",
-			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "id": 1, "always_true": true }]`,
-			Status:      200,
+			Description:     "can return computed columns",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1&select=id,always_true",
+			Body:            `{ "id": 1 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "id": 1, "always_true": true }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//         it "can select overloaded computed columns" $ do
-		//           request methodPatch
+		//           request
+		//             methodPatch
 		//             "/items?id=eq.1&select=id,computed_overload"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, computed_overload: true }] |]
-		//             { matchHeaders = [matchContentTypeJson] }
+		//               { matchHeaders =
+		//                   [ matchContentTypeJson
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "can select overloaded computed columns",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.1&select=id,computed_overload",
-			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "id": 1, "computed_overload": true }]`,
-			Status:      200,
+			Description:     "can select overloaded computed columns",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1&select=id,computed_overload",
+			Body:            `{ "id": 1 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "id": 1, "computed_overload": true }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//           request methodPatch
+		//           request
+		//             methodPatch
 		//             "/items2?id=eq.1&select=id,computed_overload"
 		//             [("Prefer", "return=representation")]
 		//             [json| { id: 1 } |]
 		//             `shouldRespondWith` [json| [{ id: 1, computed_overload: true }] |]
-		//             { matchHeaders = [matchContentTypeJson] }
+		//               { matchHeaders =
+		//                   [ matchContentTypeJson
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "can select overloaded computed columns",
-			Method:      "PATCH",
-			Query:       "/items2?id=eq.1&select=id,computed_overload",
-			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "id": 1, "computed_overload": true }]`,
-			Status:      200,
+			Description:     "can select overloaded computed columns (items2)",
+			Method:          "PATCH",
+			Query:           "/items2?id=eq.1&select=id,computed_overload",
+			Body:            `{ "id": 1 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "id": 1, "computed_overload": true }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//       it "ignores ?select= when return not set or return=minimal" $ do
-		//         request methodPatch "/items?id=eq.1&select=id"
-		//             [] [json| { id:1 } |]
-		//           `shouldRespondWith`
-		//             ""
-		//             { matchStatus  = 204
-		//             , matchHeaders = [ matchHeaderAbsent hContentType
-		//                              , "Content-Range" <:> "0-0/*" ]
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.1&select=id"
+		//           [("Prefer", "return=minimal")]
+		//           [json| { id:1 } |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=minimal"
+		//                 ]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "ignores ?select= when return not set or return=minimal",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.1&select=id",
-			Body:        `{ "id": 1 }`, // quoted
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "ignores ?select= when return not set or return=minimal",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1&select=id",
+			Body:            `{ "id": 1 }`,
+			Headers:         test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		//         request methodPatch "/items?id=eq.1&select=id"
-		//             [("Prefer", "return=minimal")]
-		//             [json| { id:1 } |]
-		//           `shouldRespondWith`
-		//             ""
-		//             { matchStatus  = 204
-		//             , matchHeaders = [ matchHeaderAbsent hContentType
-		//                              , "Content-Range" <:> "0-0/*" ]
+		//         request
+		//           methodPatch
+		//           "/items?id=eq.1&select=id"
+		//           [("Prefer", "return=minimal")]
+		//           [json| { id:1 } |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=minimal"
+		//                 ]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "ignores ?select= when return not set or return=minimal",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.1&select=id",
-			Body:        `{ "id": 1 }`, // quoted
-			Headers:     test.Headers{"Prefer": {"return=minimal"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "ignores ?select= when return not set or return=minimal (repeated)",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1&select=id",
+			Body:            `{ "id": 1 }`,
+			Headers:         test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
+		},
+		// @@ added: the "return not set" half of the case, which older spec
+		// versions sent without a Prefer header
+		{
+			Description:     "ignores ?select= when return is not set",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1&select=id",
+			Body:            `{ "id": 1 }`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//       context "when patching with an empty body" $ do
 		//         it "makes no updates and returns 204 without return= and without ?select=" $ do
-		//           request methodPatch "/items"
-		//               []
-		//               [json| {} |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items"
+		//             []
+		//             [json| {} |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items",
-			Body:        `{}`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
+			Method:          "PATCH",
+			Query:           "/items",
+			Body:            `{}`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		//           request methodPatch "/items"
-		//               []
-		//               [json| [] |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items"
+		//             []
+		//             [json| [] |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items",
-			Body:        `[]`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select= (empty array)",
+			Method:          "PATCH",
+			Query:           "/items",
+			Body:            `[]`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		//           request methodPatch "/items"
-		//               []
-		//               [json| [{}] |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items"
+		//             []
+		//             [json| [{}] |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items",
-			Body:        `[{}]`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select= (array of empty object)",
+			Method:          "PATCH",
+			Query:           "/items",
+			Body:            `[{}]`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         it "makes no updates and returns 204 without return= and with ?select=" $ do
-		//           request methodPatch "/items?select=id"
-		//               []
-		//               [json| {} |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items?select=id"
+		//             []
+		//             [json| {} |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items?select=id",
-			Body:        `{}`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "makes no updates and returns 204 without return= and with ?select=",
+			Method:          "PATCH",
+			Query:           "/items?select=id",
+			Body:            `{}`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		//           request methodPatch "/items?select=id"
-		//               []
-		//               [json| [] |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items?select=id"
+		//             []
+		//             [json| [] |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items?select=id",
-			Body:        `[]`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "makes no updates and returns 204 without return= and with ?select= (empty array)",
+			Method:          "PATCH",
+			Query:           "/items?select=id",
+			Body:            `[]`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		//           request methodPatch "/items?select=id"
-		//               []
-		//               [json| [{}] |]
-		//             `shouldRespondWith`
-		//               ""
-		//               { matchStatus  = 204
-		//               , matchHeaders = [ matchHeaderAbsent hContentType
-		//                                , "Content-Range" <:> "*/*" ]
+		//           request
+		//             methodPatch
+		//             "/items?select=id"
+		//             []
+		//             [json| [{}] |]
+		//             `shouldRespondWith` ""
+		//               { matchStatus = 204
+		//               , matchHeaders =
+		//                   [ matchHeaderAbsent hContentType
+		//                   , matchHeaderAbsent hContentLength
+		//                   , "Content-Range" <:> "*/*"
+		//                   ]
 		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items?select=id",
-			Body:        `[{}]`,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "makes no updates and returns 204 without return= and with ?select= (array of empty object)",
+			Method:          "PATCH",
+			Query:           "/items?select=id",
+			Body:            `[{}]`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         it "makes no updates and returns 200 with return=rep and without ?select=" $
 		//           request methodPatch "/items" [("Prefer", "return=representation")] [json| {} |]
 		//             `shouldRespondWith` "[]"
-		//             {
-		//               matchStatus  = 200,
-		//               matchHeaders = ["Content-Range" <:> "*/*"]
-		//             }
+		//               { matchStatus = 200
+		//               , matchHeaders =
+		//                   [ "Content-Range" <:> "*/*"
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Description: "makes no updates and returns 200 with return=rep and without ?select=",
 			Method:      "PATCH",
 			Query:       "/items",
 			Body:        `{}`,
@@ -483,16 +659,18 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
-
 		//         it "makes no updates and returns 200 with return=rep and with ?select=" $
 		//           request methodPatch "/items?select=id" [("Prefer", "return=representation")] [json| {} |]
 		//             `shouldRespondWith` "[]"
-		//             {
-		//               matchStatus  = 200,
-		//               matchHeaders = ["Content-Range" <:> "*/*"]
-		//             }
+		//               { matchStatus = 200
+		//               , matchHeaders =
+		//                   [ "Content-Range" <:> "*/*"
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Description: "makes no updates and returns 200 with return=rep and with ?select=",
 			Method:      "PATCH",
 			Query:       "/items?select=id",
 			Body:        `{}`,
@@ -500,16 +678,18 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
-
 		//         it "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns" $
 		//           request methodPatch "/items?select=id,computed_overload" [("Prefer", "return=representation")] [json| {} |]
 		//             `shouldRespondWith` "[]"
-		//             {
-		//               matchStatus  = 200,
-		//               matchHeaders = ["Content-Range" <:> "*/*"]
-		//             }
+		//               { matchStatus = 200
+		//               , matchHeaders =
+		//                   [ "Content-Range" <:> "*/*"
+		//                   , "Preference-Applied" <:> "return=representation"
+		//                   ]
+		//               }
+		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "when patching with an empty body makes no updates and returns 200 with return=rep and without ?select=",
+			Description: "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns",
 			Method:      "PATCH",
 			Query:       "/items?select=id,computed_overload",
 			Body:        `{}`,
@@ -517,14 +697,14 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
-
 		//     context "with unicode values" $
 		//       it "succeeds and returns values intact" $ do
-		//         request methodPatch "/no_pk?a=eq.1"
-		//             [("Prefer", "return=representation")]
-		//             [json| { "a":"圍棋", "b":"￥" } |]
-		//           `shouldRespondWith`
-		//             [json|[ { "a":"圍棋", "b":"￥" } ]|]
+		//         request
+		//           methodPatch
+		//           "/no_pk?a=eq.1"
+		//           [("Prefer", "return=representation")]
+		//           [json| { "a":"圍棋", "b":"￥" } |]
+		//           `shouldRespondWith` [json|[ { "a":"圍棋", "b":"￥" } ]|]
 		{
 			Description: "with unicode values succeeds and returns values intact",
 			Method:      "PATCH",
@@ -536,11 +716,12 @@ func TestPostgREST_Update(t *testing.T) {
 		},
 		//     context "PATCH with ?columns parameter" $ do
 		//       it "ignores json keys not included in ?columns" $ do
-		//         request methodPatch "/articles?id=eq.1&columns=body"
-		//             [("Prefer", "return=representation")]
-		//             [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |]
-		//           `shouldRespondWith`
-		//             [json|[{"id": 1, "body": "Some real content", "owner": "postgrest_test_anonymous"}]|]
+		//         request
+		//           methodPatch
+		//           "/articles?id=eq.1&columns=body"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |]
+		//           `shouldRespondWith` [json|[{"id": 1, "body": "Some real content", "owner": "postgrest_test_anonymous"}]|]
 		{
 			Description: "PATCH with ?columns parameter ignores json keys not included in ?columns",
 			Method:      "PATCH",
@@ -551,8 +732,12 @@ func TestPostgREST_Update(t *testing.T) {
 			Status:      200,
 		},
 		//       it "ignores json keys and gives 200 if no record updated" $
-		//         request methodPatch "/articles?id=eq.2001&columns=body" [("Prefer", "return=representation")]
-		//           [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |] `shouldRespondWith` 200
+		//         request
+		//           methodPatch
+		//           "/articles?id=eq.2001&columns=body"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"body": "Some real content", "smth": "here", "other": "stuff", "fake_id": 13} |]
+		//           `shouldRespondWith` 200
 		{
 			Description: "PATCH with ?columns parameter ignores json keys and gives 200 if no record updated",
 			Method:      "PATCH",
@@ -562,26 +747,18 @@ func TestPostgREST_Update(t *testing.T) {
 			Status:      200,
 		},
 		//       it "disallows ?columns which don't exist" $ do
-		//         request methodPatch "/articles?id=eq.1&columns=helicopter"
+		//         request
+		//           methodPatch
+		//           "/articles?id=eq.1&columns=helicopter"
 		//           [("Prefer", "return=representation")]
 		//           [json|{"body": "yyy"}|]
-		//           `shouldRespondWith`
-		//           [json|{"code":"PGRST118","details":null,"hint":null,"message":"Column 'helicopter' of relation 'articles' does not exist"} |]
-		//           { matchStatus  = 400
-		//           , matchHeaders = []
-		//           }
-
-		//       it "returns missing table error even if also has invalid ?columns" $ do
-		//         request methodPatch "/garlic?columns=helicopter"
-		//           [("Prefer", "return=representation")]
-		//           [json|[
-		//             {"id": 204, "body": "yyy"},
-		//             {"id": 205, "body": "zzz"}]|]
-		//           `shouldRespondWith`
-		//           [json|{} |]
-		//           { matchStatus  = 404
-		//           , matchHeaders = []
-		//           }
+		//           `shouldRespondWith` [json|{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}|]
+		//             { matchStatus = 400
+		//             , matchHeaders = []
+		//             }
+		// @@ the body asserted is smoothdb's: the message is PostgREST's, the
+		// envelope is not.
+		// @@ not asserted, PostgREST 16.4: code PGRST204 with null hint and details; card 32494 (error body)
 		{
 			Description: "disallows ?columns which don't exist",
 			Method:      "PATCH",
@@ -591,10 +768,23 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
 			Status:      400,
 		},
+		//       it "returns missing table error even if also has invalid ?columns" $ do
+		//         request
+		//           methodPatch
+		//           "/garlic?columns=helicopter"
+		//           [("Prefer", "return=representation")]
+		//           [json|[
+		//             {"id": 204, "body": "yyy"},
+		//             {"id": 205, "body": "zzz"}]|]
+		//           `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"} |]
+		//             { matchStatus = 404
+		//             , matchHeaders = ["Content-Length" <:> "117"]
+		//             }
 		// @@ the upstream body has two objects: PostgREST passes them to
 		// json_to_recordset and updates with whichever row PostgreSQL picks;
 		// smoothdb refuses a multi-object PATCH body (see below), so the body
 		// is a single object here and the multi-object case is pinned separately
+		// @@ not asserted, PostgREST 16.4: the PGRST205 body and its Content-Length; card 32494 (error body)
 		{
 			Description: "returns missing table error even if also has invalid ?columns",
 			Method:      "PATCH",
@@ -624,16 +814,88 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
+		//       context "apply defaults on missing values" $ do
+		//         it "updates table using default values(field-with_sep) when json keys are undefined" $ do
+		//           request
+		//             methodPatch
+		//             "/complex_items?id=eq.3&columns=name,field-with_sep"
+		//             [("Prefer", "return=representation"), ("Prefer", "missing=default")]
+		//             [json|{"name": "Tres"}|]
+		//             `shouldRespondWith` [json|[
+		//               {"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}
+		//             ]|]
+		//               { matchStatus = 200
+		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
+		//               }
+		{
+			Description: "apply defaults on missing values: updates table using default values(field-with_sep) when json keys are undefined",
+			Method:      "PATCH",
+			Query:       "/complex_items?id=eq.3&columns=name,field-with_sep",
+			Body:        `{"name": "Tres"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:    `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+		},
+		//         it "updates table default values(field-with_sep) when json keys are undefined" $ do
+		//           request
+		//             methodPatch
+		//             "/complex_items?id=eq.3&columns=name,field-with_sep"
+		//             [("Prefer", "return=representation"), ("Prefer", "missing=default")]
+		//             [json|{"name": "Tres"}|]
+		//             `shouldRespondWith` [json|[
+		//               {"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}
+		//             ]|]
+		//               { matchStatus = 200
+		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
+		//               }
+		{
+			Description: "apply defaults on missing values: updates table default values(field-with_sep) when json keys are undefined",
+			Method:      "PATCH",
+			Query:       "/complex_items?id=eq.3&columns=name,field-with_sep",
+			Body:        `{"name": "Tres"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:    `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+		},
+		//         it "updates view default values(field-with_sep) when json keys are undefined" $
+		//           request
+		//             methodPatch
+		//             "/complex_items_view?id=eq.3&columns=arr_data,name"
+		//             [("Prefer", "return=representation"), ("Prefer", "missing=default")]
+		//             [json|
+		//               {"arr_data":null}
+		//             |]
+		//             `shouldRespondWith` [json|[
+		//               {"id":3,"name":"Default","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":null,"field-with_sep":3}
+		//             ]|]
+		//               { matchStatus = 200
+		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
+		//               }
+		{
+			Description: "apply defaults on missing values: updates view default values(field-with_sep) when json keys are undefined",
+			Method:      "PATCH",
+			Query:       "/complex_items_view?id=eq.3&columns=arr_data,name",
+			Body:        `{"arr_data":null}`,
+			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:    `[{"id":3,"name":"Default","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":null,"field-with_sep":3}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+		},
 		//     -- https://github.com/PostgREST/postgrest/issues/2861
 		//     context "bit and char columns with length" $ do
 		//       it "should update a bit column with length" $
-		//         request methodPatch "/bitchar_with_length?select=bit,char&char=eq.aaaaa"
-		//             [("Prefer", "return=representation")]
-		//             [json|{"bit": "11100"}|]
+		//         request
+		//           methodPatch
+		//           "/bitchar_with_length?select=bit,char&char=eq.aaaaa"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"bit": "11100"}|]
 		//           `shouldRespondWith` [json|[{ "bit": "11100", "char": "aaaaa" }]|]
-		//             { matchStatus  = 200
+		//             { matchStatus = 200
 		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "bit and char columns with length: should update a bit column with length",
 			Method:      "PATCH",
@@ -644,13 +906,16 @@ func TestPostgREST_Update(t *testing.T) {
 			Status:      200,
 		},
 		//       it "should update a char column with length" $
-		//         request methodPatch "/bitchar_with_length?select=bit,char&bit=eq.00000"
-		//             [("Prefer", "return=representation")]
-		//             [json|{"char": "zzzyy"}|]
+		//         request
+		//           methodPatch
+		//           "/bitchar_with_length?select=bit,char&bit=eq.00000"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"char": "zzzyy"}|]
 		//           `shouldRespondWith` [json|[{ "bit": "00000", "char": "zzzyy" }]|]
-		//             { matchStatus  = 200
+		//             { matchStatus = 200
 		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "bit and char columns with length: should update a char column with length",
 			Method:      "PATCH",
@@ -673,39 +938,45 @@ func TestPostgREST_Update(t *testing.T) {
 			Status:      200,
 		},
 		//   context "tables with self reference foreign keys" $ do
-		//     it "embeds children after update" $
-		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name)"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"name": "tardis-patched"}|]
-		//         `shouldRespondWith`
-		//         [json|
-		//           [ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]
-		//         |]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//     context "embeds children after update" $ do
+		//       it "without filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=id,name,web_content(name)"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched"}|]
+		//           `shouldRespondWith` [json|
+		//             [ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]
+		//           |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "tables with self reference foreign keys embeds children after update",
-			Method:      "PATCH",
-			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)",
-			Body:        `{"name": "tardis-patched"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
-			Status:      200,
+			Description:     "tables with self reference foreign keys embeds children after update",
+			Method:          "PATCH",
+			Query:           "/web_content?id=eq.0&select=id,name,web_content(name)",
+			Body:            `{"name": "tardis-patched"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//       it "with ordering on top-level resource" $
-		//         request methodPatch "/no_pk?order=a.desc"
-		//                 [("Prefer", "return=representation")]
+		//         request
+		//           methodPatch
+		//           "/no_pk?order=a.desc"
+		//           [("Prefer", "return=representation")]
 		//           [json|{ "b": "1" }|]
-		//           `shouldRespondWith`
-		//           [json|
+		//           `shouldRespondWith` [json|
 		//             [ { "a": null, "b": "1" },
 		//               { "a": "2", "b": "1" },
 		//               { "a": "1", "b": "1" } ]
 		//           |]
-		//           { matchStatus  = 200
-		//           , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
-		//           }
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds children after update with ordering on top-level resource",
 			Method:      "PATCH",
@@ -715,7 +986,8 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected: `[ { "a": null, "b": "1" },
 			              { "a": "2", "b": "1" },
 			              { "a": "1", "b": "1" } ]`,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//       it "with filters" $
 		//         request
@@ -729,35 +1001,40 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "tables with self reference foreign keys embeds children after update with filters",
-			Method:      "PATCH",
-			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.name=like.f*",
-			Body:        `{"name": "tardis-patched"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" } ]} ]`,
-			Status:      200,
+			Description:     "tables with self reference foreign keys embeds children after update with filters",
+			Method:          "PATCH",
+			Query:           "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.name=like.f*",
+			Body:            `{"name": "tardis-patched"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" } ]} ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//     it "embeds parent, children and grandchildren after update" $
-		//       request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"name": "tardis-patched-2"}|]
-		//         `shouldRespondWith`
-		//         [json| [
-		//           {
-		//             "id": 0,
-		//             "name": "tardis-patched-2",
-		//             "parent_content": { "name": "wat" },
-		//             "web_content": [
-		//                 { "name": "fezz", "web_content": [ { "name": "wut" } ] },
-		//                 { "name": "foo",  "web_content": [] },
-		//                 { "name": "bar",  "web_content": [] }
-		//             ]
-		//           }
-		//         ] |]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//     context "embeds parent, children and grandchildren after update" $ do
+		//       it "without filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=id,name,web_content(name,web_content(name)),parent_content:p_web_id(name)"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched-2"}|]
+		//           `shouldRespondWith` [json| [
+		//             {
+		//               "id": 0,
+		//               "name": "tardis-patched-2",
+		//               "parent_content": { "name": "wat" },
+		//               "web_content": [
+		//                   { "name": "fezz", "web_content": [ { "name": "wut" } ] },
+		//                   { "name": "foo",  "web_content": [] },
+		//                   { "name": "bar",  "web_content": [] }
+		//               ]
+		//             }
+		//           ] |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds parent, children and grandchildren after update",
 			Method:      "PATCH",
@@ -776,7 +1053,8 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ] `,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//       it "with filters" $
 		//         request
@@ -798,6 +1076,7 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds parent, children and grandchildren after update with filters",
 			Method:      "PATCH",
@@ -815,27 +1094,32 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ] `,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//     it "embeds children after update without explicitly including the id in the ?select" $
-		//       request methodPatch "/web_content?id=eq.0&select=name,web_content(name)"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"name": "tardis-patched"}|]
-		//         `shouldRespondWith`
-		//         [json|
-		//           [ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]
-		//         |]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//     context "embeds children after update without explicitly including the id in the ?select" $ do
+		//       it "without filters" $
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=name,web_content(name)"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched"}|]
+		//           `shouldRespondWith` [json|
+		//             [ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]
+		//           |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "embeds children after update without explicitly including the id in the ?select",
-			Method:      "PATCH",
-			Query:       "/web_content?id=eq.0&select=name,web_content(name)",
-			Body:        `{"name": "tardis-patched"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
-			Status:      200,
+			Description:     "embeds children after update without explicitly including the id in the ?select",
+			Method:          "PATCH",
+			Query:           "/web_content?id=eq.0&select=name,web_content(name)",
+			Body:            `{"name": "tardis-patched"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//       it "with filters" $
 		//         request
@@ -849,34 +1133,40 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "embeds children after update without explicitly including the id in the ?select with filters",
-			Method:      "PATCH",
-			Query:       "/web_content?id=eq.0&select=name,web_content(name)&web_content.name=like.b*",
-			Body:        `{"name": "tardis-patched"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "name": "tardis-patched", "web_content": [ { "name": "bar" } ]} ]`,
-			Status:      200,
+			Description:     "embeds children after update without explicitly including the id in the ?select with filters",
+			Method:          "PATCH",
+			Query:           "/web_content?id=eq.0&select=name,web_content(name)&web_content.name=like.b*",
+			Body:            `{"name": "tardis-patched"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "name": "tardis-patched", "web_content": [ { "name": "bar" } ]} ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//     it "embeds an M2M relationship plus parent after update" $
-		//       request methodPatch "/users?id=eq.1&select=name,tasks(name,project:projects(name))"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"name": "Kevin Malone"}|]
-		//         `shouldRespondWith`
-		//         [json|[
-		//           {
-		//             "name": "Kevin Malone",
-		//             "tasks": [
-		//                 { "name": "Design w7", "project": { "name": "Windows 7" } },
-		//                 { "name": "Code w7", "project": { "name": "Windows 7" } },
-		//                 { "name": "Design w10", "project": { "name": "Windows 10" } },
-		//                 { "name": "Code w10", "project": { "name": "Windows 10" } }
-		//             ]
-		//           }
-		//         ]|]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//   context "tables with foreign keys referencing other tables" $ do
+		//     context "embeds an M2M relationship plus parent after update" $ do
+		//       it "without filters" $
+		//         request
+		//           methodPatch
+		//           "/users?id=eq.1&select=name,tasks(name,project:projects(name))"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "Kevin Malone"}|]
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name": "Kevin Malone",
+		//               "tasks": [
+		//                   { "name": "Design w7", "project": { "name": "Windows 7" } },
+		//                   { "name": "Code w7", "project": { "name": "Windows 7" } },
+		//                   { "name": "Design w10", "project": { "name": "Windows 10" } },
+		//                   { "name": "Code w10", "project": { "name": "Windows 10" } }
+		//               ]
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an M2M relationship plus parent after update",
 			Method:      "PATCH",
@@ -894,22 +1184,63 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ]`,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//     it "embeds an O2O relationship after update" $ do
-		//       request methodPatch "/students?id=eq.1&select=name,students_info(address)"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"name": "Johnny Doe"}|]
-		//         `shouldRespondWith`
-		//         [json|[
-		//           {
-		//             "name": "Johnny Doe",
-		//             "students_info":{"address":"Street 1"}
-		//           }
-		//         ]|]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//       it "with filters" $
+		//         request
+		//           methodPatch
+		//           "/users?id=eq.1&select=name,tasks(name,project:projects(name))&tasks.name=ilike.code*&tasks.project.name=like.*10"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "Kevin Malone"}|]
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name": "Kevin Malone",
+		//               "tasks": [
+		//                   { "name": "Code w7", "project": null },
+		//                   { "name": "Code w10", "project": { "name": "Windows 10" } }
+		//               ]
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
+		{
+			Description: "embeds an M2M relationship plus parent after update with filters",
+			Method:      "PATCH",
+			Query:       "/users?id=eq.1&select=name,tasks(name,project:projects(name))&tasks.name=ilike.code*&tasks.project.name=like.*10",
+			Body:        `{"name": "Kevin Malone"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				          {
+				            "name": "Kevin Malone",
+				            "tasks": [
+				                { "name": "Code w7", "project": null },
+				                { "name": "Code w10", "project": { "name": "Windows 10" } }
+				            ]
+				          }
+				        ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//     context "embeds an O2O relationship after update" $ do
+		//       it "without filters" $ do
+		//         request
+		//           methodPatch
+		//           "/students?id=eq.1&select=name,students_info(address)"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "Johnny Doe"}|]
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name": "Johnny Doe",
+		//               "students_info":{"address":"Street 1"}
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an O2O relationship after update",
 			Method:      "PATCH",
@@ -922,23 +1253,26 @@ func TestPostgREST_Update(t *testing.T) {
 				             "students_info":{"address":"Street 1"}
 				           }
 				         ]`,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//       request methodPatch "/students_info?id=eq.1&select=address,students(name)"
-		//               [("Prefer", "return=representation")]
-		//         [json|{"address": "New Street 1"}|]
-		//         `shouldRespondWith`
-		//         [json|[
-		//           {
-		//             "address": "New Street 1",
-		//             "students":{"name": "John Doe"}
-		//           }
-		//         ]|]
-		//         { matchStatus  = 200,
-		//           matchHeaders = [matchContentTypeJson]
-		//         }
+		//         request
+		//           methodPatch
+		//           "/students_info?id=eq.1&select=address,students(name)"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"address": "New Street 1"}|]
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "address": "New Street 1",
+		//               "students":{"name": "John Doe"}
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "embeds an O2O relationship after update",
+			Description: "embeds an O2O relationship after update (from the other side)",
 			Method:      "PATCH",
 			Query:       "/students_info?id=eq.1&select=address,students(name)",
 			Body:        `{"address": "New Street 1"}`,
@@ -949,42 +1283,292 @@ func TestPostgREST_Update(t *testing.T) {
 				             "students":{"name": "John Doe"}
 				           }
 				         ]`,
-			Status: 200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//       it "with filters" $ do
+		//         request
+		//           methodPatch
+		//           "/students?id=eq.1&select=name,students_info(address)&students_info.code=like.0002"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "Johnny Doe"}|]
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name": "Johnny Doe",
+		//               "students_info": null
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
+		{
+			Description:     "embeds an O2O relationship after update with filters",
+			Method:          "PATCH",
+			Query:           "/students?id=eq.1&select=name,students_info(address)&students_info.code=like.0002",
+			Body:            `{"name": "Johnny Doe"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"name": "Johnny Doe", "students_info": null}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		//   context "table with limited privileges" $ do
 		//     it "succeeds updating row and gives a 204 when using return=minimal" $
-		//       request methodPatch "/app_users?id=eq.1"
-		//           [("Prefer", "return=minimal")]
-		//           [json| { "password": "passxyz" } |]
-		//         `shouldRespondWith`
-		//           ""
+		//       request
+		//         methodPatch
+		//         "/app_users?id=eq.1"
+		//         [("Prefer", "return=minimal")]
+		//         [json| { "password": "passxyz" } |]
+		//         `shouldRespondWith` ""
 		//           { matchStatus = 204
-		//           , matchHeaders = [matchHeaderAbsent hContentType]
+		//           , matchHeaders =
+		//               [ matchHeaderAbsent hContentType
+		//               , matchHeaderAbsent hContentLength
+		//               , "Preference-Applied" <:> "return=minimal"
+		//               ]
 		//           }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "table with limited privileges succeeds updating row and gives a 204 when using return=minimal",
-			Method:      "PATCH",
-			Query:       "/app_users?id=eq.1",
-			Body:        `{ "password": "passxyz" }`,
-			Headers:     test.Headers{"Prefer": {"return=minimal"}},
-			Status:      204,
+			Description:     "table with limited privileges succeeds updating row and gives a 204 when using return=minimal",
+			Method:          "PATCH",
+			Query:           "/app_users?id=eq.1",
+			Body:            `{ "password": "passxyz" }`,
+			Headers:         test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//     it "can update without return=minimal and no explicit select" $
-		//       request methodPatch "/app_users?id=eq.1"
-		//           []
-		//           [json| { "password": "passabc" } |]
-		//         `shouldRespondWith`
-		//           ""
+		//       request
+		//         methodPatch
+		//         "/app_users?id=eq.1"
+		//         []
+		//         [json| { "password": "passabc" } |]
+		//         `shouldRespondWith` ""
 		//           { matchStatus = 204
-		//           , matchHeaders = [matchHeaderAbsent hContentType]
+		//           , matchHeaders =
+		//               [ matchHeaderAbsent hContentType
+		//               , matchHeaderAbsent hContentLength
+		//               ]
 		//           }
 		{
-			Description: "table with limited privileges can update without return=minimal and no explicit select",
+			Description:     "table with limited privileges can update without return=minimal and no explicit select",
+			Method:          "PATCH",
+			Query:           "/app_users?id=eq.1",
+			Body:            `{ "password": "passabc" }`,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
+		},
+		//   -- Data representations for payload parsing requires Postgres 10 or above.
+		//   describe "Data representations" $ do
+		//     context "for a single row" $ do
+		//       it "parses values in payload" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2"
+		//           [("Prefer", "return=headers-only")]
+		//           [json| {"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"} |]
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 ]
+		//             }
+		{
+			Description:     "Data representations for a single row parses values in payload",
+			Method:          "PATCH",
+			Query:           "/datarep_todos_computed?id=eq.2",
+			Body:            `{"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"}`,
+			Headers:         test.Headers{"Prefer": {"return=headers-only"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "0-0/*"},
+			Status:          204,
+			Skip:            "PostgREST 16.4: data representations, a payload value parsed through the domain's json cast (smoothdb answers 22P02), plus return=headers-only of card 32479 (write headers); no card",
+		},
+		//       it "parses values in payload and formats individually selected values in return=representation" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2&select=id,label_color"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"} |]
+		//           `shouldRespondWith` [json| [{"id":2, "label_color": "#221100"}] |]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Type" <:> "application/json; charset=utf-8"
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		{
+			Description:     "Data representations parses values in payload and formats individually selected values in return=representation",
+			Method:          "PATCH",
+			Query:           "/datarep_todos_computed?id=eq.2&select=id,label_color",
+			Body:            `{"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":2, "label_color": "#221100"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
+		},
+		//       it "parses values in payload and formats values in return=representation" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"label_color": "#221100", "due_at": "2019-01-03T11:00:20Z"} |]
+		//           `shouldRespondWith` [json| [{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:20Z"}] |]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Type" <:> "application/json; charset=utf-8"
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		{
+			Description:     "Data representations parses values in payload and formats values in return=representation",
+			Method:          "PATCH",
+			Query:           "/datarep_todos_computed?id=eq.2",
+			Body:            `{"label_color": "#221100", "due_at": "2019-01-03T11:00:20Z"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:20Z"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
+		},
+		//     context "for multiple rows" $ do
+		//       it "parses values in payload and formats individually selected values in return=representation" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=lt.4&select=id,name,label_color,dark_color"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"} |]
+		//           `shouldRespondWith` [json| [
+		//             {"id":1, "name": "Report", "label_color": "#221100", "dark_color":"#110880"},
+		//             {"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880"},
+		//             {"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880"}
+		//           ] |]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Type" <:> "application/json; charset=utf-8"
+		//                 , "Content-Range" <:> "0-2/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		{
+			Description: "Data representations for multiple rows parses values in payload and formats individually selected values in return=representation",
 			Method:      "PATCH",
-			Query:       "/app_users?id=eq.1",
-			Body:        `{ "password": "passabc" }`,
-			Headers:     nil,
-			Status:      204,
+			Query:       "/datarep_todos_computed?id=lt.4&select=id,name,label_color,dark_color",
+			Body:        `{"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				{"id":1, "name": "Report", "label_color": "#221100", "dark_color":"#110880"},
+				{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880"},
+				{"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880"}
+			]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
+		},
+		//       it "parses values in payload and formats values in return=representation" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=lt.4"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"} |]
+		//           `shouldRespondWith` [json| [
+		//             {"id":1, "name": "Report", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"},
+		//             {"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"},
+		//             {"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"}
+		//           ] |]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Type" <:> "application/json; charset=utf-8"
+		//                 , "Content-Range" <:> "0-2/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		{
+			Description: "Data representations for multiple rows parses values in payload and formats values in return=representation",
+			Method:      "PATCH",
+			Query:       "/datarep_todos_computed?id=lt.4",
+			Body:        `{"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected: `[
+				{"id":1, "name": "Report", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"},
+				{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"},
+				{"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"}
+			]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
+		},
+		//     context "with ?columns parameter" $ do
+		//       it "ignores json keys not included in ?columns; parses only the ones specified" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2&columns=due_at"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13} |]
+		//           `shouldRespondWith` [json| [
+		//             {"id":2, "name": "Essay", "label_color": "#000100", "dark_color": "#000080", "due_at":"2019-01-03T11:00:00Z"}
+		//           ] |]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Type" <:> "application/json; charset=utf-8"
+		//                 , "Content-Range" <:> "0-0/*"
+		//                 , "Preference-Applied" <:> "return=representation"
+		//                 ]
+		//             }
+		{
+			Description:     "Data representations with ?columns parameter ignores json keys not included in ?columns; parses only the ones specified",
+			Method:          "PATCH",
+			Query:           "/datarep_todos_computed?id=eq.2&columns=due_at",
+			Body:            `{"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":2, "name": "Essay", "label_color": "#000100", "dark_color": "#000080", "due_at":"2019-01-03T11:00:00Z"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: data representations, output values formatted through the domain's json cast (smoothdb answers label_color 256); no card",
+		},
+		//       it "fails if at least one specified column doesn't exist" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2&columns=label_color,helicopters"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13} |]
+		//           `shouldRespondWith` [json| {"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos_computed' in the schema cache"} |]
+		//             { matchStatus = 400
+		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST204 body (smoothdb has the message, not the code); card 32494 (error body)
+		{
+			Description:     "Data representations with ?columns parameter fails if at least one specified column doesn't exist",
+			Method:          "PATCH",
+			Query:           "/datarep_todos_computed?id=eq.2&columns=label_color,helicopters",
+			Body:            `{"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
+		},
+		//       it "ignores json keys and gives 200 if no record updated" $
+		//         request
+		//           methodPatch
+		//           "/datarep_todos_computed?id=eq.2001&columns=label_color"
+		//           [("Prefer", "return=representation")]
+		//           [json| {"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13} |]
+		//           `shouldRespondWith` 200
+		{
+			Description: "Data representations with ?columns parameter ignores json keys and gives 200 if no record updated",
+			Method:      "PATCH",
+			Query:       "/datarep_todos_computed?id=eq.2001&columns=label_color",
+			Body:        `{"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, a payload value parsed through the domain's json cast (smoothdb answers 22P02 on \"invalid\"); no card",
 		},
 		// The "limited update" context (PATCH narrowed by limit/offset, PGRST109,
 		// PGRST110) was dropped upstream in PostgREST 13.0.0 (#3013 limited-updates,
@@ -1004,24 +1588,27 @@ func TestPostgREST_Update(t *testing.T) {
 		},
 		//     context "with ordering" $
 		//       it "works with request method PATCH and embedded resource" $
-		//         request methodPatch "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc"
-		//                   [("Prefer", "return=representation")]
-		//             [json|{"name": "tardis-patched"}|]
-		//             `shouldRespondWith`
-		//             [json|
+		//         request
+		//           methodPatch
+		//           "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc"
+		//           [("Prefer", "return=representation")]
+		//           [json|{"name": "tardis-patched"}|]
+		//           `shouldRespondWith` [json|
 		//               [ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]
 		//             |]
-		//             { matchStatus  = 200
+		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with ordering works with request method PATCH and embedded resource",
-			Method:      "PATCH",
-			Query:       "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc",
-			Body:        `{"name": "tardis-patched"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
-			Status:      200,
+			Description:     "with ordering works with request method PATCH and embedded resource",
+			Method:          "PATCH",
+			Query:           "/web_content?id=eq.0&select=id,name,web_content(name)&web_content.order=name.asc",
+			Body:            `{"name": "tardis-patched"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		// @@ added
 		{
