@@ -556,3 +556,72 @@ func TestShutdownLeavesTheRequestsInFlightAlone(t *testing.T) {
 		t.Errorf("the request in flight left after the shutdown: %d connections released, want 2", n)
 	}
 }
+
+// newWaiter is a request of session waiting for a connection, registered with
+// the manager after the scan of the idle sessions found none (takeConnection).
+func newWaiter(t *testing.T, sm *SessionManager, session *Session) *waiter {
+	t.Helper()
+	w := &waiter{conn: make(chan *database.DbPoolConn, 1), cancel: func() {}}
+	if c := sm.takeConnection(session, w, true); c != nil {
+		t.Fatal("an idle connection was there to take")
+	}
+	return w
+}
+
+// A request registers its wait, and only then waits on the pool: a session
+// of another token leaving in between saw no waiter of its token and no
+// acquire in progress, kept its connection idle, and the request waited on
+// the pool until the watcher idled the connection out, or a 504. The
+// registered wait is demand on the pool already.
+func TestALeavingSessionSeesARequestThatRegisteredItsWait(t *testing.T) {
+	sm := newTestSessionManager()
+	released := make(chan struct{}, 1)
+	sm.release = func(*database.DbPoolConn) { released <- struct{}{} }
+	a, _ := sm.getSession("A")
+	a.DbConn = &pgxpool.Conn{} // the pool's only connection
+	b, _ := sm.getSession("B")
+	newWaiter(t, sm, b)
+	sm.leaveSession(a)
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Error("the session kept its connection idle while a request of another token waited")
+	}
+}
+
+// A session leaving hands its connection to a waiting request of its token
+// only when no request of another token waits for one: otherwise a token
+// whose requests keep coming takes every connection, and the others wait
+// until they time out. Then the connection goes to the pool, where the
+// requests (of its token too) wait in turn.
+func TestAHandOverGivesWayToAnotherTokenWaiting(t *testing.T) {
+	sm := newTestSessionManager()
+	released := make(chan struct{}, 1)
+	sm.release = func(*database.DbPoolConn) { released <- struct{}{} }
+	a1, _ := sm.getSession("A")
+	a1.DbConn = &pgxpool.Conn{}
+	a2, _ := sm.getSession("A")
+	wa := newWaiter(t, sm, a2)
+
+	// control: no one else waits, the connection goes to the token's request
+	sm.leaveSession(a1)
+	select {
+	case c := <-wa.conn:
+		a2.DbConn = c
+	default:
+		t.Fatal("the waiting request of the token was not handed the connection")
+	}
+
+	a1, _ = sm.getSession("A")
+	wa = newWaiter(t, sm, a1)
+	b, _ := sm.getSession("B")
+	newWaiter(t, sm, b)
+	sm.leaveSession(a2)
+	select {
+	case <-wa.conn:
+		t.Error("the connection went to the token's own request while another token waited")
+	case <-released:
+	case <-time.After(time.Second):
+		t.Error("the connection went nowhere")
+	}
+}
