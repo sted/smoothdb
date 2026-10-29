@@ -84,8 +84,8 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 // request. It answers the serialized rows and their number; with a count
 // it sets options.Total, the number of rows read or, for a ranged count, the
 // answer of options.totalQuery, which it sends in the same batch after the
-// query: one round trip, and the page needs no row of its own to carry the
-// total (see buildAfterSelect).
+// query (and options.totalPrelude, if any, before it): one round trip, and
+// the page needs no row of its own to carry the total (see buildAfterSelect).
 func runRead(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
@@ -115,6 +115,9 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 		return out, n, err
 	}
 	batch := &pgx.Batch{}
+	if options.totalPrelude != "" {
+		batch.Queue(options.totalPrelude)
+	}
 	batch.Queue(query, values...)
 	batch.Queue(options.totalQuery, options.totalValues...)
 	br := gi.Conn.SendBatch(ctx, batch)
@@ -122,6 +125,11 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	// batch is the commit, and its error (a deferred constraint) is the
 	// request's; this one covers the early returns
 	defer br.Close()
+	if options.totalPrelude != "" {
+		if _, err := br.Exec(); err != nil {
+			return nil, 0, err
+		}
+	}
 	rows, err := br.Query()
 	if err != nil {
 		return nil, 0, err
