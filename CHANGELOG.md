@@ -9,7 +9,7 @@
 * **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.
 
 ### Fixed
-* **Ranged `count=exact` on `/rpc`** — the function runs once, as in PostgREST: a VOLATILE one wrote twice.
+* **Ranged `count=exact` on `/rpc`** — a VOLATILE function runs once, as in PostgREST (it wrote twice); a STABLE or IMMUTABLE one is counted like a table.
 * **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.
 * **Order of a ranged page with `count=exact`** — the rows come straight from their `ORDER BY`, no longer read back through a join.
 * **Range status with `count=exact`** — 206 whenever the page is shorter than the total (`limit`, `offset`, `POST /rpc` too), an offset alone ends the range at the last row read, and an offset past the total answers PostgREST's `PGRST103` error.
