@@ -342,7 +342,9 @@ type statementCache struct {
 }
 
 func (gi *SmoothContext) statements() *statementCache {
-	if gi.Db == nil || gi.Db.statements <= 0 {
+	if gi.Db == nil || gi.Db.statements <= 0 || gi.vars == nil || gi.vars.keep != "" {
+		// no batch of this request carries variables: a request without
+		// them, or of a session that keeps its connection prepared
 		return nil
 	}
 	data := gi.Conn.PgConn().CustomData()
