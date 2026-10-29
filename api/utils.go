@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
 	"github.com/sted/smoothdb/jqeval"
 )
@@ -60,24 +61,7 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 	var status int
 	var dberr *pgconn.PgError
 	if errors.As(err, &dberr) {
-		status = pgErrorStatus(dberr)
-		if status == http.StatusMethodNotAllowed {
-			// 25006 read_only_sql_transaction: a write reached by a GET/HEAD, or
-			// by a STABLE/IMMUTABLE function. PostgREST answers 405 without an
-			// Allow header; RFC 9110 requires one, and POST is the method every
-			// resource that can raise this accepts.
-			w.Header().Set("Allow", "POST")
-		}
-		smoothErr := SmoothError{
-			Subsystem: "database",
-			Message:   dberr.Message,
-			Code:      dberr.Code,
-		}
-		if verboseErrors {
-			smoothErr.Hint = dberr.Hint
-			smoothErr.Details = dberr.Detail
-		}
-		heligo.WriteJSON(w, status, smoothErr)
+		status, _ = writeDatabaseError(w, dberr, authn.IsAuthenticated(w))
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
 		heligo.WriteHeader(w, status)

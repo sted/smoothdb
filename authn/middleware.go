@@ -23,6 +23,9 @@ type MiddlewareConfig interface {
 	RequestMaxBytes() int64
 	SessionManager() *SessionManager
 	GetLogger() *logging.Logger
+	// AuthErrorWriter writes the refusals of the middleware the way the API
+	// writes its errors; nil writes a bare {"error": ...}
+	AuthErrorWriter() ErrorWriter
 }
 
 type GetDatabaseNameFn func(ctx context.Context, r heligo.Request) string
@@ -85,8 +88,13 @@ func (m middleware) resolveClaims(tokenString string) (*Claims, int, error) {
 	return claims, http.StatusOK, nil
 }
 
+// acquireSession authenticates the request and prepares its session and
+// connection. authenticated says whether the request runs as a role other than
+// the anonymous one, as PostgREST decides it (App.hs: Just authRole /=
+// configDbAnonRole): a token naming the anon role, or without a role claim,
+// is anonymous.
 func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
-	forceDBE bool, getDBName GetDatabaseNameFn) (context.Context, *Session, int, error) {
+	forceDBE bool, getDBName GetDatabaseNameFn) (_ context.Context, _ *Session, authenticated bool, _ error) {
 	var claims *Claims
 	var err error
 	var db *database.Database
@@ -96,7 +104,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 
 	tokenString := extractAuthHeader(r.Request)
 	if status, err := m.admit(tokenString); err != nil {
-		return nil, nil, status, err
+		return nil, nil, false, refusal(tokenString, status, err)
 	}
 	dbname := getDBName(ctx, r)
 	keyInput := tokenString + "; "
@@ -133,13 +141,13 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		var status int
 		claims, status, err = m.resolveClaims(tokenString)
 		if err != nil {
-			return nil, nil, status, err
+			return nil, nil, false, refusal(tokenString, status, err)
 		}
 		session.Claims = claims
 		if dbname != "" && !forceDBE {
 			db, err = m.GetDatabase(ctx, dbname)
 			if err != nil {
-				return nil, nil, http.StatusNotFound, err
+				return nil, nil, false, &Error{Status: http.StatusNotFound, Message: err.Error(), Err: err}
 			}
 			session.Db = db
 		}
@@ -148,7 +156,8 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		// verification would have caught since the session was built.
 		if claimsExpired(session.Claims, time.Now()) {
 			m.SessionManager().dropSession(session)
-			return nil, nil, http.StatusUnauthorized, fmt.Errorf("token is expired")
+			return nil, nil, false, &Error{Status: http.StatusUnauthorized, Code: "PGRST303",
+				Message: "JWT expired", Challenge: tokenChallenge("JWT expired")}
 		}
 		db = session.Db
 	}
@@ -160,7 +169,9 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		}
 		dbconn, err = database.AcquireConnection(ctx, db)
 		if err != nil {
-			return nil, nil, http.StatusInternalServerError, err
+			// PostgREST's ConnectionUsageError: the database is unreachable
+			return nil, nil, false, &Error{Status: http.StatusServiceUnavailable, Code: "PGRST000",
+				Message: "Database connection error.", Err: err}
 		}
 		session.DbConn = dbconn
 		newAcquire = true
@@ -168,17 +179,21 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		dbconn = session.DbConn
 	}
 	claimsString = session.Claims.RawClaims
+	anonRole := m.AnonRole()
+	authenticated = anonRole == "" || session.Claims.Role != anonRole
 	// GET and HEAD are safe methods: like PostgREST, run them READ ONLY, so a
 	// function or view that writes fails (25006 -> 405) instead of mutating on
 	// a request that proxies, prefetchers and caches replay at will.
 	readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
 	err = database.PrepareConnection(ctx, dbconn, session.Claims.Role, claimsString, newAcquire, readOnly)
 	if err != nil {
-		return nil, nil, http.StatusInternalServerError, err
+		// a refused role switch (42501) or a role that does not exist (22023)
+		// is reported like any database error, by the status of its code
+		return nil, nil, authenticated, err
 	}
 	ctx = database.FillContext(ctx, r.Request, db, dbconn.Conn(), session.Claims.Role)
 	acquired = true
-	return ctx, session, http.StatusOK, nil
+	return ctx, session, authenticated, nil
 }
 
 func (m middleware) releaseSession(ctx context.Context, status int, session *Session) {
@@ -213,15 +228,17 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 			r.Body = LimitBody(w, r.Body, cfg.RequestMaxBytes())
 			defer r.Body.Close()
 			setServerHeader(w)
-			ctx, session, status, err := m.acquireSession(c, r, forceDBE, getDBName)
+			ctx, session, authenticated, err := m.acquireSession(c, r, forceDBE, getDBName)
 			if err != nil {
-				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
-				return status, err
+				return m.writeError(w, err, authenticated)
 			}
+			// the API's error writers see only w: an insufficient privilege
+			// is 403 for an authenticated request, 401 otherwise
+			w = WithAuthenticated(w, authenticated)
 			// deferred so that a panic, recovered outside this middleware, still
 			// returns the connection; status stays 500 then, so a transaction
 			// left open is rolled back as on any error status
-			status = http.StatusInternalServerError
+			status := http.StatusInternalServerError
 			defer func() { m.releaseSession(ctx, status, session) }()
 			//w.(http.Flusher).Flush() // to enable Transfer-Encoding: chunked
 			status, err = next(ctx, w, r)
@@ -248,8 +265,7 @@ func AuthMiddleware(cfg MiddlewareConfig) heligo.Middleware {
 				_, status, err = m.resolveClaims(tokenString)
 			}
 			if err != nil {
-				heligo.WriteJSON(w, status, map[string]string{"error": err.Error()})
-				return status, err
+				return m.writeError(w, refusal(tokenString, status, err), false)
 			}
 			return next(c, w, r)
 		}

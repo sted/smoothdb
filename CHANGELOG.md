@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+### Changed
+* **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
+
 ## 0.10.2 - 2026-10-28
 
 ### Security
@@ -75,7 +80,7 @@
 * **Anonymous requests never run as the authenticator** — with `AllowAnon: true` and an empty `Database.AnonRole` the request ran as the connecting role with no `SET ROLE` and no claims GUC. It is now refused with `401 "Anonymous access is disabled"`, as PostgREST does; with a configured anon role the `request.jwt.claims` GUC is set for anonymous requests too.
 
 ### Fixed
-* **SQLSTATE to HTTP status** — the mapping follows PostgREST's `mapSQLtoHTTP`: an explicit list of codes and classes (foreign-key violation 409, read-only transaction 405, connection and resource errors 503, `PTxyz` chooses its status) and 400 for everything else, where a client-caused error (type mismatch, bad literal, violated constraint, `raise`) used to be a 500. `42501` stays 401 and the DDL "already exists" codes 409.
+* **SQLSTATE to HTTP status** — the mapping follows PostgREST's `mapSQLtoHTTP`: an explicit list of codes and classes (foreign-key violation 409, read-only transaction 405, connection and resource errors 503, `PTxyz` chooses its status) and 400 for everything else, where a client-caused error (type mismatch, bad literal, violated constraint, `raise`) used to be a 500. The DDL "already exists" codes are 409.
 * **Bulk insert with mismatched keys** — an array whose objects do not share one key set is refused with 400 (`All object keys must match`, as PostgREST) instead of silently dropping the keys the first object lacked. With `?columns=` the listed columns are inserted for every row, an absent key as NULL (it used to get the column default).
 * **`order=` on writes** — `order` now orders the representation of `POST`, `PATCH` and `DELETE`, as PostgREST does since 13.0; it was parsed and dropped. `limit`/`offset` on `PATCH`/`DELETE` stay ignored like in PostgREST, which dropped limited updates in the same release.
 * **Generated columns** — `attgenerated` is introspected: `$info` and the admin column listing report `"generated"` and `"readonly": true`, and writing such a column is refused with 400 and PostgreSQL's message (`428C9`) instead of a 500, as PostgREST does.
