@@ -1,166 +1,172 @@
 package postgrest
 
 import (
+	"encoding/base64"
+	"os"
 	"testing"
 
 	"github.com/sted/smoothdb/test"
 )
 
 func TestPostgREST_RPC(t *testing.T) {
+	// the bytea cases post test/spec/fixtures/image.png (readFixtureFile)
+	image, err := os.ReadFile("fixtures/image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageBase64 := base64.StdEncoding.EncodeToString(image)
 
 	tests := []test.Test{
 		// context "a proc that returns a set" $ do
-		//   it "returns paginated results" $ do
-		//     request methodPost "/rpc/getitemrange"
-		//             (rangeHdrs (ByteRangeFromTo 0 0))  [json| { "min": 2, "max": 4 } |]
-		//        `shouldRespondWith` [json| [{"id":3}] |]
-		//         { matchStatus = 200
-		//         , matchHeaders = ["Content-Range" <:> "0-0/*"]
-		//         }
+		//   context "returns paginated results" $ do
+		//     it "using the Range header" $
+		//       request
+		//         methodGet
+		//         "/rpc/getitemrange?min=2&max=4"
+		//         (rangeHdrs (ByteRangeFromTo 1 1))
+		//         mempty
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 200
+		//           , matchHeaders = ["Content-Range" <:> "1-1/*"]
+		//           }
 		{
-			Description:     "a proc that returns a set returns paginated results",
-			Method:          "POST",
-			Query:           "/rpc/getitemrange",
-			Body:            `{ "min": 2, "max": 4 }`,
-			Headers:         test.Headers{"Range": []string{"0-0"}},
-			Expected:        `[ {"id": 3} ]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
-			Status:          200,
-		},
-		//     request methodGet "/rpc/getitemrange?min=2&max=4"
-		//             (rangeHdrs (ByteRangeFromTo 0 0)) ""
-		//        `shouldRespondWith` [json| [{"id":3}] |]
-		//         { matchStatus = 200
-		//         , matchHeaders = ["Content-Range" <:> "0-0/*"]
-		//         }
-		{
-			Description:     "a proc that returns a set returns paginated results",
+			Description:     "returns paginated results using the Range header",
 			Method:          "GET",
 			Query:           "/rpc/getitemrange?min=2&max=4",
-			Body:            ``,
-			Headers:         test.Headers{"Range": []string{"0-0"}},
-			Expected:        `[ {"id": 3} ]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Headers:         test.Headers{"Range": []string{"1-1"}},
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
 			Status:          200,
 		},
-		//     request methodHead "/rpc/getitemrange?min=2&max=4"
-		//         (rangeHdrs (ByteRangeFromTo 0 0)) ""
-		//       `shouldRespondWith`
-		//         ""
-		//         { matchStatus = 200
-		//         , matchHeaders = [ matchContentTypeJson
-		//                          , "Content-Range" <:> "0-0/*" ]
-		//         }
+		//     it "using limit and offset" $ do
+		//       post "/rpc/getitemrange?limit=1&offset=1" [json| { "min": 2, "max": 4 } |]
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 200
+		//           , matchHeaders =
+		//               [ "Content-Range" <:> "1-1/*"
+		//               , "Content-Length" <:> "10"
+		//               ]
+		//           }
 		{
-			Description:     "a proc that returns a set returns paginated results",
-			Method:          "HEAD",
-			Query:           "/rpc/getitemrange?min=2&max=4",
-			Body:            ``,
-			Headers:         test.Headers{"Range": []string{"0-0"}},
-			Expected:        ``,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
-			Status:          200,
-		},
-
-		// it "using limit and offset" $ do
-		// post "/rpc/getitemrange?limit=1&offset=1" [json| { "min": 2, "max": 4 } |]
-		//    `shouldRespondWith` [json| [{"id":4}] |]
-		// 	{ matchStatus = 200
-		// 	, matchHeaders = ["Content-Range" <:> "1-1/*"]
-		// 	}
-		{
-			Description:     "using limit and offset",
+			Description:     "returns paginated results using limit and offset",
 			Method:          "POST",
 			Query:           "/rpc/getitemrange?limit=1&offset=1",
-			Body:            `{ "min": 2, "max": 4 } `,
-			Headers:         nil,
+			Body:            `{ "min": 2, "max": 4 }`,
 			Expected:        `[{"id":4}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*", "Content-Length": "10"},
 			Status:          200,
 		},
-		// get "/rpc/getitemrange?min=2&max=4&limit=1&offset=1"
-		//    `shouldRespondWith` [json| [{"id":4}] |]
-		// 	{ matchStatus = 200
-		// 	, matchHeaders = ["Content-Range" <:> "1-1/*"]
-		// 	}
+		//       get "/rpc/getitemrange?min=2&max=4&limit=1&offset=1"
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 200
+		//           , matchHeaders =
+		//               [ "Content-Range" <:> "1-1/*"
+		//               , "Content-Length" <:> "10"
+		//               ]
+		//           }
 		{
-			Description:     "using limit and offset",
+			Description:     "returns paginated results using limit and offset",
 			Method:          "GET",
 			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
-			Body:            ``,
-			Headers:         nil,
 			Expected:        `[{"id":4}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*", "Content-Length": "10"},
 			Status:          200,
 		},
-		// request methodHead "/rpc/getitemrange?min=2&max=4&limit=1&offset=1" mempty mempty
-		//   `shouldRespondWith`
-		// 	""
-		// 	{ matchStatus = 200
-		// 	, matchHeaders = [ matchContentTypeJson
-		// 					 , "Content-Range" <:> "1-1/*" ]
-		// 	}
+		//       request methodHead "/rpc/getitemrange?min=2&max=4&limit=1&offset=1" mempty mempty
+		//         `shouldRespondWith` ""
+		//           { matchStatus = 200
+		//           , matchHeaders =
+		//               [ matchContentTypeJson
+		//               , matchHeaderAbsent hContentLength
+		//               , "Content-Range" <:> "1-1/*"
+		//               ]
+		//           }
 		{
-			Description:     "using limit and offset",
+			Description:     "returns paginated results using limit and offset",
 			Method:          "HEAD",
 			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
-			Body:            ``,
-			Headers:         nil,
-			Expected:        ``,
-			ExpectedHeaders: map[string]string{"Content-Range": "1-1/*"},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "", "Content-Range": "1-1/*"},
 			Status:          200,
+			Skip:            "PostgREST 16.4: HEAD answers without Content-Length; no card",
 		},
-		//   it "includes total count if requested" $ do
-		//     request methodPost "/rpc/getitemrange"
-		//             (rangeHdrsWithCount (ByteRangeFromTo 0 0))
-		//             [json| { "min": 2, "max": 4 } |]
-		//        `shouldRespondWith` [json| [{"id":3}] |]
-		//         { matchStatus = 206 -- it now knows the response is partial
-		//         , matchHeaders = ["Content-Range" <:> "0-0/2"]
-		//         }
-		// @@ we will not support this (count with POST)
-		// {
-		// 	Description:     "includes total count if requested",
-		// 	Method:          "POST",
-		// 	Query:           "/rpc/getitemrange",
-		// 	Body:            `{ "min": 2, "max": 4 }`,
-		// 	Headers:         test.Headers{"Range": []string{"0-0"}, "Prefer": {"count=exact"}},
-		// 	Expected:        ``,
-		// 	ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
-		// 	Status:          206,
-		// },
-		//     request methodGet "/rpc/getitemrange?min=2&max=4"
-		//             (rangeHdrsWithCount (ByteRangeFromTo 0 0)) ""
-		//        `shouldRespondWith` [json| [{"id":3}] |]
-		//         { matchStatus = 206
-		//         , matchHeaders = ["Content-Range" <:> "0-0/2"]
-		//         }
+		//   context "includes total count if requested" $ do
+		//     it "using the Range header" $
+		//       request
+		//         methodGet
+		//         "/rpc/getitemrange?min=2&max=4"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 1 1))
+		//         ""
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 206 -- it now knows the response is partial
+		//           , matchHeaders = ["Content-Range" <:> "1-1/2"]
+		//           }
 		{
-			Description:     "includes total count if requested",
+			Description:     "includes total count if requested using the Range header",
 			Method:          "GET",
 			Query:           "/rpc/getitemrange?min=2&max=4",
-			Body:            ``,
-			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
-			Expected:        `[{"id":3}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
+			Headers:         test.Headers{"Range": {"1-1"}, "Prefer": {"count=exact"}},
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/2"},
 			Status:          206,
 		},
-		//     request methodHead "/rpc/getitemrange?min=2&max=4"
-		//         (rangeHdrsWithCount (ByteRangeFromTo 0 0)) ""
-		//       `shouldRespondWith`
-		//         ""
-		//         { matchStatus = 206
-		//         , matchHeaders = [ matchContentTypeJson
-		//                          , "Content-Range" <:> "0-0/2" ]
-		//         }
+		//     it "using limit and offset" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/getitemrange?limit=1&offset=1"
+		//         [("Prefer", "count=exact")]
+		//         [json| { "min": 2, "max": 4 } |]
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 206 -- it now knows the response is partial
+		//           , matchHeaders = ["Content-Range" <:> "1-1/2"]
+		//           }
 		{
-			Description:     "includes total count if requested",
+			Description:     "includes total count if requested using limit and offset",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange?limit=1&offset=1",
+			Body:            `{ "min": 2, "max": 4 }`,
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/2"},
+			Status:          206,
+		},
+		//       request
+		//         methodGet
+		//         "/rpc/getitemrange?min=2&max=4&limit=1&offset=1"
+		//         [("Prefer", "count=exact")]
+		//         mempty
+		//         `shouldRespondWith` [json| [{"id":4}] |]
+		//           { matchStatus = 206
+		//           , matchHeaders = ["Content-Range" <:> "1-1/2"]
+		//           }
+		{
+			Description:     "includes total count if requested using limit and offset",
+			Method:          "GET",
+			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[{"id":4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-1/2"},
+			Status:          206,
+		},
+		//       request
+		//         methodHead
+		//         "/rpc/getitemrange?min=2&max=4&limit=1&offset=1"
+		//         [("Prefer", "count=exact")]
+		//         mempty
+		//         `shouldRespondWith` ""
+		//           { matchStatus = 206
+		//           , matchHeaders =
+		//               [ matchContentTypeJson
+		//               , "Content-Range" <:> "1-1/2"
+		//               ]
+		//           }
+		{
+			Description:     "includes total count if requested using limit and offset",
 			Method:          "HEAD",
-			Query:           "/rpc/getitemrange?min=2&max=4",
-			Body:            ``,
-			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
-			Expected:        ``,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/2"},
+			Query:           "/rpc/getitemrange?min=2&max=4&limit=1&offset=1",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "1-1/2"},
 			Status:          206,
 		},
 		//   it "includes exact count if requested" $ do
@@ -312,6 +318,145 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
 		//         }
+		{
+			Description:     "returns CSV",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Headers:         test.Headers{"Accept": []string{"text/csv"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+		},
+		//   context "ignores Range header when method is different than GET" $ do
+		//     it "without limit and offset" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/getitemrange"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 1 1))
+		//         [json| { "min": 2, "max": 4 } |]
+		//         `shouldRespondWith` [json| [{"id": 3}, {"id": 4}] |]
+		//           { matchStatus = 200
+		//           , matchHeaders = ["Content-Range" <:> "0-1/2"]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, without limit and offset",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange",
+			Body:            `{ "min": 2, "max": 4 }`,
+			Headers:         test.Headers{"Range": {"1-1"}, "Prefer": {"count=exact"}},
+			Expected:        `[{"id": 3}, {"id": 4}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
+		//       request
+		//         methodHead
+		//         "/rpc/getitemrange?min=2&max=4"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 1 1))
+		//         ""
+		//         `shouldRespondWith` ""
+		//           { matchStatus = 200
+		//           , matchHeaders =
+		//               [ matchContentTypeJson
+		//               , "Content-Range" <:> "0-1/2"
+		//               ]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, without limit and offset",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=4",
+			Headers:         test.Headers{"Range": {"1-1"}, "Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-1/2"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
+		//     it "with limit and offset" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/getitemrange?limit=2&offset=1"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 1 1))
+		//         [json| { "min": 2, "max": 5 } |]
+		//         `shouldRespondWith` [json| [{"id": 4}, {"id": 5}] |]
+		//           { matchStatus = 206
+		//           , matchHeaders = ["Content-Range" <:> "1-2/3"]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, with limit and offset",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange?limit=2&offset=1",
+			Body:            `{ "min": 2, "max": 5 }`,
+			Headers:         test.Headers{"Range": {"1-1"}, "Prefer": {"count=exact"}},
+			Expected:        `[{"id": 4}, {"id": 5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/3"},
+			Status:          206,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
+		//       request
+		//         methodHead
+		//         "/rpc/getitemrange?min=2&max=5&limit=2&offset=1"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 1 1))
+		//         ""
+		//         `shouldRespondWith` ""
+		//           { matchStatus = 206
+		//           , matchHeaders =
+		//               [ matchContentTypeJson
+		//               , "Content-Range" <:> "1-2/3"
+		//               ]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, with limit and offset",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=5&limit=2&offset=1",
+			Headers:         test.Headers{"Range": {"1-1"}, "Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "1-2/3"},
+			Status:          206,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
+		//     it "does not throw an invalid range error" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/getitemrange?limit=2&offset=1"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 0 0))
+		//         [json| { "min": 2, "max": 5 } |]
+		//         `shouldRespondWith` [json| [{"id": 4}, {"id": 5}] |]
+		//           { matchStatus = 206
+		//           , matchHeaders = ["Content-Range" <:> "1-2/3"]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, does not throw an invalid range error",
+			Method:          "POST",
+			Query:           "/rpc/getitemrange?limit=2&offset=1",
+			Body:            `{ "min": 2, "max": 5 }`,
+			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
+			Expected:        `[{"id": 4}, {"id": 5}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "1-2/3"},
+			Status:          206,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
+		//       request
+		//         methodHead
+		//         "/rpc/getitemrange?min=2&max=5&limit=2&offset=1"
+		//         (rangeHdrsWithCount (ByteRangeFromTo 0 0))
+		//         ""
+		//         `shouldRespondWith` ""
+		//           { matchStatus = 206
+		//           , matchHeaders =
+		//               [ matchContentTypeJson
+		//               , "Content-Range" <:> "1-2/3"
+		//               ]
+		//           }
+		{
+			Description:     "ignores Range header when method is different than GET, does not throw an invalid range error",
+			Method:          "HEAD",
+			Query:           "/rpc/getitemrange?min=2&max=5&limit=2&offset=1",
+			Headers:         test.Headers{"Range": {"0-0"}, "Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "1-2/3"},
+			Status:          206,
+			Skip:            "PostgREST 16.4: the Range header is ignored on POST and HEAD /rpc; no card",
+		},
 
 		// context "unknown function" $ do
 		//   it "returns 404" $
@@ -343,6 +488,20 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 404
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		// (16.4 also matches "Content-Length" <:> "291")
+		{
+			Description: "should fail with 404 and hint the closest proc on unknown proc name",
+			Method:      "GET",
+			Query:       "/rpc/sayhell",
+			Expected: `{
+				"hint":"Perhaps you meant to call the function test.sayhello",
+				"message":"Could not find the function test.sayhell without parameters in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.sayhell without parameters, but no matches were found in the schema cache."}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "291", "Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 
 		//   it "should fail with 404 on unknown proc args" $ do
 		//     get "/rpc/sayhello" `shouldRespondWith` 404
@@ -369,11 +528,20 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 404
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		// (the port queried ?any_arg=value, a copy of the case above: corrected
+		// to the spec's request)
 		{
 			Description: "should fail with 404 and hint the closest args on unknown proc args",
 			Method:      "GET",
-			Query:       "/rpc/sayhello?any_arg=value",
-			Status:      404,
+			Query:       "/rpc/sayhello?nam=Peter",
+			Expected: `{
+				"hint":"Perhaps you meant to call the function test.sayhello(name)",
+				"message":"Could not find the function test.sayhello(nam) in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.sayhello with parameter nam, but no matches were found in the schema cache."}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 		//   it "should not ignore unknown args and fail with 404" $
 		//     get "/rpc/add_them?a=1&b=2&smthelse=blabla" `shouldRespondWith`
@@ -404,12 +572,9 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     { matchStatus  = 404
 		//     , matchHeaders = [matchContentTypeJson]
 		//     }
-		{
-			Description: "should fail with 404 when no json arg is found with prefer single object",
-			Method:      "GET",
-			Query:       "/rpc/add_them?a=1&b=2&smthelse=blabla",
-			Status:      404,
-		},
+		// Not in PostgREST 16.4: Prefer: params=single-object was removed
+		// (PostgREST #3757). The Go case here was a copy of the add_them case
+		// above under this description, and is gone with it.
 		//   it "should fail with 404 for overloaded functions with unknown args" $ do
 		//     get "/rpc/overloaded?wrong_arg=value" `shouldRespondWith`
 		//       [json| {
@@ -454,6 +619,8 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		// The code stays empty until SmoothDB adopts PostgREST's PGRST codes.
+		// (16.4 also matches "Content-Length" <:> "353", the length of the
+		// PGRST203 body: not asserted here, card 32494 (error body).)
 		{
 			Description:     "should fail with 300 Multiple Choices without explicit type casts",
 			Method:          "GET",
@@ -675,9 +842,24 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         [json|{ "id": 2}|]
 		//       `shouldRespondWith`
 		//         [json|{"id": 2, "articleStars": [{"userId": 3}]}|]
+		{
+			Description: "can embed if the related tables are in a hidden schema but exposed as views",
+			Method:      "POST",
+			Query:       "/rpc/single_article?select=id,articleStars(userId)",
+			Body:        `{ "id": 2}`,
+			Expected:    `{"id": 2, "articleStars": [{"userId": 3}]}`,
+			Status:      200,
+		},
 		//     get "/rpc/single_article?id=2&select=id,articleStars(userId)"
 		//       `shouldRespondWith`
 		//         [json|{"id": 2, "articleStars": [{"userId": 3}]}|]
+		{
+			Description: "can embed if the related tables are in a hidden schema but exposed as views",
+			Method:      "GET",
+			Query:       "/rpc/single_article?id=2&select=id,articleStars(userId)",
+			Expected:    `{"id": 2, "articleStars": [{"userId": 3}]}`,
+			Status:      200,
+		},
 
 		//   it "can embed an M2M relationship table" $ do
 		//     get "/rpc/getallusers?select=name,tasks(name)&id=gt.1"
@@ -988,7 +1170,17 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 204
 		//         , matchHeaders = [matchHeaderAbsent hContentType]
 		//         }
-
+		// (16.4 also matches matchHeaderAbsent hContentLength)
+		{
+			Description:     "returns 204, no Content-Type header and no content for void",
+			Method:          "POST",
+			Query:           "/rpc/ret_void",
+			Body:            `{}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
+			Skip:            "PostgREST 16.4: RETURNS void answers 204 with no Content-Type; card 32490 (rpc details)",
+		},
 		//   it "returns null for an integer with null value" $
 		//     post "/rpc/ret_null"
 		//         [json|{}|]
@@ -1002,6 +1194,58 @@ func TestPostgREST_RPC(t *testing.T) {
 			Headers:     nil,
 			Expected:    `null`,
 			Status:      200,
+		},
+		//   it "returns a record type" $ do
+		//     post
+		//       "/rpc/returns_record"
+		//       ""
+		//       `shouldRespondWith` [json|{"id":1,"name":"Windows 7","client_id":1}|]
+		{
+			Description: "returns a record type",
+			Method:      "POST",
+			Query:       "/rpc/returns_record",
+			Expected:    `{"id":1,"name":"Windows 7","client_id":1}`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: functions returning record or setof record, called with an empty body; no card",
+		},
+		//     post
+		//       "/rpc/returns_record_params"
+		//       [json|{"id":1, "name": "Windows%"}|]
+		//       `shouldRespondWith` [json|{"id":1,"name":"Windows 7","client_id":1}|]
+		{
+			Description: "returns a record type",
+			Method:      "POST",
+			Query:       "/rpc/returns_record_params",
+			Body:        `{"id":1, "name": "Windows%"}`,
+			Expected:    `{"id":1,"name":"Windows 7","client_id":1}`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: functions returning record or setof record; no card",
+		},
+		//   it "returns a setof record type" $ do
+		//     post
+		//       "/rpc/returns_setof_record"
+		//       ""
+		//       `shouldRespondWith` [json|[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]|]
+		{
+			Description: "returns a setof record type",
+			Method:      "POST",
+			Query:       "/rpc/returns_setof_record",
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: functions returning record or setof record, called with an empty body; no card",
+		},
+		//     post
+		//       "/rpc/returns_setof_record_params"
+		//       [json|{"id":1,"name":"Windows%"}|]
+		//       `shouldRespondWith` [json|[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]|]
+		{
+			Description: "returns a setof record type",
+			Method:      "POST",
+			Query:       "/rpc/returns_setof_record_params",
+			Body:        `{"id":1,"name":"Windows%"}`,
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: functions returning record or setof record; no card",
 		},
 		//   context "different types when overloaded" $ do
 		//     it "returns composite type" $
@@ -1024,6 +1268,8 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         `shouldRespondWith`
 		//         [json|{"x": 1, "y": 2}|]
 		//         { matchHeaders = [matchContentTypeJson] }
+		// Not in PostgREST 16.4: Prefer: params=single-object was removed
+		// (PostgREST #3757).
 
 		//   when (actualPgVersion >= pgVersion100) $
 		//     it "accepts a variety of arguments (Postgres >= 10)" $
@@ -1182,6 +1428,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         `shouldRespondWith`
 		//           [json|"object"|]
 		//           { matchHeaders = [matchContentTypeJson] }
+		// Not in PostgREST 16.4 (a Postgres < 10 case).
 
 		//   when ((actualPgVersion >= pgVersion109 && actualPgVersion < pgVersion110)
 		//         || actualPgVersion >= pgVersion114) $
@@ -1191,16 +1438,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         `shouldRespondWith`
 		//           [json|"string"|]
 		//           { matchHeaders = [matchContentTypeJson] }
-		//@@ returns "object"
-		// {
-		// 	Description: "parses quoted JSON arguments as JSON string (from Postgres 10.9, 11.4)",
-		// 	Method:      "POST",
-		// 	Query:       "/rpc/json_argument",
-		// 	Body:        `{ "arg": "{ \"key\": 3 }" }`,
-		// 	Headers:     nil,
-		// 	Expected:    `"string"`,
-		// 	Status:      200,
-		// },
+		// (16.4 drops the version guard: the case runs on every Postgres)
+		{
+			Description: "parses quoted JSON arguments as JSON string",
+			Method:      "POST",
+			Query:       "/rpc/json_argument",
+			Body:        `{ "arg": "{ \"key\": 3 }" }`,
+			Expected:    `"string"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a JSON string passed to a json parameter stays a string (smoothdb answers \"object\"); no card",
+		},
 		// context "improper input" $ do
 		//   it "rejects unknown content type even if payload is good" $ do
 		//     request methodPost "/rpc/sayhello"
@@ -1247,11 +1494,31 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     liftIO $ do
 		//       simpleStatus p `shouldBe` badRequest400
 		//       isErrorFormat (simpleBody p) `shouldBe` True
+		// isErrorFormat: an object with "message" and no keys but message,
+		// details, hint and code; asserted as the body PostgREST 16.4 answers
+		{
+			Description: "treats simple plpgsql raise as invalid input",
+			Method:      "POST",
+			Query:       "/rpc/problem",
+			Body:        `{}`,
+			Expected:    `{"code":"P0001","details":null,"hint":null,"message":"bad thing"}`,
+			Status:      400,
+			Skip:        "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 		//   it "treats plpgsql assert as internal server error" $ do
 		//     p <- post "/rpc/assert" "{}"
 		//     liftIO $ do
 		//       simpleStatus p `shouldBe` internalServerError500
 		//       isErrorFormat (simpleBody p) `shouldBe` True
+		{
+			Description: "treats plpgsql assert as internal server error",
+			Method:      "POST",
+			Query:       "/rpc/assert",
+			Body:        `{}`,
+			Expected:    `{"code":"P0004","details":null,"hint":null,"message":"bad thing"}`,
+			Status:      500,
+			Skip:        "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 
 		// context "unsupported method" $ do
 		//   it "DELETE fails" $
@@ -1261,6 +1528,8 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 405
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
+		// (16.4 also matches "Content-Length" <:> "94"; the PGRST101 body is
+		// not asserted, card 32494 (error body))
 		{
 			Description: "unsupported method: DELETE fails",
 			Method:      "DELETE",
@@ -1288,27 +1557,72 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus = 204
 		//       , matchHeaders = [ matchHeaderAbsent hContentType ]
 		//       }
-
+		// (16.4 also matches matchHeaderAbsent hContentLength)
+		{
+			Description:     "executes the proc exactly once per request: reset the counter",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "callcounter_count", "value": 1}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
+			Skip:            "PostgREST 16.4: RETURNS void answers 204 with no Content-Type; card 32490 (rpc details)",
+		},
 		//   -- now the test
 		//   post "/rpc/callcounter"
 		//       [json|{}|]
 		//     `shouldRespondWith`
 		//       [json|1|]
-
+		{
+			Description: "executes the proc exactly once per request",
+			Method:      "POST",
+			Query:       "/rpc/callcounter",
+			Body:        `{}`,
+			Expected:    `1`,
+			Status:      200,
+			Skip:        "depends on the reset_sequence call above, skipped (RETURNS void); card 32490 (rpc details)",
+		},
 		//   post "/rpc/callcounter"
 		//       [json|{}|]
 		//     `shouldRespondWith`
 		//       [json|2|]
+		{
+			Description: "executes the proc exactly once per request",
+			Method:      "POST",
+			Query:       "/rpc/callcounter",
+			Body:        `{}`,
+			Expected:    `2`,
+			Status:      200,
+			Skip:        "depends on the reset_sequence call above, skipped (RETURNS void); card 32490 (rpc details)",
+		},
 
 		// context "a proc that receives no parameters" $ do
 		//   it "interprets empty string as empty json object on a post request" $
 		//     post "/rpc/noparamsproc" BL.empty `shouldRespondWith`
 		//       [json| "Return value of no parameters procedure." |]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "interprets empty string as empty json object on a post request",
+			Method:          "POST",
+			Query:           "/rpc/noparamsproc",
+			Expected:        `"Return value of no parameters procedure."`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: an empty POST body calls the function with no arguments; no card",
+		},
 		//   it "interprets empty string as a function with no args on a get request" $
 		//     get "/rpc/noparamsproc" `shouldRespondWith`
 		//       [json| "Return value of no parameters procedure." |]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "interprets empty string as a function with no args on a get request",
+			Method:          "GET",
+			Query:           "/rpc/noparamsproc",
+			Expected:        `"Return value of no parameters procedure."`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 
 		// it "returns proper output when having the same return col name as the proc name" $ do
 		//   post "/rpc/test" [json|{}|] `shouldRespondWith`
@@ -1415,6 +1729,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json| { "v": "{hi,hello,there}" } |]
 		//         `shouldRespondWith`
 		//           [json|["hi", "hello", "there"]|]
+		// Not in PostgREST 16.4 (a Postgres < 10 case).
 
 		//   when (actualPgVersion >= pgVersion100) $ do
 		//     it "works with POST (Postgres >= 10)" $
@@ -1422,6 +1737,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           [json| { "v": ["hi", "hello", "there"] } |]
 		//         `shouldRespondWith`
 		//           [json|["hi", "hello", "there"]|]
+		{
+			Description: "procs with VARIADIC params works with POST",
+			Method:      "POST",
+			Query:       "/rpc/variadic_param",
+			Body:        `{ "v": ["hi", "hello", "there"] }`,
+			Expected:    `["hi", "hello", "there"]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 
 		//     context "works with GET and repeated params" $ do
 		//       it "n=0 (through DEFAULT)" $
@@ -1440,17 +1764,26 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           `shouldRespondWith`
 		//             [json|["hi"]|]
 		// @@ support for variadic is minimal (should not use the sintax "v := ...")
-		// {
-		// 	Description: "works with GET and repeated params",
-		// 	Method:      "GET",
-		// 	Query:       "/rpc/variadic_param?v=hi",
-		// 	Expected:    `["hi"]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "works with GET and repeated params n=1",
+			Method:      "GET",
+			Query:       "/rpc/variadic_param?v=hi",
+			Expected:    `["hi"]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 		//       it "n>1" $
 		//         get "/rpc/variadic_param?v=hi&v=there"
 		//           `shouldRespondWith`
 		//             [json|["hi", "there"]|]
+		{
+			Description: "works with GET and repeated params n>1",
+			Method:      "GET",
+			Query:       "/rpc/variadic_param?v=hi&v=there",
+			Expected:    `["hi", "there"]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 
 		//     context "works with POST and repeated params from html form" $ do
 		//       it "n=0 (through DEFAULT)" $
@@ -1459,20 +1792,46 @@ func TestPostgREST_RPC(t *testing.T) {
 		//             ""
 		//           `shouldRespondWith`
 		//             [json|[]|]
-
+		{
+			Description: "works with POST and repeated params from html form n=0",
+			Method:      "POST",
+			Query:       "/rpc/variadic_param",
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
 		//       it "n=1" $
 		//         request methodPost "/rpc/variadic_param"
 		//             [("Content-Type", "application/x-www-form-urlencoded")]
 		//             "v=hi"
 		//           `shouldRespondWith`
 		//             [json|["hi"]|]
-
+		{
+			Description: "works with POST and repeated params from html form n=1",
+			Method:      "POST",
+			Query:       "/rpc/variadic_param",
+			Body:        `v=hi`,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `["hi"]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 		//       it "n>1" $
 		//         request methodPost "/rpc/variadic_param"
 		//             [("Content-Type", "application/x-www-form-urlencoded")]
 		//             "v=hi&v=there"
 		//           `shouldRespondWith`
 		//             [json|["hi", "there"]|]
+		{
+			Description: "works with POST and repeated params from html form n>1",
+			Method:      "POST",
+			Query:       "/rpc/variadic_param",
+			Body:        `v=hi&v=there`,
+			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
+			Expected:    `["hi", "there"]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 
 		// it "returns last value for repeated params without VARIADIC" $
 		//   get "/rpc/sayhello?name=ignored&name=world"
@@ -1490,6 +1849,14 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     get "/rpc/sayhello_variadic?name=ignored&name=world&v=unused"
 		//       `shouldRespondWith`
 		//         [json|"Hello, world"|]
+		{
+			Description: "returns last value for repeated non-variadic params in function with other VARIADIC arguments",
+			Method:      "GET",
+			Query:       "/rpc/sayhello_variadic?name=ignored&name=world&v=unused",
+			Expected:    `"Hello, world"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
+		},
 
 		// it "can handle procs with args that have a DEFAULT value" $ do
 		//   get "/rpc/many_inout_params?num=1&str=two"
@@ -1518,7 +1885,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     { matchStatus  = 402
 		//     , matchHeaders = [matchContentTypeJson]
 		//     }
-
+		// (16.4 also matches "Content-Length" <:> "99")
+		{
+			Description:     "can map a RAISE error code and message to a http status",
+			Method:          "GET",
+			Query:           "/rpc/raise_pt402",
+			Expected:        `{ "hint": "Upgrade your plan", "details": "Quota exceeded", "code": "PT402", "message": "Payment Required" }`,
+			ExpectedHeaders: map[string]string{"Content-Length": "99", "Content-Type": "application/json; charset=utf-8"},
+			Status:          402,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 		// it "defaults to status 500 if RAISE code is PT not followed by a number" $
 		//   get "/rpc/raise_bad_pt"
 		//     `shouldRespondWith`
@@ -1526,8 +1902,20 @@ func TestPostgREST_RPC(t *testing.T) {
 		//     { matchStatus  = 500
 		//     , matchHeaders = [ matchContentTypeJson ]
 		//     }
+		// (16.4 also matches "Content-Length" <:> "61")
+		{
+			Description:     "defaults to status 500 if RAISE code is PT not followed by a number",
+			Method:          "GET",
+			Query:           "/rpc/raise_bad_pt",
+			Expected:        `{"hint": null, "details": null, "code": "PT40A", "message": "Wrong"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "61", "Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 
 		// context "expects a single json object" $ do
+		// Not in PostgREST 16.4, the whole context: Prefer: params=single-object
+		// was removed (PostgREST #3757).
 		//   it "does not expand posted json into parameters" $
 		//     request methodPost "/rpc/singlejsonparam"
 		//       [("prefer","params=single-object")] [json| { "p1": 1, "p2": "text", "p3" : {"obj":"text"} } |] `shouldRespondWith`
@@ -1567,6 +1955,8 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         [json|[{"x": 1, "y": "first"}, {"x": 2, "y": "second"}]|]
 		//       `shouldRespondWith`
 		//         [json|[{"x": 1, "y": "first"}, {"x": 2, "y": "second"}]|]
+		// Not in PostgREST 16.4: Prefer: params=single-object was removed
+		// (PostgREST #3757).
 
 		//   it "overloaded(int, int)" $
 		//     get "/rpc/overloaded?a=1&b=2" `shouldRespondWith` [str|3|]
@@ -1610,6 +2000,8 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         "a=1&b=2&c=3"
 		//       `shouldRespondWith`
 		//         [json|{"a": "1", "b": "2", "c": "3"}|]
+		// Not in PostgREST 16.4: Prefer: params=single-object was removed
+		// (PostgREST #3757).
 
 		//   it "overloaded_html_form(int, int)" $
 		//     request methodPost "/rpc/overloaded_html_form"
@@ -1712,6 +2104,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		// context "only for POST rpc" $ do
 		//   it "gives a parse filter error if GET style proc args are specified" $
 		//     post "/rpc/sayhello?name=John" [json|{name: "John"}|] `shouldRespondWith` 400
+		// (aeson-qq's json quasiquoter accepts the unquoted key: the body sent
+		// is {"name": "John"}, and the 400 is PGRST100 for the filter "John")
+		{
+			Description: "gives a parse filter error if GET style proc args are specified",
+			Method:      "POST",
+			Query:       "/rpc/sayhello?name=John",
+			Body:        `{"name": "John"}`,
+			Status:      400,
+		},
 
 		//   it "ignores json keys not included in ?columns" $
 		//     post "/rpc/sayhello?columns=name"
@@ -1747,6 +2148,8 @@ func TestPostgREST_RPC(t *testing.T) {
 			Status:   200,
 		},
 		// context "bulk RPC with params=multiple-objects" $ do
+		// Not in PostgREST 16.4, the whole context: Prefer: params=multiple-objects
+		// on RPC was dropped.
 		//   it "works with a scalar function an returns a json array" $
 		//     request methodPost "/rpc/add_them" [("Prefer", "params=multiple-objects")]
 		//       [json|[
@@ -1797,6 +2200,18 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus  = 200
 		//         , matchHeaders = [ matchContentTypeJson ]
 		//         }
+		// (16.4 keeps only the Postgres >= 14 form)
+		{
+			Description:     "custom header is set",
+			Method:          "POST",
+			Query:           "/rpc/get_guc_value",
+			Headers:         test.Headers{"Custom-Header": {"test"}},
+			Body:            `{ "prefix": "request.headers", "name": "custom-header" }`,
+			Expected:        `"test"`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "standard header is set" $
 		//     request methodPost "/rpc/get_guc_value"
 		//               [("Origin", "http://example.com")]
@@ -1811,6 +2226,17 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus  = 200
 		//         , matchHeaders = [ matchContentTypeJson ]
 		//         }
+		{
+			Description:     "standard header is set",
+			Method:          "POST",
+			Query:           "/rpc/get_guc_value",
+			Headers:         test.Headers{"Origin": {"http://example.com"}},
+			Body:            `{ "prefix": "request.headers", "name": "origin" }`,
+			Expected:        `"http://example.com"`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "current role is available as GUC claim" $
 		//     request methodPost "/rpc/get_guc_value" []
 		//         (
@@ -1846,6 +2272,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = []
 		//         }
+		{
+			Description: "single cookie ends up as claims",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Headers:     test.Headers{"Cookie": {"acookie=cookievalue"}},
+			Body:        `{"prefix": "request.cookies", "name":"acookie"}`,
+			Expected:    `"cookievalue"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "multiple cookies ends up as claims" $
 		//     request methodPost "/rpc/get_guc_value" [("Cookie","acookie=cookievalue;secondcookie=anothervalue")]
 		//       (
@@ -1859,6 +2295,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = []
 		//         }
+		{
+			Description: "multiple cookies end up as claims",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Headers:     test.Headers{"Cookie": {"acookie=cookievalue;secondcookie=anothervalue"}},
+			Body:        `{"prefix": "request.cookies", "name":"secondcookie"}`,
+			Expected:    `"anothervalue"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "app settings available" $
 		//     request methodPost "/rpc/get_guc_value" []
 		//       [json| { "name": "app.settings.app_host" } |]
@@ -1867,6 +2313,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus  = 200
 		//         , matchHeaders = [ matchContentTypeJson ]
 		//         }
+		{
+			Description:     "app settings available",
+			Method:          "POST",
+			Query:           "/rpc/get_guc_value",
+			Body:            `{ "name": "app.settings.app_host" }`,
+			Expected:        `"localhost"`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: app.settings.* GUCs from the app-settings configuration; no card",
+		},
 		//   it "gets the Authorization value" $
 		//     request methodPost "/rpc/get_guc_value" [authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA"]
 		//       (
@@ -1880,6 +2336,16 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = []
 		//         }
+		{
+			Description: "gets the Authorization value",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Headers:     test.Headers{"Authorization": {"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA"}},
+			Body:        `{"prefix": "request.headers", "name":"authorization"}`,
+			Expected:    `"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "gets the http method" $
 		//     request methodPost "/rpc/get_guc_value" []
 		//       [json| {"name":"request.method"} |]
@@ -1888,6 +2354,15 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = []
 		//         }
+		{
+			Description: "gets the http method",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Body:        `{"name":"request.method"}`,
+			Expected:    `"POST"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 		//   it "gets the http path" $
 		//     request methodPost "/rpc/get_guc_value" []
 		//       [json| {"name":"request.path"} |]
@@ -1896,8 +2371,23 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         { matchStatus = 200
 		//         , matchHeaders = []
 		//         }
+		{
+			Description: "gets the http path",
+			Method:      "POST",
+			Query:       "/rpc/get_guc_value",
+			Body:        `{"name":"request.path"}`,
+			Expected:    `"/rpc/get_guc_value"`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: the request.headers, request.cookies, request.method and request.path GUCs; card 32487 (request GUCs)",
+		},
 
 		// context "binary output" $ do
+		// Not in PostgREST 16.4's RpcSpec: the raw-output cases (text/plain,
+		// text/xml) moved to Feature/Query/CustomMediaSpec.hs, where they are
+		// rewritten, and the octet-stream cases on ret_base64_bin and
+		// ret_rows_with_base64_bin were dropped (the fixture functions too). The
+		// Go cases below stay as they were; the dead raw-output blocks are left
+		// to the CustomMediaSpec port.
 		//   context "Proc that returns scalar" $ do
 		//     it "can query without selecting column" $
 		//       request methodPost "/rpc/ret_base64_bin" (acceptHdrs "application/octet-stream") ""
@@ -2045,106 +2535,353 @@ func TestPostgREST_RPC(t *testing.T) {
 			Status:      200,
 		},
 		//   it "should work with filters that use the plain with language fts operator" $ do
+		// (16.4 renames it "should work with filters that use the fts operator on
+		// tsvector columns", and drops the version guard on the wfts request)
 		//     get "/rpc/get_tsearch?text_search_vector=fts(english).impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
 		// @@
 		// No function matches the given name and argument types. You might need to add explicit type casts.",
 		// "Message":"function test.get_tsearch(text_search_vector =\u003e unknown) does not exist
-		// {
-		// 	Description: "should work with filters that use the plain with language fts operator",
-		// 	Method:      "GET",
-		// 	Query:       "/rpc/get_tsearch?text_search_vector=fts(english).impossible",
-		// 	Expected:    `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description:     "should work with filters that use the fts operator on tsvector columns",
+			Method:          "GET",
+			Query:           "/rpc/get_tsearch?text_search_vector=fts(english).impossible",
+			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
+		},
 		//     get "/rpc/get_tsearch?text_search_vector=plfts.impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "should work with filters that use the fts operator on tsvector columns",
+			Method:          "GET",
+			Query:           "/rpc/get_tsearch?text_search_vector=plfts.impossible",
+			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 		//     get "/rpc/get_tsearch?text_search_vector=not.fts(english).fun%7Crat" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "should work with filters that use the fts operator on tsvector columns",
+			Method:          "GET",
+			Query:           "/rpc/get_tsearch?text_search_vector=not.fts(english).fun%7Crat",
+			Expected:        `[{"text_search_vector":"'amus':5 'fair':7 'impossibl':9 'peu':4"},{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 		//     when (actualPgVersion >= pgVersion112) $
 		//         get "/rpc/get_tsearch?text_search_vector=wfts.impossible" `shouldRespondWith`
 		//             [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//             { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "should work with filters that use the fts operator on tsvector columns",
+			Method:          "GET",
+			Query:           "/rpc/get_tsearch?text_search_vector=wfts.impossible",
+			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//   it "should work with filters that use the fts operator on text and json columns" $ do
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=fts(english).impossible"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search":"It's kind of fun to do the impossible"},
+		//         {"text_search":"C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator on text and json columns",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=fts(english).impossible",
+			Expected: `[
+				{"text_search":"It's kind of fun to do the impossible"},
+				{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
+		},
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=plfts.impossible"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search":"It's kind of fun to do the impossible"},
+		//         {"text_search":"C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator on text and json columns",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=plfts.impossible",
+			Expected: `[
+				{"text_search":"It's kind of fun to do the impossible"},
+				{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=not.fts(english).fun%7Crat"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search":"C'est un peu amusant de faire l'impossible"},
+		//         {"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator on text and json columns",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=not.fts(english).fun%7Crat",
+			Expected: `[
+				{"text_search":"C'est un peu amusant de faire l'impossible"},
+				{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=wfts.impossible"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search":"It's kind of fun to do the impossible"},
+		//         {"text_search":"C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator on text and json columns",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=wfts.impossible",
+			Expected: `[
+				{"text_search":"It's kind of fun to do the impossible"},
+				{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//   it "should work with filters that use the fts operator when the column type is a tsvector domain" $
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search_domain&text_search_domain=fts(simple).impossible"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"},
+		//         {"text_search_domain":"'amusant':5 'c':1 'de':6 'est':2 'faire':7 'impossible':9 'l':8 'peu':4 'un':3"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator when the column type is a tsvector domain",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search_domain&text_search_domain=fts(simple).impossible",
+			Expected: `[
+				{"text_search_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"},
+				{"text_search_domain":"'amusant':5 'c':1 'de':6 'est':2 'faire':7 'impossible':9 'l':8 'peu':4 'un':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "needs fixture tsearch_to_tsvector.text_search_domain",
+		},
+		//   it "should work with filters that use the fts operator when the column type is a recursive tsvector domain" $
+		//     get "/rpc/get_tsearch_to_tsvector?select=text_search_rec_domain&text_search_rec_domain=fts(simple).impossible"
+		//       `shouldRespondWith` [json|[
+		//         {"text_search_rec_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"},
+		//         {"text_search_rec_domain":"'amusant':5 'c':1 'de':6 'est':2 'faire':7 'impossible':9 'l':8 'peu':4 'un':3"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "should work with filters that use the fts operator when the column type is a recursive tsvector domain",
+			Method:      "GET",
+			Query:       "/rpc/get_tsearch_to_tsvector?select=text_search_rec_domain&text_search_rec_domain=fts(simple).impossible",
+			Expected: `[
+				{"text_search_rec_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"},
+				{"text_search_rec_domain":"'amusant':5 'c':1 'de':6 'est':2 'faire':7 'impossible':9 'l':8 'peu':4 'un':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "needs fixture tsearch_to_tsvector.text_search_rec_domain",
+		},
 
 		//   it "should work with the phraseto_tsquery function" $
 		//     get "/rpc/get_tsearch?text_search_vector=phfts(english).impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "should work with the phraseto_tsquery function",
+			Method:          "GET",
+			Query:           "/rpc/get_tsearch?text_search_vector=phfts(english).impossible",
+			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
+		},
 
 		// it "should work with an argument of custom type in public schema" $
 		//     get "/rpc/test_arg?my_arg=something" `shouldRespondWith`
 		//       [json|"foobar"|]
 		//       { matchHeaders = [matchContentTypeJson] }
+		{
+			Description:     "should work with an argument of custom type in public schema",
+			Method:          "GET",
+			Query:           "/rpc/test_arg?my_arg=something",
+			Expected:        `"foobar"`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 
 		// context "GUC headers on function calls" $ do
 		//   it "succeeds setting the headers" $ do
 		//     get "/rpc/get_projects_and_guc_headers?id=eq.2&select=id"
 		//       `shouldRespondWith` [json|[{"id": 2}]|]
-		//       {matchHeaders = [
-		//           matchContentTypeJson,
-		//           "X-Test"   <:> "key1=val1; someValue; key2=val2",
-		//           "X-Test-2" <:> "key1=val1"]}
+		//         { matchHeaders =
+		//             [ matchContentTypeJson
+		//             , "X-Test" <:> "key1=val1; someValue; key2=val2"
+		//             , "X-Test-2" <:> "key1=val1"
+		//             ]
+		//         }
+		{
+			Description:     "GUC headers on function calls succeeds setting the headers",
+			Method:          "GET",
+			Query:           "/rpc/get_projects_and_guc_headers?id=eq.2&select=id",
+			Expected:        `[{"id": 2}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "X-Test": "key1=val1; someValue; key2=val2", "X-Test-2": "key1=val1"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 		//     get "/rpc/get_int_and_guc_headers?num=1"
 		//       `shouldRespondWith` [json|1|]
-		//       {matchHeaders = [
-		//           matchContentTypeJson,
-		//           "X-Test"   <:> "key1=val1; someValue; key2=val2",
-		//           "X-Test-2" <:> "key1=val1"]}
+		//         { matchHeaders =
+		//             [ matchContentTypeJson
+		//             , "X-Test" <:> "key1=val1; someValue; key2=val2"
+		//             , "X-Test-2" <:> "key1=val1"
+		//             ]
+		//         }
+		{
+			Description:     "GUC headers on function calls succeeds setting the headers",
+			Method:          "GET",
+			Query:           "/rpc/get_int_and_guc_headers?num=1",
+			Expected:        `1`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "X-Test": "key1=val1; someValue; key2=val2", "X-Test-2": "key1=val1"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 		//     post "/rpc/get_int_and_guc_headers" [json|{"num": 1}|]
 		//       `shouldRespondWith` [json|1|]
-		//       {matchHeaders = [
-		//           matchContentTypeJson,
-		//           "X-Test"   <:> "key1=val1; someValue; key2=val2",
-		//           "X-Test-2" <:> "key1=val1"]}
+		//         { matchHeaders =
+		//             [ matchContentTypeJson
+		//             , "X-Test" <:> "key1=val1; someValue; key2=val2"
+		//             , "X-Test-2" <:> "key1=val1"
+		//             ]
+		//         }
+		{
+			Description:     "GUC headers on function calls succeeds setting the headers",
+			Method:          "POST",
+			Query:           "/rpc/get_int_and_guc_headers",
+			Body:            `{"num": 1}`,
+			Expected:        `1`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "X-Test": "key1=val1; someValue; key2=val2", "X-Test-2": "key1=val1"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//   it "fails when setting headers with wrong json structure" $ do
 		//     get "/rpc/bad_guc_headers_1"
-		//       `shouldRespondWith`
-		//       [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
-		//       { matchStatus  = 500
-		//       , matchHeaders = [ matchContentTypeJson ]
-		//       }
+		//       `shouldRespondWith` [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
+		//         { matchStatus = 500
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "157"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		{
+			Description:     "fails when setting headers with wrong json structure",
+			Method:          "GET",
+			Query:           "/rpc/bad_guc_headers_1",
+			Expected:        `{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "157", "Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 		//     get "/rpc/bad_guc_headers_2"
-		//       `shouldRespondWith`
-		//       [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
-		//       { matchStatus  = 500
-		//       , matchHeaders = [ matchContentTypeJson ]
-		//       }
+		//       `shouldRespondWith` [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
+		//         { matchStatus = 500
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "fails when setting headers with wrong json structure",
+			Method:          "GET",
+			Query:           "/rpc/bad_guc_headers_2",
+			Expected:        `{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 		//     get "/rpc/bad_guc_headers_3"
-		//       `shouldRespondWith`
-		//       [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
-		//       { matchStatus  = 500
-		//       , matchHeaders = [ matchContentTypeJson ]
-		//       }
+		//       `shouldRespondWith` [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
+		//         { matchStatus = 500
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "fails when setting headers with wrong json structure",
+			Method:          "GET",
+			Query:           "/rpc/bad_guc_headers_3",
+			Expected:        `{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 		//     post "/rpc/bad_guc_headers_1" [json|{}|]
-		//       `shouldRespondWith`
-		//       [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
-		//       { matchStatus  = 500
-		//       , matchHeaders = [ matchContentTypeJson ]
-		//       }
+		//       `shouldRespondWith` [json|{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}|]
+		//         { matchStatus = 500
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "fails when setting headers with wrong json structure",
+			Method:          "POST",
+			Query:           "/rpc/bad_guc_headers_1",
+			Body:            `{}`,
+			Expected:        `{"message":"response.headers guc must be a JSON array composed of objects with a single key and a string value","code":"PGRST111","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//   it "can set the same http header twice" $
 		//     get "/rpc/set_cookie_twice"
-		//       `shouldRespondWith`
-		//         ""
+		//       `shouldRespondWith` ""
 		//         { matchStatus = 204
-		//         , matchHeaders = [ matchHeaderAbsent hContentType
-		//                          , "Set-Cookie" <:> "sessionid=38afes7a8; HttpOnly; Path=/"
-		//                          , "Set-Cookie" <:> "id=a3fWa; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Secure; HttpOnly" ]
+		//         , matchHeaders =
+		//             [ matchHeaderAbsent hContentType
+		//             , matchHeaderAbsent hContentLength
+		//             , "Set-Cookie" <:> "sessionid=38afes7a8; HttpOnly; Path=/"
+		//             , "Set-Cookie" <:> "id=a3fWa; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Secure; HttpOnly"
+		//             ]
 		//         }
+		// (ExpectedHeaders reads the first Set-Cookie only)
+		{
+			Description:     "can set the same http header twice",
+			Method:          "GET",
+			Query:           "/rpc/set_cookie_twice",
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Set-Cookie": "sessionid=38afes7a8; HttpOnly; Path=/"},
+			Status:          204,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//   it "can override the Location header on a trigger" $
-		//     post "/stuff"
-		//         [json|[{"id": 2, "name": "stuff 2"}]|]
-		//       `shouldRespondWith`
-		//         ""
+		//     post
+		//       "/stuff"
+		//       [json|[{"id": 2, "name": "stuff 2"}]|]
+		//       `shouldRespondWith` ""
 		//         { matchStatus = 201
-		//         , matchHeaders = [ matchHeaderAbsent hContentType
-		//                          , "Location" <:> "/stuff?id=eq.2&overriden=true" ]
+		//         , matchHeaders =
+		//             [ matchHeaderAbsent hContentType
+		//             , "Location" <:> "/stuff?id=eq.2&overriden=true"
+		//             ]
 		//         }
+		{
+			Description:     "can override the Location header on a trigger",
+			Method:          "POST",
+			Query:           "/stuff",
+			Body:            `[{"id": 2, "name": "stuff 2"}]`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/stuff?id=eq.2&overriden=true"},
+			Status:          201,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//   -- On https://github.com/PostgREST/postgrest/issues/1427#issuecomment-595907535
 		//   -- it was reported that blank headers ` : ` where added and that cause proxies to fail the requests.
@@ -2155,74 +2892,193 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       liftIO $ do
 		//         let respHeaders = simpleHeaders r
 		//         respHeaders `shouldSatisfy` noBlankHeader
+		//
+		// noBlankHeader: no header is the empty pair. Go's client refuses a
+		// header line with an empty name, so a response read without error is
+		// the check; the status is the one PostgREST 16.4 answers live.
+		{
+			Description: "Blank headers bug: shouldn't add blank headers on POST",
+			Method:      "POST",
+			Query:       "/loc_test",
+			Body:        `{"id": "1", "c": "c1"}`,
+			Status:      201,
+		},
 
 		//     it "shouldn't add blank headers on PATCH" $ do
 		//       r <- request methodPatch "/loc_test?id=eq.1" [] [json|{"c": "c2"}|]
 		//       liftIO $ do
 		//         let respHeaders = simpleHeaders r
 		//         respHeaders `shouldSatisfy` noBlankHeader
+		{
+			Description: "Blank headers bug: shouldn't add blank headers on PATCH",
+			Method:      "PATCH",
+			Query:       "/loc_test?id=eq.1",
+			Body:        `{"c": "c2"}`,
+			Status:      204,
+		},
 
 		//     it "shouldn't add blank headers on GET" $ do
 		//       r <- request methodGet "/loc_test" [] ""
 		//       liftIO $ do
 		//         let respHeaders = simpleHeaders r
 		//         respHeaders `shouldSatisfy` noBlankHeader
+		{
+			Description: "Blank headers bug: shouldn't add blank headers on GET",
+			Method:      "GET",
+			Query:       "/loc_test",
+			Status:      200,
+		},
 
 		//     it "shouldn't add blank headers on DELETE" $ do
 		//       r <- request methodDelete "/loc_test?id=eq.1" [] ""
 		//       liftIO $ do
 		//         let respHeaders = simpleHeaders r
 		//         respHeaders `shouldSatisfy` noBlankHeader
+		{
+			Description: "Blank headers bug: shouldn't add blank headers on DELETE",
+			Method:      "DELETE",
+			Query:       "/loc_test?id=eq.1",
+			Status:      204,
+		},
 
 		//   context "GUC status override" $ do
 		//     it "can override the status on RPC" $
 		//       get "/rpc/send_body_status_403"
-		//         `shouldRespondWith`
-		//         [json|{"message" : "invalid user or password"}|]
-		//         { matchStatus  = 403
-		//         , matchHeaders = [ matchContentTypeJson ]
-		//         }
+		//         `shouldRespondWith` [json|{"message" : "invalid user or password"}|]
+		//           { matchStatus = 403
+		//           , matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description:     "GUC status override: can override the status on RPC",
+			Method:          "GET",
+			Query:           "/rpc/send_body_status_403",
+			Expected:        `{"message" : "invalid user or password"}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          403,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//     it "can override the status through trigger" $
-		//       patch "/stuff?id=eq.1"
-		//           [json|[{"name": "updated stuff 1"}]|]
-		//         `shouldRespondWith`
-		//           205
+		//       patch
+		//         "/stuff?id=eq.1"
+		//         [json|[{"name": "updated stuff 1"}]|]
+		//         `shouldRespondWith` 205
+		{
+			Description: "GUC status override: can override the status through trigger",
+			Method:      "PATCH",
+			Query:       "/stuff?id=eq.1",
+			Body:        `[{"name": "updated stuff 1"}]`,
+			Status:      205,
+			Skip:        "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//     it "fails when setting invalid status guc" $
 		//       get "/rpc/send_bad_status"
-		//         `shouldRespondWith`
-		//         [json|{"message":"response.status guc must be a valid status code","code":"PGRST112","details":null,"hint":null}|]
-		//         { matchStatus  = 500
-		//         , matchHeaders = [ matchContentTypeJson ]
-		//         }
+		//         `shouldRespondWith` [json|{"message":"response.status guc must be a valid status code","code":"PGRST112","details":null,"hint":null}|]
+		//           { matchStatus = 500
+		//           , matchHeaders =
+		//               [ "Content-Length" <:> "106"
+		//               , matchContentTypeJson
+		//               ]
+		//           }
+		{
+			Description:     "GUC status override: fails when setting invalid status guc",
+			Method:          "GET",
+			Query:           "/rpc/send_bad_status",
+			Expected:        `{"message":"response.status guc must be a valid status code","code":"PGRST112","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "106", "Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: the response.headers and response.status GUCs shape the response; card 32488 (response shaping)",
+		},
 
 		//   context "single unnamed param" $ do
-		//     it "can insert json directly" $
-		//       post "/rpc/unnamed_json_param"
-		//           [json|{"A": 1, "B": 2, "C": 3}|]
-		//         `shouldRespondWith`
-		//           [json|{"A": 1, "B": 2, "C": 3}|]
+		//     it "can insert json directly with unnamed parameter" $
+		//       post
+		//         "/rpc/unnamed_json_param"
+		//         [json|{"A": 1, "B": 2, "C": 3}|]
+		//         `shouldRespondWith` [json|{"A": 1, "B": 2, "C": 3}|]
+		{
+			Description: "can insert json directly with unnamed parameter",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_json_param",
+			Body:        `{"A": 1, "B": 2, "C": 3}`,
+			Expected:    `{"A": 1, "B": 2, "C": 3}`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
-		//     it "can insert text directly" $
-		//       request methodPost "/rpc/unnamed_text_param"
+		//     it "rejects json body when single param has a name" $
+		//       post
+		//         "/rpc/named_json_param"
+		//         [json|{"A": 1, "B": 2, "C": 3}|]
+		//         `shouldRespondWith` [json|{
+		//             "code":"PGRST202",
+		//             "message":"Could not find the function test.named_json_param(A, B, C) in the schema cache",
+		//             "details":"Searched for the function test.named_json_param with parameters A, B, C or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.",
+		//             "hint":null
+		//           }|]
+		//           { matchStatus = 404
+		//           }
+		{
+			Description: "rejects json body when single param has a name",
+			Method:      "POST",
+			Query:       "/rpc/named_json_param",
+			Body:        `{"A": 1, "B": 2, "C": 3}`,
+			Expected: `{
+				"code":"PGRST202",
+				"message":"Could not find the function test.named_json_param(A, B, C) in the schema cache",
+				"details":"Searched for the function test.named_json_param with parameters A, B, C or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.",
+				"hint":null
+			}`,
+			Status: 404,
+			Skip:   "needs fixture test.named_json_param",
+		},
+
+		//     it "can insert text directly" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_text_param"
 		//         [("Content-Type", "text/plain"), ("Accept", "text/plain")]
 		//         [str|unnamed text arg|]
-		//         `shouldRespondWith`
-		//         [str|unnamed text arg|]
+		//         `shouldRespondWith` [str|unnamed text arg|]
+		// (text/plain and text/xml bodies are compared as JSON by test.Execute)
+		{
+			Description: "can insert text directly",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_text_param",
+			Body:        `unnamed text arg`,
+			Headers:     test.Headers{"Content-Type": {"text/plain"}, "Accept": {"text/plain"}},
+			Expected:    `unnamed text arg`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
-		//     it "can insert xml directly" $
-		//       request methodPost "/rpc/unnamed_xml_param"
+		//     it "can insert xml directly" $ do
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_xml_param"
 		//         [("Content-Type", "text/xml"), ("Accept", "text/xml")]
 		//         [str|<note><from>John</from><to>Jane</to><message>Remember me</message></note>|]
-		//         `shouldRespondWith`
-		//         [str|<note><from>John</from><to>Jane</to><message>Remember me</message></note>|]
+		//         `shouldRespondWith` [str|<note><from>John</from><to>Jane</to><message>Remember me</message></note>|]
+		{
+			Description: "can insert xml directly",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_xml_param",
+			Body:        `<note><from>John</from><to>Jane</to><message>Remember me</message></note>`,
+			Headers:     test.Headers{"Content-Type": {"text/xml"}, "Accept": {"text/xml"}},
+			Expected:    `<note><from>John</from><to>Jane</to><message>Remember me</message></note>`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "can insert bytea directly" $ do
-		//       let file = unsafePerformIO $ BL.readFile "test/spec/fixtures/image.png"
-		//       r <- request methodPost "/rpc/unnamed_bytea_param"
-		//         [("Content-Type", "application/octet-stream"), ("Accept", "application/octet-stream")]
-		//         file
+		//       let file = readFixtureFile "image.png"
+		//       r <-
+		//         request
+		//           methodPost
+		//           "/rpc/unnamed_bytea_param"
+		//           [("Content-Type", "application/octet-stream"), ("Accept", "application/octet-stream")]
+		//           file
 		//       liftIO $ do
 		//         let respBody = simpleBody r
 		//         respBody `shouldBe` file
@@ -2230,160 +3086,724 @@ func TestPostgREST_RPC(t *testing.T) {
 			Description:     "can insert bytea directly",
 			Method:          "POST",
 			Query:           "/rpc/unnamed_bytea_param",
-			Body:            `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
-			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}, "Content-Type": []string{"application/octet-stream"}},
-			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
+			Body:            string(image),
+			Headers:         test.Headers{"Content-Type": {"application/octet-stream"}, "Accept": {"application/octet-stream"}},
+			Expected:        imageBase64,
+			ExpectedBase64:  true,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/octet-stream"},
 			Status:          200,
 		},
+
 		//     it "will err when no function with single unnamed json parameter exists and application/json is specified" $
-		//       request methodPost "/rpc/unnamed_int_param" [("Content-Type", "application/json")]
-		//           [json|{"x": 1, "y": 2}|]
-		//         `shouldRespondWith`
-		//           [json|{
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_int_param"
+		//         [("Content-Type", "application/json")]
+		//         [json|{"x": 1, "y": 2}|]
+		//         `shouldRespondWith` [json|{
 		//             "hint": "Perhaps you meant to call the function test.unnamed_text_param",
 		//             "message": "Could not find the function test.unnamed_int_param(x, y) in the schema cache",
 		//             "code":"PGRST202",
 		//             "details":"Searched for the function test.unnamed_int_param with parameters x, y or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache."
 		//           }|]
-		//           { matchStatus  = 404
-		//           , matchHeaders = [ matchContentTypeJson ]
+		//           { matchStatus = 404
+		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description: "will err when no function with single unnamed json parameter exists and application/json is specified",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_int_param",
+			Body:        `{"x": 1, "y": 2}`,
+			Headers:     test.Headers{"Content-Type": {"application/json"}},
+			Expected: `{
+				"hint": "Perhaps you meant to call the function test.unnamed_text_param",
+				"message": "Could not find the function test.unnamed_int_param(x, y) in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.unnamed_int_param with parameters x, y or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache."
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/plain is specified" $
-		//       request methodPost "/rpc/unnamed_int_param"
-		//           [("Content-Type", "text/plain")]
-		//           [str|a simple text|]
-		//         `shouldRespondWith`
-		//           [json|{
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_int_param"
+		//         [("Content-Type", "text/plain")]
+		//         [str|a simple text|]
+		//         `shouldRespondWith` [json|{
 		//             "hint": null,
 		//             "message": "Could not find the function test.unnamed_int_param in the schema cache",
 		//             "code":"PGRST202",
 		//             "details":"Searched for the function test.unnamed_int_param with a single unnamed text parameter, but no matches were found in the schema cache."
 		//           }|]
-		//           { matchStatus  = 404
-		//           , matchHeaders = [ matchContentTypeJson ]
+		//           { matchStatus = 404
+		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description: "will err when no function with single unnamed text parameter exists and text/plain is specified",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_int_param",
+			Body:        `a simple text`,
+			Headers:     test.Headers{"Content-Type": {"text/plain"}},
+			Expected: `{
+				"hint": null,
+				"message": "Could not find the function test.unnamed_int_param in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.unnamed_int_param with a single unnamed text parameter, but no matches were found in the schema cache."
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/xml is specified" $
-		//       request methodPost "/rpc/unnamed_int_param"
-		//           [("Content-Type", "text/xml")]
-		//           [str|a simple text|]
-		//         `shouldRespondWith`
-		//           [json|{
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_int_param"
+		//         [("Content-Type", "text/xml")]
+		//         [str|a simple text|]
+		//         `shouldRespondWith` [json|{
 		//             "hint": null,
 		//             "message": "Could not find the function test.unnamed_int_param in the schema cache",
 		//             "code":"PGRST202",
 		//             "details":"Searched for the function test.unnamed_int_param with a single unnamed xml parameter, but no matches were found in the schema cache."
 		//           }|]
-		//           { matchStatus  = 404
-		//           , matchHeaders = [ matchContentTypeJson ]
+		//           { matchStatus = 404
+		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description: "will err when no function with single unnamed xml parameter exists and text/xml is specified",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_int_param",
+			Body:        `a simple text`,
+			Headers:     test.Headers{"Content-Type": {"text/xml"}},
+			Expected: `{
+				"hint": null,
+				"message": "Could not find the function test.unnamed_int_param in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.unnamed_int_param with a single unnamed xml parameter, but no matches were found in the schema cache."
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "will err when no function with single unnamed bytea parameter exists and application/octet-stream is specified" $
-		//       let file = unsafePerformIO $ BL.readFile "test/spec/fixtures/image.png" in
-		//       request methodPost "/rpc/unnamed_int_param"
-		//           [("Content-Type", "application/octet-stream")]
-		//           file
-		//       `shouldRespondWith`
-		//         [json|{
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_int_param"
+		//         [("Content-Type", "application/octet-stream")]
+		//         (readFixtureFile "image.png")
+		//         `shouldRespondWith` [json|{
 		//           "hint": null,
 		//           "message": "Could not find the function test.unnamed_int_param in the schema cache",
 		//           "code":"PGRST202",
 		//           "details":"Searched for the function test.unnamed_int_param with a single unnamed bytea parameter, but no matches were found in the schema cache."
 		//         }|]
-		//         { matchStatus  = 404
-		//         , matchHeaders = [ matchContentTypeJson ]
-		//         }
+		//           { matchStatus = 404
+		//           , matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "will err when no function with single unnamed bytea parameter exists and application/octet-stream is specified",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_int_param",
+			Body:        string(image),
+			Headers:     test.Headers{"Content-Type": {"application/octet-stream"}},
+			Expected: `{
+				"hint": null,
+				"message": "Could not find the function test.unnamed_int_param in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.unnamed_int_param with a single unnamed bytea parameter, but no matches were found in the schema cache."
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "should be able to resolve when a single unnamed json parameter exists and other overloaded functions are found" $ do
-		//       request methodPost "/rpc/overloaded_unnamed_param" [("Content-Type", "application/json")]
-		//           [json|{}|]
-		//         `shouldRespondWith`
-		//           [json| 1 |]
-		//           { matchStatus  = 200
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_param"
+		//         [("Content-Type", "application/json")]
+		//         [json|{}|]
+		//         `shouldRespondWith` [json| 1 |]
+		//           { matchStatus = 200
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		//       request methodPost "/rpc/overloaded_unnamed_param" [("Content-Type", "application/json")]
-		//           [json|{"x": 1, "y": 2}|]
-		//         `shouldRespondWith`
-		//           [json| 3 |]
-		//           { matchStatus  = 200
+		{
+			Description:     "should be able to resolve when a single unnamed json parameter exists and other overloaded functions are found",
+			Method:          "POST",
+			Query:           "/rpc/overloaded_unnamed_param",
+			Body:            `{}`,
+			Headers:         test.Headers{"Content-Type": {"application/json"}},
+			Expected:        `1`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_param"
+		//         [("Content-Type", "application/json")]
+		//         [json|{"x": 1, "y": 2}|]
+		//         `shouldRespondWith` [json| 3 |]
+		//           { matchStatus = 200
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description:     "should be able to resolve when a single unnamed json parameter exists and other overloaded functions are found",
+			Method:          "POST",
+			Query:           "/rpc/overloaded_unnamed_param",
+			Body:            `{"x": 1, "y": 2}`,
+			Headers:         test.Headers{"Content-Type": {"application/json"}},
+			Expected:        `3`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
 
 		//     it "should be able to fallback to the single unnamed parameter function when other overloaded functions are not found" $ do
-		//       request methodPost "/rpc/overloaded_unnamed_param"
-		//           [("Content-Type", "application/json")]
-		//           [json|{"A": 1, "B": 2, "C": 3}|]
-		//         `shouldRespondWith`
-		//           [json|{"A": 1, "B": 2, "C": 3}|]
-		//       request methodPost "/rpc/overloaded_unnamed_param"
-		//           [("Content-Type", "text/plain"), ("Accept", "text/plain")]
-		//           [str|unnamed text arg|]
-		//         `shouldRespondWith`
-		//           [str|unnamed text arg|]
-		//       let file = unsafePerformIO $ BL.readFile "test/spec/fixtures/image.png"
-		//       r <- request methodPost "/rpc/overloaded_unnamed_param"
-		//         [("Content-Type", "application/octet-stream"), ("Accept", "application/octet-stream")]
-		//         file
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_param"
+		//         [("Content-Type", "application/json")]
+		//         [json|{"A": 1, "B": 2, "C": 3}|]
+		//         `shouldRespondWith` [json|{"A": 1, "B": 2, "C": 3}|]
+		{
+			Description: "should be able to fallback to the single unnamed parameter function when other overloaded functions are not found",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_unnamed_param",
+			Body:        `{"A": 1, "B": 2, "C": 3}`,
+			Headers:     test.Headers{"Content-Type": {"application/json"}},
+			Expected:    `{"A": 1, "B": 2, "C": 3}`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_param"
+		//         [("Content-Type", "text/plain"), ("Accept", "text/plain")]
+		//         [str|unnamed text arg|]
+		//         `shouldRespondWith` [str|unnamed text arg|]
+		{
+			Description: "should be able to fallback to the single unnamed parameter function when other overloaded functions are not found",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_unnamed_param",
+			Body:        `unnamed text arg`,
+			Headers:     test.Headers{"Content-Type": {"text/plain"}, "Accept": {"text/plain"}},
+			Expected:    `unnamed text arg`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
+		//       let file = readFixtureFile "image.png"
+		//       r <-
+		//         request
+		//           methodPost
+		//           "/rpc/overloaded_unnamed_param"
+		//           [("Content-Type", "application/octet-stream"), ("Accept", "application/octet-stream")]
+		//           file
 		//       liftIO $ do
 		//         let respBody = simpleBody r
 		//         respBody `shouldBe` file
+		{
+			Description:    "should be able to fallback to the single unnamed parameter function when other overloaded functions are not found",
+			Method:         "POST",
+			Query:          "/rpc/overloaded_unnamed_param",
+			Body:           string(image),
+			Headers:        test.Headers{"Content-Type": {"application/octet-stream"}, "Accept": {"application/octet-stream"}},
+			Expected:       imageBase64,
+			ExpectedBase64: true,
+			Status:         200,
+			Skip:           "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "should call the function with no parameters and not fallback to the single unnamed parameter function when using GET with Content-Type headers" $ do
 		//       request methodGet "/rpc/overloaded_unnamed_param" [("Content-Type", "text/plain")] ""
-		//         `shouldRespondWith`
-		//           [json| 1|]
-		//           { matchStatus  = 200 }
+		//         `shouldRespondWith` [json| 1|]
+		//           { matchStatus = 200
+		//           }
+		{
+			Description: "should call the function with no parameters and not fallback to the single unnamed parameter function when using GET with Content-Type headers",
+			Method:      "GET",
+			Query:       "/rpc/overloaded_unnamed_param",
+			Headers:     test.Headers{"Content-Type": {"text/plain"}},
+			Expected:    `1`,
+			Status:      200,
+		},
 		//       request methodGet "/rpc/overloaded_unnamed_param" [("Content-Type", "application/octet-stream")] ""
-		//         `shouldRespondWith`
-		//           [json| 1|]
-		//           { matchStatus  = 200 }
+		//         `shouldRespondWith` [json| 1|]
+		//           { matchStatus = 200
+		//           }
+		{
+			Description: "should call the function with no parameters and not fallback to the single unnamed parameter function when using GET with Content-Type headers",
+			Method:      "GET",
+			Query:       "/rpc/overloaded_unnamed_param",
+			Headers:     test.Headers{"Content-Type": {"application/octet-stream"}},
+			Expected:    `1`,
+			Status:      200,
+		},
 
 		//     it "should fail to fallback to any single unnamed parameter function when using an unsupported Content-Type header" $ do
-		//       request methodPost "/rpc/overloaded_unnamed_param"
-		//           [("Content-Type", "text/csv")]
-		//           "a,b\n1,2\n4,6\n100,200"
-		//         `shouldRespondWith`
-		//           [json| {
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_param"
+		//         [("Content-Type", "text/csv")]
+		//         "a,b\n1,2\n4,6\n100,200"
+		//         `shouldRespondWith` [json| {
 		//             "hint":"Perhaps you meant to call the function test.overloaded_unnamed_param(x, y)",
 		//             "message":"Could not find the function test.overloaded_unnamed_param(a, b) in the schema cache",
 		//             "code":"PGRST202",
 		//             "details":"Searched for the function test.overloaded_unnamed_param with parameters a, b, but no matches were found in the schema cache."
 		//           }|]
-		//           { matchStatus  = 404
+		//           { matchStatus = 404
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description: "should fail to fallback to any single unnamed parameter function when using an unsupported Content-Type header",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_unnamed_param",
+			Body: `a,b
+1,2
+4,6
+100,200`,
+			Headers: test.Headers{"Content-Type": {"text/csv"}},
+			Expected: `{
+				"hint":"Perhaps you meant to call the function test.overloaded_unnamed_param(x, y)",
+				"message":"Could not find the function test.overloaded_unnamed_param(a, b) in the schema cache",
+				"code":"PGRST202",
+				"details":"Searched for the function test.overloaded_unnamed_param with parameters a, b, but no matches were found in the schema cache."
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
 
 		//     it "should fail with multiple choices when two fallback functions with single unnamed json and jsonb parameters exist" $ do
-		//       request methodPost "/rpc/overloaded_unnamed_json_jsonb_param" [("Content-Type", "application/json")]
-		//           [json|{"A": 1, "B": 2, "C": 3}|]
-		//         `shouldRespondWith`
-		//           [json| {
+		//       request
+		//         methodPost
+		//         "/rpc/overloaded_unnamed_json_jsonb_param"
+		//         [("Content-Type", "application/json")]
+		//         [json|{"A": 1, "B": 2, "C": 3}|]
+		//         `shouldRespondWith` [json| {
 		//             "hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved",
 		//             "message":"Could not choose the best candidate function between: test.overloaded_unnamed_json_jsonb_param( => json), test.overloaded_unnamed_json_jsonb_param( => jsonb)",
 		//             "code":"PGRST203",
 		//             "details":null
 		//           }|]
-		//           { matchStatus  = 300
+		//           { matchStatus = 300
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		{
+			Description: "should fail with multiple choices when two fallback functions with single unnamed json and jsonb parameters exist",
+			Method:      "POST",
+			Query:       "/rpc/overloaded_unnamed_json_jsonb_param",
+			Body:        `{"A": 1, "B": 2, "C": 3}`,
+			Headers:     test.Headers{"Content-Type": {"application/json"}},
+			Expected: `{
+				"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved",
+				"message":"Could not choose the best candidate function between: test.overloaded_unnamed_json_jsonb_param( => json), test.overloaded_unnamed_json_jsonb_param( => jsonb)",
+				"code":"PGRST203",
+				"details":null
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          300,
+			Skip:            "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
 
 		//     it "should fail on /rpc/unnamed_xml_param when posting invalid xml" $ do
-		//       request methodPost "/rpc/unnamed_xml_param"
+		//       request
+		//         methodPost
+		//         "/rpc/unnamed_xml_param"
 		//         [("Content-Type", "text/xml"), ("Accept", "text/xml")]
 		//         [str|<|]
-		//         `shouldRespondWith`
-		//           [json| {
+		//         `shouldRespondWith` [json| {
 		//             "hint":null,
 		//             "message":"invalid XML content",
 		//             "code":"2200N",
 		//             "details":"line 1: StartTag: invalid element name\n<\n ^"
 		//           }|]
-		//           { matchStatus  = 400
-		//           , matchHeaders = [matchContentTypeJson]
+		//           { matchStatus = 400
+		//           , matchHeaders =
+		//               [ "Content-Length" <:> "118"
+		//               , matchContentTypeJson
+		//               ]
 		//           }
+		{
+			Description: "should fail on /rpc/unnamed_xml_param when posting invalid xml",
+			Method:      "POST",
+			Query:       "/rpc/unnamed_xml_param",
+			Body:        `<`,
+			Headers:     test.Headers{"Content-Type": {"text/xml"}, "Accept": {"text/xml"}},
+			Expected: `{
+				"hint":null,
+				"message":"invalid XML content",
+				"code":"2200N",
+				"details":"line 1: StartTag: invalid element name\n<\n ^"
+			}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "118", "Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
+			Skip:            "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
+		},
+
+		// -- https://github.com/PostgREST/postgrest/issues/1586#issuecomment-696345442
+		// context "a proc with bit and char parameters" $ do
+		//   it "modifies the param type from character to character varying" $ do
+		//     get "/rpc/char_param_select?char_=abcdefg&char_arr={abc,abcdefg}"
+		//       `shouldRespondWith` [json| [{ "char_": "abcdefg", "char_arr": [ "abc", "abcdefg" ] }] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "modifies the param type from character to character varying",
+			Method:          "GET",
+			Query:           "/rpc/char_param_select?char_=abcdefg&char_arr={abc,abcdefg}",
+			Expected:        `[{ "char_": "abcdefg", "char_arr": [ "abc", "abcdefg" ] }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+
+		//     post "/rpc/char_param_insert" [json| { "char_": "abcdefg", "char_arr": "{abc,abcdefg}" } |]
+		//       `shouldRespondWith` [json| {"code":"22001","details":null,"hint":null,"message":"value too long for type character(5)"} |]
+		//         { matchStatus = 400
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "92"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		{
+			Description:     "modifies the param type from character to character varying",
+			Method:          "POST",
+			Query:           "/rpc/char_param_insert",
+			Body:            `{ "char_": "abcdefg", "char_arr": "{abc,abcdefg}" }`,
+			Expected:        `{"code":"22001","details":null,"hint":null,"message":"value too long for type character(5)"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "92", "Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
+
+		//   it "modifies the param type from bit to bit varying" $ do
+		//     get "/rpc/bit_param_select?bit_=101010&bit_arr={101,101010}"
+		//       `shouldRespondWith` [json| [{ "bit_": "101010", "bit_arr": [ "101", "101010" ] }] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "modifies the param type from bit to bit varying",
+			Method:          "GET",
+			Query:           "/rpc/bit_param_select?bit_=101010&bit_arr={101,101010}",
+			Expected:        `[{ "bit_": "101010", "bit_arr": [ "101", "101010" ] }]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+
+		//     post "/rpc/bit_param_insert" [json| { "bit_": "101010", "bit_arr": "{101,101010}" } |]
+		//       `shouldRespondWith` [json| {"code":"22026","details":null,"hint":null,"message":"bit string length 6 does not match type bit(5)"} |]
+		//         { matchStatus = 400
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "102"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		{
+			Description:     "modifies the param type from bit to bit varying",
+			Method:          "POST",
+			Query:           "/rpc/bit_param_insert",
+			Body:            `{ "bit_": "101010", "bit_arr": "{101,101010}" }`,
+			Expected:        `{"code":"22026","details":null,"hint":null,"message":"bit string length 6 does not match type bit(5)"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "102", "Content-Type": "application/json; charset=utf-8"},
+			Status:          400,
+			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
+		},
+
+		// context "get message and details from raise sqlstate" $ do
+		//   it "gets message and details from raise sqlstate PGRST" $ do
+		//     r <-
+		//       request
+		//         methodGet
+		//         "/rpc/raise_sqlstate_test1"
+		//         []
+		//         ""
+		//
+		//     let
+		//       resStatus = simpleStatus r
+		//       resHeaders = simpleHeaders r
+		//       resBody = simpleBody r
+		//
+		//     liftIO $ do
+		//       resStatus `shouldBe` Status{statusCode = 332, statusMessage = "My Custom Status"}
+		//       resHeaders `shouldSatisfy` elem ("X-Header", "str")
+		//       resBody `shouldBe` [json|{"code":"123","message":"ABC","details":"DEF","hint":"XYZ"}|]
+		//
+		// (the status text, "My Custom Status", is not observable through test.Execute)
+		{
+			Description:     "gets message and details from raise sqlstate PGRST",
+			Method:          "GET",
+			Query:           "/rpc/raise_sqlstate_test1",
+			Expected:        `{"code":"123","message":"ABC","details":"DEF","hint":"XYZ"}`,
+			ExpectedHeaders: map[string]string{"X-Header": "str"},
+			Status:          332,
+			Skip:            "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//     get "/rpc/raise_sqlstate_test2"
+		//       `shouldRespondWith` [json|{"code":"123","message":"ABC","details":null,"hint":null}|]
+		//         { matchStatus = 332
+		//         , matchHeaders = ["X-Header" <:> "str"]
+		//         }
+		{
+			Description:     "gets message and details from raise sqlstate PGRST",
+			Method:          "GET",
+			Query:           "/rpc/raise_sqlstate_test2",
+			Expected:        `{"code":"123","message":"ABC","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"X-Header": "str"},
+			Status:          332,
+			Skip:            "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//   it "get message and details from PGRST raise and checks standard status message" $ do
+		//     r <-
+		//       request
+		//         methodGet
+		//         "/rpc/raise_sqlstate_test3"
+		//         []
+		//         ""
+		//
+		//     let
+		//       resStatus = simpleStatus r
+		//       resHeaders = simpleHeaders r
+		//       resBody = simpleBody r
+		//
+		//     liftIO $ do
+		//       resStatus `shouldBe` Status{statusCode = 404, statusMessage = "Not Found"}
+		//       resHeaders `shouldSatisfy` elem ("X-Header", "str")
+		//       resBody `shouldBe` [json|{"code":"123","message":"ABC","details":null,"hint":null}|]
+		//
+		{
+			Description:     "get message and details from PGRST raise and checks standard status message",
+			Method:          "GET",
+			Query:           "/rpc/raise_sqlstate_test3",
+			Expected:        `{"code":"123","message":"ABC","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"X-Header": "str"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//   it "get message and details from PGRST raise and checks custom status message" $ do
+		//     r <-
+		//       request
+		//         methodGet
+		//         "/rpc/raise_sqlstate_test4"
+		//         []
+		//         ""
+		//
+		//     let
+		//       resStatus = simpleStatus r
+		//       resHeaders = simpleHeaders r
+		//       resBody = simpleBody r
+		//
+		//     liftIO $ do
+		//       resStatus `shouldBe` Status{statusCode = 404, statusMessage = "My Not Found"}
+		//       resHeaders `shouldSatisfy` elem ("X-Header", "str")
+		//       resBody `shouldBe` [json|{"code":"123","message":"ABC","details":null,"hint":null}|]
+		//
+		// (the status text, "My Not Found", is not observable through test.Execute)
+		{
+			Description:     "get message and details from PGRST raise and checks custom status message",
+			Method:          "GET",
+			Query:           "/rpc/raise_sqlstate_test4",
+			Expected:        `{"code":"123","message":"ABC","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"X-Header": "str"},
+			Status:          404,
+			Skip:            "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//   it "returns error for invalid JSON in the MESSAGE option of the RAISE statement" $
+		//     get "/rpc/raise_sqlstate_invalid_json_message"
+		//       `shouldRespondWith` [json|{
+		//         "code":"PGRST121",
+		//         "message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+		//         "details":"Invalid JSON value for MESSAGE: 'INVALID'",
+		//         "hint":"MESSAGE must be a JSON object with obligatory keys: 'code', 'message' and optional keys: 'details', 'hint'."}|]
+		//         { matchStatus = 500
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "263"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		//
+		{
+			Description: "returns error for invalid JSON in the MESSAGE option of the RAISE statement",
+			Method:      "GET",
+			Query:       "/rpc/raise_sqlstate_invalid_json_message",
+			Expected: `{
+				"code":"PGRST121",
+				"message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+				"details":"Invalid JSON value for MESSAGE: 'INVALID'",
+				"hint":"MESSAGE must be a JSON object with obligatory keys: 'code', 'message' and optional keys: 'details', 'hint'."}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "263", "Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//   it "returns error for invalid JSON in the DETAIL option of the RAISE statement" $
+		//     get "/rpc/raise_sqlstate_invalid_json_details"
+		//       `shouldRespondWith` [json|{
+		//         "code":"PGRST121",
+		//         "message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+		//         "details":"Invalid JSON value for DETAIL: 'INVALID'",
+		//         "hint":"DETAIL must be a JSON object with obligatory keys: 'status', 'headers' and optional key: 'status_text'."}|]
+		//         { matchStatus = 500
+		//         }
+		//
+		{
+			Description: "returns error for invalid JSON in the DETAIL option of the RAISE statement",
+			Method:      "GET",
+			Query:       "/rpc/raise_sqlstate_invalid_json_details",
+			Expected: `{
+				"code":"PGRST121",
+				"message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+				"details":"Invalid JSON value for DETAIL: 'INVALID'",
+				"hint":"DETAIL must be a JSON object with obligatory keys: 'status', 'headers' and optional key: 'status_text'."}`,
+			Status: 500,
+			Skip:   "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		//   it "returns error for missing DETAIL option in the RAISE statement" $
+		//     get "/rpc/raise_sqlstate_missing_details"
+		//       `shouldRespondWith` [json|{
+		//         "code":"PGRST121",
+		//         "message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+		//         "details":"DETAIL is missing in the RAISE statement",
+		//         "hint":"DETAIL must be a JSON object with obligatory keys: 'status', 'headers' and optional key: 'status_text'."}|]
+		//         { matchStatus = 500
+		//         }
+		{
+			Description: "returns error for missing DETAIL option in the RAISE statement",
+			Method:      "GET",
+			Query:       "/rpc/raise_sqlstate_missing_details",
+			Expected: `{
+				"code":"PGRST121",
+				"message":"Could not parse JSON in the \"RAISE SQLSTATE 'PGRST'\" error",
+				"details":"DETAIL is missing in the RAISE statement",
+				"hint":"DETAIL must be a JSON object with obligatory keys: 'status', 'headers' and optional key: 'status_text'."}`,
+			Status: 500,
+			Skip:   "PostgREST 16.4: RAISE SQLSTATE 'PGRST' sets the status, the headers and the error body; card 32488 (response shaping)",
+		},
+
+		// -- here JWT has the role: postgrest_test_superuser
+		// context "test function temp_file_limit" $
+		//   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3Rfc3VwZXJ1c2VyIiwiaWQiOiJqZG9lIn0.LQ-qx0ArBnfkwQQhIHKF5cS-lzl0gnTPI8NLoPbL5Fg"
+		//   in  it "should return http status 500" $
+		//         request methodGet "/rpc/temp_file_limit" [auth] ""
+		//           `shouldRespondWith` ( if actualPgVersion < pgVersion180 then
+		//                                   [json|{"code":"53400","message":"temporary file size exceeds temp_file_limit (1kB)","details":null,"hint":null}|]
+		//                                 else
+		//                                   [json|{"code":"53400","message":"temporary file size exceeds \"temp_file_limit\" (1kB)","details":null,"hint":null}|]
+		//                               )
+		//             { matchStatus = 500
+		//             , matchHeaders = [matchContentTypeJson]
+		//             }
+		// (Postgres >= 18 quotes \"temp_file_limit\" in the message)
+		{
+			Description:     "test function temp_file_limit should return http status 500",
+			Method:          "GET",
+			Query:           "/rpc/temp_file_limit",
+			Headers:         test.Headers{"Authorization": {"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3Rfc3VwZXJ1c2VyIiwiaWQiOiJqZG9lIn0.LQ-qx0ArBnfkwQQhIHKF5cS-lzl0gnTPI8NLoPbL5Fg"}},
+			Expected:        `{"code":"53400","message":"temporary file size exceeds temp_file_limit (1kB)","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          500,
+			Skip:            "needs fixture role postgrest_test_superuser",
+		},
+
+		// context "test table valued function with filter" $ do
+		//   it "works with filter on unselected columns" $
+		//     request
+		//       methodGet
+		//       "/rpc/getallprojects?select=id,client_id&name=like.OSX"
+		//       []
+		//       ""
+		//       `shouldRespondWith` [json| [{"id":4,"client_id":2}] |]
+		//         { matchStatus = 200
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "test table valued function with filter works with filter on unselected columns",
+			Method:          "GET",
+			Query:           "/rpc/getallprojects?select=id,client_id&name=like.OSX",
+			Expected:        `[{"id":4,"client_id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+
+		//   it "works with filter on unselected columns with null embed" $
+		//     request
+		//       methodGet
+		//       "/rpc/getallprojects?select=id,clients(id)&clients.name=not.is.null"
+		//       []
+		//       ""
+		//       `shouldRespondWith` [json| [{"id":1,"clients":{"id": 1}}, {"id":2,"clients":{"id": 1}}, {"id":3,"clients":{"id": 2}}, {"id":4,"clients":{"id": 2}}, {"id":5,"clients":null}] |]
+		//         { matchStatus = 200
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "test table valued function with filter works with filter on unselected columns with null embed",
+			Method:          "GET",
+			Query:           "/rpc/getallprojects?select=id,clients(id)&clients.name=not.is.null",
+			Expected:        `[{"id":1,"clients":{"id": 1}}, {"id":2,"clients":{"id": 1}}, {"id":3,"clients":{"id": 2}}, {"id":4,"clients":{"id": 2}}, {"id":5,"clients":null}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+
+		//   it "works with logical filter on unselected columns" $
+		//     request
+		//       methodGet
+		//       "/rpc/getallprojects?select=id,client_id&or=(name.like.OSX,name.like.IOS)"
+		//       []
+		//       ""
+		//       `shouldRespondWith` [json| [{"id":3,"client_id":2}, {"id":4,"client_id":2}] |]
+		//         { matchStatus = 200
+		//         , matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description:     "test table valued function with filter works with logical filter on unselected columns",
+			Method:          "GET",
+			Query:           "/rpc/getallprojects?select=id,client_id&or=(name.like.OSX,name.like.IOS)",
+			Expected:        `[{"id":3,"client_id":2}, {"id":4,"client_id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
+		},
+
+		// context "schema cache duplicate definitions when two entries in pg_description have the same OID" $
+		//   it "doesn't err with 300 Multiple Choices" $
+		//     request
+		//       methodGet
+		//       "/rpc/collision_test_func?id=1"
+		//       []
+		//       ""
+		//       `shouldRespondWith` [json| 1 |]
+		//         { matchStatus = 200
+		//         }
+		{
+			Description: "schema cache duplicate definitions: doesn't err with 300 Multiple Choices",
+			Method:      "GET",
+			Query:       "/rpc/collision_test_func?id=1",
+			Expected:    `1`,
+			Status:      200,
+		},
+
+		// withConfig baseCfg{configDbPreConfig = Just $ QualifiedIdentifier "test" "true"} $
+		// it "should not fail when function name is a pg reserved word" $
+		//   request
+		//     methodGet
+		//     "/rpc/true"
+		//     []
+		//     ""
+		//     `shouldRespondWith` 200
+		{
+			Description: "should not fail when function name is a pg reserved word",
+			Method:      "GET",
+			Query:       "/rpc/true",
+			Status:      200,
+			Skip:        "needs fixture test.\"true\", and the db-pre-config setting smoothdb lacks; no card",
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
