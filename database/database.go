@@ -120,6 +120,25 @@ func isoDateStyle(params map[string]string) string {
 	return "ISO, " + order
 }
 
+// searchPathSet is the set_config that gives a connection
+// Database.SchemaSearchPath, "" when none is configured. It is a session
+// setting set with SQL, not a startup parameter, which a pooler such as
+// PgBouncer refuses by default; so a RESET does not restore it, and the
+// release of an autocommit connection runs this instead (see roleSettings).
+func searchPathSet() string {
+	if len(dbe.config.SchemaSearchPath) == 0 {
+		return ""
+	}
+	set := "set_config('search_path', '"
+	for i, schema := range dbe.config.SchemaSearchPath {
+		if i != 0 {
+			set += ", "
+		}
+		set += schema
+	}
+	return set + "', false)"
+}
+
 type Database struct {
 	DatabaseInfo
 	activation    chan struct{}
@@ -159,17 +178,10 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		config.ConnConfig.RuntimeParams = map[string]string{}
 	}
 	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
-	// The search path is a startup parameter too, so that it is the value the
-	// connection resets to: the release of an autocommit connection RESETs
-	// the role settings, a role's search_path among them (see roleSettings).
-	if len(dbe.config.SchemaSearchPath) != 0 {
-		for key := range config.ConnConfig.RuntimeParams {
-			if strings.EqualFold(key, "search_path") {
-				delete(config.ConnConfig.RuntimeParams, key)
-			}
-		}
-		config.ConnConfig.RuntimeParams["search_path"] = strings.Join(dbe.config.SchemaSearchPath, ", ")
-	}
+	// built here: AfterConnect runs on the pool's goroutines, also after the
+	// engine that created the pool is replaced (a library or a test that
+	// starts another), so it reads nothing of the engine
+	searchPath := searchPathSet()
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
@@ -186,6 +198,11 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				OID:   oid,
 				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
 			})
+		}
+		if searchPath != "" {
+			if _, err := conn.Exec(ctx, "SELECT "+searchPath); err != nil {
+				return err
+			}
 		}
 		info := db.info.Load()
 		if info == nil {

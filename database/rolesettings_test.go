@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +88,68 @@ func TestRoleDateStyleKeepsISOOutput(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// Database.SchemaSearchPath is set with SQL on every new connection, never
+// as a startup parameter, which a pooler such as PgBouncer refuses by default
+// (ignore_startup_parameters). The release of an autocommit connection
+// restores it explicitly where it RESETs the other role settings: a RESET
+// would go back to the server's default, not to the configured path.
+func TestSchemaSearchPathIsSetWithSQL(t *testing.T) {
+	saved := dbe.config.SchemaSearchPath
+	dbe.config.SchemaSearchPath = []string{"public", "information_schema"}
+	defer func() { dbe.config.SchemaSearchPath = saved }()
+
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbe.DeleteDatabase(ctx, "test_search_path")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_search_path")
+	ReleaseConn(ctx, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc, err := db.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var path, source string
+	err = pc.QueryRow(context.Background(),
+		"SELECT setting, source FROM pg_settings WHERE name = 'search_path'").Scan(&path, &source)
+	pc.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "public, information_schema" || source != "session" {
+		t.Errorf("search_path of a pool connection: got %q from %q, want %q from \"session\"",
+			path, source, "public, information_schema")
+	}
+
+	// the release puts the configured path back instead of RESETting it
+	c, err := dbe.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Release()
+	drop := "DROP ROLE IF EXISTS rs_path"
+	for _, q := range []string{drop,
+		"CREATE ROLE rs_path NOLOGIN",
+		"GRANT rs_path TO CURRENT_USER",
+		"ALTER ROLE rs_path SET search_path = pg_catalog",
+	} {
+		if _, err := c.Exec(context.Background(), q); err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+	}
+	defer c.Exec(context.Background(), drop)
+	rs, err := loadRoleSettings(context.Background(), c.Conn(), dbe.mainDb.info.Load().ServerVersion, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "; SELECT set_config('search_path', 'public, information_schema', false)"
+	if strings.Contains(rs.reset, `RESET "search_path"`) || !strings.Contains(rs.reset, want) {
+		t.Errorf("reset: got %q, want %q in place of RESET search_path", rs.reset, want)
 	}
 }

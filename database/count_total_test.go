@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -187,6 +188,10 @@ func TestRangedCountFunctionVolatility(t *testing.T) {
 			if got := strings.Contains(query, "__source"); got != test.once {
 				t.Errorf("materialized source: got %v, want %v\n\t%s", got, test.once, query)
 			}
+			// the stored total is cleared first, in the same batch
+			if got := options.totalPrelude != ""; got != test.once {
+				t.Errorf("prelude: got %q, want one: %v", options.totalPrelude, test.once)
+			}
 			if test.once {
 				if !strings.Contains(options.totalQuery, "current_setting(") {
 					t.Errorf("total: want the stored total, got %s", options.totalQuery)
@@ -201,5 +206,59 @@ func TestRangedCountFunctionVolatility(t *testing.T) {
 				t.Errorf("values: total %v, page %v", options.totalValues, values)
 			}
 		})
+	}
+}
+
+// The stored total of a VOLATILE function is transaction-local, so a second
+// ranged count in the same transaction (the Go API can run several) whose
+// filter PostgreSQL folds to false, and so never stores its own, read the
+// first one's total. Each count clears it first.
+func TestRangedCountTotalInOneTransaction(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	dbe.DeleteDatabase(ctx, "test_count_tx")
+	db, err := dbe.GetOrCreateActiveDatabase(ctx, "test_count_tx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dctx, dconn, err := ContextWithDb(ctx, db, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(dctx, dconn)
+	gi := GetSmoothContext(dctx)
+	if _, err := gi.Conn.Exec(dctx, `
+		CREATE FUNCTION numbers(n int) RETURNS TABLE (id int, label text) VOLATILE LANGUAGE sql AS
+			$$ SELECT i, 'n' || i FROM generate_series(1, n) i $$;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ReloadSchemaCache(dctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gi.Conn.Exec(dctx, "BEGIN"); err != nil {
+		t.Fatal(err)
+	}
+	defer gi.Conn.Exec(dctx, "ROLLBACK")
+
+	base := gi.QueryOptions
+	for _, test := range []struct {
+		query string
+		total int64
+	}{
+		{"limit=1", 5},
+		{"id=eq.null&limit=1", 0},
+	} {
+		q, _ := url.ParseQuery(test.query)
+		gi.QueryOptions = base
+		gi.QueryOptions.Count = "exact"
+		if _, _, err := ExecFunction(dctx, "numbers", Record{"n": 5}, q, false); err != nil {
+			t.Fatalf("%s: %v", test.query, err)
+		}
+		if gi.QueryOptions.Total != test.total {
+			t.Errorf("%s: total %d, want %d", test.query, gi.QueryOptions.Total, test.total)
+		}
 	}
 }

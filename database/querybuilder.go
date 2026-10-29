@@ -1752,7 +1752,7 @@ const totalSetting = "smoothdb.total"
 // second statement reads the setting back. With limit=0 PostgreSQL reads
 // nothing for the page, and the second statement counts the function itself.
 func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
-	options.totalQuery, options.totalValues = "", nil
+	options.totalQuery, options.totalValues, options.totalPrelude = "", nil, ""
 	var limit int64 = -1
 	hasLimit := parts.limit != "" || options.HasRange && options.RangeMax != -1
 	if hasLimit {
@@ -1807,6 +1807,9 @@ func buildAfterSelect(query, from string, once bool, joins, whereClause, groupBy
 			// value of a setting defined earlier in the session): the count
 			// over a false filter is 0
 			options.totalQuery = "SELECT coalesce(nullif(current_setting('" + totalSetting + "', true), ''), '0')::bigint"
+			// the setting lasts as long as the transaction: cleared before
+			// the page, a count of an earlier call in it is not read back
+			options.totalPrelude = "SELECT set_config('" + totalSetting + "', '0', true)"
 		}
 	}
 

@@ -128,9 +128,11 @@ type QueryOptions struct {
 	// executor: the rows that the request selects, whatever its range
 	Total int64
 	// set by buildAfterSelect for a ranged count: the statement that answers
-	// the total, sent in the same batch after the page (see runRead)
-	totalQuery  string
-	totalValues []any
+	// the total, sent in the same batch after the page (see runRead), and,
+	// when the page stores the total, the statement that clears it first
+	totalQuery   string
+	totalValues  []any
+	totalPrelude string
 }
 
 // RequestParser is the interface used to parse the query string in the request and
