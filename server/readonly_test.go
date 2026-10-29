@@ -58,19 +58,24 @@ func readOnlyProbeSetup(t *testing.T, s *Server) {
 // both.
 func TestReadOnlyFollowsEachRequestOnARetainedConnection(t *testing.T) {
 	cases := []struct {
-		txMode string
-		port   string
+		session string
+		txMode  string
+		port    string
 	}{
-		{"none", "8089"},
-		{"commit", "8090"},
+		{"role", "none", "8089"},
+		{"role", "commit", "8090"},
+		// without sessions the access mode travels with each request's
+		// statements, on whatever connection the pool hands out
+		{"none", "none", "8162"},
+		{"none", "commit", "8163"},
 	}
 	for _, c := range cases {
-		t.Run(c.txMode, func(t *testing.T) {
+		t.Run(c.session+"/"+c.txMode, func(t *testing.T) {
 			s := newSingleConnectionServer(t, map[string]any{
 				"Address":                  "localhost:" + c.port,
 				"AllowAnon":                false,
 				"JWTSecret":                "read-only-test-secret",
-				"SessionMode":              "role",
+				"SessionMode":              c.session,
 				"EnableAdminRoute":         false,
 				"Database.TransactionMode": c.txMode,
 			})
