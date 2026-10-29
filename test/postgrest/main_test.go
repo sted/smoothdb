@@ -1,6 +1,7 @@
 package postgrest
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -11,6 +12,12 @@ import (
 )
 
 var testConfig test.Config
+
+// PostgRESTVersion is the PostgREST release this port targets: its spec
+// files (test/spec in the PostgREST repository, at the tag v<version>) are the
+// source of the cases here, and its behaviour, run live, is the reference
+// where a card and the spec disagree. See README.md in this directory.
+const PostgRESTVersion = "16.4"
 
 func TestMain(m *testing.M) {
 	c := map[string]any{
@@ -27,8 +34,8 @@ func TestMain(m *testing.M) {
 		"Database.SchemaSearchPath": []string{"test"},
 		// the schemas a Profile header may select (PostgREST db-schemas); تست
 		// is exposed but not on the search path, as UnicodeSpec runs upstream
-		"Database.ExposedSchemas": []string{"test", "تست"},
-		"Database.TransactionMode":  "rollback-allow-override",
+		"Database.ExposedSchemas":  []string{"test", "تست"},
+		"Database.TransactionMode": "rollback-allow-override",
 		// the anonymous role the suite's token names, as db-anon-role in
 		// PostgREST's test config: 42501 is 401 for it and 403 for the others
 		"Database.AnonRole": "postgrest_test_anonymous",
@@ -81,6 +88,14 @@ func TestMain(m *testing.M) {
 
 	// Run
 	code := m.Run()
+
+	// The compatibility number: the ported PostgREST cases smoothdb passes,
+	// against those skipped with a reason. With -run it covers the cases run.
+	run, skip := test.Counts()
+	if run+skip > 0 {
+		fmt.Printf("PostgREST %s spec cases: %d run, %d skipped (%.1f%% run)\n",
+			PostgRESTVersion, run, skip, 100*float64(run)/float64(run+skip))
+	}
 
 	os.Exit(code)
 }

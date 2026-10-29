@@ -4,7 +4,7 @@ SmoothDB provides a RESTful API to PostgreSQL databases.
 
 Configured databases and schemas can be accessed and modified easily with a REST JSON-based interface.
 
-It is mostly compatible with [PostgREST](https://postgrest.org/en/stable/), with which it shares many characteristics.
+It is mostly compatible with [PostgREST](https://postgrest.org/en/stable/), with which it shares many characteristics. The target is PostgREST 16.4: its spec cases are ported in `test/postgrest`, which prints how many of them smoothdb passes (see [test/postgrest/README.md](test/postgrest/README.md)).
 
 The main differences are:
 

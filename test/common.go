@@ -51,6 +51,20 @@ type Test struct {
 	ExpectedBase64  bool
 	ExpectedHeaders map[string]string
 	Status          int
+	// Skip, when set, is why the case is not run: a ported PostgREST case that
+	// smoothdb does not pass, with the behaviour it lacks and the card that
+	// tracks it ("PostgREST 16.4: 405 on DELETE /rpc; card 32490 (rpc details)").
+	// Execute logs it and counts it in Skipped.
+	Skip string
+}
+
+// counts of the cases Execute ran and skipped, for the compatibility number
+// a suite prints at the end (see test/postgrest/main_test.go)
+var executed, skipped int
+
+// Counts returns how many cases Execute has run and skipped so far.
+func Counts() (run, skip int) {
+	return executed, skipped
 }
 
 // InitClient is the client of every suite request: with a timeout, so that a
@@ -162,6 +176,12 @@ func Execute(t *testing.T, config Config, tests []Test) {
 	var s1, s2 string
 	client := InitClient()
 	for i, test := range tests {
+		if test.Skip != "" {
+			skipped++
+			t.Logf("SKIP %d. %v: %v", i, test.Description, test.Skip)
+			continue
+		}
+		executed++
 		command := &Command{test.Description, test.Method, test.Query, test.Body, test.Headers}
 		body, headers, status, err := Exec(client, config, command)
 		if err != nil {
