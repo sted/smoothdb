@@ -111,6 +111,8 @@ type SessionManager struct {
 	// leaveSession). idle counts the sessions not in use that keep a
 	// connection.
 	waiters map[string][]*waiter
+	// waiting counts the waiters per pool (database.PoolOf)
+	waiting map[*database.Database]int
 	idle    int
 	// now is the clock of the session times, release gives a connection a
 	// session kept back to its pool (the tests replace both)
@@ -309,17 +311,21 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 	}
 	var yielded *database.DbPoolConn
 	if conn := session.DbConn; conn != nil {
-		if q := sm.waiters[session.key]; len(q) > 0 {
-			// a request of the same token waits: the connection is its own
-			// already (same role, same claims), handed over as it is
-			q[0].conn <- conn
-			q[0].cancel()
-			sm.popWaiter(session.key)
-			session.DbConn = nil
-		} else if database.Acquiring(session.Db) {
-			// another request waits for the pool: the connection goes back
-			// to it, reset, rather than idle here
+		own := sm.waiters[session.key]
+		others := sm.waiting[database.PoolOf(session.Db)] - len(own)
+		if others > 0 || database.Acquiring(session.Db) {
+			// a request of another token waits for this pool, registered
+			// with the manager (perhaps not on the pool yet) or not a
+			// session's: the connection goes back to the pool, reset, where
+			// the requests wait in turn, those of this token too
 			yielded = conn
+			session.DbConn = nil
+		} else if len(own) > 0 {
+			// only requests of the same token wait: the connection is theirs
+			// already (same role, same claims), handed over as it is
+			own[0].conn <- conn
+			own[0].cancel()
+			sm.popWaiter(session.key)
 			session.DbConn = nil
 		} else {
 			sm.idle += 1
@@ -342,6 +348,7 @@ func (sm *SessionManager) leaveSession(session *Session) bool {
 type waiter struct {
 	conn   chan *database.DbPoolConn // buffered: a hand-over never blocks
 	cancel context.CancelFunc        // stops the wait on the pool
+	pool   *database.Database        // the pool it waits for
 }
 
 // takeConnection gives the request of session a connection kept by an idle
@@ -364,10 +371,15 @@ func (sm *SessionManager) takeConnection(session *Session, w *waiter, exhausted 
 			}
 		}
 	}
+	// registered under the same lock as the scan: a session that leaves from
+	// now on sees the wait, before the request reaches the pool
 	if sm.waiters == nil {
 		sm.waiters = map[string][]*waiter{}
+		sm.waiting = map[*database.Database]int{}
 	}
+	w.pool = database.PoolOf(session.Db)
 	sm.waiters[session.key] = append(sm.waiters[session.key], w)
+	sm.waiting[w.pool] += 1
 	return nil
 }
 
@@ -397,6 +409,7 @@ func (sm *SessionManager) dropWaiter(key string, w *waiter) {
 	for i, x := range q {
 		if x == w {
 			q = append(q[:i:i], q[i+1:]...)
+			sm.waiting[w.pool] -= 1
 			break
 		}
 	}
@@ -410,6 +423,7 @@ func (sm *SessionManager) dropWaiter(key string, w *waiter) {
 // popWaiter removes the first waiter of key. Must be called with the lock held.
 func (sm *SessionManager) popWaiter(key string) {
 	q := sm.waiters[key]
+	sm.waiting[q[0].pool] -= 1
 	if len(q) == 1 {
 		delete(sm.waiters, key)
 	} else {

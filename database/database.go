@@ -306,28 +306,31 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 }
 
 func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
-	db.acquiring.Add(1)
-	defer db.acquiring.Add(-1)
+	if ctx.Value(handOffKey{}) == nil {
+		// a session's wait is counted by the session manager itself
+		db.acquiring.Add(1)
+		defer db.acquiring.Add(-1)
+	}
 	return db.pool.Acquire(ctx)
 }
 
-// SamePool says whether a and b take their connections from the same pool
-// (nil is the main database).
-func SamePool(a, b *Database) bool {
-	if dbe != nil {
-		if a == nil {
-			a = dbe.mainDb
-		}
-		if b == nil {
-			b = dbe.mainDb
-		}
+// PoolOf is the database whose pool serves db (nil is the main database).
+func PoolOf(db *Database) *Database {
+	if db == nil && dbe != nil {
+		return dbe.mainDb
 	}
-	return a == b
+	return db
+}
+
+// SamePool says whether a and b take their connections from the same pool.
+func SamePool(a, b *Database) bool {
+	return PoolOf(a) == PoolOf(b)
 }
 
 // Acquiring says whether a connection of db's pool (nil: the main database)
-// is being acquired: a session that keeps one ("role" mode) gives it back
-// instead, so that it does not idle while a request waits.
+// is being acquired outside the sessions that keep one ("role" mode): such a
+// session gives its own back instead, so that it does not idle while a
+// request waits. The waits of the sessions are counted by their manager.
 func Acquiring(db *Database) bool {
 	if db == nil {
 		if dbe == nil || dbe.mainDb == nil {
