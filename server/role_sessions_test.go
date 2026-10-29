@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // loadResult is what a burst of concurrent requests got.
@@ -79,6 +81,10 @@ func burst(t *testing.T, base string, clients []whoClient, workers int, d time.D
 type whoClient struct{ name, token, role, sub string }
 
 func roleSessionsServer(t *testing.T, port string) (*Server, string) {
+	return roleSessionsServerWithPool(t, port, 10)
+}
+
+func roleSessionsServerWithPool(t *testing.T, port string, pool int32) (*Server, string) {
 	t.Helper()
 	authzSetup(t)
 	superuserSetup(t, []string{"DROP FUNCTION IF EXISTS authz_whoami()"}, []string{
@@ -89,8 +95,8 @@ func roleSessionsServer(t *testing.T, port string) (*Server, string) {
 	})
 	s := newAuthzServer(t, port, map[string]any{
 		"SessionMode":                     "role",
-		"Database.MinPoolConnections":     int32(10),
-		"Database.MaxPoolConnections":     int32(10),
+		"Database.MinPoolConnections":     pool,
+		"Database.MaxPoolConnections":     pool,
 		"Database.PoolAcquisitionTimeout": 3,
 	})
 	done := startTestServer(t, s)
@@ -155,4 +161,82 @@ func TestRoleSessionsOfManyTokensBeyondThePool(t *testing.T) {
 	clients = append(clients, whoClient{"anonymous", "", "authz_anon", ""})
 	res := burst(t, base, clients, 2, 4*time.Second)
 	checkBurst(t, res, clients, 2*time.Second)
+}
+
+// A token whose requests keep coming always has one waiting for a
+// connection, and a session of the token leaving handed its connection to
+// it, every time: a request of another token, waiting on the pool, never got
+// one before its acquisition timeout. A connection goes to the pool, where
+// the requests wait in turn, whenever a request of another token waits.
+func TestRoleSessionsShareThePoolBetweenTokens(t *testing.T) {
+	_, base := roleSessionsServerWithPool(t, "8171", 1)
+	busy := whoClient{"busy", signClaims(t, map[string]any{"role": "authz_user", "sub": "busy"}, postgrestJWTSecret), "authz_user", "busy"}
+	other := whoClient{"other", signClaims(t, map[string]any{"role": "authz_user", "sub": "other"}, postgrestJWTSecret), "authz_user", "other"}
+	clients := []whoClient{other}
+	for i := 0; i < 12; i++ {
+		clients = append(clients, busy)
+	}
+	res := burst(t, base, clients, 1, 4*time.Second)
+	checkBurst(t, res, clients, 2*time.Second)
+}
+
+// When the pool of a database is exhausted, a request may take the connection
+// an idle session keeps: never one of another database, where it would read
+// and write in the wrong place.
+func TestRoleSessionsNeverTakeAConnectionOfAnotherDatabase(t *testing.T) {
+	authzSetup(t)
+	fn := "CREATE FUNCTION authz_whichdb() RETURNS text LANGUAGE sql AS $$ SELECT current_database()::text $$"
+	superuserSetup(t, []string{"DROP DATABASE IF EXISTS authz_other WITH (FORCE)", "DROP FUNCTION IF EXISTS authz_whichdb()"},
+		[]string{"CREATE DATABASE authz_other", fn})
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, "postgresql://postgres:postgres@localhost:5432/authz_other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, fn); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close(ctx)
+
+	s := newAuthzServer(t, "8172", map[string]any{
+		"SessionMode":                     "role",
+		"Database.MinPoolConnections":     int32(1),
+		"Database.MaxPoolConnections":     int32(1),
+		"Database.PoolAcquisitionTimeout": 3,
+	})
+	done := startTestServer(t, s)
+	defer func() {
+		s.Shutdown(context.Background())
+		<-done
+	}()
+	user := signClaims(t, map[string]any{"role": "authz_user", "sub": "b"}, postgrestJWTSecret)
+	other := signClaims(t, map[string]any{"role": "authz_user", "sub": "a"}, postgrestJWTSecret)
+
+	// a session on authz_other keeps its connection, idle
+	if got := getBody(t, "http://localhost:8172/api/authz_other/rpc/authz_whichdb", user); got != `"authz_other"` {
+		t.Fatalf("authz_other: %s", got)
+	}
+	// the pool of postgres is exhausted for a while
+	held, err := s.DBE.AcquireConnection(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer := make(chan string)
+	go func() {
+		req, _ := http.NewRequest("GET", "http://localhost:8172/api/postgres/rpc/authz_whichdb", nil)
+		req.Header.Set("Authorization", "Bearer "+other)
+		resp, err := slowClient.Do(req)
+		if err != nil {
+			answer <- err.Error()
+			return
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		answer <- string(body)
+	}()
+	time.Sleep(300 * time.Millisecond)
+	held.Release()
+	if got := <-answer; got != `"postgres"` {
+		t.Errorf("a request to postgres answered %s", got)
+	}
 }
