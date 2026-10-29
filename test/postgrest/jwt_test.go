@@ -1,0 +1,247 @@
+package postgrest
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/sted/smoothdb/server"
+	"github.com/sted/smoothdb/test"
+)
+
+// postgrestSecret is generateSecret of PostgREST's SpecHelper.hs: the AuthSpec
+// tokens below are signed with it.
+const postgrestSecret = "reallyreallyreallyreallyverysafe"
+
+// startJWTServer runs a server with its own JWT configuration on the pgrest
+// fixtures, configured like PostgREST's baseCfg: anonymous requests run as
+// postgrest_test_anonymous.
+func startJWTServer(t *testing.T, port int, jwtConfig map[string]any) test.Config {
+	t.Helper()
+	c := map[string]any{
+		"Address":                   fmt.Sprintf("localhost:%d", port),
+		"AllowAnon":                 true,
+		"Database.AnonRole":         "postgrest_test_anonymous",
+		"Logging.FileLogging":       false,
+		"Logging.StdOut":            false,
+		"Database.URL":              "postgresql://postgres:postgres@localhost:5432/postgres",
+		"Database.SchemaSearchPath": []string{"test"},
+	}
+	for k, v := range jwtConfig {
+		c[k] = v
+	}
+	s, err := server.NewServerWithConfig(c, &server.ConfigOptions{
+		ConfigFilePath: filepath.Join(t.TempDir(), "config.jsonc"),
+		SkipFlags:      true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.Start() }()
+	base := fmt.Sprintf("http://localhost:%d", port)
+	if err := test.WaitForServer(base); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		s.Shutdown(context.Background())
+		<-done
+	})
+	return test.Config{
+		BaseUrl:       base + "/api/pgrest",
+		CommonHeaders: test.Headers{"Accept-Profile": {"test"}, "Content-Profile": {"test"}},
+	}
+}
+
+func authHeader(token string) test.Headers {
+	return test.Headers{"Authorization": {"Bearer " + token}}
+}
+
+func signPayload(t *testing.T, payload string) string {
+	t.Helper()
+	enc := base64.RawURLEncoding
+	unsigned := enc.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`)) + "." + enc.EncodeToString([]byte(payload))
+	sig, err := jwt.SigningMethodHS256.Sign(unsigned, []byte(postgrestSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unsigned + "." + enc.EncodeToString(sig)
+}
+
+// Feature/Auth/AudienceJwtSecretSpec.hs: spec, with jwt-aud = "youraudience".
+func TestAudienceJwtSecretSpec(t *testing.T) {
+	cfg := startJWTServer(t, 8141, map[string]any{
+		"JWTSecret": postgrestSecret,
+		"JWTAud":    "youraudience",
+	})
+	notInAudience := `{"error":"JWT not in audience"}`
+	aud := func(aud string) test.Headers {
+		return authHeader(signPayload(t, `{"exp":9999999999,"role":"postgrest_test_author","id":"jdoe"`+aud+`}`))
+	}
+	test.Execute(t, cfg, []test.Test{
+		// it "succeeds when the audience claim matches" $ do
+		//   ... "aud": "youraudience"  `shouldRespondWith` 200
+		{Description: "succeeds when the audience claim matches", Query: "/authors_only",
+			Headers: aud(`,"aud":"youraudience"`), Status: 200},
+		// it "fails when the audience claim does not match" $ do
+		//   ... `shouldRespondWith` [json|{"code":"PGRST303","details":null,"hint":null,"message":"JWT not in audience"}|]
+		//     { matchStatus = 401 }
+		{Description: "fails when the audience claim does not match", Query: "/authors_only",
+			Headers: aud(`,"aud":"notyouraudience"`), Expected: notInAudience, Status: 401},
+		// it "fails when the audience claim is empty"
+		{Description: "fails when the audience claim is empty", Query: "/authors_only",
+			Headers: aud(`,"aud":""`), Expected: notInAudience, Status: 401},
+		// it "succeeds when the audience claim has 1 element and it matches"
+		{Description: "succeeds when the audience claim has 1 element and it matches", Query: "/authors_only",
+			Headers: aud(`,"aud":["youraudience"]`), Status: 200},
+		// it "succeeds when the audience claim has more than 1 element and one matches"
+		{Description: "succeeds when the audience claim has more than 1 element and one matches", Query: "/authors_only",
+			Headers: aud(`,"aud":["notyouraudience","youraudience","anotheraudience"]`), Status: 200},
+		// it "fails when the audience claim has 1 element and it doesn't match"
+		{Description: "fails when the audience claim has 1 element and it doesn't match", Query: "/authors_only",
+			Headers: aud(`,"aud":["notyouraudience"]`), Expected: notInAudience, Status: 401},
+		// it "fails when the audience claim has more than 1 element and none matches"
+		{Description: "fails when the audience claim has more than 1 element and none matches", Query: "/authors_only",
+			Headers: aud(`,"aud":["notyouraudience","stillnotyouraudience","anotheraudience"]`), Expected: notInAudience, Status: 401},
+		// it "ignores the audience claim and succeeds when it's empty"
+		{Description: "ignores the audience claim and succeeds when it's empty", Query: "/authors_only",
+			Headers: aud(`,"aud":[]`), Status: 200},
+		// it "ignores the audience claim and succeeds when it's null"
+		{Description: "ignores the audience claim and succeeds when it's null", Query: "/authors_only",
+			Headers: aud(`,"aud":null`), Status: 200},
+		// it "succeeds with a JWT with no audience claim"
+		{Description: "succeeds with a JWT with no audience claim", Query: "/authors_only",
+			Headers: aud(``), Status: 200},
+		// it "succeeds without a JWT" $
+		//   get "/has_count_column" `shouldRespondWith` 200
+		{Description: "succeeds without a JWT", Query: "/has_count_column", Status: 200},
+	})
+}
+
+// Feature/Auth/AuthSpec.hs: the cases about token verification, and the 30 s
+// clock skew of Auth/Jwt.hs:70-76.
+func TestAuthSpecJWT(t *testing.T) {
+	cfg := startJWTServer(t, 8142, map[string]any{"JWTSecret": postgrestSecret})
+	now := time.Now().Unix()
+	at := func(claim string, offset int64) test.Headers {
+		return authHeader(signPayload(t, fmt.Sprintf(`{"role":"postgrest_test_author","%s":%d}`, claim, now+offset)))
+	}
+	test.Execute(t, cfg, []test.Test{
+		// it "succeeds with an unexpired token" $ do
+		//   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"
+		//   request methodGet "/authors_only" [auth] "" `shouldRespondWith` 200
+		{Description: "succeeds with an unexpired token", Query: "/authors_only",
+			Headers: authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"),
+			Status:  200},
+		// it "succeeds with a valid iat claim in jwt" $ do
+		//   currentTime <- liftIO $ relativeSeconds 0
+		{Description: "succeeds with a valid iat claim in jwt", Query: "/authors_only",
+			Headers: at("iat", 0), Status: 200},
+		// it "fails with an expired token" $ do
+		//   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE0NDY2NzgxNDksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.f8__E6VQwYcDqwHmr9PG03uaZn8Zh1b0vbJ9DYS0AdM"
+		//   `shouldRespondWith` [json| {"message":"JWT expired","code":"PGRST303","hint":null,"details":null} |]
+		//     { matchStatus = 401 , matchHeaders = [ "WWW-Authenticate" <:> "Bearer error=\"invalid_token\", error_description=\"JWT expired\"" ] }
+		{Description: "fails with an expired token", Query: "/authors_only",
+			Headers:  authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE0NDY2NzgxNDksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.f8__E6VQwYcDqwHmr9PG03uaZn8Zh1b0vbJ9DYS0AdM"),
+			Expected: `{"error":"JWT expired"}`, Status: 401},
+		// it "hides tables from users with invalid JWT" $ do
+		//   let auth = authHeaderJWT "ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"
+		//   `shouldRespondWith` [json| {"message":"Expected 3 parts in JWT; got 2","code":"PGRST301","hint":null,"details":null} |]
+		{Description: "hides tables from users with invalid JWT", Query: "/authors_only",
+			Headers:  authHeader("ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"),
+			Expected: `{"error":"Expected 3 parts in JWT; got 2"}`, Status: 401},
+		// it "fails when the exp claim is not a number" $ do
+		//   ... `shouldRespondWith` [json|{"code":"PGRST303","details":null,"hint":null,"message":"The JWT 'exp' claim must be a number"}|]
+		{Description: "fails when the exp claim is not a number", Query: "/authors_only",
+			Headers:  authHeader(signPayload(t, `{"exp":"invalid","role":"postgrest_test_author"}`)),
+			Expected: `{"error":"The JWT 'exp' claim must be a number"}`, Status: 401},
+		// it "fails when the nbf claim is not a number"
+		{Description: "fails when the nbf claim is not a number", Query: "/authors_only",
+			Headers:  authHeader(signPayload(t, `{"nbf":"invalid","role":"postgrest_test_author"}`)),
+			Expected: `{"error":"The JWT 'nbf' claim must be a number"}`, Status: 401},
+		// it "fails when the iat claim is not a number"
+		{Description: "fails when the iat claim is not a number", Query: "/authors_only",
+			Headers:  authHeader(signPayload(t, `{"iat":"invalid","role":"postgrest_test_author"}`)),
+			Expected: `{"error":"The JWT 'iat' claim must be a number"}`, Status: 401},
+		// it "fails when the aud claim has a single value and it's not a string"
+		{Description: "fails when the aud claim has a single value and it's not a string", Query: "/authors_only",
+			Headers:  authHeader(signPayload(t, `{"aud":{"invalid":"value"},"role":"postgrest_test_author"}`)),
+			Expected: `{"error":"The JWT 'aud' claim must be a string or an array of strings"}`, Status: 401},
+		// it "fails when the aud claim is an array but it has non-string elements"
+		{Description: "fails when the aud claim is an array but it has non-string elements", Query: "/authors_only",
+			Headers:  authHeader(signPayload(t, `{"aud":[{"invalid":"value"},"test"],"role":"postgrest_test_author"}`)),
+			Expected: `{"error":"The JWT 'aud' claim must be a string or an array of strings"}`, Status: 401},
+		// the audience is not checked without JWTAud (AudienceJwtSecretSpec.disabledSpec)
+		{Description: "ignores the audience claim without JWTAud", Query: "/authors_only",
+			Headers: authHeader(signPayload(t, `{"exp":9999999999,"role":"postgrest_test_author","aud":"youraudience"}`)), Status: 200},
+		// the 30 s clock skew
+		{Description: "an exp 20 s ago is within the skew", Query: "/authors_only", Headers: at("exp", -20), Status: 200},
+		{Description: "an exp 40 s ago is expired", Query: "/authors_only", Headers: at("exp", -40),
+			Expected: `{"error":"JWT expired"}`, Status: 401},
+		{Description: "an nbf 20 s ahead is within the skew", Query: "/authors_only", Headers: at("nbf", 20), Status: 200},
+		{Description: "an nbf 40 s ahead is not yet valid", Query: "/authors_only", Headers: at("nbf", 40),
+			Expected: `{"error":"JWT not yet valid"}`, Status: 401},
+		{Description: "an iat 20 s ahead is within the skew", Query: "/authors_only", Headers: at("iat", 20), Status: 200},
+		{Description: "an iat 40 s ahead is issued in the future", Query: "/authors_only", Headers: at("iat", 40),
+			Expected: `{"error":"JWT issued at future"}`, Status: 401},
+	})
+}
+
+// test/io/test_config.py, test_role_claim_key and
+// test_deprecated_role_claim_key: authorization follows the role the
+// configured key finds in the claims (fixtures.yaml, roleclaims). The role
+// also reaches request.jwt.claims, as PostgREST's PreQuery inserts it.
+func TestRoleClaimKey(t *testing.T) {
+	cases := []struct {
+		port int
+		key  string
+	}{
+		{8143, `$.postgrest.a_role`},
+		{8144, `.postgrest.a_role`},
+	}
+	for _, c := range cases {
+		t.Run(c.key, func(t *testing.T) {
+			cfg := startJWTServer(t, c.port, map[string]any{
+				"JWTSecret":       postgrestSecret,
+				"JWTRoleClaimKey": c.key,
+			})
+			// - key: '$.postgrest.a_role'
+			//   data: { postgrest: { a_role: postgrest_test_author }, other: claims }
+			//   expected_status: 200
+			roleClaim := authHeader(signPayload(t, `{"postgrest":{"a_role":"postgrest_test_author"},"other":"claims"}`))
+			// - key: '$.myRole' data: { role: postgrest_test_author, other: true } expected_status: 401
+			// (here the key stays the same and the claim moves: the top-level
+			// role is not the role claim, the request runs as the anon role)
+			topLevel := authHeader(signPayload(t, `{"role":"postgrest_test_author","other":true}`))
+			test.Execute(t, cfg, []test.Test{
+				{Description: "the role claim key finds the role", Query: "/authors_only", Headers: roleClaim, Status: 200},
+				{Description: "the role runs the request", Method: "POST", Query: "/rpc/get_current_user", Body: `{}`,
+					Headers: roleClaim, Expected: `"postgrest_test_author"`, Status: 200},
+				{Description: "a top-level role is not the role claim", Query: "/authors_only", Headers: topLevel, Status: 401},
+				{Description: "a top-level role runs as the anon role", Method: "POST", Query: "/rpc/get_current_user", Body: `{}`,
+					Headers: topLevel, Expected: `"postgrest_test_anonymous"`, Status: 200},
+			})
+		})
+	}
+}
+
+// Feature/Auth/BinaryJwtSecretSpec.hs, with the secret given base64-encoded
+// as jwt-secret-is-base64 takes it (test/io: secrets/*.b64).
+func TestBinaryJwtSecretSpec(t *testing.T) {
+	cfg := startJWTServer(t, 8145, map[string]any{
+		"JWTSecret":         base64.StdEncoding.EncodeToString([]byte(postgrestSecret)),
+		"JWTSecretIsBase64": true,
+	})
+	test.Execute(t, cfg, []test.Test{
+		// it "succeeds with jwt token encoded with a binary secret" $ do
+		//   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"
+		//   request methodGet "/authors_only" [auth] "" `shouldRespondWith` 200
+		{Description: "succeeds with jwt token encoded with a binary secret", Query: "/authors_only",
+			Headers: authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"),
+			Status:  200},
+	})
+}
