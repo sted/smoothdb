@@ -145,6 +145,9 @@ func prepareConnection(ctx context.Context, conn *DbConn, role string, claims st
 		}
 		if readOnly {
 			begin += " READ ONLY"
+		} else {
+			// whatever the authenticator's default, as in PostgREST
+			begin += " READ WRITE"
 		}
 		_, err := conn.Exec(ctx, begin)
 		if err != nil {

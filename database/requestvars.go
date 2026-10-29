@@ -119,6 +119,9 @@ func (v *requestVars) begin() string {
 	}
 	if v.readOnly {
 		begin += " READ ONLY"
+	} else {
+		// whatever the authenticator's default, as in PostgREST
+		begin += " READ WRITE"
 	}
 	return begin
 }
@@ -174,7 +177,14 @@ func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*request
 	if v == nil {
 		return b, nil
 	}
-	if !gi.prepared(sqls) {
+	// A write on a session that defaults to READ ONLY (an authenticator
+	// with default_transaction_read_only on) cannot turn its implicit
+	// transaction back once the variables have run in it: they go first, on
+	// their own. The server reports the default (PostgreSQL 14 and later);
+	// a proxy that does not pass it on leaves such a write to fail (25001).
+	writeOnReadOnly := !v.readOnly && dbe.config.TransactionMode == "none" &&
+		gi.Conn.PgConn().ParameterStatus(readOnlyGUC) == "on"
+	if writeOnReadOnly || !gi.prepared(sqls) {
 		_, err := gi.conn(ctx)
 		return b, err
 	}
