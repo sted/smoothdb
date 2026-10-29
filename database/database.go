@@ -159,6 +159,17 @@ func (db *Database) activate(ctx context.Context) (err error) {
 		config.ConnConfig.RuntimeParams = map[string]string{}
 	}
 	config.ConnConfig.RuntimeParams["DateStyle"] = isoDateStyle(config.ConnConfig.RuntimeParams)
+	// The search path is a startup parameter too, so that it is the value the
+	// connection resets to: the release of an autocommit connection RESETs
+	// the role settings, a role's search_path among them (see roleSettings).
+	if len(dbe.config.SchemaSearchPath) != 0 {
+		for key := range config.ConnConfig.RuntimeParams {
+			if strings.EqualFold(key, "search_path") {
+				delete(config.ConnConfig.RuntimeParams, key)
+			}
+		}
+		config.ConnConfig.RuntimeParams["search_path"] = strings.Join(dbe.config.SchemaSearchPath, ", ")
+	}
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Force text format for the types the serializers do not decode in
 		// binary (pgx v5.9+ defaults to binary for them). Registered before
@@ -175,22 +186,6 @@ func (db *Database) activate(ctx context.Context) (err error) {
 				OID:   oid,
 				Codec: &pgtype.TextFormatOnlyCodec{Codec: dt.Codec},
 			})
-		}
-		var set string
-		var err error
-		if len(dbe.config.SchemaSearchPath) != 0 {
-			set = "set_config('search_path', '"
-			for i, schema := range dbe.config.SchemaSearchPath {
-				if i != 0 {
-					set += ", "
-				}
-				set += schema
-			}
-			set += "', false)"
-			_, err = conn.Exec(ctx, "SELECT "+set)
-			if err != nil {
-				return err
-			}
 		}
 		info := db.info.Load()
 		if info == nil {
