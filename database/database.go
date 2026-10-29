@@ -129,9 +129,12 @@ func searchPathSet() string {
 	if len(dbe.config.SchemaSearchPath) == 0 {
 		return ""
 	}
-	// a literal: an apostrophe in a quoted schema name is doubled
-	path := strings.ReplaceAll(strings.Join(dbe.config.SchemaSearchPath, ", "), "'", "''")
-	return "set_config('search_path', '" + path + "', false)"
+	// an escape-string literal, read the same whatever
+	// standard_conforming_strings says: a backslash or an apostrophe in a
+	// quoted schema name is escaped
+	path := strings.Join(dbe.config.SchemaSearchPath, ", ")
+	path = strings.NewReplacer(`\`, `\\`, "'", "''").Replace(path)
+	return "set_config('search_path', E'" + path + "', false)"
 }
 
 type Database struct {

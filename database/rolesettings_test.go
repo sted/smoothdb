@@ -148,7 +148,7 @@ func TestSchemaSearchPathIsSetWithSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "; SELECT set_config('search_path', 'public, information_schema', false)"
+	want := "; SELECT set_config('search_path', E'public, information_schema', false)"
 	if strings.Contains(rs.reset, `RESET "search_path"`) || !strings.Contains(rs.reset, want) {
 		t.Errorf("reset: got %q, want %q in place of RESET search_path", rs.reset, want)
 	}
