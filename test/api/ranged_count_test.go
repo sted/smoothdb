@@ -164,3 +164,52 @@ func TestRangedCountReportsTheCommitError(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+// The ranged count of a function stores its total from a one-time filter of
+// the page (see buildAfterSelect); a filter that PostgreSQL folds to a
+// constant false (id=eq.null is t.id = null) drops that filter with the rest
+// of the plan, and the total was never stored: reading it back failed. The
+// count over a false filter is 0, which is what an unset total reads now.
+func TestRangedCountFunctionConstantFalseFilter(t *testing.T) {
+	createRangedCountFixtures(t)
+	execSQLAndReload(t, `
+		CREATE FUNCTION ranged_count.numbers(n int) RETURNS TABLE (id int, label text)
+			LANGUAGE sql VOLATILE AS $$
+				SELECT i, 'n' || i FROM generate_series(1, n) i
+			$$;
+	`)
+
+	testConfig := test.Config{
+		BaseUrl: "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{
+			"Authorization":   {adminToken},
+			"Accept-Profile":  {"ranged_count"},
+			"Content-Profile": {"ranged_count"},
+			"Prefer":          {"count=exact"},
+		},
+	}
+
+	tests := []test.Test{
+		// control: a filter that is not constant
+		{
+			Description:     "a ranged count of a function, a filter",
+			Method:          "POST",
+			Query:           "/rpc/numbers?id=eq.2&limit=1",
+			Body:            `{"n": 5}`,
+			Expected:        `[{"id":2,"label":"n2"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
+		{
+			Description:     "a ranged count of a function, a constant false filter",
+			Method:          "POST",
+			Query:           "/rpc/numbers?id=eq.null&limit=1",
+			Body:            `{"n": 5}`,
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Status:          200,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
