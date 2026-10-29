@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+* **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.
+
 ### Fixed
 * **Ranged `count=exact` on `/rpc`** — the function runs once, as in PostgREST: a VOLATILE one wrote twice.
 * **Empty ranged page with `count=exact`** — answers `[]` instead of a row of nulls.

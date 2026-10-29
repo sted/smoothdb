@@ -59,6 +59,7 @@ type BuildStack struct {
 	siblingPath     []map[string]bool // per level, the names and aliases of every embed of the select that embeds it
 	siblings        map[string]bool   // the names and aliases of the embeds of the select being built, for the next level
 	afterWithClause bool              //
+	maxRows         int64             // a read's cap on the rows of each to-many embed (see maxRows), 0 for none
 }
 
 // nextBuildStack creates a stack with a new level: the embed of the table rel
@@ -74,7 +75,20 @@ func nextBuildStack(stack BuildStack, rel string, label string, col string, name
 		colPath:     append(slices.Clip(stack.colPath), col),
 		namePath:    append(slices.Clip(stack.namePath), name),
 		siblingPath: append(slices.Clip(stack.siblingPath), stack.siblings),
+		maxRows:     stack.maxRows,
 	}
+}
+
+// maxRows is Database.MaxRows, PostgREST's db-max-rows: the most rows a read
+// takes, at its top level and in each to-many embed (Plan.hs
+// treeRestrictRange restricts every node of a read plan), from its offset and
+// whatever limit it asks. The total of a count and the representation of a
+// write are not capped. 0 is no cap.
+func maxRows() int64 {
+	if dbe == nil || dbe.config.MaxRows < 0 {
+		return 0
+	}
+	return dbe.config.MaxRows
 }
 
 // matchPath returns how many leading elements of an embed path (the x.y of a
@@ -518,13 +532,13 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			case O2M, M2M:
 				joins += " SELECT json_agg(" + qAgg + ") AS " + qAgg
 				joins += " FROM ("
-				joins += selectForJoin
+				joins += selectForJoin + embedLimit(stack)
 				joins += " ) AS " + qAgg
 			case Computed:
 				if join.rel.ReturnIsSet {
 					joins += " SELECT json_agg(" + qAgg + ") AS " + qAgg
 					joins += " FROM ("
-					joins += selectForJoin
+					joins += selectForJoin + embedLimit(stack)
 					joins += " ) AS " + qAgg
 				} else {
 					joins += selectForJoin
@@ -544,6 +558,14 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 		}
 	}
 	return selClause, joins, keys, nil
+}
+
+// embedLimit is the LIMIT of a to-many embed of a read under maxRows
+func embedLimit(stack BuildStack) string {
+	if stack.maxRows <= 0 {
+		return ""
+	}
+	return " LIMIT " + strconv.FormatInt(stack.maxRows, 10)
 }
 
 // groupByClause creates a GROUP BY clause when aggregate functions are present
@@ -1739,6 +1761,9 @@ func buildAfterSelect(query, from string, call bool, joins, whereClause, groupBy
 			options.RangeMax = limit - 1
 		}
 	}
+	if capRows := maxRows(); capRows > 0 && (limit == -1 || limit > capRows) {
+		limit, hasLimit = capRows, true
+	}
 	var offset int64 = -1
 	hasOffset := parts.offset != "" || options.HasRange
 	if hasOffset {
@@ -2153,15 +2178,21 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 
 	// Limit
 	var limit int64 = -1
-	if parts.limit != "" || options.HasRange && options.RangeMax != -1 {
-		nmarker++
-		q.WriteString(" LIMIT $" + strconv.Itoa(nmarker))
+	hasLimit := parts.limit != "" || options.HasRange && options.RangeMax != -1
+	if hasLimit {
 		if options.HasRange {
 			limit = options.RangeMax - options.RangeMin + 1
 		} else {
 			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
 			options.RangeMax = limit - 1
 		}
+	}
+	if capRows := maxRows(); capRows > 0 && (limit == -1 || limit > capRows) {
+		limit, hasLimit = capRows, true
+	}
+	if hasLimit {
+		nmarker++
+		q.WriteString(" LIMIT $" + strconv.Itoa(nmarker))
 		valueList = append(valueList, limit)
 	}
 
@@ -2189,7 +2220,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 
-	stack := BuildStack{info: info}
+	stack := BuildStack{info: info, maxRows: maxRows()}
 	schema := options.Schema
 
 	// Determine a deterministic key order so identical RPC calls generate
@@ -2277,7 +2308,7 @@ type DirectQueryBuilder struct {
 }
 
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
-	stack := BuildStack{info: info}
+	stack := BuildStack{info: info, maxRows: maxRows()}
 	schema := options.Schema
 	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
 	if err != nil {
