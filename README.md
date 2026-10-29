@@ -913,7 +913,7 @@ ALTER ROLE web_user SET statement_timeout = '5s';
 ALTER ROLE reporting SET default_transaction_isolation = 'repeatable read';
 ```
 
-Only settings a role may change (`user` context, or granted with `GRANT SET ON PARAMETER` to the authenticator) are applied; `default_transaction_isolation` sets the isolation of the request's transaction. The settings are read at startup and on every schema cache reload (`NOTIFY smoothdb, 'reload schema'`). With `TransactionMode: "none"` a session keeps its connection, and the settings it was prepared with, until the connection goes back to the pool.
+Only settings a role may change (`user` context, or granted with `GRANT SET ON PARAMETER` to the authenticator) are applied; `default_transaction_isolation` sets the isolation of the request's transaction. The settings are read at startup and on every schema cache reload (`NOTIFY smoothdb, 'reload schema'`). With `TransactionMode: "none"` a session keeps its connection, and the settings it was prepared with, until the connection goes back to the pool. A role's `DateStyle` keeps its field order (`DMY`, `MDY`, `YMD`) but the output stays ISO, so dates inside ranges and `date::text` in SQL come out ISO where PostgREST would print them in the role's style.
 
 ## Health Check Endpoints
 
