@@ -266,3 +266,43 @@ func TestRangedCountStableFunction(t *testing.T) {
 
 	test.Execute(t, testConfig, tests)
 }
+
+// A first column named __count is a column like any other: the serializers
+// took it for the total that an older count query put in front of the rows,
+// left it out of the JSON and the CSV rows and answered its value as the
+// total.
+func TestCountNamedColumn(t *testing.T) {
+	createRangedCountFixtures(t)
+	execSQLAndReload(t, `
+		CREATE FUNCTION ranged_count.count_column() RETURNS TABLE (__count int, x int)
+			LANGUAGE sql STABLE AS $$ VALUES (5, 1), (6, 2) $$;
+	`)
+
+	testConfig := test.Config{
+		BaseUrl: "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{
+			"Authorization":  {adminToken},
+			"Accept-Profile": {"ranged_count"},
+		},
+	}
+
+	tests := []test.Test{
+		{
+			Description:     "JSON",
+			Query:           "/rpc/count_column",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `[{"__count":5,"x":1},{"__count":6,"x":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			Status:          200,
+		},
+		{
+			Description: "CSV",
+			Query:       "/rpc/count_column",
+			Headers:     test.Headers{"Accept": {"text/csv"}},
+			Expected:    "__count,x\n5,1\n6,2",
+			Status:      200,
+		},
+	}
+
+	test.Execute(t, testConfig, tests)
+}
