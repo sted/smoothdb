@@ -17,6 +17,7 @@
 ### Changed
 * **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
 * **Tokens with a `kid`** — refused against a passphrase `JWTSecret`, which is a key without `kid` as in PostgREST.
+* **Go API** — `authn.MiddlewareConfig` replaces `JWTSecret()` with `JWTVerifier()` and adds `AuthErrorWriter()`.
 
 ## 0.10.2 - 2026-10-28
 
