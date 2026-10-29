@@ -2,6 +2,9 @@ package postgrest
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"path/filepath"
@@ -243,5 +246,68 @@ func TestBinaryJwtSecretSpec(t *testing.T) {
 		{Description: "succeeds with jwt token encoded with a binary secret", Query: "/authors_only",
 			Headers: authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"),
 			Status:  200},
+	})
+}
+
+// Feature/Auth/AsymmetricJwtSpec.hs: the secret as an RS256 JWK, and as a JWK
+// set.
+func TestAsymmetricJwtSpec(t *testing.T) {
+	// auth = authHeaderJWT "eyJhbGciOiJSUzI1NiJ9.eyJyb2xlIjogInBvc3RncmVzdF90ZXN0X2F1dGhvciJ9Cg.CBOY..."
+	auth := authHeader("eyJhbGciOiJSUzI1NiJ9.eyJyb2xlIjogInBvc3RncmVzdF90ZXN0X2F1dGhvciJ9Cg.CBOYWDvqgAR0YYnZnyDGTQi6AJLc2Pds6_eV3YuBG6I36mj_h05eLhkEKNEDA5ZteMzCiY83P60rC_xtxVd7B6vo3BeF5uoanPS3rrbuHzKPwzsrgrD_CqvEuJ4n7Q9epkQiLsNkcexneENZDRqFjbwZx3DrXiCWwlK3Ytr5NAIGxmy0od-0xNpb2U1nXQyO_Q3mumWFViRt4tmFn_3goDHNKG3Ha_AzImfUNvHnWL78kAc4rbn15vLtWXD8PwtSnZaB4lY4V6RfsaW937srQsmRetvytM1i_bHBnjkjQLAqGbXPyItjtlXPs0uGNBadE8-wgkLtfmSCC4v2DjUthw")
+	jwk := `{"alg":"RS256","e":"AQAB","key_ops":["verify"],"kty":"RSA","n":"0etQ2Tg187jb04MWfpuogYGV75IFrQQBxQaGH75eq_FpbkyoLcEpRUEWSbECP2eeFya2yZ9vIO5ScD-lPmovePk4Aa4SzZ8jdjhmAbNykleRPCxMg0481kz6PQhnHRUv3nF5WP479CnObJKqTVdEagVL66oxnX9VhZG9IZA7k0Th5PfKQwrKGyUeTGczpOjaPqbxlunP73j9AfnAt4XCS8epa-n3WGz1j-wfpr_ys57Aq-zBCfqP67UYzNpeI1AoXsJhD9xSDOzvJgFRvc3vm2wjAW4LEMwi48rCplamOpZToIHEPIaPzpveYQwDnB1HFTR1ove9bpKJsHmi-e2uzQ","use":"sig"}`
+	cases := []struct {
+		name   string
+		port   int
+		secret string
+	}{
+		// context "secret provided as JWK"
+		{"secret provided as JWK", 8146, jwk},
+		// context "secret provided as JWKSet"
+		{"secret provided as JWKSet", 8147, `{"keys": [` + jwk + `]}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := startJWTServer(t, c.port, map[string]any{"JWTSecret": c.secret})
+			test.Execute(t, cfg, []test.Test{
+				// it "succeeds with jwt token signed with an asymmetric key"
+				//   request methodGet "/authors_only" [auth] "" `shouldRespondWith` 200
+				{Description: "succeeds with jwt token signed with an asymmetric key", Query: "/authors_only",
+					Headers: auth, Status: 200},
+			})
+		})
+	}
+}
+
+// JWTKeys end to end: an ES256 key selected by kid, and the legacy HS256
+// secret for the tokens without kid, both at once.
+func TestJWTKeys(t *testing.T) {
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := base64.RawURLEncoding.EncodeToString
+	ecJWK := fmt.Sprintf(`{"kty":"EC","crv":"P-256","kid":"backend-1","alg":"ES256","x":"%s","y":"%s"}`,
+		enc(ec.X.FillBytes(make([]byte, 32))), enc(ec.Y.FillBytes(make([]byte, 32))))
+	octJWK := fmt.Sprintf(`{"kty":"oct","kid":"legacy","alg":"HS256","k":"%s"}`, enc([]byte(postgrestSecret)))
+	cfg := startJWTServer(t, 8148, map[string]any{"JWTKeys": "[" + octJWK + "," + ecJWK + "]"})
+	es256 := func(kid string) test.Headers {
+		token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{"role": "postgrest_test_author"})
+		if kid != "" {
+			token.Header["kid"] = kid
+		}
+		s, err := token.SignedString(ec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return authHeader(s)
+	}
+	test.Execute(t, cfg, []test.Test{
+		{Description: "an ES256 token with the key's kid", Query: "/authors_only", Headers: es256("backend-1"), Status: 200},
+		{Description: "a legacy HS256 token without kid", Query: "/authors_only",
+			Headers: authHeader(signPayload(t, `{"role":"postgrest_test_author"}`)), Status: 200},
+		{Description: "an ES256 token without kid", Query: "/authors_only", Headers: es256(""),
+			Expected: `{"error":"No suitable key or wrong key type"}`, Status: 401},
+		{Description: "an unknown kid", Query: "/authors_only", Headers: es256("backend-2"),
+			Expected: `{"error":"No suitable key or wrong key type"}`, Status: 401},
 	})
 }

@@ -105,3 +105,28 @@ func TestJWTSettingsFromEnvironment(t *testing.T) {
 		t.Errorf("from the environment: %q %q %v", cfg.JWTRoleClaimKey, cfg.JWTAud, cfg.JWTSecretIsBase64)
 	}
 }
+
+// JWTKeys is read from SMOOTHDB_JWT_KEYS and checked at startup; a JWTSecret
+// that is a JWK(S) must hold the key /token signs with when LoginMode is "db".
+func TestJWTKeysConfig(t *testing.T) {
+	t.Setenv("SMOOTHDB_JWT_KEYS", `[{"kty":"oct","k":"c2VjcmV0","kid":"legacy"}]`)
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if cfg.JWTKeys != `[{"kty":"oct","k":"c2VjcmV0","kid":"legacy"}]` {
+		t.Fatalf("JWTKeys from the environment: %q", cfg.JWTKeys)
+	}
+
+	cfg = defaultConfig()
+	cfg.JWTSecret = "secret"
+	cfg.JWTKeys = `[{"kty":"oct","k":"c2VjcmV0"}]` // no kid
+	if err := checkConfig(cfg); err == nil || !strings.Contains(err.Error(), "JWTKeys") {
+		t.Errorf("an invalid JWTKeys must stop the server, got %v", err)
+	}
+
+	cfg = defaultConfig()
+	cfg.LoginMode = "db"
+	cfg.JWTSecret = `{"kty":"EC","crv":"P-256","x":"dQkl4PP7doIatL26VhEwCWO-DLZpO5lgOJRv0DV7lwI","y":"6O9vSWaLewDQmn_aKz99BV8uHM4ksFy7BL9AbsmoPJ0"}`
+	if err := checkConfig(cfg); err == nil || !strings.Contains(err.Error(), "JWTSecret") {
+		t.Errorf("LoginMode db needs an HMAC key to sign with, got %v", err)
+	}
+}
