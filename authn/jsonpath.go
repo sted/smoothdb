@@ -1,9 +1,7 @@
 package authn
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -13,13 +11,18 @@ import (
 )
 
 // RoleClaimKey locates the role in the JWT claims, PostgREST's
-// jwt-role-claim-key. It is a JSONPath query (RFC 9535), as in PostgREST 16
-// (Config/JSPath.hs); a key that does not parse as one is read with the JSPath
-// DSL of PostgREST 15 and earlier (Config/DeprecatedJSPath.hs), which 16.4
-// still accepts with a warning. Of the RFC 9535 function extensions only
-// search() is available, as in PostgREST (docs/references/auth.rst).
+// jwt-role-claim-key. PostgREST 16 reads it as a JSONPath query (RFC 9535,
+// Config/JSPath.hs, with the aeson-jsonpath library); smoothdb reads the
+// subset that the identity providers need and PostgREST documents and tests:
+// $, .name, ['name'] and ["name"], [index], and one filter on the current
+// element, [?@ == "text"], [?@ != "text"] or [?search(@, "regex")]. A key
+// with any other JSONPath construct is refused at startup, naming it, so that
+// the divergence from PostgREST is never a different role at runtime. A key
+// that does not start with "$" is read with the JSPath DSL of PostgREST 15
+// and earlier (Config/DeprecatedJSPath.hs), which 16.4 still accepts with a
+// warning.
 type RoleClaimKey struct {
-	query      *jpQuery
+	query      jpQuery
 	deprecated []jspExp
 	src        string
 }
@@ -33,29 +36,36 @@ func ParseRoleClaimKey(s string) (*RoleClaimKey, error) {
 	if s == "" {
 		s = DefaultRoleClaimKey
 	}
-	q, err := parseJSONPath(s)
-	if err == nil {
+	if strings.HasPrefix(s, "$") {
+		q, err := parseJSONPath(s)
+		if u, ok := err.(*unsupportedError); ok {
+			return nil, fmt.Errorf("'JWTRoleClaimKey' %q: %s is not supported; smoothdb reads a subset of "+
+				`PostgREST's JSONPath: $, .name, ['name'], [index], [?@ == "text"], [?@ != "text"], [?search(@, "regex")]`,
+				s, u.construct)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse role-claim-key value (%s): %v", s, err)
+		}
 		return &RoleClaimKey{query: q, src: s}, nil
 	}
-	d, derr := parseDeprecatedJSPath(s)
-	if derr != nil {
-		// PostgREST reports the error of the deprecated parser, the last tried
-		return nil, fmt.Errorf("failed to parse role-claim-key value (%s): %v", s, derr)
+	d, err := parseDeprecatedJSPath(s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse role-claim-key value (%s): %v", s, err)
 	}
 	return &RoleClaimKey{deprecated: d, src: s}, nil
 }
 
 // Deprecated says whether the key uses the JSPath DSL of PostgREST 15.
-func (k *RoleClaimKey) Deprecated() bool { return k.query == nil }
+func (k *RoleClaimKey) Deprecated() bool { return k.deprecated != nil }
 
 func (k *RoleClaimKey) String() string { return k.src }
 
 // evaluate returns the first value the key selects in the claims.
 func (k *RoleClaimKey) evaluate(claims any) (any, bool) {
-	if k.query == nil {
+	if k.deprecated != nil {
 		return evaluateDeprecatedJSPath(claims, k.deprecated)
 	}
-	nodes := k.query.eval(claims, claims)
+	nodes := k.query.eval(claims)
 	if len(nodes) == 0 {
 		return nil, false
 	}
@@ -64,64 +74,78 @@ func (k *RoleClaimKey) evaluate(claims any) (any, bool) {
 
 // The JSON values below are those of encoding/json with UseNumber: nil, bool,
 // json.Number, string, []any and map[string]any. Object members are visited
-// in key order, as aeson's KeyMap does, so that "the first value" of a query
-// over an object is the same as PostgREST's.
+// in key order, as aeson's KeyMap does, so that "the first value" a filter
+// selects in an object is the same as PostgREST's.
 
-// --- RFC 9535 JSONPath --------------------------------------------------------
+// --- the JSONPath subset ---------------------------------------------------------
 
-type jpQuery struct {
-	segments []jpSegment
+type jpQuery []jpStep
+
+// jpStep is a segment with a single selector: a member name, an array index,
+// or a filter on the current element.
+type jpStep struct {
+	kind  byte // 'n' name, 'i' index, 'f' filter
+	name  string
+	index int64
+	op    string // the filter: "==", "!=" or "search"
+	text  string
+	re    *regexp.Regexp // search(): nil for an invalid pattern, which never matches
 }
 
-type jpSegment struct {
-	descendant bool
-	selectors  []jpSelector
-}
-
-type jpSelector interface {
-	sel(v, root any, out []any) []any
-}
-
-type jpName struct{ name string }
-type jpWildcard struct{}
-type jpIndex struct{ index int64 }
-type jpSlice struct {
-	start, end *int64
-	step       int64
-}
-type jpFilter struct{ expr jpLogical }
-
-func (q *jpQuery) eval(cur, root any) []any {
-	nodes := []any{cur}
-	for _, seg := range q.segments {
+func (q jpQuery) eval(root any) []any {
+	nodes := []any{root}
+	for _, s := range q {
 		var out []any
-		for _, n := range nodes {
-			if seg.descendant {
-				out = seg.descend(n, root, out)
-			} else {
-				for _, s := range seg.selectors {
-					out = s.sel(n, root, out)
-				}
-			}
+		for _, v := range nodes {
+			out = s.sel(v, out)
 		}
-		nodes = out
-		if len(nodes) == 0 {
+		if nodes = out; len(nodes) == 0 {
 			break
 		}
 	}
 	return nodes
 }
 
-// descend applies the selectors to v and to each of its descendants, a node
-// before its children (RFC 9535 §2.5.2.2).
-func (seg jpSegment) descend(v, root any, out []any) []any {
-	for _, s := range seg.selectors {
-		out = s.sel(v, root, out)
-	}
-	for _, c := range children(v) {
-		out = seg.descend(c, root, out)
+func (s jpStep) sel(v any, out []any) []any {
+	switch s.kind {
+	case 'n':
+		if m, ok := v.(map[string]any); ok {
+			if c, ok := m[s.name]; ok {
+				out = append(out, c)
+			}
+		}
+	case 'i':
+		if a, ok := v.([]any); ok {
+			i := s.index
+			if i < 0 {
+				i += int64(len(a))
+			}
+			if i >= 0 && i < int64(len(a)) {
+				out = append(out, a[i])
+			}
+		}
+	case 'f':
+		for _, c := range children(v) {
+			if s.test(c) {
+				out = append(out, c)
+			}
+		}
 	}
 	return out
+}
+
+// test applies the filter to an element: == holds for the same string only,
+// != for anything else (RFC 9535 §2.3.5.2.2), search() for a string with a
+// match (§2.4.7).
+func (s jpStep) test(v any) bool {
+	str, isString := v.(string)
+	switch s.op {
+	case "==":
+		return isString && str == s.text
+	case "!=":
+		return !isString || str != s.text
+	}
+	return isString && s.re != nil && s.re.MatchString(str)
 }
 
 func children(v any) []any {
@@ -129,7 +153,11 @@ func children(v any) []any {
 	case []any:
 		return t
 	case map[string]any:
-		keys := sortedKeys(t)
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		out := make([]any, len(keys))
 		for i, k := range keys {
 			out[i] = t[k]
@@ -137,172 +165,6 @@ func children(v any) []any {
 		return out
 	}
 	return nil
-}
-
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (s jpName) sel(v, _ any, out []any) []any {
-	if m, ok := v.(map[string]any); ok {
-		if c, ok := m[s.name]; ok {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-func (jpWildcard) sel(v, _ any, out []any) []any {
-	return append(out, children(v)...)
-}
-
-func (s jpIndex) sel(v, _ any, out []any) []any {
-	if a, ok := v.([]any); ok {
-		i := s.index
-		if i < 0 {
-			i += int64(len(a))
-		}
-		if i >= 0 && i < int64(len(a)) {
-			out = append(out, a[i])
-		}
-	}
-	return out
-}
-
-func (s jpSlice) sel(v, _ any, out []any) []any {
-	a, ok := v.([]any)
-	if !ok || s.step == 0 {
-		return out
-	}
-	n := int64(len(a))
-	norm := func(i int64) int64 {
-		if i >= 0 {
-			return i
-		}
-		return n + i
-	}
-	clamp := func(i, lo, hi int64) int64 { return min(max(i, lo), hi) }
-	if s.step > 0 {
-		start, end := int64(0), n
-		if s.start != nil {
-			start = norm(*s.start)
-		}
-		if s.end != nil {
-			end = norm(*s.end)
-		}
-		for i := clamp(start, 0, n); i < clamp(end, 0, n); i += s.step {
-			out = append(out, a[i])
-		}
-		return out
-	}
-	start, end := n-1, -n-1
-	if s.start != nil {
-		start = norm(*s.start)
-	}
-	if s.end != nil {
-		end = norm(*s.end)
-	}
-	lower := clamp(end, -1, n-1)
-	for i := clamp(start, -1, n-1); lower < i; i += s.step {
-		out = append(out, a[i])
-	}
-	return out
-}
-
-func (s jpFilter) sel(v, root any, out []any) []any {
-	for _, c := range children(v) {
-		if s.expr.test(c, root) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// Filter expressions (RFC 9535 §2.3.5).
-
-type jpLogical interface {
-	test(cur, root any) bool
-}
-
-type jpOr []jpLogical
-type jpAnd []jpLogical
-type jpNot struct{ e jpLogical }
-
-// jpExists is a test expression: the query selects at least one node.
-type jpExists struct {
-	relative bool
-	q        *jpQuery
-}
-
-type jpCompare struct {
-	op          string
-	left, right jpComparable
-}
-
-// jpSearch is the search() function extension: the regular expression
-// matches a substring of the value (RFC 9535 §2.4.7).
-type jpSearch struct {
-	value, pattern jpComparable
-	re             *regexp.Regexp // compiled once for a literal pattern
-}
-
-func (e jpOr) test(cur, root any) bool {
-	for _, x := range e {
-		if x.test(cur, root) {
-			return true
-		}
-	}
-	return false
-}
-
-func (e jpAnd) test(cur, root any) bool {
-	for _, x := range e {
-		if !x.test(cur, root) {
-			return false
-		}
-	}
-	return true
-}
-
-func (e jpNot) test(cur, root any) bool { return !e.e.test(cur, root) }
-
-func (e jpExists) test(cur, root any) bool {
-	start := root
-	if e.relative {
-		start = cur
-	}
-	return len(e.q.eval(start, root)) > 0
-}
-
-func (e jpSearch) test(cur, root any) bool {
-	v, ok := e.value.value(cur, root)
-	if !ok {
-		return false
-	}
-	s, ok := v.(string)
-	if !ok {
-		return false
-	}
-	re := e.re
-	if re == nil {
-		p, ok := e.pattern.value(cur, root)
-		if !ok {
-			return false
-		}
-		ps, ok := p.(string)
-		if !ok {
-			return false
-		}
-		if re = compileIRegexp(ps); re == nil {
-			return false
-		}
-	}
-	return re.MatchString(s)
 }
 
 // compileIRegexp compiles an I-Regexp (RFC 9485) as a Go regular expression:
@@ -336,159 +198,57 @@ func compileIRegexp(p string) *regexp.Regexp {
 	return re
 }
 
-func (e jpCompare) test(cur, root any) bool {
-	l, lok := e.left.value(cur, root)
-	r, rok := e.right.value(cur, root)
-	switch e.op {
-	case "==":
-		return jpEqual(l, lok, r, rok)
-	case "!=":
-		return !jpEqual(l, lok, r, rok)
-	case "<":
-		return lok && rok && jpLess(l, r)
-	case ">":
-		return lok && rok && jpLess(r, l)
-	case "<=":
-		return lok && rok && jpLess(l, r) || jpEqual(l, lok, r, rok)
-	case ">=":
-		return lok && rok && jpLess(r, l) || jpEqual(l, lok, r, rok)
-	}
-	return false
-}
-
-// jpComparable is a literal or a singular query; a query that selects no node
-// is "Nothing", which equals only Nothing.
-type jpComparable interface {
-	value(cur, root any) (any, bool)
-}
-
-type jpLiteral struct{ v any }
-
-type jpSingular struct {
-	relative bool
-	segs     []jpSelector // jpName and jpIndex only
-}
-
-func (l jpLiteral) value(_, _ any) (any, bool) { return l.v, true }
-
-func (q jpSingular) value(cur, root any) (any, bool) {
-	v := root
-	if q.relative {
-		v = cur
-	}
-	for _, s := range q.segs {
-		out := s.sel(v, nil, nil)
-		if len(out) == 0 {
-			return nil, false
-		}
-		v = out[0]
-	}
-	return v, true
-}
-
-func jpEqual(l any, lok bool, r any, rok bool) bool {
-	if !lok || !rok {
-		return lok == rok
-	}
-	return jsonEqual(l, r)
-}
-
-func jsonEqual(l, r any) bool {
-	switch a := l.(type) {
-	case nil:
-		return r == nil
-	case bool:
-		b, ok := r.(bool)
-		return ok && a == b
-	case string:
-		b, ok := r.(string)
-		return ok && a == b
-	case json.Number:
-		b, ok := r.(json.Number)
-		return ok && numCompare(a, b) == 0
-	case []any:
-		b, ok := r.([]any)
-		if !ok || len(a) != len(b) {
-			return false
-		}
-		for i := range a {
-			if !jsonEqual(a[i], b[i]) {
-				return false
-			}
-		}
-		return true
-	case map[string]any:
-		b, ok := r.(map[string]any)
-		if !ok || len(a) != len(b) {
-			return false
-		}
-		for k, v := range a {
-			w, ok := b[k]
-			if !ok || !jsonEqual(v, w) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-func jpLess(l, r any) bool {
-	switch a := l.(type) {
-	case json.Number:
-		b, ok := r.(json.Number)
-		return ok && numCompare(a, b) < 0
-	case string:
-		// UTF-8 byte order is Unicode scalar value order
-		b, ok := r.(string)
-		return ok && a < b
-	}
-	return false
-}
-
-func numCompare(a, b json.Number) int {
-	if x, err := a.Int64(); err == nil {
-		if y, err := b.Int64(); err == nil {
-			switch {
-			case x < y:
-				return -1
-			case x > y:
-				return 1
-			}
-			return 0
-		}
-	}
-	x, _ := a.Float64()
-	y, _ := b.Float64()
-	switch {
-	case x < y:
-		return -1
-	case x > y:
-		return 1
-	}
-	return 0
-}
-
 // --- parser -------------------------------------------------------------------
+
+// unsupportedError is a JSONPath construct that PostgREST 16.4 accepts and
+// the subset does not.
+type unsupportedError struct{ construct string }
+
+func (e *unsupportedError) Error() string { return e.construct + " is not supported" }
+
+func unsupported(construct string) error { return &unsupportedError{construct} }
 
 type jpParser struct {
 	s   string
 	pos int
 }
 
-func parseJSONPath(s string) (*jpQuery, error) {
+func parseJSONPath(s string) (jpQuery, error) {
 	p := &jpParser{s: s}
 	if !p.eat('$') {
 		return nil, p.errorf("expected '$'")
 	}
-	q, err := p.segments()
-	if err != nil {
-		return nil, err
+	var q jpQuery
+	for {
+		// blanks may come before a segment, never at the end
+		save := p.pos
+		p.blanks()
+		switch {
+		case p.eatStr(".."):
+			return nil, unsupported("the descendant segment ..")
+		case p.eat('.'):
+			if p.peek() == '*' {
+				return nil, unsupported("the wildcard *")
+			}
+			name, err := p.memberName()
+			if err != nil {
+				return nil, err
+			}
+			q = append(q, jpStep{kind: 'n', name: name})
+		case p.peek() == '[':
+			step, err := p.bracketed()
+			if err != nil {
+				return nil, err
+			}
+			q = append(q, step)
+		default:
+			p.pos = save
+			if p.pos != len(p.s) {
+				return nil, p.errorf("unexpected %q", p.s[p.pos:])
+			}
+			return q, nil
+		}
 	}
-	if p.pos != len(p.s) {
-		return nil, p.errorf("unexpected %q", p.s[p.pos:])
-	}
-	return q, nil
 }
 
 func (p *jpParser) errorf(format string, args ...any) error {
@@ -530,56 +290,6 @@ func (p *jpParser) blanks() {
 	}
 }
 
-// segments parses *(S segment): the blanks before a segment belong to it, so
-// they are given back when no segment follows.
-func (p *jpParser) segments() (*jpQuery, error) {
-	q := &jpQuery{}
-	for {
-		save := p.pos
-		p.blanks()
-		switch {
-		case p.eatStr(".."):
-			seg := jpSegment{descendant: true}
-			switch {
-			case p.peek() == '[':
-				sels, err := p.bracketed()
-				if err != nil {
-					return nil, err
-				}
-				seg.selectors = sels
-			case p.eat('*'):
-				seg.selectors = []jpSelector{jpWildcard{}}
-			default:
-				name, err := p.memberName()
-				if err != nil {
-					return nil, err
-				}
-				seg.selectors = []jpSelector{jpName{name}}
-			}
-			q.segments = append(q.segments, seg)
-		case p.eat('.'):
-			if p.eat('*') {
-				q.segments = append(q.segments, jpSegment{selectors: []jpSelector{jpWildcard{}}})
-				continue
-			}
-			name, err := p.memberName()
-			if err != nil {
-				return nil, err
-			}
-			q.segments = append(q.segments, jpSegment{selectors: []jpSelector{jpName{name}}})
-		case p.peek() == '[':
-			sels, err := p.bracketed()
-			if err != nil {
-				return nil, err
-			}
-			q.segments = append(q.segments, jpSegment{selectors: sels})
-		default:
-			p.pos = save
-			return q, nil
-		}
-	}
-}
-
 // memberName parses a member-name-shorthand: ALPHA / "_" / non-ASCII, then
 // those or DIGIT.
 func (p *jpParser) memberName() (string, error) {
@@ -593,9 +303,6 @@ func (p *jpParser) memberName() (string, error) {
 		if r == utf8.RuneError && size == 1 {
 			return "", p.errorf("invalid UTF-8")
 		}
-		if r >= 0xD800 && r <= 0xDFFF {
-			break
-		}
 		p.pos += size
 	}
 	if p.pos == start {
@@ -604,88 +311,210 @@ func (p *jpParser) memberName() (string, error) {
 	return p.s[start:p.pos], nil
 }
 
-func (p *jpParser) bracketed() ([]jpSelector, error) {
+// bracketed parses a bracketed selection holding one selector: a name, an
+// index or a filter.
+func (p *jpParser) bracketed() (jpStep, error) {
 	p.eat('[')
-	var sels []jpSelector
-	for {
-		p.blanks()
-		s, err := p.selector()
-		if err != nil {
-			return nil, err
-		}
-		sels = append(sels, s)
-		p.blanks()
-		if p.eat(']') {
-			return sels, nil
-		}
-		if !p.eat(',') {
-			return nil, p.errorf("expected ',' or ']'")
-		}
-	}
-}
-
-func (p *jpParser) selector() (jpSelector, error) {
+	p.blanks()
+	var step jpStep
 	switch c := p.peek(); {
 	case c == '\'' || c == '"':
-		s, err := p.stringLiteral()
+		name, err := p.stringLiteral()
 		if err != nil {
-			return nil, err
+			return step, err
 		}
-		return jpName{s}, nil
+		step = jpStep{kind: 'n', name: name}
 	case c == '*':
-		p.pos++
-		return jpWildcard{}, nil
-	case c == '?':
-		p.pos++
-		p.blanks()
-		e, err := p.logicalOr()
-		if err != nil {
-			return nil, err
-		}
-		return jpFilter{e}, nil
-	case c == ':' || c == '-' || (c >= '0' && c <= '9'):
-		return p.indexOrSlice()
-	}
-	return nil, p.errorf("expected a selector")
-}
-
-func (p *jpParser) indexOrSlice() (jpSelector, error) {
-	var start *int64
-	if p.peek() != ':' {
+		return step, unsupported("the wildcard *")
+	case c == ':':
+		return step, unsupported("a slice [start:end:step]")
+	case c == '-' || (c >= '0' && c <= '9'):
 		i, err := p.integer()
 		if err != nil {
-			return nil, err
+			return step, err
 		}
-		save := p.pos
 		p.blanks()
-		if p.peek() != ':' {
-			p.pos = save
-			return jpIndex{i}, nil
+		if p.peek() == ':' {
+			return step, unsupported("a slice [start:end:step]")
 		}
-		start = &i
+		step = jpStep{kind: 'i', index: i}
+	case c == '?':
+		p.pos++
+		var err error
+		if step, err = p.filter(); err != nil {
+			return step, err
+		}
+	default:
+		return step, p.errorf("expected a selector")
 	}
-	p.eat(':')
 	p.blanks()
-	sl := jpSlice{start: start, step: 1}
-	if c := p.peek(); c == '-' || (c >= '0' && c <= '9') {
-		e, err := p.integer()
-		if err != nil {
-			return nil, err
-		}
-		sl.end = &e
-		p.blanks()
+	if p.peek() == ',' {
+		return step, unsupported("several selectors in one bracket")
 	}
-	if p.eat(':') {
+	if !p.eat(']') {
+		return step, p.errorf("expected ']'")
+	}
+	return step, nil
+}
+
+// filter parses the filter of the subset, in any parentheses: @ == "text",
+// @ != "text" or search(@, "regex").
+func (p *jpParser) filter() (jpStep, error) {
+	step := jpStep{kind: 'f'}
+	parens := 0
+	for {
 		p.blanks()
-		if c := p.peek(); c == '-' || (c >= '0' && c <= '9') {
-			st, err := p.integer()
-			if err != nil {
-				return nil, err
+		if p.eat('(') {
+			parens++
+			continue
+		}
+		if p.peek() == '!' {
+			return step, unsupported("the negation !")
+		}
+		break
+	}
+	switch c := p.peek(); {
+	case c == '@':
+		p.pos++
+		if err := p.currentOnly(); err != nil {
+			return step, err
+		}
+		op := p.comparisonOp()
+		switch op {
+		case "":
+			if c := p.peek(); c == ']' || c == ')' || c == '&' || c == '|' {
+				return step, unsupported("an existence test [?@]")
 			}
-			sl.step = st
+			return step, p.errorf("expected a comparison")
+		case "<", "<=", ">", ">=":
+			return step, unsupported("the comparison " + op)
+		}
+		text, err := p.stringOperand("a literal that is not a string", "a query inside a filter (@.name, @[...], $...)")
+		if err != nil {
+			return step, err
+		}
+		step.op, step.text = op, text
+	case c == '$':
+		return step, unsupported("a query inside a filter (@.name, @[...], $...)")
+	case c == '\'' || c == '"' || c == '-' || (c >= '0' && c <= '9') || p.isLiteralKeyword():
+		return step, unsupported("a literal on the left of a comparison")
+	case c >= 'a' && c <= 'z':
+		if err := p.search(&step); err != nil {
+			return step, err
+		}
+	default:
+		return step, p.errorf("expected a filter")
+	}
+	p.blanks()
+	switch {
+	case strings.HasPrefix(p.s[p.pos:], "&&"):
+		return step, unsupported("the logical operator &&")
+	case strings.HasPrefix(p.s[p.pos:], "||"):
+		return step, unsupported("the logical operator ||")
+	}
+	for ; parens > 0; parens-- {
+		p.blanks()
+		if !p.eat(')') {
+			return step, p.errorf("expected ')'")
 		}
 	}
-	return sl, nil
+	return step, nil
+}
+
+// currentOnly checks that "@" stands alone, the current element itself.
+func (p *jpParser) currentOnly() error {
+	save := p.pos
+	p.blanks()
+	if c := p.peek(); c == '.' || c == '[' {
+		return unsupported("a query inside a filter (@.name, @[...], $...)")
+	}
+	p.pos = save
+	return nil
+}
+
+// search parses search(@, "regex"), the only function PostgREST provides.
+func (p *jpParser) search(step *jpStep) error {
+	start := p.pos
+	for c := p.peek(); (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; c = p.peek() {
+		p.pos++
+	}
+	if name := p.s[start:p.pos]; name != "search" || !p.eat('(') {
+		p.pos = start
+		return p.errorf("unknown function: only search() is available")
+	}
+	p.blanks()
+	if !p.eat('@') {
+		if c := p.peek(); c == '$' {
+			return unsupported("a query inside a filter (@.name, @[...], $...)")
+		}
+		return unsupported("a search() value other than @")
+	}
+	if err := p.currentOnly(); err != nil {
+		return err
+	}
+	p.blanks()
+	if !p.eat(',') {
+		return p.errorf("search() takes two arguments")
+	}
+	p.blanks()
+	pattern, err := p.stringOperand("a search() pattern that is not a string", "a query as the search() pattern")
+	if err != nil {
+		return err
+	}
+	p.blanks()
+	if !p.eat(')') {
+		return p.errorf("expected ')'")
+	}
+	if p.comparisonOp() != "" {
+		return p.errorf("search() is not comparable")
+	}
+	step.op, step.text, step.re = "search", pattern, compileIRegexp(pattern)
+	return nil
+}
+
+// stringOperand parses the string literal a filter compares with; another
+// literal, or a query, is valid JSONPath beyond the subset.
+func (p *jpParser) stringOperand(otherLiteral, query string) (string, error) {
+	switch c := p.peek(); {
+	case c == '\'' || c == '"':
+		return p.stringLiteral()
+	case c == '@' || c == '$':
+		return "", unsupported(query)
+	case c == '-' || (c >= '0' && c <= '9') || p.isLiteralKeyword():
+		return "", unsupported(otherLiteral)
+	}
+	return "", p.errorf("expected a string")
+}
+
+// comparisonOp consumes S and an operator, or nothing.
+func (p *jpParser) comparisonOp() string {
+	save := p.pos
+	p.blanks()
+	for _, op := range []string{"==", "!=", "<=", ">=", "<", ">"} {
+		if p.eatStr(op) {
+			p.blanks()
+			return op
+		}
+	}
+	p.pos = save
+	return ""
+}
+
+func (p *jpParser) isLiteralKeyword() bool {
+	rest := p.s[p.pos:]
+	for _, k := range []string{"true", "false", "null"} {
+		if strings.HasPrefix(rest, k) {
+			after := rest[len(k):]
+			if after == "" {
+				return true
+			}
+			r, _ := utf8.DecodeRuneInString(after)
+			if !(r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // integer parses an RFC 9535 int: "0", or an optional "-" and digits without
@@ -811,315 +640,6 @@ func (p *jpParser) unicodeEscape() (rune, error) {
 		return 0, p.errorf("lone surrogate")
 	}
 	return r, nil
-}
-
-func (p *jpParser) logicalOr() (jpLogical, error) {
-	var or jpOr
-	for {
-		e, err := p.logicalAnd()
-		if err != nil {
-			return nil, err
-		}
-		or = append(or, e)
-		save := p.pos
-		p.blanks()
-		if !p.eatStr("||") {
-			p.pos = save
-			break
-		}
-		p.blanks()
-	}
-	if len(or) == 1 {
-		return or[0], nil
-	}
-	return or, nil
-}
-
-func (p *jpParser) logicalAnd() (jpLogical, error) {
-	var and jpAnd
-	for {
-		e, err := p.basic()
-		if err != nil {
-			return nil, err
-		}
-		and = append(and, e)
-		save := p.pos
-		p.blanks()
-		if !p.eatStr("&&") {
-			p.pos = save
-			break
-		}
-		p.blanks()
-	}
-	if len(and) == 1 {
-		return and[0], nil
-	}
-	return and, nil
-}
-
-func (p *jpParser) basic() (jpLogical, error) {
-	if p.eat('!') {
-		p.blanks()
-		if p.peek() == '(' {
-			e, err := p.paren()
-			if err != nil {
-				return nil, err
-			}
-			return jpNot{e}, nil
-		}
-		e, err := p.testExpr()
-		if err != nil {
-			return nil, err
-		}
-		return jpNot{e}, nil
-	}
-	if p.peek() == '(' {
-		return p.paren()
-	}
-	switch c := p.peek(); {
-	case c == '@' || c == '$':
-		q, relative, err := p.filterQuery()
-		if err != nil {
-			return nil, err
-		}
-		if op := p.comparisonOp(); op != "" {
-			left, err := singular(q, relative)
-			if err != nil {
-				return nil, p.errorf("%v", err)
-			}
-			return p.comparison(left, op)
-		}
-		return jpExists{relative: relative, q: q}, nil
-	case c >= 'a' && c <= 'z' && !p.isLiteralKeyword():
-		e, err := p.function()
-		if err != nil {
-			return nil, err
-		}
-		if p.comparisonOp() != "" {
-			return nil, p.errorf("search() is not comparable")
-		}
-		return e, nil
-	}
-	left, err := p.literal()
-	if err != nil {
-		return nil, err
-	}
-	op := p.comparisonOp()
-	if op == "" {
-		return nil, p.errorf("expected a comparison operator")
-	}
-	return p.comparison(left, op)
-}
-
-func (p *jpParser) testExpr() (jpLogical, error) {
-	if c := p.peek(); c == '@' || c == '$' {
-		q, relative, err := p.filterQuery()
-		if err != nil {
-			return nil, err
-		}
-		return jpExists{relative: relative, q: q}, nil
-	}
-	return p.function()
-}
-
-func (p *jpParser) paren() (jpLogical, error) {
-	p.eat('(')
-	p.blanks()
-	e, err := p.logicalOr()
-	if err != nil {
-		return nil, err
-	}
-	p.blanks()
-	if !p.eat(')') {
-		return nil, p.errorf("expected ')'")
-	}
-	return e, nil
-}
-
-func (p *jpParser) filterQuery() (*jpQuery, bool, error) {
-	relative := p.peek() == '@'
-	p.pos++
-	q, err := p.segments()
-	return q, relative, err
-}
-
-// comparisonOp consumes S and an operator, or nothing.
-func (p *jpParser) comparisonOp() string {
-	save := p.pos
-	p.blanks()
-	for _, op := range []string{"==", "!=", "<=", ">=", "<", ">"} {
-		if p.eatStr(op) {
-			p.blanks()
-			return op
-		}
-	}
-	p.pos = save
-	return ""
-}
-
-func (p *jpParser) comparison(left jpComparable, op string) (jpLogical, error) {
-	right, err := p.comparable()
-	if err != nil {
-		return nil, err
-	}
-	return jpCompare{op: op, left: left, right: right}, nil
-}
-
-// comparable parses a literal or a singular query.
-func (p *jpParser) comparable() (jpComparable, error) {
-	if c := p.peek(); c == '@' || c == '$' {
-		q, relative, err := p.filterQuery()
-		if err != nil {
-			return nil, err
-		}
-		s, err := singular(q, relative)
-		if err != nil {
-			return nil, p.errorf("%v", err)
-		}
-		return s, nil
-	}
-	if c := p.peek(); c >= 'a' && c <= 'z' && !p.isLiteralKeyword() {
-		return nil, p.errorf("only search() is available, and it is not comparable")
-	}
-	return p.literal()
-}
-
-func singular(q *jpQuery, relative bool) (jpSingular, error) {
-	s := jpSingular{relative: relative}
-	for _, seg := range q.segments {
-		if seg.descendant || len(seg.selectors) != 1 {
-			return s, fmt.Errorf("a comparison needs a singular query")
-		}
-		switch seg.selectors[0].(type) {
-		case jpName, jpIndex:
-			s.segs = append(s.segs, seg.selectors[0])
-		default:
-			return s, fmt.Errorf("a comparison needs a singular query")
-		}
-	}
-	return s, nil
-}
-
-func (p *jpParser) isLiteralKeyword() bool {
-	rest := p.s[p.pos:]
-	for _, k := range []string{"true", "false", "null"} {
-		if strings.HasPrefix(rest, k) {
-			after := rest[len(k):]
-			if after == "" {
-				return true
-			}
-			r, _ := utf8.DecodeRuneInString(after)
-			if !(r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (p *jpParser) literal() (jpComparable, error) {
-	switch c := p.peek(); {
-	case c == '\'' || c == '"':
-		s, err := p.stringLiteral()
-		if err != nil {
-			return nil, err
-		}
-		return jpLiteral{s}, nil
-	case p.eatStr("true"):
-		return jpLiteral{true}, nil
-	case p.eatStr("false"):
-		return jpLiteral{false}, nil
-	case p.eatStr("null"):
-		return jpLiteral{nil}, nil
-	case c == '-' || (c >= '0' && c <= '9'):
-		return p.number()
-	}
-	return nil, p.errorf("expected a literal or a query")
-}
-
-// number parses an RFC 9535 number: (int / "-0") [frac] [exp].
-func (p *jpParser) number() (jpComparable, error) {
-	start := p.pos
-	if p.eatStr("-0") {
-		if c := p.peek(); c >= '0' && c <= '9' {
-			return nil, p.errorf("leading zero")
-		}
-	} else if _, err := p.integer(); err != nil {
-		// a number literal is not bound to the I-JSON range of an index
-		if !strings.Contains(err.Error(), "range") {
-			return nil, err
-		}
-	}
-	if p.eat('.') {
-		d := p.pos
-		for c := p.peek(); c >= '0' && c <= '9'; c = p.peek() {
-			p.pos++
-		}
-		if p.pos == d {
-			return nil, p.errorf("expected a digit")
-		}
-	}
-	if p.eat('e') || p.eat('E') {
-		if !p.eat('-') {
-			p.eat('+')
-		}
-		d := p.pos
-		for c := p.peek(); c >= '0' && c <= '9'; c = p.peek() {
-			p.pos++
-		}
-		if p.pos == d {
-			return nil, p.errorf("expected a digit")
-		}
-	}
-	n := json.Number(p.s[start:p.pos])
-	if f, err := n.Float64(); err != nil || math.IsInf(f, 0) {
-		return nil, p.errorf("invalid number")
-	}
-	return jpLiteral{n}, nil
-}
-
-// function parses a function expression; search() is the only one.
-func (p *jpParser) function() (jpLogical, error) {
-	start := p.pos
-	for c := p.peek(); (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; c = p.peek() {
-		p.pos++
-	}
-	name := p.s[start:p.pos]
-	if !p.eat('(') {
-		return nil, p.errorf("expected a query, a literal or a function")
-	}
-	if name != "search" {
-		p.pos = start
-		return nil, p.errorf("unknown function %s(): only search() is available", name)
-	}
-	p.blanks()
-	value, err := p.comparable()
-	if err != nil {
-		return nil, err
-	}
-	p.blanks()
-	if !p.eat(',') {
-		return nil, p.errorf("search() takes two arguments")
-	}
-	p.blanks()
-	pattern, err := p.comparable()
-	if err != nil {
-		return nil, err
-	}
-	p.blanks()
-	if !p.eat(')') {
-		return nil, p.errorf("expected ')'")
-	}
-	e := jpSearch{value: value, pattern: pattern}
-	if l, ok := pattern.(jpLiteral); ok {
-		s, _ := l.v.(string)
-		if e.re = compileIRegexp(s); e.re == nil {
-			// a pattern that is not a valid I-Regexp, or not a string, never
-			// matches (RFC 9535 §2.4.7)
-			e.pattern = jpLiteral{nil}
-		}
-	}
-	return e, nil
 }
 
 // --- deprecated JSPath ----------------------------------------------------------

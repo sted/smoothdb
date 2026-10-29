@@ -135,12 +135,10 @@ func TestRoleClaimKeyInvalid(t *testing.T) {
 	}
 }
 
-// RFC 9535 queries, each checked on a live PostgREST 16.4 with the same key and
-// claims: the role it switched to.
+// The JSONPath subset smoothdb reads, each key checked on a live PostgREST
+// 16.4 with the same claims: the role it switched to.
 func TestRoleClaimKeyJSONPath(t *testing.T) {
 	roles := `{"roles":["other","postgrest_test_author"],"role":"postgrest_test_anonymous"}`
-	objs := `{"r":[{"n":1,"name":"x","role":"other"},{"n":5,"name":"y","role":"postgrest_test_author","flag":true}]}`
-	nested := `{"a":{"b":{"role":"postgrest_test_author"}}}`
 	checkRoles(t, []roleCase{
 		{`$.role`, roles, "postgrest_test_anonymous"},
 		{``, roles, "postgrest_test_anonymous"}, // the default
@@ -149,84 +147,117 @@ func TestRoleClaimKeyJSONPath(t *testing.T) {
 		{`$.role`, `{"role":{"x":1}}`, `{"x":1}`},
 		{`$.roles[1]`, roles, author},
 		{`$.roles[-1]`, roles, author},
-		{`$.roles[0:2]`, roles, "other"},
-		{`$.roles[1:]`, roles, author},
-		{`$.roles[::-1]`, roles, author},
-		{`$.roles[*]`, roles, "other"},
-		{`$.roles.*`, roles, "other"},
-		{`$.roles[1,0]`, roles, author},
-		{`$..role`, nested, author},
-		{`$..role`, roles, "postgrest_test_anonymous"},
-		{`$.a..role`, nested, author},
 		{`$['https://x.com/r'][0].value`, `{"https://x.com/r":[{"value":"postgrest_test_author"}]}`, author},
 		{`$["https://x.com/r"][0]["value"]`, `{"https://x.com/r":[{"value":"postgrest_test_author"}]}`, author},
 		{`$.roles[?(@ == "postgrest_test_author")]`, roles, author},
 		{`$.roles[?@ == 'postgrest_test_author']`, roles, author},
 		{`$.roles[?@ != "other"]`, roles, author},
 		{`$.roles[?search(@, "^postgrest_te")]`, roles, author},
-		{`$.r[?@.n > 3].role`, objs, author},
-		{`$.r[?@.n >= 5 && @.name == "y"].role`, objs, author},
-		{`$.r[?@.n < 3 || @.flag].role`, objs, "other"},
-		{`$.r[?!(@.n == 1)].role`, objs, author},
-		{`$.r[?@.flag].role`, objs, author},
-		{`$.r[?@.flag == true].role`, objs, author},
-		{`$.r[?@.n == $.r[1].n].role`, objs, author},
 		{`$.myRole`, `{"id":"jdoe","role":"postgrest_test_author"}`, ""},
 		{`.role`, `{"id":"jdoe","role":"postgrest_test_author"}`, author},
 		{`.roles[?(@ ^== "postgrest_te")]`, roles, author},
+		// "$" alone is a valid query, selecting the claims
+		{`$`, `{"a":1}`, `{"a":1}`},
 	})
-	// "$" alone is a valid query, selecting the claims
-	checkRoles(t, []roleCase{{`$`, `{"a":1}`, `{"a":1}`}})
 }
 
-// RFC 9535 semantics the live checks above do not reach.
-func TestRoleClaimKeyRFC9535(t *testing.T) {
-	doc := `{"o":{"j":1,"k":2},"a":[5,3,{"b":"x"},{"b":"y","c":[1,2]}],"s":"a\nb","u":"ü","e":"",` +
-		`"n":null,"t":true,"w":"x y","big":[1.0,1e1,10]}`
+// The examples of PostgREST's docs (docs/references/auth.rst, JWT Role
+// Extraction), with the single "$" of an environment variable.
+func TestRoleClaimKeyDocumentedExamples(t *testing.T) {
+	postgrest := `{"postgrest":{"roles": ["other", "author"]}}`
+	checkRoles(t, []roleCase{
+		// # {"postgrest":{"roles": ["other", "author"]}}
+		// jwt-role-claim-key = "$$.postgrest.roles[1]"
+		{`$.postgrest.roles[1]`, postgrest, "author"},
+		// # {"https://www.example.com/role": { "key": "author" }}
+		// jwt-role-claim-key = "$$['https://www.example.com/role'].key"
+		{`$['https://www.example.com/role'].key`, `{"https://www.example.com/role": { "key": "author" }}`, "author"},
+		// jwt-role-claim-key = "$$.postgrest.roles[?(@ == 'author')]"
+		{`$.postgrest.roles[?(@ == 'author')]`, postgrest, "author"},
+		// jwt-role-claim-key = "$$.postgrest.roles[?search(@, '^au')]"
+		{`$.postgrest.roles[?search(@, '^au')]`, postgrest, "author"},
+	})
+}
+
+// The semantics of the subset that the live checks do not reach.
+func TestRoleClaimKeySubset(t *testing.T) {
+	doc := `{"o":{"z":"last","b":"first"},"a":[5,3,{"b":"x"},"y"],"s":"a\nb","u":"ü","e":"","n":null,"w":"x y"}`
 	checkRoles(t, []roleCase{
 		{`$.a[2].b`, doc, "x"},
 		{`$.a[-4]`, doc, "5"},
 		{`$.a[4]`, doc, ""},
 		{`$.a[-5]`, doc, ""},
-		{`$.a[1:3:2]`, doc, "3"},
-		{`$.a[:0]`, doc, ""},
-		{`$.a[::0]`, doc, ""},
-		{`$.a[-1:-3:-1].b`, doc, "y"},
-		{`$.o.*`, doc, "1"}, // members in key order
-		{`$.o[?@ > 1]`, doc, "2"},
-		{`$.a[?@.b == "y"].c[1]`, doc, "2"},
-		{`$.a[?@.c[?@ == 2]].b`, doc, "y"}, // a nested filter as an existence test
-		{`$.a[?@.c].b`, doc, "y"},
-		{`$.a[?!@.c && @.b].b`, doc, "x"},
-		{`$.a[?(@.b == "x" || @.b == "y") && @.c].b`, doc, "y"},
-		{`$.a[?@ < 4]`, doc, "3"},
-		{`$.a[?@ < "z"]`, doc, ""},                 // a number is not less than a string
-		{`$.a[?@.missing == @.other].b`, doc, "x"}, // Nothing == Nothing
-		{`$.a[?@.b != "x"]`, doc, "5"},             // Nothing != "x"
-		{`$.big[?@ == 10]`, doc, "1e1"},            // numbers compare by value
-		{`$[?@ == null]`, doc, "null"},
-		{`$[?@ == true]`, doc, "true"},
-		{`$[?search(@, "^a.b$")]`, doc, ""}, // "." matches no line break
-		{`$[?search(@, "x.y")]`, doc, "x y"},
-		{`$[?search(@, "ü")]`, doc, "ü"},
-		{`$[?search(@, "[")]`, doc, ""}, // an invalid pattern never matches
+		{`$.o[?@ != "x"]`, doc, "first"},     // object members in key order, as aeson
+		{`$.a[?@ != "x"]`, doc, "5"},         // != holds for a value that is not a string
+		{`$.a[?@ == "y"]`, doc, "y"},         // == only for the same string
+		{`$[?search(@, "^a.b$")]`, doc, ""},  // "." matches no line break
+		{`$[?search(@, "x.y")]`, doc, "x y"}, //
+		{`$[?search(@, "ü")]`, doc, "ü"},     //
+		{`$[?search(@, "[")]`, doc, ""},      // an invalid pattern never matches
+		{`$[?((@ == "x y"))]`, doc, "x y"},   // parentheses around the filter
+		{`$[ ?  search( @ , "^x" ) ]`, doc, "x y"},
 		{`$["ü"]`, `{"ü":"yes"}`, "yes"},
 		{`$['a\'b']`, `{"a'b":"yes"}`, "yes"},
 		{`$.ü`, `{"ü":"yes"}`, "yes"},
-		{`$ .o .j`, doc, "1"},
-		{`$[ 'o' , 'a' ]`, doc, `{"j":1,"k":2}`},
+		{`$ .o .b`, doc, "first"},
+		{`$[ 'o' ]['b']`, doc, "first"},
 		{`$.n`, doc, "null"},
 	})
 	if role, ok := roleOf(t, `$.e`, `{"e":""}`); !ok || role != "" {
 		t.Errorf("an empty string is a role: got %q, %v", role, ok)
 	}
 	for _, key := range []string{
-		`$.a[?@.c[*] == 1]`, // a comparison needs singular queries
-		`$..`, `$.`, `$[]`, `$['a'`, `$["\x"]`, `$[-0]`, `$[9007199254740992]`,
-		`$[?@.a == ]`, `$[?1]`, `$[?search(@)]`, `$[?search(@, "a") == true]`,
+		`$.`, `$[]`, `$['a'`, `$["\x"]`, `$[-0]`, `$[9007199254740992]`,
+		`$[?@ == ]`, `$[?search(@)]`, `$[?search(@, "a") == true]`, `$[?(@ == "a"]`, `$x`,
 	} {
-		if _, err := parseJSONPath(key); err == nil {
-			t.Errorf("%q: accepted, want a parse error", key)
+		if _, err := ParseRoleClaimKey(key); err == nil {
+			t.Errorf("%q: accepted, want an error", key)
+		} else if strings.Contains(err.Error(), "not supported") {
+			t.Errorf("%q: a syntax error, not an unsupported construct: %v", key, err)
+		}
+	}
+}
+
+// The JSONPath constructs PostgREST 16.4 accepts beyond the subset (each
+// checked on a live 16.4, which switched to the role they select) stop the
+// server, naming the construct: the divergence is loud, never a different
+// role at runtime.
+func TestRoleClaimKeyUnsupported(t *testing.T) {
+	cases := []struct{ key, construct string }{
+		{`$.roles[*]`, "wildcard"},
+		{`$.roles.*`, "wildcard"},
+		{`$.roles[0:2]`, "slice"},
+		{`$.roles[1:]`, "slice"},
+		{`$.roles[::-1]`, "slice"},
+		{`$.a[-1:-3:-1].b`, "slice"},
+		{`$..role`, "descendant"},
+		{`$.a..role`, "descendant"},
+		{`$.roles[1,0]`, "several selectors"},
+		{`$.r[?@.n > 3].role`, "query inside a filter"},
+		{`$.r[?@.flag].role`, "query inside a filter"},
+		{`$.r[?@.n == $.r[1].n].role`, "query inside a filter"},
+		{`$.a[?@.c[?@ == 2]].b`, "query inside a filter"},
+		{`$.r[?@.n >= 5 && @.name == "y"].role`, "query inside a filter"},
+		{`$.roles[?@ == "a" && @ != "b"]`, "&&"},
+		{`$.roles[?@ == "a" || @ == "b"]`, "||"},
+		{`$.r[?!(@ == "x")].role`, "!"},
+		{`$.roles[?@ < "z"]`, "<"},
+		{`$.roles[?@ >= "a"]`, ">="},
+		{`$.roles[?@ == true]`, "literal"},
+		{`$.roles[?@ == 5]`, "literal"},
+		{`$.roles[?@]`, "existence test"},
+		{`$.roles[?"x" == @]`, "literal on the left"},
+		{`$.roles[?search(@, $.re)]`, "query as the search() pattern"},
+	}
+	for _, c := range cases {
+		_, err := ParseRoleClaimKey(c.key)
+		if err == nil {
+			t.Errorf("%s: accepted, want it refused as not supported", c.key)
+			continue
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "JWTRoleClaimKey") || !strings.Contains(msg, "not supported") || !strings.Contains(msg, c.construct) {
+			t.Errorf("%s: %q, want an error naming JWTRoleClaimKey and saying %q is not supported", c.key, msg, c.construct)
 		}
 	}
 }
