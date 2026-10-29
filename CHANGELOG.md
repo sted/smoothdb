@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-* **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests, and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
+* **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests (a `DateStyle` keeps ISO output), and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
 * **JWT claims as in PostgREST** — `JWTRoleClaimKey`, `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
 * **JWK set verification** — `JWTKeys` verifies tokens against a key catalog by `kid`, HS256 and ES256 at once; `JWTSecret` also takes a JWK or a JWK set, as in PostgREST.
 * **`Database.MaxRows`** (`SMOOTHDB_DATABASE_MAX_ROWS`) — PostgREST's `db-max-rows`: caps the rows of a read and of each to-many embed, not the count nor a write's representation; unset by default.

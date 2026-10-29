@@ -99,6 +99,12 @@ func loadRoleSettings(ctx context.Context, conn *DbConn, version int, prev *role
 		if err := rows.Scan(&role, &name, &value); err != nil {
 			return nil, err
 		}
+		if strings.EqualFold(name, "datestyle") {
+			// the order of the role's DateStyle, but ISO output: the text
+			// decoders read ISO (see isoDateStyle), and PostgREST's JSON is
+			// ISO whatever the DateStyle
+			value = isoDateStyle(map[string]string{name: value})
+		}
 		rc := rs.roles[role]
 		if rc == nil {
 			rc = &roleConfig{}
