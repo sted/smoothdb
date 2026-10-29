@@ -67,3 +67,66 @@ func TestCheckConfigValidatesSessionMode(t *testing.T) {
 		t.Fatalf("\"claims\" must pass the mode check and reach the secret check, got %v", err)
 	}
 }
+
+// The JWT settings of PostgREST (jwt-role-claim-key, jwt-aud,
+// jwt-secret-is-base64) are checked at startup, as PostgREST refuses to start
+// on an invalid value, before the database check.
+func TestCheckConfigRejectsInvalidJWTSettings(t *testing.T) {
+	cases := []struct {
+		name, key string
+		set       func(*Config)
+	}{
+		{"role claim key", "JWTRoleClaimKey", func(c *Config) { c.JWTRoleClaimKey = "role.other" }},
+		{"audience", "JWTAud", func(c *Config) { c.JWTAud = "http://x y" }},
+		{"base64 secret", "JWTSecret", func(c *Config) { c.JWTSecret = "!!!notbase64!!!"; c.JWTSecretIsBase64 = true }},
+	}
+	for _, c := range cases {
+		cfg := defaultConfig()
+		cfg.JWTSecret = "secret"
+		c.set(cfg)
+		err := checkConfig(cfg)
+		if err == nil || !strings.Contains(err.Error(), c.key) {
+			t.Errorf("%s: expected an error naming %s, got %v", c.name, c.key, err)
+		}
+	}
+}
+
+// The new JWT settings come from the environment like SMOOTHDB_JWT_SECRET.
+func TestJWTSettingsFromEnvironment(t *testing.T) {
+	t.Setenv("SMOOTHDB_JWT_ROLE_CLAIM_KEY", "$.app.role")
+	t.Setenv("SMOOTHDB_JWT_AUD", "youraudience")
+	t.Setenv("SMOOTHDB_JWT_SECRET_IS_BASE64", "true")
+	cfg := defaultConfig()
+	if cfg.JWTRoleClaimKey != "$.role" || cfg.JWTAud != "" || cfg.JWTSecretIsBase64 {
+		t.Fatalf("defaults: %q %q %v", cfg.JWTRoleClaimKey, cfg.JWTAud, cfg.JWTSecretIsBase64)
+	}
+	getEnvironment(cfg)
+	if cfg.JWTRoleClaimKey != "$.app.role" || cfg.JWTAud != "youraudience" || !cfg.JWTSecretIsBase64 {
+		t.Errorf("from the environment: %q %q %v", cfg.JWTRoleClaimKey, cfg.JWTAud, cfg.JWTSecretIsBase64)
+	}
+}
+
+// JWTKeys is read from SMOOTHDB_JWT_KEYS and checked at startup; a JWTSecret
+// that is a JWK(S) must hold the key /token signs with when LoginMode is "db".
+func TestJWTKeysConfig(t *testing.T) {
+	t.Setenv("SMOOTHDB_JWT_KEYS", `[{"kty":"oct","k":"c2VjcmV0","kid":"legacy"}]`)
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if cfg.JWTKeys != `[{"kty":"oct","k":"c2VjcmV0","kid":"legacy"}]` {
+		t.Fatalf("JWTKeys from the environment: %q", cfg.JWTKeys)
+	}
+
+	cfg = defaultConfig()
+	cfg.JWTSecret = "secret"
+	cfg.JWTKeys = `[{"kty":"oct","k":"c2VjcmV0"}]` // no kid
+	if err := checkConfig(cfg); err == nil || !strings.Contains(err.Error(), "JWTKeys") {
+		t.Errorf("an invalid JWTKeys must stop the server, got %v", err)
+	}
+
+	cfg = defaultConfig()
+	cfg.LoginMode = "db"
+	cfg.JWTSecret = `{"kty":"EC","crv":"P-256","x":"dQkl4PP7doIatL26VhEwCWO-DLZpO5lgOJRv0DV7lwI","y":"6O9vSWaLewDQmn_aKz99BV8uHM4ksFy7BL9AbsmoPJ0"}`
+	if err := checkConfig(cfg); err == nil || !strings.Contains(err.Error(), "JWTSecret") {
+		t.Errorf("LoginMode db needs an HMAC key to sign with, got %v", err)
+	}
+}
