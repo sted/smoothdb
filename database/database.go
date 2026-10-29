@@ -302,23 +302,24 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 }
 
 // AcquireConnection takes a connection from the pool. Unless the acquire is a
-// request's (see the package's AcquireConnection), a connection a request ran
-// on is cleaned first: a function may have left its role or claims on the
-// session, and an internal user (the schema reload, the activation of a
-// database, a library caller) would run as them.
+// request's (see the package's AcquireConnection), a connection used since
+// its last cleanup is cleaned first: a function may have left its role or
+// claims on the session, and an internal user (the schema reload, the
+// activation of a database, a library caller) would run as them. Every lease
+// counts as a use, a library caller's too: it may prepare the connection for
+// a role and call such a function as well.
 func (db *Database) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
 	data := conn.Conn().PgConn().CustomData()
-	if ctx.Value(requestAcquireKey{}) != nil {
-		data[requestUsedKey] = true
-	} else if data[requestUsedKey] != nil {
+	if ctx.Value(requestAcquireKey{}) == nil && data[requestUsedKey] != nil {
 		if err := cleanSession(ctx, conn.Conn()); err != nil {
 			conn.Release()
 			return nil, err
 		}
 	}
+	data[requestUsedKey] = true
 	return conn, nil
 }
