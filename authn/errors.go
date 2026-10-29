@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/sted/heligo"
 )
@@ -23,7 +22,9 @@ type Error struct {
 	Message string
 	// Challenge is the WWW-Authenticate value of a 401, "" for none
 	Challenge string
-	// Err is the cause, reported as the details when errors are verbose
+	// Details are reported when errors are verbose, else the cause's message
+	Details string
+	// Err is the cause
 	Err error
 }
 
@@ -53,8 +54,9 @@ func tokenChallenge(message string) string {
 //     role: PGRST302 and the bare challenge (JwtTokenRequired);
 //   - an empty role claim: the 22023 PostgreSQL raises for that role, which
 //     the database errors map to 401;
-//   - any other failure of a token: PGRST303 for its claims (expired, not
-//     yet valid, ...), PGRST301 otherwise, with the invalid_token challenge.
+//   - a token that fails verification (a JWTError): its code, PGRST303 for
+//     its claims (expired, not yet valid, ...), PGRST301 otherwise, with the
+//     invalid_token challenge; any other token failure is a PGRST301 too.
 func refusal(tokenString string, status int, err error) error {
 	msg := err.Error()
 	switch {
@@ -63,13 +65,14 @@ func refusal(tokenString string, status int, err error) error {
 			Challenge: requiredChallenge, Err: err}
 	case strings.HasPrefix(msg, "role ") && strings.HasSuffix(msg, " does not exist"):
 		return &pgconn.PgError{Severity: "ERROR", Code: "22023", Message: msg}
-	case errors.Is(err, jwt.ErrTokenInvalidClaims):
-		return &Error{Status: status, Code: "PGRST303", Message: msg,
-			Challenge: tokenChallenge(msg), Err: err}
-	default:
-		return &Error{Status: status, Code: "PGRST301", Message: msg,
-			Challenge: tokenChallenge(msg), Err: err}
 	}
+	var jerr *JWTError
+	if errors.As(err, &jerr) {
+		return &Error{Status: status, Code: jerr.Code, Message: jerr.Message,
+			Details: jerr.Details, Challenge: tokenChallenge(jerr.Message), Err: err}
+	}
+	return &Error{Status: status, Code: "PGRST301", Message: msg,
+		Challenge: tokenChallenge(msg), Err: err}
 }
 
 // authenticatedWriter marks the response of an authenticated request, for the

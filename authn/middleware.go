@@ -157,8 +157,7 @@ func (m middleware) acquireSession(ctx context.Context, r heligo.Request,
 		// verification would have caught since the session was built.
 		if claimsExpired(session.Claims, time.Now()) {
 			m.SessionManager().dropSession(session)
-			return nil, nil, false, &Error{Status: http.StatusUnauthorized, Code: "PGRST303",
-				Message: "JWT expired", Challenge: tokenChallenge("JWT expired")}
+			return nil, nil, false, refusal(tokenString, http.StatusUnauthorized, ErrJWTExpired)
 		}
 		db = session.Db
 	}

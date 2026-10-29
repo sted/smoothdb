@@ -71,7 +71,7 @@ func TestAudienceJwtSecretSpec(t *testing.T) {
 		"JWTSecret": postgrestSecret,
 		"JWTAud":    "youraudience",
 	})
-	notInAudience := `{"error":"JWT not in audience"}`
+	notInAudience := `{"code":"PGRST303","details":null,"hint":"","message":"JWT not in audience","position":0,"subsystem":"auth"}`
 	aud := func(aud string) test.Headers {
 		return authHeader(signPayload(t, `{"exp":9999999999,"role":"postgrest_test_author","id":"jdoe"`+aud+`}`))
 	}
@@ -140,47 +140,47 @@ func TestAuthSpecJWT(t *testing.T) {
 		//     { matchStatus = 401 , matchHeaders = [ "WWW-Authenticate" <:> "Bearer error=\"invalid_token\", error_description=\"JWT expired\"" ] }
 		{Description: "fails with an expired token", Query: "/authors_only",
 			Headers:  authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE0NDY2NzgxNDksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.f8__E6VQwYcDqwHmr9PG03uaZn8Zh1b0vbJ9DYS0AdM"),
-			Expected: `{"error":"JWT expired"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"JWT expired","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "hides tables from users with invalid JWT" $ do
 		//   let auth = authHeaderJWT "ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"
 		//   `shouldRespondWith` [json| {"message":"Expected 3 parts in JWT; got 2","code":"PGRST301","hint":null,"details":null} |]
 		{Description: "hides tables from users with invalid JWT", Query: "/authors_only",
 			Headers:  authHeader("ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"),
-			Expected: `{"error":"Expected 3 parts in JWT; got 2"}`, Status: 401},
+			Expected: `{"code":"PGRST301","details":null,"hint":"","message":"Expected 3 parts in JWT; got 2","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "fails when the exp claim is not a number" $ do
 		//   ... `shouldRespondWith` [json|{"code":"PGRST303","details":null,"hint":null,"message":"The JWT 'exp' claim must be a number"}|]
 		{Description: "fails when the exp claim is not a number", Query: "/authors_only",
 			Headers:  authHeader(signPayload(t, `{"exp":"invalid","role":"postgrest_test_author"}`)),
-			Expected: `{"error":"The JWT 'exp' claim must be a number"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"The JWT 'exp' claim must be a number","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "fails when the nbf claim is not a number"
 		{Description: "fails when the nbf claim is not a number", Query: "/authors_only",
 			Headers:  authHeader(signPayload(t, `{"nbf":"invalid","role":"postgrest_test_author"}`)),
-			Expected: `{"error":"The JWT 'nbf' claim must be a number"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"The JWT 'nbf' claim must be a number","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "fails when the iat claim is not a number"
 		{Description: "fails when the iat claim is not a number", Query: "/authors_only",
 			Headers:  authHeader(signPayload(t, `{"iat":"invalid","role":"postgrest_test_author"}`)),
-			Expected: `{"error":"The JWT 'iat' claim must be a number"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"The JWT 'iat' claim must be a number","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "fails when the aud claim has a single value and it's not a string"
 		{Description: "fails when the aud claim has a single value and it's not a string", Query: "/authors_only",
 			Headers:  authHeader(signPayload(t, `{"aud":{"invalid":"value"},"role":"postgrest_test_author"}`)),
-			Expected: `{"error":"The JWT 'aud' claim must be a string or an array of strings"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"The JWT 'aud' claim must be a string or an array of strings","position":0,"subsystem":"auth"}`, Status: 401},
 		// it "fails when the aud claim is an array but it has non-string elements"
 		{Description: "fails when the aud claim is an array but it has non-string elements", Query: "/authors_only",
 			Headers:  authHeader(signPayload(t, `{"aud":[{"invalid":"value"},"test"],"role":"postgrest_test_author"}`)),
-			Expected: `{"error":"The JWT 'aud' claim must be a string or an array of strings"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"The JWT 'aud' claim must be a string or an array of strings","position":0,"subsystem":"auth"}`, Status: 401},
 		// the audience is not checked without JWTAud (AudienceJwtSecretSpec.disabledSpec)
 		{Description: "ignores the audience claim without JWTAud", Query: "/authors_only",
 			Headers: authHeader(signPayload(t, `{"exp":9999999999,"role":"postgrest_test_author","aud":"youraudience"}`)), Status: 200},
 		// the 30 s clock skew
 		{Description: "an exp 20 s ago is within the skew", Query: "/authors_only", Headers: at("exp", -20), Status: 200},
 		{Description: "an exp 40 s ago is expired", Query: "/authors_only", Headers: at("exp", -40),
-			Expected: `{"error":"JWT expired"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"JWT expired","position":0,"subsystem":"auth"}`, Status: 401},
 		{Description: "an nbf 20 s ahead is within the skew", Query: "/authors_only", Headers: at("nbf", 20), Status: 200},
 		{Description: "an nbf 40 s ahead is not yet valid", Query: "/authors_only", Headers: at("nbf", 40),
-			Expected: `{"error":"JWT not yet valid"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"JWT not yet valid","position":0,"subsystem":"auth"}`, Status: 401},
 		{Description: "an iat 20 s ahead is within the skew", Query: "/authors_only", Headers: at("iat", 20), Status: 200},
 		{Description: "an iat 40 s ahead is issued in the future", Query: "/authors_only", Headers: at("iat", 40),
-			Expected: `{"error":"JWT issued at future"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":"","message":"JWT issued at future","position":0,"subsystem":"auth"}`, Status: 401},
 	})
 }
 
@@ -296,8 +296,8 @@ func TestJWTKeys(t *testing.T) {
 		{Description: "a legacy HS256 token without kid", Query: "/authors_only",
 			Headers: authHeader(signPayload(t, `{"role":"postgrest_test_author"}`)), Status: 200},
 		{Description: "an ES256 token without kid", Query: "/authors_only", Headers: es256(""),
-			Expected: `{"error":"No suitable key or wrong key type"}`, Status: 401},
+			Expected: `{"code":"PGRST301","details":null,"hint":"","message":"No suitable key or wrong key type","position":0,"subsystem":"auth"}`, Status: 401},
 		{Description: "an unknown kid", Query: "/authors_only", Headers: es256("backend-2"),
-			Expected: `{"error":"No suitable key or wrong key type"}`, Status: 401},
+			Expected: `{"code":"PGRST301","details":null,"hint":"","message":"No suitable key or wrong key type","position":0,"subsystem":"auth"}`, Status: 401},
 	})
 }

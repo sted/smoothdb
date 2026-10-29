@@ -7,18 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// The token checks report their failures with plain errors; refusal gives
-// them the code and challenge PostgREST answers with. The cases are the
-// messages the checks produce today: a change of wording there must show up
-// here.
+// refusal gives the failures of the token checks the code and challenge
+// PostgREST answers with: a JWTError keeps its own code, the anonymous-access
+// refusals are recognized by their messages, which a change of wording there
+// must show up here.
 func TestRefusalFollowsPostgREST(t *testing.T) {
-	expired, _ := GenerateToken("r", "secret", time.Nanosecond)
-	time.Sleep(time.Millisecond)
-	_, expiredErr := authenticate(expired, "secret")
-	_, malformedErr := authenticate("abc.def", "secret")
+	v := newVerifier(t, JWTConfig{Secret: "secret"})
+	expired, _ := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		jwt.MapClaims{"role": "r", "exp": time.Now().Add(-time.Minute).Unix()}).SignedString([]byte("secret"))
+	_, expiredErr := authenticate(expired, v)
+	_, malformedErr := authenticate("abc.def", v)
 	if expiredErr == nil || malformedErr == nil {
 		t.Fatal("the token checks accepted a bad token")
 	}
@@ -29,6 +31,7 @@ func TestRefusalFollowsPostgREST(t *testing.T) {
 		challenge   string
 	}{
 		{"no token", "", errors.New("unauthorized access"), "PGRST302", "Bearer"},
+		{"no key", "t", ErrJWTSecretMissing, "PGRST301", tokenChallenge(ErrJWTSecretMissing.Error())},
 		{"anonymous access disabled", "t", errors.New(anonDisabled), "PGRST302", "Bearer"},
 		{"expired", "t", expiredErr, "PGRST303", tokenChallenge(expiredErr.Error())},
 		{"malformed", "t", malformedErr, "PGRST301", tokenChallenge(malformedErr.Error())},

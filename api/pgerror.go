@@ -154,8 +154,12 @@ func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, 
 		subsystem = "auth"
 	}
 	smoothErr := SmoothError{Subsystem: subsystem, Message: aerr.Message, Code: aerr.Code}
-	if verboseErrors && aerr.Err != nil && aerr.Err.Error() != aerr.Message {
-		smoothErr.Details = aerr.Err.Error()
+	if verboseErrors {
+		if aerr.Details != "" {
+			smoothErr.Details = aerr.Details
+		} else if aerr.Err != nil && aerr.Err.Error() != aerr.Message {
+			smoothErr.Details = aerr.Err.Error()
+		}
 	}
 	heligo.WriteJSON(w, aerr.Status, smoothErr)
 	return aerr.Status, err
