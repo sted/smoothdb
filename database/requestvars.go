@@ -28,7 +28,7 @@ import (
 // before the batch, so before the role is in force: as the authenticator,
 // which may not even reach the schema (USAGE is checked at the parse). So the
 // variables ride with a statement only when the connection already has it
-// prepared (statementsOf); otherwise they are applied on their own first
+// prepared (statementCache); otherwise they are applied on their own first
 // (flush): in the request's transaction, or session-level with
 // TransactionMode "none", reset when the connection goes back to the pool.
 // The same flush serves every path that takes the bare connection (GetConn).
@@ -229,13 +229,15 @@ func (gi *SmoothContext) send(ctx context.Context, b *requestBatch) (pgx.BatchRe
 		}
 		br.Close()
 		var pre pgx.ErrPreprocessingBatch
-		if !errors.As(err, &pre) {
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pre) || !errors.As(err, &pgErr) {
 			gi.rollback(ctx, b)
 			return nil, err
 		}
-		// a statement the connection had dropped (its cache is not ours):
-		// nothing ran, so the variables go first on their own, and the
-		// statements again behind them
+		// the server refused to prepare a statement the connection had
+		// dropped (its cache is not ours), as the authenticator: nothing ran,
+		// so the variables go first on their own, and the statements again
+		// behind them, prepared as the role this time
 		gi.forget(b.QueuedQueries[b.lead:])
 		if _, err := gi.conn(ctx); err != nil {
 			return nil, err

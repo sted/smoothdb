@@ -47,6 +47,10 @@ func setSessionReadOnly(ctx context.Context, conn *DbConn, readOnly bool) error 
 		return nil
 	}
 	_, err := conn.Exec(ctx, "SET "+readOnlyGUC+" = "+want)
+	if _, marked := conn.PgConn().CustomData()[sessionMarkKey]; err == nil && readOnly && !marked {
+		// a session setting to reset before the pool hands it out again
+		markSession(conn, "")
+	}
 	return err
 }
 
