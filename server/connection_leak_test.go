@@ -88,20 +88,18 @@ func TestExpiredTokenOnSessionHitReleasesConnection(t *testing.T) {
 		t.Fatal("control: the watcher did not release the idle session connection")
 	}
 
-	// a token that expires between two requests within the retention window;
-	// jwt rounds exp to the second unless told otherwise
-	precision := jwt.TimePrecision
-	jwt.TimePrecision = time.Millisecond
-	t.Cleanup(func() { jwt.TimePrecision = precision })
-	exp := time.Now().Add(500 * time.Millisecond)
-	expiring := signClaims(t, jwt.MapClaims{
-		"role": "leak_user",
-		"exp":  float64(exp.UnixMilli()) / 1000,
-	}, s.JWTSecret())
+	// a token that expires between two requests within the retention window:
+	// with the 30 s clock skew (PostgREST's, on whole seconds) a token is
+	// expired once now - 30 > exp, so exp is set 30 s back and the second
+	// request is sent once the clock has turned the next second
+	edge := time.Now().Truncate(time.Second).Add(time.Second)
+	time.Sleep(time.Until(edge.Add(-400 * time.Millisecond)))
+	exp := edge.Add(-time.Second).Unix() - 30
+	expiring := signClaims(t, jwt.MapClaims{"role": "leak_user", "exp": exp}, s.JWTSecret())
 	if status := getWithToken(t, url, expiring); status == http.StatusUnauthorized {
 		t.Fatalf("first request: the token is still valid, got %d", status)
 	}
-	time.Sleep(time.Until(exp) + 100*time.Millisecond)
+	time.Sleep(time.Until(edge) + 100*time.Millisecond)
 	if status := getWithToken(t, url, expiring); status != http.StatusUnauthorized {
 		t.Fatalf("second request: expected 401 for the expired token, got %d", status)
 	}

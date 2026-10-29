@@ -1,4 +1,4 @@
-package postgrest
+package server
 
 import (
 	"context"
@@ -7,18 +7,21 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/sted/smoothdb/server"
 	"github.com/sted/smoothdb/test"
 )
 
+// The ports of PostgREST's JWT specs that need a configuration of their own:
+// each runs its own server, which the test/postgrest suite cannot do (a server
+// replaces the process-wide database engine of the suite's). They run on the
+// pgrest fixtures of that suite (make prepare-postgrest-tests).
+
 // postgrestSecret is generateSecret of PostgREST's SpecHelper.hs: the AuthSpec
 // tokens below are signed with it.
-const postgrestSecret = "reallyreallyreallyreallyverysafe"
+const postgrestSecret = postgrestJWTSecret
 
 // startJWTServer runs a server with its own JWT configuration on the pgrest
 // fixtures, configured like PostgREST's baseCfg: anonymous requests run as
@@ -29,31 +32,18 @@ func startJWTServer(t *testing.T, port int, jwtConfig map[string]any) test.Confi
 		"Address":                   fmt.Sprintf("localhost:%d", port),
 		"AllowAnon":                 true,
 		"Database.AnonRole":         "postgrest_test_anonymous",
-		"Logging.FileLogging":       false,
-		"Logging.StdOut":            false,
-		"Database.URL":              "postgresql://postgres:postgres@localhost:5432/postgres",
 		"Database.SchemaSearchPath": []string{"test"},
 	}
 	for k, v := range jwtConfig {
 		c[k] = v
 	}
-	s, err := server.NewServerWithConfig(c, &server.ConfigOptions{
-		ConfigFilePath: filepath.Join(t.TempDir(), "config.jsonc"),
-		SkipFlags:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- s.Start() }()
-	base := fmt.Sprintf("http://localhost:%d", port)
-	if err := test.WaitForServer(base); err != nil {
-		t.Fatal(err)
-	}
+	s := newTestServer(t, c)
+	done := startTestServer(t, s)
 	t.Cleanup(func() {
 		s.Shutdown(context.Background())
 		<-done
 	})
+	base := fmt.Sprintf("http://localhost:%d", port)
 	return test.Config{
 		BaseUrl:       base + "/api/pgrest",
 		CommonHeaders: test.Headers{"Accept-Profile": {"test"}, "Content-Profile": {"test"}},

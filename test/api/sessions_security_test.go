@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sted/smoothdb/authn"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/sted/smoothdb/test"
 )
 
@@ -44,17 +44,25 @@ func TestMissingDatabaseIsNotFoundOnEveryRequest(t *testing.T) {
 	}
 }
 
-// A token valid for one second opens a session; the session lives ~5 s after
-// its last use, so a request after expiry is a hit and used to be accepted.
+// A token about to expire opens a session; the session lives ~5 s after its
+// last use, so a request after expiry is a hit and used to be accepted. With
+// the 30 s clock skew (PostgREST's, on whole seconds) a token is expired once
+// now - 30 > exp: exp is set 30 s back, and the second request is sent once
+// the clock has turned the next second.
 func TestExpiredTokenIsRefusedOnASessionHit(t *testing.T) {
-	token, err := authn.GenerateToken("admin", srv.JWTSecret(), time.Second)
+	edge := time.Now().Truncate(time.Second).Add(time.Second)
+	time.Sleep(time.Until(edge.Add(-400 * time.Millisecond)))
+	exp := edge.Add(-time.Second).Unix() - 30
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"role": "admin", "exp": exp}).
+		SignedString([]byte(srv.JWTSecret()))
 	if err != nil {
 		t.Fatal(err)
 	}
+	token = "Bearer " + token
 	if s := getStatus(t, token, "/dbtest"); s != http.StatusOK {
 		t.Fatalf("fresh token: expected 200, got %d", s)
 	}
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(time.Until(edge) + 100*time.Millisecond)
 	if s := getStatus(t, token, "/dbtest"); s != http.StatusUnauthorized {
 		t.Fatalf("expired token on a session hit: expected 401, got %d", s)
 	}
