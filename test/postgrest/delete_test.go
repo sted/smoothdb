@@ -9,33 +9,43 @@ import (
 func TestPostgREST_Delete(t *testing.T) {
 
 	tests := []test.Test{
-		// 	context "existing record" $ do
-		// 	it "succeeds with 204 and deletion count" $
-		// 	  request methodDelete "/items?id=eq.1"
-		// 		  []
-		// 		  ""
-		// 		`shouldRespondWith`
-		// 		  ""
-		// 		  { matchStatus  = 204
-		// 		  , matchHeaders = [ matchHeaderAbsent hContentType
-		//  , "Content-Range" <:> "*/*" ]
-		//	  }
+		//   describe "Deleting" $ do
+		//     context "existing record" $ do
+		//       it "succeeds with 204 and deletion count" $
+		//         request
+		//           methodDelete
+		//           "/items?id=eq.1"
+		//           []
+		//           ""
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "*/*"
+		//                 ]
+		//             }
 		{
 			Description:     "succeeds with 204 and deletion count",
 			Method:          "DELETE",
 			Query:           "/items?id=eq.1",
 			Body:            ``,
 			Headers:         nil,
-			Expected:        ``,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
-		// 	it "returns the deleted item and count if requested" $
-		// 	  request methodDelete "/items?id=eq.2" [("Prefer", "return=representation"), ("Prefer", "count=exact")] ""
-		// 		`shouldRespondWith` [json|[{"id":2}]|]
-		// 		{ matchStatus  = 200
-		// 		, matchHeaders = ["Content-Range" <:> "*/1"]
-		// 		}
+		//       it "returns the deleted item and count if requested" $
+		//         request methodDelete "/items?id=eq.2" [("Prefer", "return=representation"), ("Prefer", "count=exact")] ""
+		//           `shouldRespondWith` [json|[{"id":2}]|]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Range" <:> "*/1"
+		//                 , "Content-Length" <:> "10"
+		//                 , "Preference-Applied" <:> "return=representation, count=exact"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "returns the deleted item and count if requested",
 			Method:          "DELETE",
@@ -43,64 +53,80 @@ func TestPostgREST_Delete(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
 			Expected:        `[{"id":2}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/1"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/1", "Content-Length": "10"},
 			Status:          200,
 		},
-		// 	it "ignores ?select= when return not set or return=minimal" $ do
-		// 	  request methodDelete "/items?id=eq.3&select=id"
-		// 		  []
-		// 		  ""
-		// 		`shouldRespondWith`
-		// 		  ""
-		// 		  { matchStatus  = 204
-		// 		  , matchHeaders = [ matchHeaderAbsent hContentType
-		// 						   , "Content-Range" <:> "*/*" ]
-		// 		  }
+		//       it "ignores ?select= when return not set or return=minimal" $ do
+		//         request
+		//           methodDelete
+		//           "/items?id=eq.3&select=id"
+		//           []
+		//           ""
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "*/*"
+		//                 ]
+		//             }
 		{
-			Description: "ignores ?select= when return not set or return=minimal",
-			Method:      "DELETE",
-			Query:       "/items?id=eq.3&select=id",
-			Body:        ``,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "ignores ?select= when return not set or return=minimal",
+			Method:          "DELETE",
+			Query:           "/items?id=eq.3&select=id",
+			Body:            ``,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
+			Status:          204,
 		},
-		// 	  request methodDelete "/items?id=eq.3&select=id"
-		// 		  [("Prefer", "return=minimal")]
-		// 		  ""
-		// 		`shouldRespondWith`
-		// 		  ""
-		// 		  { matchStatus  = 204
-		// 		  , matchHeaders = [ matchHeaderAbsent hContentType
-		// 						   , "Content-Range" <:> "*/*" ]
-		// 		  }
+		//         request
+		//           methodDelete
+		//           "/items?id=eq.3&select=id"
+		//           [("Prefer", "return=minimal")]
+		//           ""
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Content-Range" <:> "*/*"
+		//                 , "Preference-Applied" <:> "return=minimal"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "ignores ?select= when return not set or return=minimal",
-			Method:      "DELETE",
-			Query:       "/items?id=eq.3&select=id",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=minimal"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "ignores ?select= when return not set or return=minimal",
+			Method:          "DELETE",
+			Query:           "/items?id=eq.3&select=id",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
+			Status:          204,
 		},
-		// 	it "returns the deleted item and shapes the response" $
-		// 	  request methodDelete "/complex_items?id=eq.2&select=id,name" [("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith` [json|[{"id":2,"name":"Two"}]|]
-		// 		{ matchStatus  = 200
-		// 		, matchHeaders = ["Content-Range" <:> "*/*"]
-		// 		}
+		//       it "returns the deleted item and shapes the response" $
+		//         request methodDelete "/complex_items?id=eq.2&select=id,name" [("Prefer", "return=representation")] ""
+		//           `shouldRespondWith` [json|[{"id":2,"name":"Two"}]|]
+		//             { matchStatus = 200
+		//             , matchHeaders =
+		//                 [ "Content-Range" <:> "*/*"
+		//                 , "Content-Length" <:> "23"
+		//                 ]
+		//             }
 		{
-			Description: "returns the deleted item and shapes the response",
-			Method:      "DELETE",
-			Query:       "/complex_items?id=eq.2&select=id,name",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":2,"name":"Two"}]`,
-			Status:      200,
+			Description:     "returns the deleted item and shapes the response",
+			Method:          "DELETE",
+			Query:           "/complex_items?id=eq.2&select=id,name",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":2,"name":"Two"}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*", "Content-Length": "23"},
+			Status:          200,
 		},
-		// 	it "can rename and cast the selected columns" $
-		// 	  request methodDelete "/complex_items?id=eq.3&select=ciId:id::text,ciName:name" [("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith` [json|[{"ciId":"3","ciName":"Three"}]|]
+		//       it "can rename and cast the selected columns" $
+		//         request methodDelete "/complex_items?id=eq.3&select=ciId:id::text,ciName:name" [("Prefer", "return=representation")] ""
+		//           `shouldRespondWith` [json|[{"ciId":"3","ciName":"Three"}]|]
 		{
 			Description: "can rename and cast the selected columns",
 			Method:      "DELETE",
@@ -110,84 +136,100 @@ func TestPostgREST_Delete(t *testing.T) {
 			Expected:    `[{"ciId":"3","ciName":"Three"}]`,
 			Status:      200,
 		},
-		// 	it "can embed (parent) entities" $
-		// 	  request methodDelete "/tasks?id=eq.8&select=id,name,project:projects(id)" [("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith` [json|[{"id":8,"name":"Code OSX","project":{"id":4}}]|]
-		// 		{ matchStatus  = 200
-		// 		, matchHeaders = ["Content-Range" <:> "*/*"]
-		// 		}
+		//       it "can embed (parent) entities" $
+		//         request methodDelete "/tasks?id=eq.8&select=id,name,project:projects(id)" [("Prefer", "return=representation")] ""
+		//           `shouldRespondWith` [json|[{"id":8,"name":"Code OSX","project":{"id":4}}]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = ["Content-Range" <:> "*/*"]
+		//             }
 		{
-			Description: "can embed (parent) entities",
-			Method:      "DELETE",
-			Query:       "/tasks?id=eq.8&select=id,name,project:projects(id)",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":8,"name":"Code OSX","project":{"id":4}}]`,
-			Status:      200,
+			Description:     "can embed (parent) entities",
+			Method:          "DELETE",
+			Query:           "/tasks?id=eq.8&select=id,name,project:projects(id)",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":8,"name":"Code OSX","project":{"id":4}}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
 		},
-		// 	it "embeds an O2O relationship after delete" $ do
-		// 	  request methodDelete "/students?id=eq.1&select=name,students_info(address)"
-		// 			  [("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith`
-		// 		[json|[
-		// 		  {
-		// 			"name": "John Doe",
-		// 			"students_info":{"address":"Street 1"}
-		// 		  }
-		// 		]|]
-		// 		{ matchStatus  = 200,
-		// 		  matchHeaders = [matchContentTypeJson]
-		// 		}
+		//       it "embeds an O2O relationship after delete" $ do
+		//         request
+		//           methodDelete
+		//           "/students?id=eq.1&select=name,students_info(address)"
+		//           [("Prefer", "return=representation")]
+		//           ""
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name": "John Doe",
+		//               "students_info":{"address":"Street 1"}
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson]
+		//             }
 		{
-			Description: "embeds an O2O relationship after delete",
-			Method:      "DELETE",
-			Query:       "/students?id=eq.1&select=name,students_info(address)",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"name": "John Doe", "students_info":{"address":"Street 1"}}]`,
-			Status:      200,
+			Description:     "embeds an O2O relationship after delete",
+			Method:          "DELETE",
+			Query:           "/students?id=eq.1&select=name,students_info(address)",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"name": "John Doe", "students_info":{"address":"Street 1"}}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		// 	  request methodDelete "/students_info?id=eq.1&select=address,students(name)"
-		// 			  [("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith`
-		// 		[json|[
-		// 		  {
-		// 			"address": "Street 1",
-		// 			"students":{"name": "John Doe"}
-		// 		  }
-		// 		]|]
-		// 		{ matchStatus  = 200,
-		// 		  matchHeaders = [matchContentTypeJson]
-		// 		}
+		//         request
+		//           methodDelete
+		//           "/students_info?id=eq.1&select=address,students(name)"
+		//           [("Prefer", "return=representation")]
+		//           ""
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "address": "Street 1",
+		//               "students":{"name": "John Doe"}
+		//             }
+		//           ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson]
+		//             }
 		{
-			Description: "embeds an O2O relationship after delete",
-			Method:      "DELETE",
-			Query:       "/students_info?id=eq.1&select=address,students(name)",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"address": "Street 1","students":{"name": "John Doe"}}]`,
-			Status:      200,
+			Description:     "embeds an O2O relationship after delete",
+			Method:          "DELETE",
+			Query:           "/students_info?id=eq.1&select=address,students(name)",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"address": "Street 1","students":{"name": "John Doe"}}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
-		//   context "known route, no records matched" $
-		// 	it "includes [] body if return=rep" $
-		// 	  request methodDelete "/items?id=eq.101"
-		// 		[("Prefer", "return=representation")] ""
-		// 		`shouldRespondWith` "[]"
-		// 		{ matchStatus  = 200
-		// 		, matchHeaders = ["Content-Range" <:> "*/*"]
-		// 		}
+		//     context "known route, no records matched" $
+		//       it "includes [] body if return=rep" $
+		//         request
+		//           methodDelete
+		//           "/items?id=eq.101"
+		//           [("Prefer", "return=representation")]
+		//           ""
+		//           `shouldRespondWith` "[]"
+		//             { matchStatus = 200
+		//             , matchHeaders = ["Content-Range" <:> "*/*"]
+		//             }
 		{
-			Description: "known route, no records matched includes [] body if return=rep",
-			Method:      "DELETE",
-			Query:       "/items?id=eq.101",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "known route, no records matched includes [] body if return=rep",
+			Method:          "DELETE",
+			Query:           "/items?id=eq.101",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
 		},
-		//   context "totally unknown route" $
-		// 	it "fails with 404" $
-		// 	  request methodDelete "/foozle?id=eq.101" [] "" `shouldRespondWith` 404
+		//     context "totally unknown route" $
+		//       it "fails with 404" $
+		//         request methodDelete "/foozle?id=eq.101" [] ""
+		//           `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.foozle' in the schema cache"} |]
+		//             { matchStatus = 404
+		//             , matchHeaders = []
+		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST205 body (smoothdb answers 42P01); card 32494 (error body)
 		{
 			Description: "totally unknown route fails with 404",
 			Method:      "DELETE",
@@ -197,10 +239,10 @@ func TestPostgREST_Delete(t *testing.T) {
 			Expected:    ``,
 			Status:      404,
 		},
-		//   context "table with limited privileges" $ do
-		// 	it "fails deleting the row when return=representation and selecting all the columns" $
-		// 	  request methodDelete "/app_users?id=eq.1" [("Prefer", "return=representation")] mempty
-		// 		  `shouldRespondWith` 401
+		//     context "table with limited privileges" $ do
+		//       it "fails deleting the row when return=representation and selecting all the columns" $
+		//         request methodDelete "/app_users?id=eq.1" [("Prefer", "return=representation")] mempty
+		//           `shouldRespondWith` 401
 		{
 			Description: "fails deleting the row when return=representation and selecting all the columns",
 			Method:      "DELETE",
@@ -210,57 +252,73 @@ func TestPostgREST_Delete(t *testing.T) {
 			Expected:    ``,
 			Status:      401,
 		},
-		// 	it "succeeds deleting the row when return=representation and selecting only the privileged columns" $
-		// 	  request methodDelete "/app_users?id=eq.1&select=id,email" [("Prefer", "return=representation")]
-		// 		[json| { "password": "passxyz" } |]
-		// 		  `shouldRespondWith` [json|[ { "id": 1, "email": "test@123.com" } ]|]
-		// 		  { matchStatus  = 200
-		// 		  , matchHeaders = ["Content-Range" <:> "*/*"]
-		// 		  }
+		//       it "succeeds deleting the row when return=representation and selecting only the privileged columns" $
+		//         request
+		//           methodDelete
+		//           "/app_users?id=eq.1&select=id,email"
+		//           [("Prefer", "return=representation")]
+		//           [json| { "password": "passxyz" } |]
+		//           `shouldRespondWith` [json|[ { "id": 1, "email": "test@123.com" } ]|]
+		//             { matchStatus = 200
+		//             , matchHeaders = ["Content-Range" <:> "*/*"]
+		//             }
 		{
-			Description: "succeeds deleting the row when return=representation and selecting only the privileged columns",
-			Method:      "DELETE",
-			Query:       "/app_users?id=eq.1&select=id,email",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ { "id": 1, "email": "test@123.com" } ]`,
-			Status:      200,
+			Description:     "succeeds deleting the row when return=representation and selecting only the privileged columns",
+			Method:          "DELETE",
+			Query:           "/app_users?id=eq.1&select=id,email",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ { "id": 1, "email": "test@123.com" } ]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
 		},
-		// 	it "suceeds deleting the row with no explicit select when using return=minimal" $
-		// 	  request methodDelete "/app_users?id=eq.2"
-		// 		  [("Prefer", "return=minimal")]
-		// 		  mempty
-		// 		`shouldRespondWith`
-		// 		  ""
-		// 		  { matchStatus = 204
-		// 		  , matchHeaders = [matchHeaderAbsent hContentType]
-		// 		  }
+		//       it "suceeds deleting the row with no explicit select when using return=minimal" $
+		//         request
+		//           methodDelete
+		//           "/app_users?id=eq.2"
+		//           [("Prefer", "return=minimal")]
+		//           mempty
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 , "Preference-Applied" <:> "return=minimal"
+		//                 ]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "succeeds deleting the row with no explicit select when using return=minimal",
-			Method:      "DELETE",
-			Query:       "/app_users?id=eq.2",
-			Body:        ``,
-			Headers:     test.Headers{"Prefer": {"return=minimal"}},
-			Expected:    ``,
-			Status:      204,
+			Description:     "succeeds deleting the row with no explicit select when using return=minimal",
+			Method:          "DELETE",
+			Query:           "/app_users?id=eq.2",
+			Body:            ``,
+			Headers:         test.Headers{"Prefer": {"return=minimal"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
-		// 	it "suceeds deleting the row with no explicit select by default" $
-		// 	  request methodDelete "/app_users?id=eq.3"
-		// 		  []
-		// 		  mempty
-		// 		`shouldRespondWith`
-		// 		  ""
-		// 		  { matchStatus = 204
-		// 		  , matchHeaders = [matchHeaderAbsent hContentType]
-		// 		  }
+		//       it "suceeds deleting the row with no explicit select by default" $
+		//         request
+		//           methodDelete
+		//           "/app_users?id=eq.3"
+		//           []
+		//           mempty
+		//           `shouldRespondWith` ""
+		//             { matchStatus = 204
+		//             , matchHeaders =
+		//                 [ matchHeaderAbsent hContentType
+		//                 , matchHeaderAbsent hContentLength
+		//                 ]
+		//             }
 		{
-			Description: "succeeds deleting the row with no explicit select by default",
-			Method:      "DELETE",
-			Query:       "/app_users?id=eq.3",
-			Body:        ``,
-			Headers:     nil,
-			Expected:    ``,
-			Status:      204,
+			Description:     "succeeds deleting the row with no explicit select by default",
+			Method:          "DELETE",
+			Query:           "/app_users?id=eq.3",
+			Body:            ``,
+			Headers:         nil,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		// The "limited delete" context (DELETE narrowed by limit/offset, PGRST109,
 		// PGRST110) was dropped upstream in PostgREST 13.0.0 (#3013 limited-updates,
@@ -277,24 +335,27 @@ func TestPostgREST_Delete(t *testing.T) {
 			Expected:    `[{ "b": "0" }, { "b": "0" }]`,
 			Status:      200,
 		},
-		//   context "with ordering" $
-		// 	it "works with request method DELETE and embedded resource" $ do
-		// 	  request methodDelete "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc"
-		// 		[("Prefer", "return=representation")]
-		// 		""
-		// 		`shouldRespondWith`
-		// 		[json| [ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]
-		// 		|]
-		// 		{ matchStatus  = 200
-		// 		, matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
-		// 		}
+		//     context "with ordering" $
+		//       it "works with request method DELETE and embedded resource" $ do
+		//         request
+		//           methodDelete
+		//           "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc"
+		//           [("Prefer", "return=representation")]
+		//           ""
+		//           `shouldRespondWith` [json| [ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]
+		//           |]
+		//             { matchStatus = 200
+		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
+		//             }
+		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with ordering works with request method DELETE and embedded resource",
-			Method:      "DELETE",
-			Query:       "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc",
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]`,
-			Status:      200,
+			Description:     "with ordering works with request method DELETE and embedded resource",
+			Method:          "DELETE",
+			Query:           "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc",
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Status:          200,
 		},
 		// @@ added: an embedded order applies to the embed of the representation
 		// (the lateral join of the _source CTE); no top-level order here, so this

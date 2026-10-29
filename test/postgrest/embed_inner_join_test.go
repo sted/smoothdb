@@ -163,7 +163,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Status:          200,
 		},
 		// 	it "only affects the source table rows if his direct embedding is an inner join" $ do
-		// 	  get "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2" `shouldRespondWith`
+		// 	  get "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2&order=id" `shouldRespondWith`
 		// 		[json|[
 		// 		  {"id":1,"projects":null},
 		// 		  {"id":2,"projects":null},
@@ -176,7 +176,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "only affects the source table rows if his direct embedding is an inner join",
-			Query:       "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2",
+			Query:       "/tasks?select=id,projects(id,clients!inner(id))&projects.clients.id=eq.2&order=id",
 			Expected: `[
 						  {"id":1,"projects":null},
 						  {"id":2,"projects":null},
@@ -204,10 +204,33 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-7/8"},
 			Status:          200,
 		},
+		// 	it "works with views" $ do
+		// 	  get "/books?select=title,authors!inner(name)&authors.name=eq.George%20Orwell"
+		// 	    `shouldRespondWith` [json| [{"title":"1984","authors":{"name":"George Orwell"}}] |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
 		{
 			Description: "m2o inner join works with views",
 			Query:       "/books?select=title,authors!inner(name)&authors.name=eq.George%20Orwell",
 			Expected:    `[{"title":"1984","authors":{"name":"George Orwell"}}]`,
+			Status:      200,
+		},
+		// 	request methodHead "/books?select=title,authors!inner(name)&authors.name=eq.George%20Orwell" [("Prefer", "count=exact")] mempty
+		// 	  `shouldRespondWith` ""
+		// 	    { matchStatus = 200
+		// 	    , matchHeaders =
+		// 	        [ matchContentTypeJson
+		// 	        , "Content-Range" <:> "0-0/1"
+		// 	        ]
+		// 	    }
+		{
+			Description:     "m2o inner join works with views",
+			Method:          "HEAD",
+			Query:           "/books?select=title,authors!inner(name)&authors.name=eq.George%20Orwell",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
 		},
 
 		//   context "one-to-many relationships" $ do
@@ -235,7 +258,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 		{ matchHeaders = [matchContentTypeJson] }
 		{
 			Description: "ignores empty array embeddings while the default left join doesn't",
-			Query:       "/entities?select=id,child_entities(id)",
+			Query:       "/entities?select=id,child_entities!left(id)",
 			Expected: `[
 						  {"id":1,"child_entities":[{"id":1}, {"id":2}, {"id":4}, {"id":5}]},
 						  {"id":2,"child_entities":[{"id":3}, {"id":6}]},
@@ -407,6 +430,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						  }
 						]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	  request methodHead "/entities?select=id,child_entities!inner(id,grandchild_entities(id))&child_entities.grandchild_entities.id=eq.2" [("Prefer", "count=exact")] mempty
 		// 		`shouldRespondWith` ""
@@ -423,10 +447,33 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
 			Status:          200,
 		},
+		// 	it "works with views" $ do
+		// 	  get "/authors?select=*,books!inner(*)&books.title=eq.1984"
+		// 	    `shouldRespondWith` [json| [{"id":1,"name":"George Orwell","books":[{"id":1,"title":"1984","publication_year":1949,"author_id":1,"first_publisher_id":1}]}] |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
 		{
 			Description: "o2m inner join works with views",
 			Query:       "/authors?select=*,books!inner(*)&books.title=eq.1984",
 			Expected:    `[{"id":1,"name":"George Orwell","books":[{"id":1,"title":"1984","publication_year":1949,"author_id":1,"first_publisher_id":1}]}]`,
+			Status:      200,
+		},
+		// 	request methodHead "/authors?select=*,books!inner(*)&books.title=eq.1984" [("Prefer", "count=exact")] mempty
+		// 	  `shouldRespondWith` ""
+		// 	    { matchStatus = 200
+		// 	    , matchHeaders =
+		// 	        [ matchContentTypeJson
+		// 	        , "Content-Range" <:> "0-0/1"
+		// 	        ]
+		// 	    }
+		{
+			Description:     "o2m inner join works with views",
+			Method:          "HEAD",
+			Query:           "/authors?select=*,books!inner(*)&books.title=eq.1984",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
 		},
 
 		//   context "many-to-many relationships" $ do
@@ -443,6 +490,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						  {"id":1,"suppliers":[{"id":1}, {"id":2}]},
 						  {"id":2,"suppliers":[{"id":1}, {"id":3}]}]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	  get "/products?select=id,suppliers!left(id)" `shouldRespondWith`
 		// 		[json| [
@@ -458,6 +506,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						  {"id":2,"suppliers":[{"id":1}, {"id":3}]},
 						  {"id":3,"suppliers":[]}]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	  request methodHead "/products?select=id,suppliers!inner(id)" [("Prefer", "count=exact")] mempty
 		// 		`shouldRespondWith` ""
@@ -483,6 +532,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/products?select=id,suppliers!inner(id)&suppliers.id=eq.2",
 			Expected:    `[{"id":1,"suppliers":[{"id":2}]}]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	  get "/products?select=id,suppliers!inner(id)&suppliers.id=eq.3" `shouldRespondWith`
 		// 		[json| [{"id":2,"suppliers":[{"id":3}]}] |]
@@ -492,6 +542,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/products?select=id,suppliers!inner(id)&suppliers.id=eq.3",
 			Expected:    `[{"id":2,"suppliers":[{"id":3}]}]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	  get "/products?select=id,suppliers!inner(id)&suppliers.id=eq.0" `shouldRespondWith`
 		// 		[json| [] |]
@@ -501,6 +552,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/products?select=id,suppliers!inner(id)&suppliers.id=eq.0",
 			Expected:    `[]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	  request methodHead "/products?select=id,suppliers!inner(id)&suppliers.id=eq.2" [("Prefer", "count=exact")] mempty
 		// 		`shouldRespondWith` ""
@@ -527,6 +579,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.3",
 			Expected:    `[{"id":1,"suppliers":[{"id":2,"trade_unions":[{"id":3}]}]}]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	  get "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.4"
 		// 		`shouldRespondWith`
@@ -537,6 +590,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.4",
 			Expected:    `[{"id":1,"suppliers":[{"id":2,"trade_unions":[{"id":4}]}]}]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	  request methodHead "/products?select=id,suppliers!inner(id,trade_unions!inner(id))&suppliers.trade_unions.id=eq.3" [("Prefer", "count=exact")] mempty
 		// 		`shouldRespondWith` ""
@@ -566,6 +620,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						  {"id":1,"suppliers":[{"id":1,"trade_unions":[]}, {"id":2,"trade_unions":[{"id":3}]}]},
 						  {"id":2,"suppliers":[{"id":1,"trade_unions":[]}, {"id":3,"trade_unions":[]}]}]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	  request methodHead "/products?select=id,suppliers!inner(id,trade_unions(id))&suppliers.trade_unions.id=eq.3" [("Prefer", "count=exact")] mempty
 		// 		`shouldRespondWith` ""
@@ -582,15 +637,43 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
 			Status:          200,
 		},
+		// 	it "works with views" $ do
+		// 	  get "/actors?select=*,films!inner(*)&films.title=eq.douze%20commandements"
+		// 	    `shouldRespondWith` [json| [{"id":1,"name":"john","films":[{"id":12,"title":"douze commandements"}]}] |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
 		{
 			Description: "m2m inner join works with views (actors→films)",
 			Query:       "/actors?select=*,films!inner(*)&films.title=eq.douze%20commandements",
 			Expected:    `[{"id":1,"name":"john","films":[{"id":12,"title":"douze commandements"}]}]`,
+			Status:      200,
 		},
+		// 	  get "/films?select=*,actors!inner(*)&actors.name=eq.john"
+		// 	    `shouldRespondWith` [json| [{"id":12,"title":"douze commandements","actors":[{"id":1,"name":"john"}]}] |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
 		{
 			Description: "m2m inner join works with views (films→actors)",
 			Query:       "/films?select=*,actors!inner(*)&actors.name=eq.john",
 			Expected:    `[{"id":12,"title":"douze commandements","actors":[{"id":1,"name":"john"}]}]`,
+			Status:      200,
+		},
+		// 	request methodHead "/actors?select=*,films!inner(*)&films.title=eq.douze%20commandements" [("Prefer", "count=exact")] mempty
+		// 	  `shouldRespondWith` ""
+		// 	    { matchStatus = 200
+		// 	    , matchHeaders =
+		// 	        [ matchContentTypeJson
+		// 	        , "Content-Range" <:> "0-0/1"
+		// 	        ]
+		// 	    }
+		{
+			Description:     "m2m inner join works with views",
+			Method:          "HEAD",
+			Query:           "/actors?select=*,films!inner(*)&films.title=eq.douze%20commandements",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
 		},
 
 		//   it "works with m2o and m2m relationships combined" $ do
@@ -610,6 +693,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						{"name":"IOS","clients":{"name":"Apple"},"users":[{"name":"Michael Scott"}, {"name":"Dwight Schrute"}]},
 						{"name":"OSX","clients":{"name":"Apple"},"users":[{"name":"Michael Scott"}]}]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	request methodHead "/projects?select=name,clients!inner(name),users!inner(name)" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
@@ -635,6 +719,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 			Query:       "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1",
 			Expected:    `[{"id":1,"clients":{"id":1}}, {"id":2,"clients":{"id":1}}]`,
 			Headers:     nil,
+			Status:      200,
 		},
 		// 	request methodHead "/rpc/getallprojects?select=id,clients!inner(id)&clients.id=eq.1" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
@@ -704,6 +789,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						{"id":3,"name":"Big Lots","contact":[{"name":"Bobby Bots"}, {"name":"Bonnie Bits"}, {"name":"Billy Boats"}],"clientinfo":[{"other":"789 Palm Tree Ln"}]}
 					  ]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	get "/client?select=id,name,contact!inner(name),clientinfo!inner(other)&contact.name=eq.Wally%20Walton" `shouldRespondWith`
 		// 	  [json|[
@@ -717,6 +803,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						{"id":1,"name":"Walmart","contact":[{"name":"Wally Walton"}],"clientinfo":[{"other":"123 Main St"}]}
 					  ]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	get "/client?select=id,name,contact!inner(name),clientinfo!inner(other)&clientinfo.other=eq.456%20South%203rd%20St" `shouldRespondWith`
 		// 	  [json|[
@@ -730,6 +817,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						{"id":2,"name":"Target","clientinfo":[{"other":"456 South 3rd St"}],"contact":[{"name":"Tabby Targo"}]}
 					  ]`,
 			Headers: nil,
+			Status:  200,
 		},
 		// 	request methodHead "/client?select=id,name,contact!inner(name),clientinfo!inner(other)" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
@@ -763,6 +851,7 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 						{"id":7,"authors":{"name":"Harper Lee"},"publishers":{"name":"J. B. Lippincott & Co."}},
 						{"id":8,"authors":{"name":"Kurt Vonnegut"},"publishers":{"name":"Delacorte"}},
 						{"id":9,"authors":{"name":"Ken Kesey"},"publishers":{"name":"Viking Press & Signet Books"}}]`,
+			Status: 200,
 		},
 		// 	request methodHead "/books?select=id,authors(name),publishers!inner(name)&id=gte.7" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
@@ -770,12 +859,30 @@ func TestPostgREST_EmbedInnerJoin(t *testing.T) {
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-2/3" ]
 		// 	  }
+		{
+			Description:     "works alongside another embedding",
+			Method:          "HEAD",
+			Query:           "/books?select=id,authors(name),publishers!inner(name)&id=gte.7",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/3"},
+			Status:          200,
+		},
 		// 	request methodHead "/books?select=id,publishers!inner(name),authors(name)&id=gte.7" [("Prefer", "count=exact")] mempty
 		// 	  `shouldRespondWith` ""
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = [ matchContentTypeJson
 		// 					   , "Content-Range" <:> "0-2/3" ]
 		// 	  }
+		{
+			Description:     "works alongside another embedding",
+			Method:          "HEAD",
+			Query:           "/books?select=id,publishers!inner(name),authors(name)&id=gte.7",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/3"},
+			Status:          200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

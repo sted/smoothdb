@@ -93,6 +93,36 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Expected:    `[{"myInt":1}]`,
 			Status:      200,
 		},
+		// (the key names hold # and %, sent here as %23 and %25: a raw # starts
+		// the URL fragment and %^ is not a valid escape)
+		// it "accepts non reserved special characters in the key's name" $
+		//   get "/json_arr?id=eq.10&select=data->!@#$%^%26*_d->>!@#$%^%26*_e::integer"
+		//     `shouldRespondWith` [json| [{"!@#$%^&*_e":3}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "accepts non reserved special characters in the key's name",
+			Query:       "/json_arr?id=eq.10&select=data->!@%23$%25^%26*_d->>!@%23$%25^%26*_e::integer",
+			Expected:    `[{"!@#$%^&*_e":3}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: non reserved special characters (!@#$%^&*) in a json key name; no card",
+		},
+		// it "fails when there is a reserved special character in the key's name" $
+		//   get "/json_arr?id=eq.10&select=data->(!@#$%^%26*_d->>!@#$%^%26*_e::integer"
+		//     `shouldRespondWith` [json| {
+		//       "code":"PGRST100",
+		//       "details":"unexpected \"(\" expecting \"-\", digit or any non reserved character different from: .,>()",
+		//       "hint":null,
+		//       "message":"\"failed to parse select parameter (data->(!@#$%^&*_d->>!@#$%^&*_e::integer)\" (line 1, column 7)"}
+		//     |]
+		//       { matchStatus = 400
+		//       , matchHeaders = []
+		//       }
+		{
+			Description: "fails when there is a reserved special character in the key's name",
+			Query:       "/json_arr?id=eq.10&select=data->(!@%23$%25^%26*_d->>!@%23$%25^%26*_e::integer",
+			Status:      400,
+		},
 		//     -- TODO the status code for the error is 404, this is because 42883 represents undefined function
 		//     -- this works fine for /rpc/unexistent requests, but for this case a 500 seems more appropriate
 		//     it "fails when a double arrow ->> is followed with a single arrow ->" $ do
@@ -168,7 +198,8 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Headers:     nil,
 			Expected:    `[{"data":8}, {"data":7}]`,
 			Status:      200,
-		}, //         get "/json_arr?select=data->0->0->>1::int&id=in.(3,4)" `shouldRespondWith`
+		},
+		//         get "/json_arr?select=data->0->0->>1::int&id=in.(3,4)" `shouldRespondWith`
 		//           [json| [{"data":null}, {"data":6}] |]
 		//           { matchHeaders = [matchContentTypeJson] }
 		{
@@ -253,6 +284,9 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Expected:    `[{"a":"A"}, {"a":[1,2,3]}]`,
 			Status:      200,
 		},
+		//       it "works when finishing with an index" $ do
+		//         get "/json_arr?select=data->0->a&id=in.(5,6)"
+		//         (the same request as the second of "works when finishing with a key")
 		//         get "/json_arr?select=data->c->0->d&id=eq.8" `shouldRespondWith`
 		//           [json| [{"d":[4,5,6,7,8]}] |]
 		//           { matchHeaders = [matchContentTypeJson] }
@@ -358,6 +392,18 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Headers:     nil,
 			Expected:    `[{"id": 4}, {"id": 5}]`,
 			Status:      200,
+		},
+		// it "can filter when the key's name has non reserved special characters" $
+		//   get "/json_arr?select=data->!@#$%^%26*_d&data->!@#$%^%26*_d->>!@#$%^%26*_e=eq.3"
+		//     `shouldRespondWith` [json| [{"!@#$%^&*_d": {"!@#$%^&*_e": 3}}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "can filter when the key's name has non reserved special characters",
+			Query:       "/json_arr?select=data->!@%23$%25^%26*_d&data->!@%23$%25^%26*_d->>!@%23$%25^%26*_e=eq.3",
+			Expected:    `[{"!@#$%^&*_d":{"!@#$%^&*_e":3}}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: non reserved special characters (!@#$%^&*) in a json key name; no card",
 		},
 		//     it "can filter by array indexes" $ do
 		//       get "/json_arr?select=data&data->>0=eq.1" `shouldRespondWith`
@@ -677,13 +723,30 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 		//          "code": "PGRST100",
 		//          "hint": null} |]
 		//       { matchStatus = 400, matchHeaders = [matchContentTypeJson] }
-		// {
-		// 	Description: "gives a meaningful error on bad syntax",
-		// 	Query:       "/json_arr?select=data->>--34",
-		// 	Headers:     nil,
-		// 	Expected:    ``,
-		// 	Status:      400,
-		// },
+		{
+			Description: "gives a meaningful error on bad syntax",
+			Query:       "/json_arr?select=data->>--34",
+			Headers:     nil,
+			Expected:    ``,
+			Status:      400,
+			Skip:        "PostgREST 16.4: 400 PGRST100 on a malformed json path index (smoothdb answers 200); card 35452 (parser strictness)",
+		},
+		// it "works when an RPC returns a dynamic TABLE with a composite type" $
+		//   get "/rpc/returns_complex?select=val->r&val->i=gt.0.5&order=val->>i.desc"
+		//     `shouldRespondWith` [json|[
+		//       {"r":0.3},
+		//       {"r":0.2}
+		//     ]|]
+		//       { matchStatus = 200
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works when an RPC returns a dynamic TABLE with a composite type",
+			Query:       "/rpc/returns_complex?select=val->r&val->i=gt.0.5&order=val->>i.desc",
+			Expected:    `[{"r":0.3},{"r":0.2}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: -> on a composite field of an RPC result; card 31812 (rpc composites)",
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

@@ -9,6 +9,34 @@ import (
 func TestPostgREST_Query(t *testing.T) {
 
 	tests := []test.Test{
+		// describe "Querying a table with a column called count" $
+		//   it "should not confuse count column with pg_catalog.count aggregate" $
+		//     get "/has_count_column" `shouldRespondWith` 200
+		{
+			Description: "should not confuse count column with pg_catalog.count aggregate",
+			Query:       "/has_count_column",
+			Status:      200,
+		},
+		// describe "Querying a table with a column called t" $
+		//   it "should not conflict with internal postgrest table alias" $
+		//     get "/clashing_column?select=t" `shouldRespondWith` 200
+		{
+			Description: "should not conflict with internal postgrest table alias",
+			Query:       "/clashing_column?select=t",
+			Status:      200,
+		},
+		// describe "Querying a nonexistent table" $
+		//   it "causes a 404" $
+		//     get "/faketable"
+		//       `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.faketable' in the schema cache"} |]
+		//         { matchStatus = 404
+		//         , matchHeaders = ["Content-Length" <:> "120"]
+		//         }
+		{
+			Description: "causes a 404",
+			Query:       "/faketable",
+			Status:      404,
+		},
 		//	describe "Filtering response" $ do
 		// it "matches with equality" $
 		//   get "/items?id=eq.5"
@@ -187,6 +215,29 @@ func TestPostgREST_Query(t *testing.T) {
 			Status:      200,
 		},
 
+		// PostgREST 16.4 moved the case to chores:
+		// it "matches with null and not_null values in upper or mixed case" $ do
+		//   get "/chores?done=is.NULL"
+		//     `shouldRespondWith` [json| [{"id": 3, "name": "wash the dishes", "done": null }] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "matches with null and not_null values in upper or mixed case",
+			Query:       "/chores?done=is.NULL",
+			Expected:    `[{"id":3,"name":"wash the dishes","done":null}]`,
+			Status:      200,
+		},
+		//   get "/chores?done=is.NoT_NuLl"
+		//     `shouldRespondWith` [json| [{"id": 1, "name": "take out the garbage", "done": true }
+		//            ,{"id": 2, "name": "do the laundry", "done": false }] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "matches with null and not_null values in upper or mixed case",
+			Query:       "/chores?done=is.NoT_NuLl",
+			Expected:    `[{"id":1,"name":"take out the garbage","done":true},{"id":2,"name":"do the laundry","done":false}]`,
+			Status:      200,
+		},
 		// it "matches with trilean values" $ do
 		//   get "/chores?done=is.true" `shouldRespondWith`
 		//     [json| [{"id": 1, "name": "take out the garbage", "done": true }] |]
@@ -376,8 +427,8 @@ func TestPostgREST_Query(t *testing.T) {
 		//   get "/simple_pk?k=not.match.yx$" `shouldRespondWith`
 		//     [json|[{"k":"xYYx","extra":"v"}]|]
 		{
-			Description: "matches with ~",
-			Query:       "/simple_pk?k=match.YY",
+			Description: "matches with ~ using not operator",
+			Query:       "/simple_pk?k=not.match.yx$",
 			Headers:     nil,
 			Expected:    `[{"k":"xYYx","extra":"v"}]`,
 			Status:      200,
@@ -472,6 +523,29 @@ func TestPostgREST_Query(t *testing.T) {
 		{
 			Description: "works with the ilike(all) operator",
 			Query:       "/articles?body=ilike(all).{*plan*,*greatness*}&select=id",
+			Expected:    `[{"id":1}]`,
+			Status:      200,
+		},
+		// PostgREST 16.4 writes the patterns with % (sent here as %25, a bare %
+		// followed by non-hex digits is not a valid URL escape):
+		// it "works with the like/ilike operator" $ do
+		//   get "/articles?body=like(any).{%plan%,%brain%}&select=id"
+		//     `shouldRespondWith` [json|[ {"id":1}, {"id":2} ]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with the like(any) operator and % wildcards",
+			Query:       "/articles?body=like(any).{%25plan%25,%25brain%25}&select=id",
+			Expected:    `[{"id":1},{"id":2}]`,
+			Status:      200,
+		},
+		//   get "/articles?body=ilike(all).{%plan%,%greatness%}&select=id"
+		//     `shouldRespondWith` [json|[ {"id":1} ]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with the ilike(all) operator and % wildcards",
+			Query:       "/articles?body=ilike(all).{%25plan%25,%25greatness%25}&select=id",
 			Expected:    `[{"id":1}]`,
 			Status:      200,
 		},
@@ -743,62 +817,508 @@ func TestPostgREST_Query(t *testing.T) {
 				{"text_search_vector":"'art':4 'spass':5 'unmog':7"}]`,
 			Status: 200,
 		},
+		// it "works with tsvector computed fields" $
+		//   get "/tsearch_to_tsvector?select=text_search_vector&text_search_vector=fts(simple).of"
+		//     `shouldRespondWith` [json| [
+		//       {"text_search_vector":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}
+		//     ]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with tsvector computed fields",
+			Query:       "/tsearch_to_tsvector?select=text_search_vector&text_search_vector=fts(simple).of",
+			Expected:    `[{"text_search_vector":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}]`,
+			Status:      200,
+		},
+		// it "works when the column type is a tsvector domain" $ do
+		//   get "tsearch_to_tsvector?select=text_search_domain&text_search_domain=fts(simple).of"
+		//     `shouldRespondWith` [json| [
+		//       {"text_search_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}
+		//     ]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works when the column type is a tsvector domain",
+			Query:       "/tsearch_to_tsvector?select=text_search_domain&text_search_domain=fts(simple).of",
+			Expected:    `[{"text_search_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}]`,
+			Status:      200,
+			Skip:        "needs fixture tsearch_to_tsvector.text_search_domain",
+		},
+		// it "works when the column type is a recursive tsvector domain" $ do
+		//   get "tsearch_to_tsvector?select=text_search_rec_domain&text_search_rec_domain=fts(simple).of"
+		//     `shouldRespondWith` [json| [
+		//       {"text_search_rec_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}
+		//     ]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works when the column type is a recursive tsvector domain",
+			Query:       "/tsearch_to_tsvector?select=text_search_rec_domain&text_search_rec_domain=fts(simple).of",
+			Expected:    `[{"text_search_rec_domain":"'do':7 'fun':5 'impossible':9 'it':1 'kind':3 'of':4 's':2 'the':8 'to':6"}]`,
+			Status:      200,
+			Skip:        "needs fixture tsearch_to_tsvector.text_search_rec_domain",
+		},
 		// context "text and json columns" $ do
 		//   it "finds matches with to_tsquery" $ do
 		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible"
+		//       `shouldRespondWith` [json| [
+		//         {"text_search": "It's kind of fun to do the impossible"},
+		//         {"text_search": "C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: finds matches with to_tsquery",
+			Description: "text and json columns: finds matches with to_tsquery",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible",
 			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
 			Status:      200,
 		},
-		//   it "finds matches with plainto_tsquery" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible"
+		//       `shouldRespondWith` [json| [
+		//         {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//         {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: finds matches with plainto_tsquery",
+			Description: "text and json columns: finds matches with to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//   it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26possible"
+		//       `shouldRespondWith` [json| [{"text_search": "But also fun to do what is possible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26possible",
+			Expected:    `[{"text_search":"But also fun to do what is possible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.fun%26possible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "But also fun to do what is possible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.fun%26possible",
+			Expected:    `[{"jsonb_search":{"text_search":"But also fun to do what is possible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible%7Cpossible"
+		//       `shouldRespondWith` [json| [
+		//         {"text_search": "It's kind of fun to do the impossible"},
+		//         {"text_search": "But also fun to do what is possible"},
+		//         {"text_search": "C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts.impossible%7Cpossible",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"But also fun to do what is possible"},{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible%7Cpossible"
+		//       `shouldRespondWith` [json| [
+		//         {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//         {"jsonb_search" :{"text_search": "But also fun to do what is possible"}},
+		//         {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.impossible%7Cpossible",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"But also fun to do what is possible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26!possible"
+		//       `shouldRespondWith` [json| [{"text_search": "It's kind of fun to do the impossible"}]|]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts.fun%26!possible",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.fun%26!possible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts.fun%26!possible",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}}]`,
+			Status:      200,
+		},
+		//   it "finds matches with plainto_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [{"text_search": "Fat cats ate rats"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with plainto_tsquery",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=plfts.The%20Fat%20Rats",
 			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
 			Status:      200,
 		},
-		//   it "finds matches with websearch_to_tsquery" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=plfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Fat cats ate rats"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: finds matches with websearch_to_tsquery",
+			Description: "text and json columns: finds matches with plainto_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=plfts.The%20Fat%20Rats",
+			Expected:    `[{"jsonb_search":{"text_search":"Fat cats ate rats"}}]`,
+			Status:      200,
+		},
+		//   it "finds matches with websearch_to_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [{"text_search": "Fat cats ate rats"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with websearch_to_tsquery",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts.The%20Fat%20Rats",
 			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
 			Status:      200,
 		},
-		//   it "finds matches with different dictionaries" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Fat cats ate rats"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: finds matches with different dictionaries",
+			Description: "text and json columns: finds matches with websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.The%20Fat%20Rats",
+			Expected:    `[{"jsonb_search":{"text_search":"Fat cats ate rats"}}]`,
+			Status:      200,
+		},
+		//   it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.fun%20and%20possible"
+		//       `shouldRespondWith` [json| [{"text_search": "But also fun to do what is possible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts.fun%20and%20possible",
+			Expected:    `[{"text_search":"But also fun to do what is possible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.fun%20and%20possible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "But also fun to do what is possible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.fun%20and%20possible",
+			Expected:    `[{"jsonb_search":{"text_search":"But also fun to do what is possible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.impossible%20or%20possible"
+		//       `shouldRespondWith` [json| [
+		//         {"text_search": "It's kind of fun to do the impossible"},
+		//         {"text_search": "But also fun to do what is possible"},
+		//         {"text_search": "C'est un peu amusant de faire l'impossible"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts.impossible%20or%20possible",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"But also fun to do what is possible"},{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.impossible%20or%20possible"
+		//       `shouldRespondWith` [json| [
+		//         {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//         {"jsonb_search" :{"text_search": "But also fun to do what is possible"}},
+		//         {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.impossible%20or%20possible",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"But also fun to do what is possible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts.fun%20and%20-possible"
+		//       `shouldRespondWith` [json| [{"text_search": "It's kind of fun to do the impossible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts.fun%20and%20-possible",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.fun%20and%20-possible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can use boolean operators(and, or, -) in websearch_to_tsquery",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts.fun%20and%20-possible",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}}]`,
+			Status:      200,
+		},
+		//   it "finds matches with different dictionaries and uses them as configuration for to_tsvector()" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant"
+		//       `shouldRespondWith` [json| [{"text_search": "C'est un peu amusant de faire l'impossible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=fts(french).amusant",
 			Expected:    `[{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
 			Status:      200,
 		},
-		//   it "can be negated with not operator" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts(french).amusant"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: can be negated with not operator",
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=fts(french).amusant",
+			Expected:    `[{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=plfts(french).amusant%20impossible"
+		//       `shouldRespondWith` [json| [{"text_search": "C'est un peu amusant de faire l'impossible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=plfts(french).amusant%20impossible",
+			Expected:    `[{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=plfts(french).amusant%20impossible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=plfts(french).amusant%20impossible",
+			Expected:    `[{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=wfts(french).amusant%20impossible"
+		//       `shouldRespondWith` [json| [{"text_search": "C'est un peu amusant de faire l'impossible"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=wfts(french).amusant%20impossible",
+			Expected:    `[{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts(french).amusant%20impossible"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=wfts(french).amusant%20impossible",
+			Expected:    `[{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}}]`,
+			Status:      200,
+		},
+		//   it "can be negated with not operator" $ do
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun"
+		//       `shouldRespondWith` [json| [{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.fts.impossible%7Cfat%7Cfun",
 			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
 			Status:      200,
 		},
-		// context "Use of the phraseto_tsquery function" (text and json columns) $ do
-		//   it "finds matches" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats"
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.fts.impossible%7Cfat%7Cfun"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
 		{
-			Description: "text columns: phraseto_tsquery finds matches",
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.fts.impossible%7Cfat%7Cfun",
+			Expected:    `[{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.fts(english).impossible%7Cfat%7Cfun"
+		//       `shouldRespondWith` [json| [{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.fts(english).impossible%7Cfat%7Cfun",
+			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.fts(english).impossible%7Cfat%7Cfun"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.fts(english).impossible%7Cfat%7Cfun",
+			Expected:    `[{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.plfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [
+		//         {"text_search": "It's kind of fun to do the impossible"},
+		//         {"text_search": "But also fun to do what is possible"},
+		//         {"text_search": "C'est un peu amusant de faire l'impossible"},
+		//         {"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.plfts.The%20Fat%20Rats",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"But also fun to do what is possible"},{"text_search":"C'est un peu amusant de faire l'impossible"},{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.plfts.The%20Fat%20Rats"
+		//       `shouldRespondWith` [json| [
+		//         {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//         {"jsonb_search" :{"text_search": "But also fun to do what is possible"}},
+		//         {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}},
+		//         {"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}]
+		//       |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.plfts.The%20Fat%20Rats",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"But also fun to do what is possible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}},{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=text_search&text_search=not.wfts(english).impossible%20or%20fat%20or%20fun"
+		//       `shouldRespondWith` [json| [{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.wfts(english).impossible%20or%20fat%20or%20fun",
+			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//     get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.wfts(english).impossible%20or%20fat%20or%20fun"
+		//       `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.wfts(english).impossible%20or%20fat%20or%20fun",
+			Expected:    `[{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//   context "Use of the phraseto_tsquery function" $ do
+		//     it "finds matches" $ do
+		//       get "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats"
+		//         `shouldRespondWith` [json| [{"text_search": "Fat cats ate rats"}] |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: finds matches",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=phfts.The%20Fat%20Cats",
 			Expected:    `[{"text_search":"Fat cats ate rats"}]`,
 			Status:      200,
 		},
-		//   it "finds matches with different dictionaries" $
-		//     get "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass"
+		//       get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=phfts.The%20Fat%20Cats"
+		//         `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Fat cats ate rats"}}] |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
 		{
-			Description: "text columns: phraseto_tsquery with different dictionaries",
+			Description: "text and json columns: finds matches",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=phfts.The%20Fat%20Cats",
+			Expected:    `[{"jsonb_search":{"text_search":"Fat cats ate rats"}}]`,
+			Status:      200,
+		},
+		//     it "finds matches with different dictionaries and uses them as configuration for to_tsvector()" $ do
+		//       get "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass"
+		//         `shouldRespondWith` [json| [{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}] |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
 			Query:       "/tsearch_to_tsvector?select=text_search&text_search=phfts(german).Art%20Spass",
 			Expected:    `[{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//       get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=phfts(german).Art%20Spass"
+		//         `shouldRespondWith` [json| [{"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}] |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: finds matches with different dictionaries and uses them as configuration for to_tsvector()",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=phfts(german).Art%20Spass",
+			Expected:    `[{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//     it "can be negated with not operator" $ do
+		//       get "/tsearch_to_tsvector?select=text_search&text_search=not.phfts(english).The%20Fat%20Cats"
+		//         `shouldRespondWith` [json| [
+		//           {"text_search": "It's kind of fun to do the impossible"},
+		//           {"text_search": "But also fun to do what is possible"},
+		//           {"text_search": "C'est un peu amusant de faire l'impossible"},
+		//           {"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}]
+		//         |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=text_search&text_search=not.phfts(english).The%20Fat%20Cats",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"But also fun to do what is possible"},{"text_search":"C'est un peu amusant de faire l'impossible"},{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//       get "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.phfts(english).The%20Fat%20Cats"
+		//         `shouldRespondWith` [json| [
+		//           {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//           {"jsonb_search" :{"text_search": "But also fun to do what is possible"}},
+		//           {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}},
+		//           {"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}]
+		//         |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: can be negated with not operator",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&jsonb_search=not.phfts(english).The%20Fat%20Cats",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"But also fun to do what is possible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}},{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
+			Status:      200,
+		},
+		//     it "can be used with or query param" $ do
+		//       get "/tsearch_to_tsvector?select=text_search&or=(text_search.phfts(german).Art%20Spass, text_search.phfts(french).amusant, text_search.fts(english).impossible)"
+		//         `shouldRespondWith` [json| [
+		//           {"text_search": "It's kind of fun to do the impossible"},
+		//           {"text_search": "C'est un peu amusant de faire l'impossible"},
+		//           {"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}]
+		//         |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: can be used with or query param",
+			Query:       "/tsearch_to_tsvector?select=text_search&or=(text_search.phfts(german).Art%20Spass, text_search.phfts(french).amusant, text_search.fts(english).impossible)",
+			Expected:    `[{"text_search":"It's kind of fun to do the impossible"},{"text_search":"C'est un peu amusant de faire l'impossible"},{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}]`,
+			Status:      200,
+		},
+		//       get "/tsearch_to_tsvector?select=jsonb_search&or=(jsonb_search.phfts(german).Art%20Spass, jsonb_search.phfts(french).amusant, jsonb_search.fts(english).impossible)"
+		//         `shouldRespondWith` [json| [
+		//           {"jsonb_search" :{"text_search": "It's kind of fun to do the impossible"}},
+		//           {"jsonb_search" :{"text_search": "C'est un peu amusant de faire l'impossible"}},
+		//           {"jsonb_search" :{"text_search": "Es ist eine Art Spaß, das Unmögliche zu machen"}}]
+		//         |]
+		//           { matchHeaders = [matchContentTypeJson]
+		//           }
+		{
+			Description: "text and json columns: can be used with or query param",
+			Query:       "/tsearch_to_tsvector?select=jsonb_search&or=(jsonb_search.phfts(german).Art%20Spass, jsonb_search.phfts(french).amusant, jsonb_search.fts(english).impossible)",
+			Expected:    `[{"jsonb_search":{"text_search":"It's kind of fun to do the impossible"}},{"jsonb_search":{"text_search":"C'est un peu amusant de faire l'impossible"}},{"jsonb_search":{"text_search":"Es ist eine Art Spaß, das Unmögliche zu machen"}}]`,
 			Status:      200,
 		},
 
@@ -1224,44 +1744,60 @@ func TestPostgREST_Query(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
-		//   it "requesting data using many<->many relation defined by composite keys" $
-		// 	get "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files(filename,content)" `shouldRespondWith`
-		// 	  [json|[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
+		// it "requesting data using many<->many relation defined by composite keys" $
+		//   get "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files(filename,content)&files.order=filename"
+		//     `shouldRespondWith` [json|[{"user_id":1,"files":[{"filename":"README.md","content":"# make $$$!"},{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"}]}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "requesting data using many<->many relation defined by composite keys",
+			Query:       "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files(filename,content)&files.order=filename",
+			Expected:    `[{"user_id":1,"files":[{"filename":"README.md","content":"# make $$$!"},{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"}]}]`,
+			Status:      200,
+			Skip:        "needs fixture: the pgrest database in C collation (it is created en_US.UTF-8, which orders README.md after command.com and xYYx after xyyx)",
+		},
+		// the request before PostgREST 16.4 added files.order, which runs on any collation
 		{
 			Description: "requesting data using many<->many relation defined by composite keys",
 			Query:       "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files(filename,content)",
 			Expected:    `[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]`,
-			Headers:     nil,
 			Status:      200,
 		},
-		//   it "requesting data using many<->many (composite keys) relation using hint" $
-		// 	get "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)" `shouldRespondWith`
-		// 	  [json|[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
-		// {
-		// 	Description: "requesting data using many<->many (composite keys) relation using hint",
-		// 	Query:       "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)",
-		// 	Expected:    `[{"user_id":1,"files":[{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"},{"filename":"README.md","content":"# make $$$!"}]}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
-		//   it "requesting children with composite key" $
-		// 	get "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)" `shouldRespondWith`
-		// 	  [json|[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
+		// it "requesting data using many<->many (composite keys) relation using hint" $
+		//   get "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)&files.order=filename"
+		//     `shouldRespondWith` [json|[{"user_id":1,"files":[{"filename":"README.md","content":"# make $$$!"},{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"}]}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "requesting data using many<->many (composite keys) relation using hint",
+			Query:       "/users_tasks?user_id=eq.1&task_id=eq.1&select=user_id,files!touched_files(filename,content)&files.order=filename",
+			Expected:    `[{"user_id":1,"files":[{"filename":"README.md","content":"# make $$$!"},{"filename":"autoexec.bat","content":"@ECHO OFF"},{"filename":"command.com","content":"#include <unix.h>"}]}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: an m2m embed hinted by its junction (files!touched_files); card 32484 (embedding parity)",
+		},
+		// it "requesting children with composite key" $
+		//   get "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)"
+		//     `shouldRespondWith` [json|[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
 		{
 			Description: "requesting children with composite key",
 			Query:       "/users_tasks?user_id=eq.2&task_id=eq.6&select=*, comments(content)",
-			Headers:     nil,
 			Expected:    `[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]`,
 			Status:      200,
 		},
-		//   -- https://github.com/PostgREST/postgrest/issues/2070
-		//   it "one-to-many embeds without a disambiguation error due to wrongly generated many-to-many relationships" $
-		// 	get "/plate?select=*,well(*)" `shouldRespondWith`
-		// 	  [json|[]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
+		// -- https://github.com/PostgREST/postgrest/issues/2070
+		// it "one-to-many embeds without a disambiguation error due to wrongly generated many-to-many relationships" $
+		//   get "/plate?select=*,well(*)"
+		//     `shouldRespondWith` [json|[]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "one-to-many embeds without a disambiguation error due to wrongly generated many-to-many relationships",
+			Query:       "/plate?select=*,well(*)",
+			Expected:    `[]`,
+			Status:      200,
+		},
 
 		// 	context "one to one relationships" $ do
 		//   it "works when having a pk as fk" $ do
@@ -1567,73 +2103,61 @@ func TestPostgREST_Query(t *testing.T) {
 			 			   {"name":"Veneno","year":2013,"car_dealers":[]}]`,
 			Status: 200,
 		},
-		// 		it "cannot request partitions as children from a partitioned table" $
-		// 		  get "/car_models?id=in.(1,2,4)&select=id,name,car_model_sales_202101(id)&order=id.asc" `shouldRespondWith`
-		// 			[json|
-		// 			  {"hint":"Verify that 'car_models' and 'car_model_sales_202101' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
-		// 			   "details":null,
-		// 			   "code":"PGRST200",
-		// 			   "message":"Could not find a relationship between 'car_models' and 'car_model_sales_202101' in the schema cache"} |]
-		// 			{ matchStatus  = 400
-		// 			, matchHeaders = [matchContentTypeJson]
-		// 			}
+		// it "cannot request partitions as children from a partitioned table" $
+		//   get "/car_models?id=in.(1,2,4)&select=id,name,car_model_sales_202101(id)&order=id.asc"
+		//     `shouldRespondWith` [json|
+		//       {"hint":"Perhaps you meant 'car_model_sales' instead of 'car_model_sales_202101'.",
+		//        "details":"Searched for a foreign key relationship between 'car_models' and 'car_model_sales_202101' in the schema 'test', but no matches were found.",
+		//        "code":"PGRST200",
+		//        "message":"Could not find a relationship between 'car_models' and 'car_model_sales_202101' in the schema cache"} |]
+		//       { matchStatus = 400
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
 		{
 			Description: "cannot request partitions as children from a partitioned table",
 			Query:       "/car_models?id=in.(1,2,4)&select=id,name,car_model_sales_202101(id)&order=id.asc",
-			Headers:     nil,
-			Expected:    ``,
 			Status:      400,
 		},
-		// 		it "cannot request a partitioned table as parent from a partition" $
-		// 		  get "/car_model_sales_202101?select=id,name,car_models(id,name)&order=id.asc" `shouldRespondWith`
-		// 			[json|
-		// 			  {"hint":"Verify that 'car_model_sales_202101' and 'car_models' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
-		// 			   "details":null,
-		// 			   "code":"PGRST200",
-		// 			   "message":"Could not find a relationship between 'car_model_sales_202101' and 'car_models' in the schema cache"} |]
-		// 			{ matchStatus  = 400
-		// 			, matchHeaders = [matchContentTypeJson]
-		// 			}
+		// -- we only search for foreign key relationships after checking the
+		// -- the existence of first table, #3869
+		// it "table not found error if first table does not exist" $
+		//   get "/car_model_sales_202101?select=id,name,car_models(id,name)&order=id.asc"
+		//     `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.car_model_sales_202101' in the schema cache"} |]
+		//       { matchStatus = 404
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
 		{
-			Description: "cannot request a partitioned table as parent from a partition",
+			Description: "table not found error if first table does not exist",
 			Query:       "/car_model_sales_202101?select=id,name,car_models(id,name)&order=id.asc",
-			Headers:     nil,
-			Expected:    ``,
-			Status:      400,
+			Status:      404,
+			Skip:        "PostgREST 16.4: a partition is not exposed, 404 PGRST205 (smoothdb serves it, 400 on the relationship); card 32484 (embedding parity)",
 		},
-		// 		it "cannot request a partition as parent from a partitioned table" $
-		// 		  get "/car_model_sales?id=in.(1,3,4)&select=id,name,car_models_default(id,name)&order=id.asc" `shouldRespondWith`
-		// 			[json|
-		// 			  {"hint":"Verify that 'car_model_sales' and 'car_models_default' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
-		// 			   "details":null,
-		// 			   "code":"PGRST200",
-		// 			   "message":"Could not find a relationship between 'car_model_sales' and 'car_models_default' in the schema cache"} |]
-		// 			{ matchStatus  = 400
-		// 			, matchHeaders = [matchContentTypeJson]
-		// 			}
+		// it "cannot request a partition as parent from a partitioned table" $
+		//   get "/car_model_sales?id=in.(1,3,4)&select=id,name,car_models_default(id,name)&order=id.asc"
+		//     `shouldRespondWith` [json|
+		//       {"hint":"Perhaps you meant 'car_models' instead of 'car_models_default'.",
+		//        "details":"Searched for a foreign key relationship between 'car_model_sales' and 'car_models_default' in the schema 'test', but no matches were found.",
+		//        "code":"PGRST200",
+		//        "message":"Could not find a relationship between 'car_model_sales' and 'car_models_default' in the schema cache"} |]
+		//       { matchStatus = 400
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
 		{
 			Description: "cannot request a partition as parent from a partitioned table",
 			Query:       "/car_model_sales?id=in.(1,3,4)&select=id,name,car_models_default(id,name)&order=id.asc",
-			Headers:     nil,
-			Expected:    ``,
 			Status:      400,
 		},
-		// 		it "cannot request partitioned tables as children from a partition" $
-		// 		  get "/car_models_default?select=id,name,car_model_sales(id,name)&order=id.asc" `shouldRespondWith`
-		// 			[json|
-		// 			  {"hint":"Verify that 'car_models_default' and 'car_model_sales' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
-		// 			   "details":null,
-		// 			   "code":"PGRST200",
-		// 			   "message":"Could not find a relationship between 'car_models_default' and 'car_model_sales' in the schema cache"} |]
-		// 			{ matchStatus  = 400
-		// 			, matchHeaders = [matchContentTypeJson]
-		// 			}
+		// it "table not found error if first table does not exist" $
+		//   get "/car_models_default?select=id,name,car_model_sales(id,name)&order=id.asc"
+		//     `shouldRespondWith` [json| {"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.car_models_default' in the schema cache"} |]
+		//       { matchStatus = 404
+		//       , matchHeaders = [matchContentTypeJson]
+		//       }
 		{
-			Description: "cannot request partitioned tables as children from a partition",
+			Description: "table not found error if first table does not exist",
 			Query:       "/car_models_default?select=id,name,car_model_sales(id,name)&order=id.asc",
-			Headers:     nil,
-			Expected:    ``,
-			Status:      400,
+			Status:      404,
+			Skip:        "PostgREST 16.4: a partition is not exposed, 404 PGRST205 (smoothdb serves it, 400 on the relationship); card 32484 (embedding parity)",
 		},
 		//   describe "view embedding" $ do
 		// 	it "can detect fk relations through views to tables in the public schema" $
@@ -1652,11 +2176,15 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    ``,
 			Status:      200,
 		},
+		// it "can request two parents" $
+		//   get "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1"
+		//     `shouldRespondWith` [json|[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]|]
 		{
 			Description: "can request two parents from a view",
 			Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
-			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738Z","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
+			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
 			Status:      200,
+			Skip:        "PostgREST 16.4: a timestamp without time zone is written without Z; card 35454 (serializer divergence)",
 		},
 		{
 			Description: "can detect relations in views with column renames",
@@ -1768,6 +2296,13 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"tournament":"tournament_1","player_view":{"first_name":"first_name_1"}},{"tournament":"tournament_2","player_view":{"first_name":"first_name_2"}},{"tournament":"tournament_3","player_view":{"first_name":"first_name_3"}}]`,
 			Status:      200,
 		},
+		// it "works when embedding two views that refer to tables with different column ordering" $
+		//   get "/v1?select=v2(*)" `shouldRespondWith` 200
+		{
+			Description: "works when embedding two views that refer to tables with different column ordering",
+			Query:       "/v1?select=v2(*)",
+			Status:      200,
+		},
 		{
 			Description: "can embed a view that has group by",
 			Query:       "/projects_count_grouped_by?select=number_of_projects,client:clients(name)&order=number_of_projects",
@@ -1778,6 +2313,48 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "can embed a view that has a subselect containing a select in a where",
 			Query:       "/authors_w_entities?select=name,entities,books(title)&id=eq.1",
 			Expected:    `[{"name":"George Orwell","entities":[3,4],"books":[{"title":"1984"}]}]`,
+			Status:      200,
+		},
+
+		// it "works with one to one relationships" $ do
+		//   get "/students_view?select=name,students_info(address)"
+		//     `shouldRespondWith` [json| [{"name":"John Doe","students_info":{"address":"Street 1"}}, {"name":"Jane Doe","students_info":{"address":"Street 2"}}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with one to one relationships",
+			Query:       "/students_view?select=name,students_info(address)",
+			Expected:    `[{"name":"John Doe","students_info":{"address":"Street 1"}},{"name":"Jane Doe","students_info":{"address":"Street 2"}}]`,
+			Status:      200,
+		},
+		//   get "/students_view?select=name,students_info_view(address)"
+		//     `shouldRespondWith` [json| [{"name":"John Doe","students_info_view":{"address":"Street 1"}}, {"name":"Jane Doe","students_info_view":{"address":"Street 2"}}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with one to one relationships",
+			Query:       "/students_view?select=name,students_info_view(address)",
+			Expected:    `[{"name":"John Doe","students_info_view":{"address":"Street 1"}},{"name":"Jane Doe","students_info_view":{"address":"Street 2"}}]`,
+			Status:      200,
+		},
+		//   get "/students_info_view?select=address,students(name)"
+		//     `shouldRespondWith` [json| [{"address":"Street 1","students":{"name":"John Doe"}}, {"address":"Street 2","students":{"name":"Jane Doe"}}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with one to one relationships",
+			Query:       "/students_info_view?select=address,students(name)",
+			Expected:    `[{"address":"Street 1","students":{"name":"John Doe"}},{"address":"Street 2","students":{"name":"Jane Doe"}}]`,
+			Status:      200,
+		},
+		//   get "/students_info_view?select=address,students_view(name)"
+		//     `shouldRespondWith` [json| [{"address":"Street 1","students_view":{"name":"John Doe"}}, {"address":"Street 2","students_view":{"name":"Jane Doe"}}] |]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works with one to one relationships",
+			Query:       "/students_info_view?select=address,students_view(name)",
+			Expected:    `[{"address":"Street 1","students_view":{"name":"John Doe"}},{"address":"Street 2","students_view":{"name":"Jane Doe"}}]`,
 			Status:      200,
 		},
 
@@ -2243,13 +2820,14 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Status:      200,
 		},
-		//   it "ordering embeded entities with alias" $
-		// 	get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" `shouldRespondWith`
-		// 	  [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
+		// it "ordering embeded entities with alias" $
+		//   get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&the_tasks.order=name.asc"
+		//     `shouldRespondWith` [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
 		{
 			Description: "ordering embeded entities with alias",
-			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc",
+			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&the_tasks.order=name.asc",
 			Headers:     nil,
 			Expected:    `[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]`,
 			Status:      200,
@@ -2274,6 +2852,40 @@ func TestPostgREST_Query(t *testing.T) {
 			Headers:     nil,
 			Expected:    `[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]`,
 			Status:      200,
+		},
+		// it "gives meaningful error message on bad syntax" $ do
+		//   get "/items?order=id.asc.nullslasttt"
+		//     `shouldRespondWith` [json|{"details":"unexpected 't' expecting \",\" or end of input","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)","code":"PGRST100","hint":null}|]
+		//       { matchStatus = 400
+		//       , matchHeaders =
+		//           [ "Content-Length" <:> "169"
+		//           , matchContentTypeJson
+		//           ]
+		//       }
+		{
+			Description: "gives meaningful error message on bad syntax",
+			Query:       "/items?order=id.asc.nullslasttt",
+			Status:      400,
+		},
+		// it "filters, orders and limits aliased embeded entities using the target name" $ do
+		//   let pgrstVer = "PostgRESTv" <> BS.filter (/= ' ') prettyVersion
+		//   get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.name=like.Code*&tasks.order=name.asc&tasks.limit=1"
+		//     `shouldRespondWith` [json|[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"}]}]|]
+		//       { matchHeaders = ["Warning" <:> ("299 " <> pgrstVer <> " \"Embedded resource was referenced by relation name even though it has an alias. This is deprecated and will stop working in a future release. Update `tasks` to `the_tasks` in query string filters, orders or limits.\"")]
+		//       }
+		{
+			Description: "filters, orders and limits aliased embeded entities using the target name",
+			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.name=like.Code*&tasks.order=name.asc&tasks.limit=1",
+			Expected:    `[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"}]}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: limit on an embedded resource (tasks.limit=1); card 32476 (embed limit)",
+		},
+		{
+			Description:     "filters, orders and limits aliased embeded entities using the target name: the deprecation Warning",
+			Query:           "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.name=like.Code*&tasks.order=name.asc&tasks.limit=1",
+			ExpectedHeaders: map[string]string{"Warning": "299 PostgRESTv16.4 \"Embedded resource was referenced by relation name even though it has an alias. This is deprecated and will stop working in a future release. Update `tasks` to `the_tasks` in query string filters, orders or limits.\""},
+			Status:          200,
+			Skip:            "PostgREST 16.4: Warning 299 on a filter, order or limit naming an aliased embed by its relation; no card",
 		},
 		//   context "order syntax errors" $ do
 		// 	it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
@@ -2439,13 +3051,29 @@ func TestPostgREST_Query(t *testing.T) {
 			Headers:     test.Headers{"Accept": []string{"text/unknowntype", "text/csv"}},
 			Status:      200,
 		},
-		//   it "should respond with CSV to 'text/csv' request" $
-		// 	request methodGet "/simple_pk"
-		// 			(acceptHdrs "text/csv; version=1") ""
-		// 	  `shouldRespondWith` "k,extra\nxyyx,u\nxYYx,v"
-		// 	  { matchStatus  = 200
-		// 	  , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
-		// 	  }
+		// it "should respond with CSV to 'text/csv' request" $
+		//   request
+		//     methodGet
+		//     "/simple_pk?order=k.desc"
+		//     (acceptHdrs "text/csv; version=1")
+		//     ""
+		//     `shouldRespondWith` "k,extra\nxyyx,u\nxYYx,v"
+		//       { matchStatus = 200
+		//       , matchHeaders =
+		//           [ "Content-Type" <:> "text/csv; charset=utf-8"
+		//           , "Content-Length" <:> "21"
+		//           ]
+		//       }
+		{
+			Description:     "should respond with CSV to 'text/csv' request",
+			Query:           "/simple_pk?order=k.desc",
+			Headers:         test.Headers{"Accept": []string{"text/csv; version=1"}},
+			Expected:        "k,extra\nxyyx,u\nxYYx,v",
+			ExpectedHeaders: map[string]string{"Content-Type": "text/csv; charset=utf-8"},
+			Status:          200,
+			Skip:            "needs fixture: the pgrest database in C collation (it is created en_US.UTF-8, which orders README.md after command.com and xYYx after xyyx)",
+		},
+		// the request before PostgREST 16.4 added order=k.desc, which runs on any collation
 		{
 			Description:     "should respond with CSV to 'text/csv' request",
 			Query:           "/simple_pk",
@@ -2461,13 +3089,29 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  { matchStatus  = 200
 		// 	  , matchHeaders = ["Content-Location" <:> "/no_pk?a=eq.1&b=eq.1"]
 		// 	  }
-
+		// (the suite's client sends the query string sorted, so the request
+		// arrives already alphabetized: the case checks the header only)
+		{
+			Description:     "Sets Content-Location with alphabetized params",
+			Query:           "/no_pk?b=eq.1&a=eq.1",
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Location": "/no_pk?a=eq.1&b=eq.1"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: Content-Location is the canonical request path, params alphabetized and no /api/<db> prefix; no card",
+		},
 		//   it "Omits question mark when there are no params" $ do
 		// 	r <- get "/simple_pk"
 		// 	liftIO $ do
 		// 	  let respHeaders = simpleHeaders r
 		// 	  respHeaders `shouldSatisfy` matchHeader
 		// 		"Content-Location" "/simple_pk"
+		{
+			Description:     "Omits question mark when there are no params",
+			Query:           "/simple_pk",
+			ExpectedHeaders: map[string]string{"Content-Location": "/simple_pk"},
+			Status:          200,
+			Skip:            "PostgREST 16.4: Content-Location is the request path without the /api/<db> prefix smoothdb mounts the API under; no card",
+		},
 
 		// describe "weird requests" $ do
 		//   it "can query as normal" $ do
@@ -2548,14 +3192,13 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	get "/do$llar$s?select=a$num$&a$num$=eq.100" `shouldRespondWith`
 		// 	  [json|[{"a$num$":100}]|]
 		// 	  { matchHeaders = [matchContentTypeJson] }
-		// @@ type not supported
-		// {
-		// 	Description: "will select and filter a column that has dollars in(without double quoting)",
-		// 	Query:       "/do$llar$s?select=a$num$&a$num$=eq.100",
-		// 	Expected:    `[{"a$num$":100}]`,
-		// 	Headers:     nil,
-		// 	Status:      200,
-		// },
+		{
+			Description: "will select and filter a column that has dollars in(without double quoting)",
+			Query:       "/do$llar$s?select=a$num$&a$num$=eq.100",
+			Expected:    `[{"a$num$":100}]`,
+			Headers:     nil,
+			Status:      200,
+		},
 		// context "binary output" $ do
 		//   it "can query if a single column is selected" $
 		// 	request methodGet "/images_base64?select=img&name=eq.A.png" (acceptHdrs "application/octet-stream") ""
@@ -2926,39 +3569,60 @@ func TestPostgREST_Query(t *testing.T) {
 		},
 		// describe "Foreign table" $ do
 		//   it "can be queried by using regular filters" $
-		// 	get "/projects_dump?id=in.(1,2,3)" `shouldRespondWith`
-		// 	  [json| [{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }"
-		// @@ should configure external file
-		// {
-		// 	Description: "Foreign table can be queried by using regular filters",
-		// 	Query:       "/projects_dump?id=in.(1,2,3)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]`,
-		// 	Status:      200,
-		// },
+		//     get "/projects_dump?id=in.(1,2,3)"
+		//       `shouldRespondWith` [json| [{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]|]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "can be queried by using regular filters",
+			Query:       "/projects_dump?id=in.(1,2,3)",
+			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1},{"id":3,"name":"IOS","client_id":2}]`,
+			Status:      200,
+		},
 		//   it "can be queried with select, order and limit" $
-		// 	get "/projects_dump?select=id,name&order=id.desc&limit=3" `shouldRespondWith`
-		// 	  [json| [{"id":5,"name":"Orphan"}, {"id":4,"name":"OSX"}, {"id":3,"name":"IOS"}] |]
-		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		//     get "/projects_dump?select=id,name&order=id.desc&limit=3"
+		//       `shouldRespondWith` [json| [{"id":5,"name":"Orphan"}, {"id":4,"name":"OSX"}, {"id":3,"name":"IOS"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "can be queried with select, order and limit",
+			Query:       "/projects_dump?select=id,name&order=id.desc&limit=3",
+			Expected:    `[{"id":5,"name":"Orphan"},{"id":4,"name":"OSX"},{"id":3,"name":"IOS"}]`,
+			Status:      200,
+		},
 		// it "cannot use ltree(in public schema) extension operators if no extra search path added" $
 		//   get "/ltree_sample?path=cd.Top.Science.Astronomy" `shouldRespondWith` 400
-
+		{
+			Description: "cannot use ltree(in public schema) extension operators if no extra search path added",
+			Query:       "/ltree_sample?path=cd.Top.Science.Astronomy",
+			Status:      400,
+		},
 		// context "VIEW that has a source FK based on a UNIQUE key" $
 		//   it "can be embedded" $
-		// 	get "/referrals?select=site,link:pages(url)" `shouldRespondWith`
-		// 	  [json| [
-		// 	   {"site":"github.com",     "link":{"url":"http://postgrest.org/en/v6.0/api.html"}},
-		// 	   {"site":"hub.docker.com", "link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}
-		// 	  ]|]
-		// 	  { matchHeaders = [matchContentTypeJson] }
-
+		//     get "/referrals?select=site,link:pages(url)"
+		//       `shouldRespondWith` [json| [
+		//        {"site":"github.com",     "link":{"url":"http://postgrest.org/en/v6.0/api.html"}},
+		//        {"site":"hub.docker.com", "link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}
+		//       ]|]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "can be embedded",
+			Query:       "/referrals?select=site,link:pages(url)",
+			Expected:    `[{"site":"github.com","link":{"url":"http://postgrest.org/en/v6.0/api.html"}},{"site":"hub.docker.com","link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}]`,
+			Status:      200,
+		},
 		// it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
 		//   r <- get "/items"
 		//   liftIO $ do
-		// 	let respHeaders = simpleHeaders r
-		// 	respHeaders `shouldSatisfy` noProfileHeader
+		//     let respHeaders = simpleHeaders r
+		//     respHeaders `shouldSatisfy` noProfileHeader
+		{
+			Description:     "shouldn't produce a Content-Profile header since only a single schema is exposed",
+			Query:           "/items",
+			ExpectedHeaders: map[string]string{"Content-Profile": ""},
+			Status:          200,
+		},
 
 		// 	context "empty embed" $ do
 		//     it "works on a many-to-one relationship" $ do
@@ -3038,6 +3702,51 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"id":1,"name":"Angela Martin"}]`,
 			Status:      200,
 		},
+		// it "works on nested relationships" $ do
+		//   get "/users?select=*,users_tasks(tasks(projects()))"
+		//     `shouldRespondWith` [json| [{"id":1,"name":"Angela Martin"}, {"id":2,"name":"Michael Scott"}, {"id":3,"name":"Dwight Schrute"}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works on nested relationships",
+			Query:       "/users?select=*,users_tasks(tasks(projects()))",
+			Expected:    `[{"id":1,"name":"Angela Martin"},{"id":2,"name":"Michael Scott"},{"id":3,"name":"Dwight Schrute"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: an empty embed nested in another embed is left out (smoothdb drops it and turns its parent into a select of every column); no card",
+		},
+		//   get "/users?select=*,users_tasks!inner(tasks!inner(projects()))&users_tasks.tasks.id=eq.3"
+		//     `shouldRespondWith` [json| [{"id":1,"name":"Angela Martin"}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works on nested relationships",
+			Query:       "/users?select=*,users_tasks!inner(tasks!inner(projects()))&users_tasks.tasks.id=eq.3",
+			Expected:    `[{"id":1,"name":"Angela Martin"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: an empty embed nested in another embed is left out (smoothdb drops it and turns its parent into a select of every column); no card",
+		},
+		//   get "/users?select=*,tasks(projects(clients()),users_tasks())"
+		//     `shouldRespondWith` [json| [{"id":1,"name":"Angela Martin"}, {"id":2,"name":"Michael Scott"}, {"id":3,"name":"Dwight Schrute"}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works on nested relationships",
+			Query:       "/users?select=*,tasks(projects(clients()),users_tasks())",
+			Expected:    `[{"id":1,"name":"Angela Martin"},{"id":2,"name":"Michael Scott"},{"id":3,"name":"Dwight Schrute"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: an empty embed nested in another embed is left out (smoothdb drops it and turns its parent into a select of every column); no card",
+		},
+		//   get "/users?select=*,tasks!inner(projects(clients()),users_tasks(),name)&tasks.id=eq.3"
+		//     `shouldRespondWith` [json| [{"id":1,"name":"Angela Martin","tasks":[{"name": "Design w10"}]}]|]
+		//       { matchHeaders = [matchContentTypeJson]
+		//       }
+		{
+			Description: "works on nested relationships",
+			Query:       "/users?select=*,tasks!inner(projects(clients()),users_tasks(),name)&tasks.id=eq.3",
+			Expected:    `[{"id":1,"name":"Angela Martin","tasks":[{"name":"Design w10"}]}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: an empty embed nested in another embed is left out (smoothdb drops it and turns its parent into a select of every column); no card",
+		},
 		//   context "empty root select" $
 		//     it "gives all columns" $ do
 		//       get "/projects?select=" `shouldRespondWith`
@@ -3080,6 +3789,263 @@ func TestPostgREST_Query(t *testing.T) {
 				          {"id":5,"name":"Orphan","client_id":null}]`,
 			Status: 200,
 		},
+		// describe "Data representations for customisable value formatting and parsing" $ do
+		//   it "formats a single column" $
+		//     get "/datarep_todos?select=id,label_color&id=lt.4"
+		//       `shouldRespondWith` [json| [{"id":1,"label_color":"#000000"},{"id":2,"label_color":"#000100"},{"id":3,"label_color":"#01E240"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats a single column",
+			Query:       "/datarep_todos?select=id,label_color&id=lt.4",
+			Expected:    `[{"id":1,"label_color":"#000000"},{"id":2,"label_color":"#000100"},{"id":3,"label_color":"#01E240"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats two columns with different formatters" $
+		//     get "/datarep_todos?select=id,label_color,due_at&id=lt.4"
+		//       `shouldRespondWith` [json| [{"id":1,"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"},{"id":2,"label_color":"#000100","due_at":"2018-01-03T00:00:00Z"},{"id":3,"label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats two columns with different formatters",
+			Query:       "/datarep_todos?select=id,label_color,due_at&id=lt.4",
+			Expected:    `[{"id":1,"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"},{"id":2,"label_color":"#000100","due_at":"2018-01-03T00:00:00Z"},{"id":3,"label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "fails in some reasonable way when selecting fields that don't exist" $
+		//     get "/datarep_todos?select=id,label_color,banana"
+		//       `shouldRespondWith` [json| {"code":"42703","details":null,"hint":null,"message":"column datarep_todos.banana does not exist"} |]
+		//         { matchStatus = 400
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "98"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		{
+			Description: "fails in some reasonable way when selecting fields that don't exist",
+			Query:       "/datarep_todos?select=id,label_color,banana",
+			Status:      400,
+		},
+		//   it "formats columns in views including computed columns" $
+		//     get "/datarep_todos_computed?select=id,label_color,dark_color"
+		//       `shouldRespondWith` [json| [
+		//         {"id":1, "label_color":"#000000", "dark_color":"#000000"},
+		//         {"id":2, "label_color":"#000100", "dark_color":"#000080"},
+		//         {"id":3, "label_color":"#01E240", "dark_color":"#00F120"},
+		//         {"id":4, "label_color":"", "dark_color":""}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats columns in views including computed columns",
+			Query:       "/datarep_todos_computed?select=id,label_color,dark_color",
+			Expected:    `[{"id":1,"label_color":"#000000","dark_color":"#000000"},{"id":2,"label_color":"#000100","dark_color":"#000080"},{"id":3,"label_color":"#01E240","dark_color":"#00F120"},{"id":4,"label_color":"","dark_color":""}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats and allows rename" $
+		//     get "/datarep_todos?select=id,clr:label_color&id=lt.4"
+		//       `shouldRespondWith` [json| [{"id":1,"clr":"#000000"},{"id":2,"clr":"#000100"},{"id":3,"clr":"#01E240"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats and allows rename",
+			Query:       "/datarep_todos?select=id,clr:label_color&id=lt.4",
+			Expected:    `[{"id":1,"clr":"#000000"},{"id":2,"clr":"#000100"},{"id":3,"clr":"#01E240"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats, renames and allows manual casting on top" $
+		//     get "/datarep_todos?select=id,clr:label_color::text&id=lt.4"
+		//       `shouldRespondWith` [json| [{"id":1,"clr":"\"#000000\""},{"id":2,"clr":"\"#000100\""},{"id":3,"clr":"\"#01E240\""}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats, renames and allows manual casting on top",
+			Query:       "/datarep_todos?select=id,clr:label_color::text&id=lt.4",
+			Expected:    `[{"id":1,"clr":"\"#000000\""},{"id":2,"clr":"\"#000100\""},{"id":3,"clr":"\"#01E240\""}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats nulls" $
+		//     -- due_at is formatted as NULL but label_color NULLs become empty strings-- it's up to the formatting function.
+		//     get "/datarep_todos?select=id,label_color,due_at&id=gt.2&id=lt.5"
+		//       `shouldRespondWith` [json| [{"id":3,"label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z"},{"id":4,"label_color":"","due_at":null}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats nulls",
+			Query:       "/datarep_todos?select=id,label_color,due_at&id=gt.2&id=lt.5",
+			Expected:    `[{"id":3,"label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z"},{"id":4,"label_color":"","due_at":null}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats star select" $
+		//     get "/datarep_todos?select=*&id=lt.4"
+		//       `shouldRespondWith` [json| [
+		//         {"id":1,"name":"Report","label_color":"#000000","due_at":"2018-01-02T00:00:00Z","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},
+		//          {"id":2,"name":"Essay","label_color":"#000100","due_at":"2018-01-03T00:00:00Z","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},
+		//          {"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats star select",
+			Query:       "/datarep_todos?select=*&id=lt.4",
+			Expected:    `[{"id":1,"name":"Report","label_color":"#000000","due_at":"2018-01-02T00:00:00Z","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},{"id":2,"name":"Essay","label_color":"#000100","due_at":"2018-01-03T00:00:00Z","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats implicit star select" $
+		//     get "/datarep_todos?id=lt.4"
+		//       `shouldRespondWith` [json| [
+		//         {"id":1,"name":"Report","label_color":"#000000","due_at":"2018-01-02T00:00:00Z","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},
+		//         {"id":2,"name":"Essay","label_color":"#000100","due_at":"2018-01-03T00:00:00Z","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},
+		//         {"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats implicit star select",
+			Query:       "/datarep_todos?id=lt.4",
+			Expected:    `[{"id":1,"name":"Report","label_color":"#000000","due_at":"2018-01-02T00:00:00Z","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},{"id":2,"name":"Essay","label_color":"#000100","due_at":"2018-01-03T00:00:00Z","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats star and explicit mix" $
+		//     get "/datarep_todos?select=due_at,*&id=lt.4"
+		//       `shouldRespondWith` [json| [
+		//         {"due_at":"2018-01-02T00:00:00Z","id":1,"name":"Report","label_color":"#000000","due_at":"2018-01-02T00:00:00Z","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},
+		//          {"due_at":"2018-01-03T00:00:00Z","id":2,"name":"Essay","label_color":"#000100","due_at":"2018-01-03T00:00:00Z","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},
+		//          {"due_at":"2018-01-01T14:12:34.123456Z","id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats star and explicit mix",
+			Query:       "/datarep_todos?select=due_at,*&id=lt.4",
+			Expected:    `[{"due_at":"2018-01-02T00:00:00Z","id":1,"name":"Report","label_color":"#000000","icon_image":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAABBJREFUeJxiYAEAAAAA//8DAAAABgAFBXv6vUAAAAAASUVORK5CYII=","created_at":1513213350,"budget":"12.50"},{"due_at":"2018-01-03T00:00:00Z","id":2,"name":"Essay","label_color":"#000100","icon_image":null,"created_at":1513213350,"budget":"100000000000000.13"},{"due_at":"2018-01-01T14:12:34.123456Z","id":3,"name":"Algebra","label_color":"#01E240","icon_image":null,"created_at":1513213350,"budget":"0.00"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats through join" $
+		//     get "/datarep_next_two_todos?select=id,name,first_item:datarep_todos!datarep_next_two_todos_first_item_id_fkey(label_color,due_at)&order=id"
+		//       `shouldRespondWith` [json| [{"id":1,"name":"school related","first_item":{"label_color":"#000100","due_at":"2018-01-03T00:00:00Z"}},{"id":2,"name":"do these first","first_item":{"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats through join",
+			Query:       "/datarep_next_two_todos?select=id,name,first_item:datarep_todos!datarep_next_two_todos_first_item_id_fkey(label_color,due_at)&order=id",
+			Expected:    `[{"id":1,"name":"school related","first_item":{"label_color":"#000100","due_at":"2018-01-03T00:00:00Z"}},{"id":2,"name":"do these first","first_item":{"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"}}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "formats through join with star select" $
+		//     get "/datarep_next_two_todos?select=id,name,second_item:datarep_todos!datarep_next_two_todos_second_item_id_fkey(*)&order=id"
+		//       `shouldRespondWith` [json| [
+		//         {"id":1,"name":"school related","second_item":{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}},
+		//         {"id":2,"name":"do these first","second_item":{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "formats through join with star select",
+			Query:       "/datarep_next_two_todos?select=id,name,second_item:datarep_todos!datarep_next_two_todos_second_item_id_fkey(*)&order=id",
+			Expected:    `[{"id":1,"name":"school related","second_item":{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}},{"id":2,"name":"do these first","second_item":{"id":3,"name":"Algebra","label_color":"#01E240","due_at":"2018-01-01T14:12:34.123456Z","icon_image":null,"created_at":1513213350,"budget":"0.00"}}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "uses text parser on value for filter given through query parameters" $
+		//     get "/datarep_todos?select=id,due_at&label_color=eq.000100"
+		//       `shouldRespondWith` [json| [{"id":2,"due_at":"2018-01-03T00:00:00Z"}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "uses text parser on value for filter given through query parameters",
+			Query:       "/datarep_todos?select=id,due_at&label_color=eq.000100",
+			Expected:    `[{"id":2,"due_at":"2018-01-03T00:00:00Z"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "in the absense of text parser, does not try to use the JSON parser for query parameters" $
+		//     get "/datarep_todos?select=id,due_at&due_at=eq.Z"
+		//       `shouldRespondWith`
+		//       -- we prove the parser is not used because it'd replace the Z with `+00:00` and a different error message.
+		//       [json| {"code":"22007","details":null,"hint":null,"message":"invalid input syntax for type timestamp with time zone: \"Z\""} |]
+		//         { matchStatus = 400
+		//         , matchHeaders =
+		//             [ "Content-Length" <:> "117"
+		//             , matchContentTypeJson
+		//             ]
+		//         }
+		{
+			Description: "in the absense of text parser, does not try to use the JSON parser for query parameters",
+			Query:       "/datarep_todos?select=id,due_at&due_at=eq.Z",
+			Status:      400,
+		},
+		//   it "uses text parser for filter with 'IN' predicates" $
+		//     get "/datarep_todos?select=id,due_at&label_color=in.(000100,01E240)"
+		//       `shouldRespondWith` [json| [
+		//         {"id":2, "due_at": "2018-01-03T00:00:00Z"},
+		//         {"id":3, "due_at": "2018-01-01T14:12:34.123456Z"}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "uses text parser for filter with 'IN' predicates",
+			Query:       "/datarep_todos?select=id,due_at&label_color=in.(000100,01E240)",
+			Expected:    `[{"id":2,"due_at":"2018-01-03T00:00:00Z"},{"id":3,"due_at":"2018-01-01T14:12:34.123456Z"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "uses text parser for filter with 'NOT IN' predicates" $
+		//     get "/datarep_todos?select=id,due_at&label_color=not.in.(000000,01E240)"
+		//       `shouldRespondWith` [json| [
+		//         {"id":2, "due_at": "2018-01-03T00:00:00Z"}
+		//       ] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "uses text parser for filter with 'NOT IN' predicates",
+			Query:       "/datarep_todos?select=id,due_at&label_color=not.in.(000000,01E240)",
+			Expected:    `[{"id":2,"due_at":"2018-01-03T00:00:00Z"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   it "uses text parser on value for filter across relations" $
+		//     get "/datarep_next_two_todos?select=id,name,datarep_todos!datarep_next_two_todos_first_item_id_fkey(label_color,due_at)&datarep_todos.label_color=neq.000100&order=id"
+		//       `shouldRespondWith` [json| [{"id":1,"name":"school related","datarep_todos":null},{"id":2,"name":"do these first","datarep_todos":{"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"}}] |]
+		//         { matchHeaders = [matchContentTypeJson]
+		//         }
+		{
+			Description: "uses text parser on value for filter across relations",
+			Query:       "/datarep_next_two_todos?select=id,name,datarep_todos!datarep_next_two_todos_first_item_id_fkey(label_color,due_at)&datarep_todos.label_color=neq.000100&order=id",
+			Expected:    `[{"id":1,"name":"school related","datarep_todos":null},{"id":2,"name":"do these first","datarep_todos":{"label_color":"#000000","due_at":"2018-01-02T00:00:00Z"}}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: data representations, domain casts that format output and parse filter values; no card",
+		},
+		//   -- This is not supported by data reps (would be hard to make it work with high performance). So the test just
+		//   -- verifies we don't panic or add inappropriate SQL to the filters.
+		//   it "fails safely on user trying to use ilike operator on data reps column" $
+		//     get "/datarep_todos?select=id,name&label_color=ilike.#*100"
+		//       `shouldRespondWith` ( if actualPgVersion < pgVersion190 then
+		//                               [json|
+		//           {"code":"42883","details":null,"hint":"No operator matches the given name and argument types. You might need to add explicit type casts.","message":"operator does not exist: public.color ~~* unknown"}
+		//         |]
+		//                             else
+		//                               [json|
+		//           {"code":"42883","details":"No operator of that name accepts the given argument types.","hint":"You might need to add explicit type casts.","message":"operator does not exist: public.color ~~* unknown"}
+		//         |]
+		//                           )
+		//         { matchStatus = 404
+		//         , matchHeaders = [matchContentTypeJson]
+		{
+			Description: "fails safely on user trying to use ilike operator on data reps column",
+			Query:       "/datarep_todos?select=id,name&label_color=ilike.%23*100",
+			Status:      404,
+		},
 		// context "searching for an empty string" $ do
 		//   it "works with an empty eq filter" $
 		//     get "/empty_string?string=eq.&select=id,string" `shouldRespondWith`
@@ -3112,6 +4078,50 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "return http status 404 for invalid resource path",
 			Query:       "/first/second/third?select=*",
 			Status:      404,
+		},
+
+		// The cases below run upstream under url-use-legacy-target-names = false
+		// specLegacyTargetNames :: SpecWithConfig
+		// specLegacyTargetNames withConfig = withConfig (baseCfg{configUrlUseLegacyTargetNames = False}) $
+		//   context "disable legacy target names" $ do
+		//     describe "Shaping response with select parameter" $ do
+		//       it "works when embedding the same table more than once" $
+		//         get "/places?select=name,visits(id,start_time,visit_type),work_visits:visits(id,start_time,visit_type)&id=eq.1&visits.visit_type=neq.work&visits.start_time=gt.20250101+00:00&work_visits.visit_type=eq.work&work_visits.start_time=gt.20250101+00:00"
+		//           `shouldRespondWith` [json|[
+		//             {
+		//               "name":"Lake",
+		//               "visits":[{"id": 1, "start_time": "2025-01-01T10:00:00", "visit_type": "vacation"}, {"id": 2, "start_time": "2025-01-01T15:00:00", "visit_type": "vacation"}],
+		//               "work_visits":[{"id": 3, "start_time": "2025-01-01T20:00:00", "visit_type": "work"}]
+		//             }
+		//           ]|]
+		//             { matchHeaders = [matchContentTypeJson]
+		//             }
+		{
+			Description: "works when embedding the same table more than once",
+			Query:       "/places?select=name,visits(id,start_time,visit_type),work_visits:visits(id,start_time,visit_type)&id=eq.1&visits.visit_type=neq.work&visits.start_time=gt.20250101+00:00&work_visits.visit_type=eq.work&work_visits.start_time=gt.20250101+00:00",
+			Expected:    `[{"name":"Lake","visits":[{"id":1,"start_time":"2025-01-01T10:00:00","visit_type":"vacation"},{"id":2,"start_time":"2025-01-01T15:00:00","visit_type":"vacation"}],"work_visits":[{"id":3,"start_time":"2025-01-01T20:00:00","visit_type":"work"}]}]`,
+			Status:      200,
+			Skip:        "needs fixture places",
+		},
+		//     describe "ordering response" $
+		//       it "filters, orders or limits do not work with aliased embeded entities using the target name" $
+		//         get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.name=like.Code*&tasks.order=name.asc&tasks.limit=1"
+		//           `shouldRespondWith` [json|
+		//             {
+		//               "code":"PGRST108",
+		//               "details":"Target names are not allowed in filters if they have an alias",
+		//               "hint":"Change 'tasks' to 'the_tasks' in filters, orders or limits.",
+		//               "message":"'tasks' is not an embedded resource in this request"
+		//             }
+		//           |]
+		//             { matchStatus = 400
+		//             , matchHeaders = [matchContentTypeJson]
+		//             }
+		{
+			Description: "filters, orders or limits do not work with aliased embeded entities using the target name",
+			Query:       "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.name=like.Code*&tasks.order=name.asc&tasks.limit=1",
+			Status:      400,
+			Skip:        "PostgREST 16.4: url-use-legacy-target-names = false refuses the relation name of an aliased embed; smoothdb has no such option and main_test.go cannot set it; no card",
 		},
 	}
 

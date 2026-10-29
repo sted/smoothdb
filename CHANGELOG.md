@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**PostgREST 16.4 spec cases: 1091 run, 532 skipped (67.2%)**, the first count: until now the cases smoothdb did not pass were comments, invisible to the suite (see test/postgrest/README.md).
+
 ### Added
 * **Role settings and pool acquisition timeout** — the impersonated role's `ALTER ROLE ... SET` settings (`statement_timeout`, isolation, ...) apply to its requests (a `DateStyle` keeps ISO output), and a request waits at most `Database.PoolAcquisitionTimeout` seconds (default 10) for a connection before a 504 `PGRST003`, as in PostgREST.
 * **JWT claims as in PostgREST** — `JWTRoleClaimKey` (a subset of PostgREST's JSONPath, the rest refused at startup; the default one with `LoginMode: "db"`), `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
@@ -16,6 +18,7 @@
 * **A first column named `__count`** — serialized like any other column in JSON and CSV, no longer taken for the total.
 
 ### Changed
+* **Ported PostgREST spec suite** — targets PostgREST 16.4; a case smoothdb does not pass is skipped with its reason and card, and the suite prints how many run.
 * **Authorization status** — as in PostgREST, `42501` is 401 for an anonymous request (with `WWW-Authenticate: Bearer`) and 403 for an authenticated one, and the auth middleware's own refusals use the API's error body, status mapping and `VerboseErrors` (a refused role switch was a 500).
 * **Tokens with a `kid`** — refused against a passphrase `JWTSecret`, which is a key without `kid` as in PostgREST.
 * **Go API** — `authn.MiddlewareConfig` replaces `JWTSecret()` with `JWTVerifier()` and adds `AuthErrorWriter()`.
