@@ -4,6 +4,10 @@
 
 ### Added
 * **JWT claims as in PostgREST** — `JWTRoleClaimKey`, `JWTAud` and `JWTSecretIsBase64`; `exp`, `nbf` and `iat` are checked with a 30 s clock skew and PostgREST's error messages.
+* **JWK set verification** — `JWTKeys` verifies tokens against a key catalog by `kid`, HS256 and ES256 at once; `JWTSecret` also takes a JWK or a JWK set, as in PostgREST.
+
+### Changed
+* **Tokens with a `kid`** — refused against a passphrase `JWTSecret`, which is a key without `kid` as in PostgREST.
 
 ## 0.10.2 - 2026-10-28
 

@@ -32,10 +32,11 @@ type Config struct {
 	AuthURL                 string          `comment:"URL of the external AuthN service (default: '')"`
 	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
-	JWTSecret               string          `comment:"Secret for JWT tokens"`
+	JWTSecret               string          `comment:"Secret for JWT tokens: a passphrase, a JWK or a JWK set"`
 	JWTSecretIsBase64       bool            `comment:"JWTSecret is base64-encoded (default: false)"`
 	JWTAud                  string          `comment:"Audience the JWT aud claim must contain, when present (default: '' for any)"`
 	JWTRoleClaimKey         string          `comment:"JSONPath of the role in the JWT claims (default: $.role)"`
+	JWTKeys                 string          `comment:"Key catalog verifying JWT tokens instead of JWTSecret: a JSON array of JWKs with kid (default: '')"`
 	SessionMode             string          `comment:"Session mode: none, role, claims (default: role)"`
 	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
@@ -74,6 +75,7 @@ func defaultConfig() *Config {
 		JWTSecretIsBase64:       false,
 		JWTAud:                  "",
 		JWTRoleClaimKey:         authn.DefaultRoleClaimKey,
+		JWTKeys:                 "",
 		SessionMode:             "role",
 		MaxSessions:             10000,
 		EnableAdminRoute:        false,
@@ -124,6 +126,10 @@ func getEnvironment(c *Config) {
 	jwtRoleClaimKey := os.Getenv("SMOOTHDB_JWT_ROLE_CLAIM_KEY")
 	if jwtRoleClaimKey != "" {
 		c.JWTRoleClaimKey = jwtRoleClaimKey
+	}
+	jwtKeys := os.Getenv("SMOOTHDB_JWT_KEYS")
+	if jwtKeys != "" {
+		c.JWTKeys = jwtKeys
 	}
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
@@ -178,6 +184,7 @@ Environment Variables:
 	SMOOTHDB_JWT_SECRET_IS_BASE64 JWTSecret is base64-encoded (true/false)
 	SMOOTHDB_JWT_AUD              Audience the JWT aud claim must contain
 	SMOOTHDB_JWT_ROLE_CLAIM_KEY   JSONPath of the role in the JWT claims
+	SMOOTHDB_JWT_KEYS             Key catalog verifying JWT tokens (JSON array of JWKs)
 	SMOOTHDB_DEBUG                Enable debug mode (true/false)
 	SMOOTHDB_ALLOW_ANON           Allow unauthenticated connections (true/false)
 	SMOOTHDB_ENABLE_ADMIN_ROUTE   Enable administration of databases and tables (true/false)
@@ -283,6 +290,7 @@ func jwtConfig(cfg *Config) authn.JWTConfig {
 		SecretIsBase64: cfg.JWTSecretIsBase64,
 		Aud:            cfg.JWTAud,
 		RoleClaimKey:   cfg.JWTRoleClaimKey,
+		Keys:           cfg.JWTKeys,
 	}
 }
 
@@ -296,12 +304,22 @@ func checkConfig(cfg *Config) error {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
 	}
-	if cfg.LoginMode != "none" && cfg.JWTSecret == "" {
+	// "db" signs the /token tokens with JWTSecret; the other modes only
+	// verify, which JWTKeys can do alone
+	if cfg.LoginMode != "none" && cfg.JWTSecret == "" && (cfg.LoginMode == "db" || cfg.JWTKeys == "") {
 		return fmt.Errorf("'JWTSecret' is empty while authentication is enabled (LoginMode: %s): "+
 			"an empty secret lets anyone forge tokens for any role; set 'JWTSecret' or SMOOTHDB_JWT_SECRET", cfg.LoginMode)
 	}
-	if _, err := authn.NewJWTVerifier(jwtConfig(cfg)); err != nil {
-		return fmt.Errorf("invalid JWT configuration ('JWTSecret', 'JWTSecretIsBase64', 'JWTAud', 'JWTRoleClaimKey'): %w", err)
+	verifier, err := authn.NewJWTVerifier(jwtConfig(cfg))
+	if err != nil {
+		return fmt.Errorf("invalid JWT configuration ('JWTSecret', 'JWTSecretIsBase64', 'JWTAud', 'JWTRoleClaimKey', 'JWTKeys'): %w", err)
+	}
+	if cfg.LoginMode == "db" && verifier.SigningSecret() == "" {
+		return fmt.Errorf("'JWTSecret' has no HMAC key for /token to sign with: " +
+			"a JWK or JWK set needs exactly one oct key that verifies HS256")
+	}
+	if cfg.LoginMode == "db" && cfg.JWTKeys != "" && !verifier.SignsWithCatalogKey() {
+		fmt.Println("Warning: 'JWTKeys' holds no oct key equal to 'JWTSecret': the tokens of /token will not verify")
 	}
 	if k, _ := authn.ParseRoleClaimKey(cfg.JWTRoleClaimKey); k != nil && k.Deprecated() {
 		fmt.Printf("Warning: 'JWTRoleClaimKey' %q uses the deprecated JSPath syntax of PostgREST 15; "+

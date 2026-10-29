@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -101,18 +103,26 @@ const allowedSkew = 30
 
 // JWTConfig is the JWT part of the server configuration.
 type JWTConfig struct {
-	Secret         string // PostgREST's jwt-secret
+	Secret         string // PostgREST's jwt-secret: a passphrase, a JWK or a JWK set
 	SecretIsBase64 bool   // jwt-secret-is-base64
 	Aud            string // jwt-aud, "" for any audience
 	RoleClaimKey   string // jwt-role-claim-key, "" for "$.role"
+	Keys           string // the key catalog, verifying instead of Secret when set
 }
 
 // JWTVerifier verifies bearer tokens and maps their claims, as PostgREST's
 // Auth/Jwt.hs does.
 type JWTVerifier struct {
-	secret  []byte
-	aud     string
-	roleKey *RoleClaimKey
+	keys []*jwk
+	// catalog says that the keys are the JWTKeys catalog, where a token
+	// without kid is verified by the legacy secret only, its oct keys
+	catalog bool
+	// configured says that there is key material: without it every bearer
+	// token is refused
+	configured bool
+	signing    []byte
+	aud        string
+	roleKey    *RoleClaimKey
 }
 
 // NewJWTVerifier checks the JWT configuration and builds its verifier.
@@ -125,11 +135,23 @@ func NewJWTVerifier(cfg JWTConfig) (*JWTVerifier, error) {
 	if err = checkAudience(cfg.Aud); err != nil {
 		return nil, err
 	}
-	v.secret = []byte(cfg.Secret)
+	secret := []byte(cfg.Secret)
 	if cfg.SecretIsBase64 && cfg.Secret != "" {
-		if v.secret, err = decodeBase64Secret(cfg.Secret); err != nil {
+		if secret, err = decodeBase64Secret(cfg.Secret); err != nil {
 			return nil, err
 		}
+	}
+	if len(secret) > 0 {
+		keys, passphrase := parseSecretKeys(secret)
+		v.keys, v.configured = keys, true
+		v.signing = signingKey(keys, passphrase)
+	}
+	if cfg.Keys != "" {
+		// the catalog verifies; the secret only signs /token tokens
+		if v.keys, err = parseKeyCatalog(cfg.Keys); err != nil {
+			return nil, err
+		}
+		v.catalog, v.configured = true, true
 	}
 	return v, nil
 }
@@ -138,8 +160,24 @@ func NewJWTVerifier(cfg JWTConfig) (*JWTVerifier, error) {
 func (v *JWTVerifier) RoleClaimKey() *RoleClaimKey { return v.roleKey }
 
 // SigningSecret is the HMAC key that GenerateToken signs with: the secret,
-// base64-decoded when JWTSecretIsBase64 is set.
-func (v *JWTVerifier) SigningSecret() string { return string(v.secret) }
+// base64-decoded when JWTSecretIsBase64 is set, or the one oct key that
+// verifies HS256 when the secret is a JWK or a JWK set; "" when there is none.
+func (v *JWTVerifier) SigningSecret() string { return string(v.signing) }
+
+// SignsWithCatalogKey says whether the tokens signed with SigningSecret, which
+// carry no kid, verify against the JWTKeys catalog: the secret is one of its
+// oct keys.
+func (v *JWTVerifier) SignsWithCatalogKey() bool {
+	if !v.catalog || len(v.signing) == 0 {
+		return false
+	}
+	for _, k := range v.candidates("HS256", nil) {
+		if bytes.Equal(k.key.([]byte), v.signing) {
+			return true
+		}
+	}
+	return false
+}
 
 // decodeBase64Secret decodes a base64 secret as PostgREST does (Config.hs,
 // decodeSecret): the URL-safe characters are mapped to the standard ones, "."
@@ -224,7 +262,7 @@ func GenerateToken(role, secret string, expiry ...time.Duration) (string, error)
 }
 
 func authenticate(tokenString string, v *JWTVerifier) (*Claims, error) {
-	if v == nil || len(v.secret) == 0 {
+	if v == nil || !v.configured {
 		return nil, ErrJWTSecretMissing
 	}
 	return v.verify(tokenString, time.Now())
@@ -237,18 +275,19 @@ func (v *JWTVerifier) verify(tokenString string, now time.Time) (*Claims, error)
 		return nil, decodeError(fmt.Sprintf("Expected 3 parts in JWT; got %d", len(parts)))
 	}
 	var header struct {
-		Alg string `json:"alg"`
+		Alg *string `json:"alg"`
+		Kid *string `json:"kid"`
 	}
 	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil || json.Unmarshal(headerJSON, &header) != nil {
+	if err != nil || json.Unmarshal(headerJSON, &header) != nil || header.Alg == nil {
 		return nil, decodeError("JWT cryptographic operation failed")
 	}
-	method := jwt.GetSigningMethod(header.Alg)
-	if method == nil || header.Alg == "none" {
-		return nil, decodeError("Wrong or unsupported encoding algorithm", "Unsupported algorithm "+header.Alg)
+	alg := *header.Alg
+	if alg == "none" {
+		return nil, decodeError("Wrong or unsupported encoding algorithm", "JWT is unsecured but expected 'alg' was not 'none'")
 	}
-	if header.Alg != "HS256" {
-		return nil, decodeError("No suitable key or wrong key type", "No suitable key was found to decode the JWT")
+	if !supportedAlg(alg) {
+		return nil, decodeError("JWT cryptographic operation failed")
 	}
 	// every part decodes before any key is tried, as in PostgREST: a payload
 	// that is not base64 fails the decoding, not the signature
@@ -260,7 +299,19 @@ func (v *JWTVerifier) verify(tokenString string, now time.Time) (*Claims, error)
 	if err != nil {
 		return nil, decodeError("JWT cryptographic operation failed")
 	}
-	if method.Verify(parts[0]+"."+parts[1], sig, v.secret) != nil {
+	keys := v.candidates(alg, header.Kid)
+	if len(keys) == 0 {
+		return nil, decodeError("No suitable key or wrong key type", "No suitable key was found to decode the JWT")
+	}
+	method, signed := jwt.GetSigningMethod(alg), parts[0]+"."+parts[1]
+	verified := false
+	for _, k := range keys {
+		if method.Verify(signed, sig, k.key) == nil {
+			verified = true
+			break
+		}
+	}
+	if !verified {
 		return nil, decodeError("No suitable key or wrong key type", "None of the keys was able to decode the JWT")
 	}
 	claims, ok := decodeClaims(payload)
@@ -271,6 +322,28 @@ func (v *JWTVerifier) verify(tokenString string, now time.Time) (*Claims, error)
 		return nil, err
 	}
 	return v.mapClaims(claims, payload), nil
+}
+
+// candidates are the keys that may verify a token with this alg and kid: the
+// keys of its type (or of that alg), and of the token's kid when it has one.
+// A token without kid is tried on every key, as jose does for PostgREST; with
+// the JWTKeys catalog only on its oct keys, the legacy secret.
+func (v *JWTVerifier) candidates(alg string, kid *string) []*jwk {
+	var keys []*jwk
+	for _, k := range v.keys {
+		if !slices.Contains(k.algs, alg) {
+			continue
+		}
+		if kid != nil {
+			if !k.hasKid || k.kid != *kid {
+				continue
+			}
+		} else if v.catalog && k.kty != "oct" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // decodeClaims decodes the payload, which must be a JSON object.
