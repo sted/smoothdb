@@ -188,11 +188,11 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
-		// 	it "can handle fts" $ do
+		// 	it "can handle fts on tsvector columns" $ do
 		// 	  get "/entities?or=(text_search_vector.fts.bar,text_search_vector.fts.baz)&select=id" `shouldRespondWith`
 		// 		[json|[{ "id": 1 }, { "id": 2 }]|] { matchHeaders = [matchContentTypeJson] }
 		{
-			Description: "can handle fts",
+			Description: "can handle fts on tsvector columns",
 			Query:       "/entities?or=(text_search_vector.fts.bar,text_search_vector.fts.baz)&select=id",
 			Expected:    `[{"id":1},{"id":2}]`,
 			Headers:     nil,
@@ -205,7 +205,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 		  {"text_search_vector": "'art':4 'spass':5 'unmog':7"}
 		// 		]|] { matchHeaders = [matchContentTypeJson] }
 		{
-			Description: "can handle fts",
+			Description: "can handle fts on tsvector columns",
 			Query:       "/tsearch?or=(text_search_vector.plfts(german).Art%20Spass, text_search_vector.plfts(french).amusant%20impossible, text_search_vector.fts(english).impossible)",
 			Expected: `[
 						  {"text_search_vector": "'fun':5 'imposs':9 'kind':3" },
@@ -214,6 +214,42 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 						]`,
 			Headers: nil,
 			Status:  200,
+		},
+		// 	it "can handle fts on text and json columns" $ do
+		// 	  get "/grandchild_entities?or=(jsonb_col.fts.bar,jsonb_col.fts.foo)&select=jsonb_col"
+		// 	    `shouldRespondWith` [json|[
+		// 	      { "jsonb_col": {"a": {"b":"foo"}} },
+		// 	      { "jsonb_col": {"b":"bar"} }]
+		// 	    |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
+		{
+			Description: "can handle fts on text and json columns",
+			Query:       "/grandchild_entities?or=(jsonb_col.fts.bar,jsonb_col.fts.foo)&select=jsonb_col",
+			Expected:    `[{"jsonb_col": {"a": {"b":"foo"}}}, {"jsonb_col": {"b":"bar"}}]`,
+			Status:      200,
+		},
+		// 	  get "/tsearch_to_tsvector?and=(text_search.not.plfts(german).Art%20Spass, text_search.not.plfts(french).amusant%20impossible, text_search.not.fts(english).impossible)&select=text_search"
+		// 	    `shouldRespondWith` [json|[
+		// 	      { "text_search": "But also fun to do what is possible" },
+		// 	      { "text_search": "Fat cats ate rats" }]
+		// 	    |]
+		// 	      { matchHeaders = [matchContentTypeJson]
+		// 	      }
+		{
+			Description: "can handle fts on text and json columns",
+			Query:       "/tsearch_to_tsvector?and=(text_search.not.plfts(german).Art%20Spass, text_search.not.plfts(french).amusant%20impossible, text_search.not.fts(english).impossible)&select=text_search",
+			Expected:    `[{"text_search": "But also fun to do what is possible"}, {"text_search": "Fat cats ate rats"}]`,
+			Status:      200,
+		},
+		// 	it "can handle isdistinct" $
+		// 	  get "/entities?and=(id.gte.2,arr.isdistinct.{1,2})&select=id"
+		// 	    `shouldRespondWith` [json|[{ "id": 3 }, { "id": 4 }]|]{matchHeaders = [matchContentTypeJson]}
+		{
+			Description: "can handle isdistinct",
+			Query:       "/entities?and=(id.gte.2,arr.isdistinct.{1,2})&select=id",
+			Expected:    `[{"id":3},{"id":4}]`,
+			Status:      200,
 		},
 		// 	when (actualPgVersion >= pgVersion112) $
 		// 	  it "can handle wfts (websearch_to_tsquery)" $
@@ -378,6 +414,14 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
+		// 	  get "/ranges?range=isdistinct.[1,3]&select=id"
+		// 	    `shouldRespondWith` [json|[{ "id": 2 }, { "id": 3 }, { "id": 4 }, {"id": 5}]|]{matchHeaders = [matchContentTypeJson]}
+		{
+			Description: "can handle range operators",
+			Query:       "/ranges?range=isdistinct.[1,3]&select=id",
+			Expected:    `[{"id":2},{"id":3},{"id":4},{"id":5}]`,
+			Status:      200,
+		},
 		// @@ added: the upstream cases only filter on the range column, never
 		// select it; a range is returned as the string to_json prints for it
 		{
@@ -508,6 +552,14 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
+		// 	  get "/entities?arr=isdistinct.{1,2}&select=id"
+		// 	    `shouldRespondWith` [json|[{ "id": 1 }, { "id": 3 }, { "id": 4 }]|]{matchHeaders = [matchContentTypeJson]}
+		{
+			Description: "can handle array operators",
+			Query:       "/entities?arr=isdistinct.{1,2}&select=id",
+			Expected:    `[{"id":1},{"id":3},{"id":4}]`,
+			Status:      200,
+		},
 		// 	context "operators with not" $ do
 		// 	  it "eq, cs, like can be negated" $
 		// 		get "/entities?and=(arr.not.cs.{1,2,3},and(id.not.eq.2,name.not.like.*3))&select=id" `shouldRespondWith`
@@ -563,6 +615,15 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:     nil,
 			Status:      200,
 		},
+		// 	  it "isdistinct can be negated" $
+		// 	    get "/entities?and=(id.not.eq.2,arr.not.isdistinct.{1,2,3})&select=id"
+		// 	      `shouldRespondWith` [json|[{"id": 3}]|]{matchHeaders = [matchContentTypeJson]}
+		{
+			Description: "isdistinct can be negated",
+			Query:       "/entities?and=(id.not.eq.2,arr.not.isdistinct.{1,2,3})&select=id",
+			Expected:    `[{"id":3}]`,
+			Status:      200,
+		},
 
 		//   context "and/or params with quotes" $ do
 		// 	it "eq can have quotes" $
@@ -610,7 +671,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 		// 	it "cannot have zero conditions" $
 		// 	  get "/entities?or=()" `shouldRespondWith`
 		// 		[json|{
-		// 		  "details": "unexpected \")\" expecting field name (* or [a..z0..9_]), negation operator (not) or logic operator (and, or)",
+		// 		  "details": "unexpected \")\" expecting field name (* or [a..z0..9_$]), negation operator (not) or logic operator (and, or)",
 		// 		  "message": "\"failed to parse logic tree (())\" (line 1, column 4)",
 		// 		  "code": "PGRST100",
 		// 		  "hint": null
@@ -735,6 +796,36 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Expected:    `[{ "id": 1, "name" : "updated grandchild entity"},{ "id": 2, "name" : "updated grandchild entity"}]`,
 			Status:      200,
 		},
+		//   it "succeeds when the filtered column is modified" $
+		//     request methodPatch "/entities?select=id,name&or=(name.is.null,name.like.*test*)"
+		//       [("Prefer", "return=representation")]
+		//       [json|{ "name" : "updated entity" }|]
+		//       `shouldRespondWith` [json|[{ "id": 4, "name": "updated entity" }]|]
+		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "used with PATCH succeeds when the filtered column is modified",
+			Method:      "PATCH",
+			Query:       "/entities?select=id,name&or=(name.is.null,name.like.*test*)",
+			Body:        `{ "name" : "updated entity" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "id": 4, "name": "updated entity" }]`,
+			Status:      200,
+		},
+		//   it "succeeds when the filtered column is not selected in the returned representation" $
+		//     request methodPatch "/entities?select=id&or=(name.is.null,name.like.*test*)"
+		//       [("Prefer", "return=representation")]
+		//       [json|{ "name" : "updated entity" }|]
+		//       `shouldRespondWith` [json|[{ "id": 4 }]|]
+		//         { matchHeaders = [matchContentTypeJson] }
+		{
+			Description: "used with PATCH succeeds when the filtered column is not selected in the returned representation",
+			Method:      "PATCH",
+			Query:       "/entities?select=id&or=(name.is.null,name.like.*test*)",
+			Body:        `{ "name" : "updated entity" }`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "id": 4 }]`,
+			Status:      200,
+		},
 		// context "used with DELETE" $
 		//   it "succeeds when using and/or params" $
 		// 	request methodDelete "/grandchild_entities?or=(id.eq.1,id.eq.2)&select=id,name"
@@ -751,6 +842,19 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Expected:    `[{ "id": 1, "name" : "grandchild entity 1" },{ "id": 2, "name" : "grandchild entity 2" }]`,
 			Status:      200,
 		},
+		//   it "succeeds when the filtered column is not selected in the returned representation" $
+		//     request methodDelete "/entities?select=id&or=(name.is.null,name.like.*test*)"
+		//       [("Prefer", "return=representation")]
+		//       ""
+		//       `shouldRespondWith` [json|[{ "id": 4 }]|]
+		{
+			Description: "used with DELETE succeeds when the filtered column is not selected in the returned representation",
+			Method:      "DELETE",
+			Query:       "/entities?select=id&or=(name.is.null,name.like.*test*)",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{ "id": 4 }]`,
+			Status:      200,
+		},
 		// it "can query columns that begin with and/or reserved words" $
 		//   get "/grandchild_entities?or=(and_starting_col.eq.smth, or_starting_col.eq.smth)" `shouldRespondWith` 200
 		{
@@ -760,6 +864,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Expected:    ``,
 			Status:      200,
 		},
+		// The two cases below are no longer in AndOrParamsSpec at v16.4.
 		// it "fails when using IN without () and provides meaningful error message" $
 		//   get "/entities?or=(id.in.1,2,id.eq.3)" `shouldRespondWith`
 		// 	[json|{
