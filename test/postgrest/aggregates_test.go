@@ -149,21 +149,24 @@ func TestPostgREST_Aggregates(t *testing.T) {
 			Status:      200,
 		},
 
-		// // performing a count by using it as a column (backwards compat)
-		// {
-		// 	Description: "returns the count of all rows when no other fields are selected (backwards compat)",
-		// 	Query:       "/entities?select=count",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"count":4}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "returns the embedded count of another resource",
-		// 	Query:       "/clients?select=name,projects(count)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"name":"Microsoft","projects":[{"count":2}]},{"name":"Apple","projects":[{"count":2}]}]`,
-		// 	Status:      200,
-		// },
+		// performing a count by using it as a column (backwards compat)
+		{
+			Description: "returns the count of all rows when no other fields are selected (backwards compat)",
+			Query:       "/entities?select=count",
+			Headers:     nil,
+			Expected:    `[{"count":4}]`,
+			Status:      200,
+		},
+		// The spec's URL ends with a stray apostrophe, "projects(count)'",
+		// which PostgREST 16.4 ignores and smoothdb refuses with a 400; the
+		// case is about the count column, so it is ported without it.
+		{
+			Description: "returns the embedded count of another resource",
+			Query:       "/clients?select=name,projects(count)",
+			Headers:     nil,
+			Expected:    `[{"name":"Microsoft","projects":[{"count":2}]},{"name":"Apple","projects":[{"count":2}]}]`,
+			Status:      200,
+		},
 
 		// performing an aggregation on one or more fields
 		{
@@ -250,13 +253,14 @@ func TestPostgREST_Aggregates(t *testing.T) {
 			Expected:    `[{"max":5}]`,
 			Status:      200,
 		},
-		// {
-		// 	Description: "allows the use of an JSON-embedded relationship column as part of the group by",
-		// 	Query:       "/project_invoices?select=project_id,total:invoice_total.sum(),projects(name)&order=project_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"project_id":1,"total":300,"projects":{"name":"Windows 7"}},{"project_id":2,"total":1200,"projects":{"name":"Windows 10"}},{"project_id":3,"total":3200,"projects":{"name":"IOS"}},{"project_id":4,"total":4100,"projects":{"name":"OSX"}}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "allows the use of an JSON-embedded relationship column as part of the group by",
+			Query:       "/project_invoices?select=project_id,total:invoice_total.sum(),projects(name)&order=project_id",
+			Headers:     nil,
+			Expected:    `[{"project_id":1,"total":300,"projects":{"name":"Windows 7"}},{"project_id":2,"total":1200,"projects":{"name":"Windows 10"}},{"project_id":3,"total":3200,"projects":{"name":"IOS"}},{"project_id":4,"total":4100,"projects":{"name":"OSX"}}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: a to-one embed column beside an aggregate enters GROUP BY; card 32481 (embed aggregates)",
+		},
 
 		// performing aggregations that involve JSON-embedded relationships
 		{
@@ -297,164 +301,186 @@ func TestPostgREST_Aggregates(t *testing.T) {
 
 		// performing aggregations on spreaded fields from an embedded resource
 		// to-one spread relationships
-		// {
-		// 	Description: "supports the use of aggregates on spreaded fields",
-		// 	Query:       "/budget_expenses?select=total_expenses:expense_amount.sum(),...budget_categories(budget_owner,total_budget:budget_amount.sum())&order=budget_categories(budget_owner)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"total_expenses":600.52,"budget_owner":"Brian Smith","total_budget":2000.42},{"total_expenses":100.22,"budget_owner":"Jane Clarkson","total_budget":7000.41},{"total_expenses":900.27,"budget_owner":"Sally Hughes","total_budget":500.23}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports the use of aggregates on spreaded fields when only aggregates are supplied",
-		// 	Query:       "/budget_expenses?select=...budget_categories(total_budget:budget_amount.sum())",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"total_budget":9501.06}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates from a spread relationships grouped by spreaded fields from other relationships",
-		// 	Query:       "/processes?select=...process_costs(cost.sum()),...process_categories(name)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"sum":400.00,"name":"Batch"},{"sum":350.00,"name":"Mass"}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates from a spread relationships grouped by spreaded fields from other relationships with aliases",
-		// 	Query:       "/processes?select=...process_costs(cost_sum:cost.sum()),...process_categories(category:name)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"cost_sum":400.00,"category":"Batch"},{"cost_sum":350.00,"category":"Mass"}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships",
-		// 	Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(cost.sum()))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory_id":3,"sum":110.00},{"factory_id":2,"sum":500.00},{"factory_id":1,"sum":350.00}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships with aliases",
-		// 	Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(cost_sum:cost.sum()))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory_id":3,"cost_sum":110.00},{"factory_id":2,"cost_sum":500.00},{"factory_id":1,"cost_sum":350.00}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by a regular nested relationship",
-		// 	Query:       "/process_supervisor?select=...processes(factories(name),...process_costs(cost.sum()))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factories":{"name":"Factory A"},"sum":350.00},{"factories":{"name":"Factory B"},"sum":500.00},{"factories":{"name":"Factory C"},"sum":110.00}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by a regular nested relationship with aliases",
-		// 	Query:       "/process_supervisor?select=...processes(factory:factories(name),...process_costs(cost_sum:cost.sum()))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory":{"name":"Factory A"},"cost_sum":350.00},{"factory":{"name":"Factory B"},"cost_sum":500.00},{"factory":{"name":"Factory C"},"cost_sum":110.00}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships",
-		// 	Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(cost.sum()),...process_categories(name))&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor_id":1,"sum":220.00,"name":"Batch"},{"supervisor_id":2,"sum":70.00,"name":"Batch"},{"supervisor_id":2,"sum":200.00,"name":"Mass"},{"supervisor_id":3,"sum":180.00,"name":"Batch"},{"supervisor_id":3,"sum":110.00,"name":"Mass"},{"supervisor_id":4,"sum":180.00,"name":"Batch"}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships with aliases",
-		// 	Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(cost_sum:cost.sum()),...process_categories(category:name))&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor_id":1,"cost_sum":220.00,"category":"Batch"},{"supervisor_id":2,"cost_sum":70.00,"category":"Batch"},{"supervisor_id":2,"cost_sum":200.00,"category":"Mass"},{"supervisor_id":3,"cost_sum":180.00,"category":"Batch"},{"supervisor_id":3,"cost_sum":110.00,"category":"Mass"},{"supervisor_id":4,"cost_sum":180.00,"category":"Batch"}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships, using a nested relationship as top parent",
-		// 	Query:       "/supervisors?select=name,process_supervisor(...processes(...process_costs(cost.sum()),...process_categories(name)))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"name":"Mary","process_supervisor":[{"name":"Batch","sum":220.00}]},{"name":"John","process_supervisor":[{"name":"Batch","sum":70.00},{"name":"Mass","sum":200.00}]},{"name":"Peter","process_supervisor":[{"name":"Batch","sum":180.00},{"name":"Mass","sum":110.00}]},{"name":"Sarah","process_supervisor":[{"name":"Batch","sum":180.00}]},{"name":"Jane","process_supervisor":[]}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships, using a nested relationship as top parent with aliases",
-		// 	Query:       "/supervisors?select=name,process_supervisor(...processes(...process_costs(cost_sum:cost.sum()),...process_categories(category:name)))",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"name":"Mary","process_supervisor":[{"category":"Batch","cost_sum":220.00}]},{"name":"John","process_supervisor":[{"category":"Batch","cost_sum":70.00},{"category":"Mass","cost_sum":200.00}]},{"name":"Peter","process_supervisor":[{"category":"Batch","cost_sum":180.00},{"category":"Mass","cost_sum":110.00}]},{"name":"Sarah","process_supervisor":[{"category":"Batch","cost_sum":180.00}]},{"name":"Jane","process_supervisor":[]}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "supports the use of aggregates on spreaded fields",
+			Query:       "/budget_expenses?select=total_expenses:expense_amount.sum(),...budget_categories(budget_owner,total_budget:budget_amount.sum())&order=budget_categories(budget_owner)",
+			Headers:     nil,
+			Expected:    `[{"total_expenses":600.52,"budget_owner":"Brian Smith","total_budget":2000.42},{"total_expenses":100.22,"budget_owner":"Jane Clarkson","total_budget":7000.41},{"total_expenses":900.27,"budget_owner":"Sally Hughes","total_budget":500.23}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports the use of aggregates on spreaded fields when only aggregates are supplied",
+			Query:       "/budget_expenses?select=...budget_categories(total_budget:budget_amount.sum())",
+			Headers:     nil,
+			Expected:    `[{"total_budget":9501.06}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates from a spread relationships grouped by spreaded fields from other relationships",
+			Query:       "/processes?select=...process_costs(cost.sum()),...process_categories(name)&order=process_categories(name)",
+			Headers:     nil,
+			Expected:    `[{"sum":400.00,"name":"Batch"},{"sum":350.00,"name":"Mass"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates from a spread relationships grouped by spreaded fields from other relationships with aliases",
+			Query:       "/processes?select=...process_costs(cost_sum:cost.sum()),...process_categories(category:name)&order=process_categories(category)",
+			Headers:     nil,
+			Expected:    `[{"cost_sum":400.00,"category":"Batch"},{"cost_sum":350.00,"category":"Mass"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships",
+			Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(cost.sum()))&order=processes(factory_id).desc",
+			Headers:     nil,
+			Expected:    `[{"factory_id":3,"sum":110.00},{"factory_id":2,"sum":500.00},{"factory_id":1,"sum":350.00}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships with aliases",
+			Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(cost_sum:cost.sum()))&order=processes(factory_id).desc",
+			Headers:     nil,
+			Expected:    `[{"factory_id":3,"cost_sum":110.00},{"factory_id":2,"cost_sum":500.00},{"factory_id":1,"cost_sum":350.00}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by a regular nested relationship",
+			Query:       "/process_supervisor?select=...processes(factories(name),...process_costs(cost.sum()))",
+			Headers:     nil,
+			Expected:    `[{"factories":{"name":"Factory A"},"sum":350.00},{"factories":{"name":"Factory B"},"sum":500.00},{"factories":{"name":"Factory C"},"sum":110.00}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by a regular nested relationship with aliases",
+			Query:       "/process_supervisor?select=...processes(factory:factories(name),...process_costs(cost_sum:cost.sum()))",
+			Headers:     nil,
+			Expected:    `[{"factory":{"name":"Factory A"},"cost_sum":350.00},{"factory":{"name":"Factory B"},"cost_sum":500.00},{"factory":{"name":"Factory C"},"cost_sum":110.00}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships",
+			Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(cost.sum()),...process_categories(name))&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor_id":1,"sum":220.00,"name":"Batch"},{"supervisor_id":2,"sum":70.00,"name":"Batch"},{"supervisor_id":2,"sum":200.00,"name":"Mass"},{"supervisor_id":3,"sum":180.00,"name":"Batch"},{"supervisor_id":3,"sum":110.00,"name":"Mass"},{"supervisor_id":4,"sum":180.00,"name":"Batch"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships with aliases",
+			Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(cost_sum:cost.sum()),...process_categories(category:name))&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor_id":1,"cost_sum":220.00,"category":"Batch"},{"supervisor_id":2,"cost_sum":70.00,"category":"Batch"},{"supervisor_id":2,"cost_sum":200.00,"category":"Mass"},{"supervisor_id":3,"cost_sum":180.00,"category":"Batch"},{"supervisor_id":3,"cost_sum":110.00,"category":"Mass"},{"supervisor_id":4,"cost_sum":180.00,"category":"Batch"}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships, using a nested relationship as top parent",
+			Query:       "/supervisors?select=name,process_supervisor(...processes(...process_costs(cost.sum()),...process_categories(name)))",
+			Headers:     nil,
+			Expected:    `[{"name":"Mary","process_supervisor":[{"name":"Batch","sum":220.00}]},{"name":"John","process_supervisor":[{"name":"Batch","sum":70.00},{"name":"Mass","sum":200.00}]},{"name":"Peter","process_supervisor":[{"name":"Batch","sum":180.00},{"name":"Mass","sum":110.00}]},{"name":"Sarah","process_supervisor":[{"name":"Batch","sum":180.00}]},{"name":"Jane","process_supervisor":[]}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "supports aggregates on spreaded fields from nested relationships, grouped by spreaded fields from other nested relationships, using a nested relationship as top parent with aliases",
+			Query:       "/supervisors?select=name,process_supervisor(...processes(...process_costs(cost_sum:cost.sum()),...process_categories(category:name)))",
+			Headers:     nil,
+			Expected:    `[{"name":"Mary","process_supervisor":[{"category":"Batch","cost_sum":220.00}]},{"name":"John","process_supervisor":[{"category":"Batch","cost_sum":70.00},{"category":"Mass","cost_sum":200.00}]},{"name":"Peter","process_supervisor":[{"category":"Batch","cost_sum":180.00},{"category":"Mass","cost_sum":110.00}]},{"name":"Sarah","process_supervisor":[{"category":"Batch","cost_sum":180.00}]},{"name":"Jane","process_supervisor":[]}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
 
 		// supports count() aggregate without specifying a field
-		// {
-		// 	Description: "works by itself in the embedded resource",
-		// 	Query:       "/process_supervisor?select=supervisor_id,...processes(count())&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor_id":1,"count":2},{"supervisor_id":2,"count":2},{"supervisor_id":3,"count":3},{"supervisor_id":4,"count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works by itself in the embedded resource with alias",
-		// 	Query:       "/process_supervisor?select=supervisor_id,...processes(processes_count:count())&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor_id":1,"processes_count":2},{"supervisor_id":2,"processes_count":2},{"supervisor_id":3,"processes_count":3},{"supervisor_id":4,"processes_count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works alongside other columns in the embedded resource",
-		// 	Query:       "/process_supervisor?select=...supervisors(id,count())&order=supervisors(id)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"id":1,"count":2},{"id":2,"count":2},{"id":3,"count":3},{"id":4,"count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works alongside other columns in the embedded resource with aliases",
-		// 	Query:       "/process_supervisor?select=...supervisors(supervisor:id,supervisor_count:count())&order=supervisors(supervisor)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor":1,"supervisor_count":2},{"supervisor":2,"supervisor_count":2},{"supervisor":3,"supervisor_count":3},{"supervisor":4,"supervisor_count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works on nested resources",
-		// 	Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(count()))&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor_id":1,"count":2},{"supervisor_id":2,"count":2},{"supervisor_id":3,"count":3},{"supervisor_id":4,"count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works on nested resources with aliases",
-		// 	Query:       "/process_supervisor?select=supervisor:supervisor_id,...processes(...process_costs(process_costs_count:count()))&order=supervisor_id",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"supervisor":1,"process_costs_count":2},{"supervisor":2,"process_costs_count":2},{"supervisor":3,"process_costs_count":3},{"supervisor":4,"process_costs_count":1}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works on nested resources grouped by spreaded fields",
-		// 	Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(count()))&order=processes(factory_id)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory_id":1,"count":2},{"factory_id":2,"count":4},{"factory_id":3,"count":2}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works on nested resources grouped by spreaded fields with aliases",
-		// 	Query:       "/process_supervisor?select=...processes(factory:factory_id,...process_costs(process_costs_count:count()))&order=processes(factory)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory":1,"process_costs_count":2},{"factory":2,"process_costs_count":4},{"factory":3,"process_costs_count":2}]`,
-		// 	Status:      200,
-		// },
-		// {
-		// 	Description: "works on different levels of the nested resources at the same time",
-		// 	Query:       "/process_supervisor?select=...processes(factory:factory_id,processes_count:count(),...process_costs(process_costs_count:count()))&order=processes(factory)",
-		// 	Headers:     nil,
-		// 	Expected:    `[{"factory":1,"processes_count":2,"process_costs_count":2},{"factory":2,"processes_count":4,"process_costs_count":4},{"factory":3,"processes_count":2,"process_costs_count":2}]`,
-		// 	Status:      200,
-		// },
+		{
+			Description: "works by itself in the embedded resource",
+			Query:       "/process_supervisor?select=supervisor_id,...processes(count())&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor_id":1,"count":2},{"supervisor_id":2,"count":2},{"supervisor_id":3,"count":3},{"supervisor_id":4,"count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works by itself in the embedded resource with alias",
+			Query:       "/process_supervisor?select=supervisor_id,...processes(processes_count:count())&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor_id":1,"processes_count":2},{"supervisor_id":2,"processes_count":2},{"supervisor_id":3,"processes_count":3},{"supervisor_id":4,"processes_count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works alongside other columns in the embedded resource",
+			Query:       "/process_supervisor?select=...supervisors(id,count())&order=supervisors(id)",
+			Headers:     nil,
+			Expected:    `[{"id":1,"count":2},{"id":2,"count":2},{"id":3,"count":3},{"id":4,"count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works alongside other columns in the embedded resource with aliases",
+			Query:       "/process_supervisor?select=...supervisors(supervisor:id,supervisor_count:count())&order=supervisors(supervisor)",
+			Headers:     nil,
+			Expected:    `[{"supervisor":1,"supervisor_count":2},{"supervisor":2,"supervisor_count":2},{"supervisor":3,"supervisor_count":3},{"supervisor":4,"supervisor_count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works on nested resources",
+			Query:       "/process_supervisor?select=supervisor_id,...processes(...process_costs(count()))&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor_id":1,"count":2},{"supervisor_id":2,"count":2},{"supervisor_id":3,"count":3},{"supervisor_id":4,"count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works on nested resources with aliases",
+			Query:       "/process_supervisor?select=supervisor:supervisor_id,...processes(...process_costs(process_costs_count:count()))&order=supervisor_id",
+			Headers:     nil,
+			Expected:    `[{"supervisor":1,"process_costs_count":2},{"supervisor":2,"process_costs_count":2},{"supervisor":3,"process_costs_count":3},{"supervisor":4,"process_costs_count":1}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works on nested resources grouped by spreaded fields",
+			Query:       "/process_supervisor?select=...processes(factory_id,...process_costs(count()))&order=processes(factory_id)",
+			Headers:     nil,
+			Expected:    `[{"factory_id":1,"count":2},{"factory_id":2,"count":4},{"factory_id":3,"count":2}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works on nested resources grouped by spreaded fields with aliases",
+			Query:       "/process_supervisor?select=...processes(factory:factory_id,...process_costs(process_costs_count:count()))&order=processes(factory)",
+			Headers:     nil,
+			Expected:    `[{"factory":1,"process_costs_count":2},{"factory":2,"process_costs_count":4},{"factory":3,"process_costs_count":2}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
+		{
+			Description: "works on different levels of the nested resources at the same time",
+			Query:       "/process_supervisor?select=...processes(factory:factory_id,processes_count:count(),...process_costs(process_costs_count:count()))&order=processes(factory)",
+			Headers:     nil,
+			Expected:    `[{"factory":1,"processes_count":2,"process_costs_count":2},{"factory":2,"processes_count":4,"process_costs_count":4},{"factory":3,"processes_count":2,"process_costs_count":2}]`,
+			Status:      200,
+			Skip:        "PostgREST 16.4: aggregates inside a to-one spread, grouped by its columns; card 35070 (spread aggregates)",
+		},
 
 		// to-many spread relationships
-		// {
-		// 	Description: "does not support the use of aggregates on to-many spreads",
-		// 	Query:       "/factories?select=name,...factory_buildings(type,size.sum())",
-		// 	Headers:     nil,
-		// 	Expected:    `{"code":"PGRST127","message":"Feature not implemented","details":"Aggregates are not implemented for one-to-many or many-to-many spreads.","hint":null}`,
-		// 	Status:      400,
-		// },
+		{
+			Description: "does not support the use of aggregates on to-many spreads",
+			Query:       "/factories?select=name,...factory_buildings(type,size.sum())",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"Feature not implemented","code":"PGRST127","hint":"","details":"Aggregates are not implemented for one-to-many or many-to-many spreads.","position":0}`,
+			Status:      400,
+			Skip:        "PostgREST 16.4: PGRST127 for an aggregate in a to-many spread; card 35070 (spread aggregates)",
+		},
 
 		// @@ added: aggregates on a function call group by the plain columns
 		// as on a table (card 33885 ranged-206, item 3: there was no GROUP BY,
@@ -482,38 +508,47 @@ func TestPostgREST_Aggregates(t *testing.T) {
 	test.Execute(t, testConfig, tests)
 }
 
+// TestPostgREST_AggregatesDisallowed ports the spec's "disallowed", which runs
+// PostgREST with db-aggregates-enabled off. The suite's server has aggregates
+// on, so the cases are skipped. Run by hand with Database.AggregatesEnabled
+// false, smoothdb answers each with a 400 and this message, code "" for
+// PGRST123, card 32494 (error taxonomy).
 func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 
 	tests := []test.Test{
 		// attempting to use an aggregate when aggregate functions are disallowed
-		// {
-		// 	Description: "prevents the use of aggregates",
-		// 	Query:       "/project_invoices?select=invoice_total.sum()",
-		// 	Headers:     nil,
-		// 	Expected:    `{"hint":null,"details":null,"code":"PGRST123","message":"Use of aggregate functions is not allowed"}`,
-		// 	Status:      400,
-		// },
-		// {
-		// 	Description: "prevents the use of aggregates on embedded relationships",
-		// 	Query:       "/projects?select=name,project_invoices(invoice_total.sum())",
-		// 	Headers:     nil,
-		// 	Expected:    `{"hint":null,"details":null,"code":"PGRST123","message":"Use of aggregate functions is not allowed"}`,
-		// 	Status:      400,
-		// },
-		// {
-		// 	Description: "prevents the use of aggregates on to-one spread embeds",
-		// 	Query:       "/project_invoices?select=...projects(id.count())",
-		// 	Headers:     nil,
-		// 	Expected:    `{"hint":null,"details":null,"code":"PGRST123","message":"Use of aggregate functions is not allowed"}`,
-		// 	Status:      400,
-		// },
-		// {
-		// 	Description: "prevents the use of aggregates on to-many spread embeds",
-		// 	Query:       "/factories?select=...processes(id.count())",
-		// 	Headers:     nil,
-		// 	Expected:    `{"hint":null,"details":null,"code":"PGRST123","message":"Use of aggregate functions is not allowed"}`,
-		// 	Status:      400,
-		// },
+		{
+			Description: "prevents the use of aggregates",
+			Query:       "/project_invoices?select=invoice_total.sum()",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
+			Status:      400,
+			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
+		},
+		{
+			Description: "prevents the use of aggregates on embedded relationships",
+			Query:       "/projects?select=name,project_invoices(invoice_total.sum())",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
+			Status:      400,
+			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
+		},
+		{
+			Description: "prevents the use of aggregates on to-one spread embeds",
+			Query:       "/project_invoices?select=...projects(id.count())",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
+			Status:      400,
+			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
+		},
+		{
+			Description: "prevents the use of aggregates on to-many spread embeds",
+			Query:       "/factories?select=...processes(id.count())",
+			Headers:     nil,
+			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
+			Status:      400,
+			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
