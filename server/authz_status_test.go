@@ -103,7 +103,7 @@ func newAuthzServer(t *testing.T, port string, config map[string]any) *Server {
 	for k, v := range config {
 		base[k] = v
 	}
-	return newTestServer(t, base)
+	return newPinnedTestServer(t, base)
 }
 
 // The status of an authorization outcome follows PostgREST (Error.hs,

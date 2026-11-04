@@ -19,6 +19,19 @@ import (
 // so a local override just works.
 func newTestServer(t *testing.T, config map[string]any) *Server {
 	t.Helper()
+	return buildTestServer(t, config, false)
+}
+
+// newPinnedTestServer builds a server that ignores the SMOOTHDB_* environment.
+// Use it when a test sets its own authenticator, roles or secret: CI exports
+// SMOOTHDB_DATABASE_URL, which would replace the test's URL with a superuser.
+func newPinnedTestServer(t *testing.T, config map[string]any) *Server {
+	t.Helper()
+	return buildTestServer(t, config, true)
+}
+
+func buildTestServer(t *testing.T, config map[string]any, skipEnv bool) *Server {
+	t.Helper()
 	base := map[string]any{
 		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
 		"Logging.FileLogging": false,
@@ -30,6 +43,7 @@ func newTestServer(t *testing.T, config map[string]any) *Server {
 	s, err := NewServerWithConfig(base, &ConfigOptions{
 		ConfigFilePath: filepath.Join(t.TempDir(), "config.jsonc"),
 		SkipFlags:      true,
+		SkipEnv:        skipEnv,
 	})
 	if err != nil {
 		t.Fatal(err)
