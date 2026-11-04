@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.11.0 - 2026-11-04
 
 **PostgREST 16.4 spec cases: 1091 run, 532 skipped (67.2%)**, the first count: until now the cases smoothdb did not pass were comments, invisible to the suite (see test/postgrest/README.md).
 
