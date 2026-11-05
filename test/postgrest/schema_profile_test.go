@@ -157,3 +157,58 @@ func TestPostgREST_RootListsOneSchema(t *testing.T) {
 		}
 	})
 }
+
+// Card 38674 info-leak. GET /$info/:table described a table of any schema
+// the Accept-Profile header named: columns, types, constraints and owner of a
+// table the API does not expose. It refuses a schema that is not exposed
+// with the 406 of the other routes. PostgREST has no such route; its schema
+// description, the root OpenAPI, covers the exposed schemas only. The /admin
+// description of a table still reaches every schema.
+func TestPostgREST_InfoDescribesOnlyExposedTables(t *testing.T) {
+	test.Execute(t, testConfig, []test.Test{
+		{
+			Description: "$info refuses a table of a schema that is not exposed",
+			Query:       "/$info/internal_job",
+			Headers:     test.Headers{"Accept-Profile": {"private"}},
+			Expected:    `{"subsystem":"network","message":"Invalid schema: private","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Status:      406,
+		},
+	})
+	client := test.InitClient()
+	describe := func(t *testing.T, config test.Config, query string, headers test.Headers) (name, schema string) {
+		t.Helper()
+		body, _, status, err := test.Exec(client, config, &test.Command{Query: query, Headers: headers})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != 200 {
+			t.Fatalf("GET %s %v: %d %s", query, headers, status, body)
+		}
+		var table struct {
+			Name   string `json:"name"`
+			Schema string `json:"schema"`
+		}
+		if err := json.Unmarshal(body, &table); err != nil {
+			t.Fatalf("GET %s: %v in %s", query, err, body)
+		}
+		return table.Name, table.Schema
+	}
+	t.Run("$info on an exposed table", func(t *testing.T) {
+		if name, schema := describe(t, testConfig, "/$info/clients", nil); name != "clients" || schema != "test" {
+			t.Errorf("got %s.%s, want test.clients", schema, name)
+		}
+	})
+	t.Run("the admin description still reaches a hidden schema", func(t *testing.T) {
+		token, err := authn.GenerateToken("postgres", "reallyreallyreallyreallyverysafe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		admin := test.Config{
+			BaseUrl:       "http://localhost:8084/admin",
+			CommonHeaders: test.Headers{"Authorization": {token}},
+		}
+		if name, schema := describe(t, admin, "/databases/pgrest/tables/internal_job", test.Headers{"Accept-Profile": {"private"}}); name != "internal_job" || schema != "private" {
+			t.Errorf("got %s.%s, want private.internal_job", schema, name)
+		}
+	})
+}

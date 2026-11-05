@@ -87,6 +87,16 @@ func listTables(ctx context.Context, filter string, args ...any) ([]Table, error
 	return tables, nil
 }
 
+// GetSchemaTable describes a table of the request's schema, refusing a
+// schema outside Database.ExposedSchemas like the other API routes (406). It
+// serves /$info/:table; /admin uses GetTable, which reaches every schema.
+func GetSchemaTable(ctx context.Context, name string) (*Table, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, err
+	}
+	return GetTable(ctx, name)
+}
+
 func GetTable(ctx context.Context, name string, schemas ...string) (*Table, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
 	if len(schemas) > 0 && schemas[0] != "" {

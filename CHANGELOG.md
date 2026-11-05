@@ -5,6 +5,9 @@
 **PostgREST 16.4 spec cases: 1097 run, 528 skipped (67.5%)**
 
 ### Fixed
+* **`$info` describes only exposed tables** — `GET /api/<db>/$info/:table` refuses a schema that is not exposed with a 406, as the other routes do.
+* **CSV arrays and composites as PostgreSQL writes them** — an array or a composite column is PostgreSQL's literal (`"{1,2,3}"`, `"(1,""a b"")"`) in one quoted field, as in PostgREST, instead of unquoted JSON that split the row.
+* **float8 in plain notation up to 1e15** — `1234567` instead of `1.234567e+06`, as `to_json` writes it.
 * **Writes refuse the filters they do not apply** — a PATCH or DELETE with a filter on an embed it does not select, or with `start.`/`recurse.`, is a 400 (PGRST108 in PostgREST): it used to drop the filter and write every row.
 * **The transaction ends before the response** — a write's COMMIT runs before its status is sent, so a COMMIT that fails (a deferred constraint) answers its error instead of a 2xx, as in PostgREST.
 * **A failed representation rolls the write back** — with `TransactionMode: "none"` a write with `return=representation` runs in a transaction, so a refused representation (406) leaves the rows unchanged.

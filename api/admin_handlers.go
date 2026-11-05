@@ -28,6 +28,17 @@ func SchemaTableListHandler(c context.Context, w http.ResponseWriter, r heligo.R
 	}
 }
 
+// SchemaTableGetHandler describes a table of the request's schema; an
+// unexposed schema answers 406. It serves /$info/:table.
+func SchemaTableGetHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	table, err := database.GetSchemaTable(c, r.Param("table"))
+	if err == nil {
+		return heligo.WriteJSON(w, http.StatusOK, table)
+	} else {
+		return WriteError(w, err)
+	}
+}
+
 func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	var tableInput database.Table
 	err := r.ReadJSON(&tableInput)

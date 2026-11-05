@@ -154,7 +154,18 @@ func (t *TextBuilder) appendFloat(f float64, bitSize int, quoteSpecial bool) {
 	case math.IsInf(f, -1):
 		t.appendSpecial("-Infinity", quoteSpecial)
 	default:
-		t.WriteString(strconv.FormatFloat(f, 'g', -1, bitSize))
+		// Go's shortest form takes an exponent from 1e6 on; float8out keeps
+		// the plain form up to an exponent of 14 (DBL_DIG): 1234567, not
+		// 1.234567e+06. float4out switches at 6, as Go does. Both forms are
+		// built in the scratch buffer: no string per value.
+		t.date = strconv.AppendFloat(t.dateBuf[:0], f, 'g', -1, bitSize)
+		if bitSize == 64 {
+			if i := bytes.LastIndexByte(t.date, 'e'); i >= 0 && t.date[i+1] == '+' &&
+				(len(t.date)-i == 4 && t.date[i+2] == '0' || len(t.date)-i == 4 && t.date[i+2] == '1' && t.date[i+3] < '5') {
+				t.date = strconv.AppendFloat(t.dateBuf[:0], f, 'f', -1, bitSize)
+			}
+		}
+		t.Write(t.date)
 	}
 }
 
@@ -212,15 +223,21 @@ func (t *TextBuilder) appendTimestampNoZone(buf []byte) {
 	if year := tim.Year(); year > 0 {
 		t.date = tim.AppendFormat(t.date, timestampLayout)
 	} else {
-		bc := 1 - year
-		for d := 1000; d > 1 && bc < d; d /= 10 {
-			t.date = append(t.date, '0')
-		}
-		t.date = strconv.AppendInt(t.date, int64(bc), 10)
+		t.date = appendBCYear(t.date, year)
 		t.date = tim.AppendFormat(t.date, timestampLayout[4:])
 		t.date = append(t.date, " BC"...)
 	}
 	t.Write(t.date)
+}
+
+// appendBCYear appends the PostgreSQL BC year of Go's astronomical year
+// (0 is 1 BC), zero-padded to four digits.
+func appendBCYear(b []byte, year int) []byte {
+	bc := 1 - year
+	for d := 1000; d > 1 && bc < d; d /= 10 {
+		b = append(b, '0')
+	}
+	return strconv.AppendInt(b, int64(bc), 10)
 }
 
 func (t *TextBuilder) appendDate(buf []byte) {
@@ -234,7 +251,15 @@ func (t *TextBuilder) appendDate(buf []byte) {
 	}
 	pgDate := toDate(buf)
 	t.date = t.dateBuf[:0]
-	t.date = pgDate.AppendFormat(t.date, "2006-01-02")
+	if year := pgDate.Year(); year > 0 {
+		t.date = pgDate.AppendFormat(t.date, "2006-01-02")
+	} else {
+		// PostgreSQL's BC year (Go's year 0 is 1 BC) with the " BC" suffix,
+		// as to_json writes it
+		t.date = appendBCYear(t.date, year)
+		t.date = pgDate.AppendFormat(t.date, "-01-02")
+		t.date = append(t.date, " BC"...)
+	}
 	t.Write(t.date)
 }
 
@@ -716,6 +741,11 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 
 type CSVSerializer struct {
 	TextBuilder
+	// scratch for the PostgreSQL literals of arrays and composites (see
+	// appendPgText): they grow over the response and are never reset, each
+	// value read from its own start, so a column of arrays costs no
+	// allocation per row
+	lit, elem TextBuilder
 }
 
 // appendType decodes a value in binary format.
@@ -763,10 +793,14 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 			switch {
 			case ct.IsDomain && ct.DomainBaseId != 0:
 				return csv.appendType(buf, ct.DomainBaseId, info)
-			case ct.IsArray:
-				return csv.appendArray(buf, ct.ArraySubType, info, csv)
-			case ct.IsComposite:
-				return csv.appendComposite(buf, ct, info, csv)
+			case ct.IsArray, ct.IsComposite:
+				// PostgreSQL's literal for the value, one CSV field, as
+				// PostgREST's CSV carries it (see appendPgText)
+				start := csv.lit.Len()
+				if err := appendPgText(&csv.lit, &csv.elem, buf, typ, info); err != nil {
+					return err
+				}
+				csv.appendFieldString(csv.lit.String()[start:])
 			case ct.IsEnum:
 				csv.appendEnum(buf)
 			default:
@@ -829,7 +863,11 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 // @@ adapted from encoding/csv:
 // https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/csv/writer.go
 func (csv *CSVSerializer) appendField(buf []byte) {
-	field := string(buf)
+	csv.appendFieldString(string(buf))
+}
+
+// appendFieldString writes field as one CSV field, quoted when it must be.
+func (csv *CSVSerializer) appendFieldString(field string) {
 	if !csv.fieldNeedsQuotes(field) {
 		csv.WriteString(field)
 		return

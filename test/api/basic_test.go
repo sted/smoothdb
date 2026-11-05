@@ -65,7 +65,7 @@ func TestRecords(t *testing.T) {
 				{"name": "zero_values", "int4": 0, "int8": 0, "float4": 0, "float8": 0, "numeric_val": 0, "interval": "00:00:00"},
 				{"name": "high_precision", "int4": 2147483647, "int8": 9223372036854775807, "float4": 3.4028235e+38, "float8": 1.7976931348623157e+308, "numeric_val": 99999999999.9999, "interval": "999 days 23:59:59"},
 				{"name": "small_decimals", "int4": 42, "int8": 12345, "float4": 0.001, "float8": 1e-06, "numeric_val": 0.0001, "interval": "00:00:01"},
-				{"name": "financial_test", "int4": 1000, "int8": 1000000, "float4": 999.99, "float8": 1.23456789e+06, "numeric_val": 12345.6789, "interval": "30 days"}
+				{"name": "financial_test", "int4": 1000, "int8": 1000000, "float4": 999.99, "float8": 1234567.89, "numeric_val": 12345.6789, "interval": "30 days"}
 			]`,
 			Status: 200,
 		},
