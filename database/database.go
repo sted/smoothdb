@@ -40,6 +40,9 @@ var textFormatOnlyTypes = []uint32{
 	pgtype.MacaddrOID, pgtype.MacaddrArrayOID,
 	pgtype.Macaddr8OID, // pgx has no codec for macaddr8[]: it is text already
 	pgtype.TimeOID, pgtype.TimeArrayOID,
+	// interval: interval_out's text is what to_json prints, under any
+	// IntervalStyle (postgres, iso_8601, ...)
+	pgtype.IntervalOID, pgtype.IntervalArrayOID,
 	pgtype.PointOID, pgtype.PointArrayOID,
 	pgtype.LineOID, pgtype.LineArrayOID,
 	pgtype.LsegOID, pgtype.LsegArrayOID,

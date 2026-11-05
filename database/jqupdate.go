@@ -108,7 +108,14 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	}
 	schema := options.Schema
 	stack := BuildStack{info: gi.Db.info.Load()}
-	where, values := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	st := newBuildState(parts, nil)
+	where, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
+	// a filter the WHERE does not take (one on an embed) is an error, not a
+	// wider update (see BuildUpdate)
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true, &st.page); err != nil {
+		return nil, 0, err
+	}
+	values := st.page.values
 	// order= orders the representation, as on the standard PATCH: rows are
 	// selected, updated and returned in that order. limit= and offset= are
 	// ignored, as on the standard PATCH (every matching row is written).

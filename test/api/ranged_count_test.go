@@ -167,9 +167,12 @@ func TestRangedCountReportsTheCommitError(t *testing.T) {
 
 // The ranged count of a function stores its total from a one-time filter of
 // the page (see buildAfterSelect); a filter that PostgreSQL folds to a
-// constant false (id=eq.null is t.id = null) drops that filter with the rest
-// of the plan, and the total was never stored: reading it back failed. The
-// count over a false filter is 0, which is what an unset total reads now.
+// constant false drops that filter with the rest of the plan, and the total
+// was never stored: reading it back failed. The count over a false filter is
+// 0, which is what an unset total reads now. The filter is
+// id=eq(any).{null}: t.id = $1 with a NULL parameter, which a custom plan
+// folds to false. (It was id=eq.null, written as t.id = null; that operand is
+// bound as the string 'null' now, a 22P02 on an integer, as in PostgREST.)
 func TestRangedCountFunctionConstantFalseFilter(t *testing.T) {
 	createRangedCountFixtures(t)
 	execSQLAndReload(t, `
@@ -203,7 +206,7 @@ func TestRangedCountFunctionConstantFalseFilter(t *testing.T) {
 		{
 			Description:     "a ranged count of a function, a constant false filter",
 			Method:          "POST",
-			Query:           "/rpc/numbers?id=eq.null&limit=1",
+			Query:           "/rpc/numbers?id=eq(any).{null}&limit=1",
 			Body:            `{"n": 5}`,
 			Expected:        `[]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},

@@ -1,5 +1,21 @@
 # Change Log
 
+## Unreleased
+
+**PostgREST 16.4 spec cases: 1097 run, 528 skipped (67.5%)**
+
+### Fixed
+* **Writes refuse the filters they do not apply** — a PATCH or DELETE with a filter on an embed it does not select, or with `start.`/`recurse.`, is a 400 (PGRST108 in PostgREST): it used to drop the filter and write every row.
+* **The transaction ends before the response** — a write's COMMIT runs before its status is sent, so a COMMIT that fails (a deferred constraint) answers its error instead of a 2xx, as in PostgREST.
+* **A failed representation rolls the write back** — with `TransactionMode: "none"` a write with `return=representation` runs in a transaction, so a refused representation (406) leaves the rows unchanged.
+* **Admin DDL follows the request transaction** — the multi-statement `/admin` helpers use a savepoint, so `rollback` modes undo them and the request keeps its role.
+* **The API root lists one schema** — `GET /api/<db>/` lists the `Accept-Profile` or default schema and refuses a schema that is not exposed with a 406.
+* **Trailing and malformed query parameters** — input left after a `select`, `order`, logic tree, `in`/`any` list, `columns` or `on_conflict` is a 400 instead of being dropped.
+* **Filter keywords are bound** — as in PostgREST, only the operand of `is` is a keyword: `eq.null` compares against the string, and is a 400 (`22P02`) on a non-text column.
+* **Query builder correctness** — embed filter values are bound, `"a.b"` is one column at every level, a request builds the same SQL twice, and a recursive select keeps its values intact.
+* **Intervals, timestamps and multi-dimensional arrays as `to_json` writes them** — intervals are PostgreSQL's own text, a `timestamp` has no `Z`, and `int[][]` is nested arrays.
+* **Embeds resolve the same way on every schema load** — relationships are built in a fixed order, and a relationship to a schema that is not exposed is dropped, as PostgREST's `removeInternal`.
+
 ## 0.11.0 - 2026-11-04
 
 **PostgREST 16.4 spec cases: 1091 run, 532 skipped (67.2%)**, the first count: until now the cases smoothdb did not pass were comments, invisible to the suite (see test/postgrest/README.md).

@@ -196,56 +196,78 @@ func prepareConnection(ctx context.Context, conn *DbConn, role string, claims st
 // ReleaseConnection releases a connection to the proper pool.
 // It closes the transaction, based on the configuration, and then, if
 // requested, resets the session-level role and claims a request left on it:
-// after, so that a ROLLBACK cannot undo the reset.
+// after, so that a ROLLBACK cannot undo the reset. The reset runs also when
+// the end of the transaction fails: a COMMIT refused by a deferred
+// constraint ends the transaction all the same.
 func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, resetRole bool) error {
 	defer conn.Release()
-	if err := endTransaction(ctx, conn, httpErr); err != nil {
-		return err
-	}
+	err := EndTransaction(ctx, conn, httpErr)
 	if resetRole {
-		return resetSession(ctx, conn.Conn())
+		if rerr := resetSession(ctx, conn.Conn()); err == nil {
+			err = rerr
+		}
 	}
-	return nil
+	return err
 }
 
-// endTransaction ends the request's transaction, if one is open, as the
-// configuration says.
-func endTransaction(ctx context.Context, conn *DbPoolConn, httpErr bool) error {
-	hasTX := dbe.config.TransactionMode != "none"
-	if hasTX && conn.Conn().PgConn().TxStatus() != 'I' {
-		var end string
-
-		if !httpErr {
-			switch dbe.config.TransactionMode {
-			case "commit":
+// EndTransaction ends the request's transaction, if one is open: as
+// TransactionMode says, or with ROLLBACK when httpErr. With TransactionMode
+// "none" a transaction is open only when a write with a representation began
+// it (see SmoothContext.newBatch): it commits, or rolls back when httpErr.
+// The statement runs even when the client has hung up (see detach). An open
+// transaction is known without a round trip; without one, the call costs
+// nothing.
+func EndTransaction(ctx context.Context, conn *DbPoolConn, httpErr bool) error {
+	c := conn.Conn()
+	if c.PgConn().TxStatus() == 'I' {
+		return nil
+	}
+	end := "ROLLBACK"
+	if !httpErr {
+		switch dbe.config.TransactionMode {
+		case "none", "commit":
+			end = "COMMIT"
+		case "commit-allow-override":
+			sctx := GetSmoothContext(ctx)
+			if sctx == nil || !sctx.QueryOptions.TxRollback {
 				end = "COMMIT"
-			case "commit-allow-override":
-				sctx := GetSmoothContext(ctx)
-				if sctx != nil && sctx.QueryOptions.TxRollback {
-					end = "ROLLBACK"
-				} else {
-					end = "COMMIT"
-				}
-			case "rollback":
-				end = "ROLLBACK"
-			case "rollback-allow-override":
-				sctx := GetSmoothContext(ctx)
-				if sctx != nil && sctx.QueryOptions.TxCommit {
-					end = "COMMIT"
-				} else {
-					end = "ROLLBACK"
-				}
 			}
-		} else {
-			end = "ROLLBACK"
-		}
-
-		_, err := conn.Exec(ctx, end)
-		if err != nil {
-			return err
+		case "rollback-allow-override":
+			sctx := GetSmoothContext(ctx)
+			if sctx != nil && sctx.QueryOptions.TxCommit {
+				end = "COMMIT"
+			}
 		}
 	}
-	return nil
+	dctx := detach(ctx, c)
+	_, err := c.Exec(dctx, end)
+	attach(c)
+	return err
+}
+
+// endTimeout bounds the statements that end a request on its connection.
+const endTimeout = 10 * time.Second
+
+// detach prepares conn for a statement that ends a request (COMMIT,
+// ROLLBACK, the reset of the session), which must run even when the client
+// has hung up and canceled ctx. It returns ctx with its values but without
+// its cancellation, and bounds the statement with a deadline on the network
+// connection instead: no timer context to allocate. A statement past the
+// deadline fails and pgconn closes the connection. Call attach after the
+// statement.
+func detach(ctx context.Context, conn *DbConn) context.Context {
+	conn.PgConn().Conn().SetDeadline(time.Now().Add(endTimeout))
+	return context.WithoutCancel(ctx)
+}
+
+// attach clears the deadline of detach. A connection that the statement
+// closed is left alone: pgconn drains and closes it in the background under
+// a deadline of its own, which a cleared deadline would remove.
+func attach(conn *DbConn) {
+	if conn.PgConn().IsClosed() {
+		return
+	}
+	conn.PgConn().Conn().SetDeadline(time.Time{})
 }
 
 // ReleaseConn releases a connection to the proper pool.
@@ -289,8 +311,8 @@ const sessionCleanup = "SET SESSION AUTHORIZATION DEFAULT; SET ROLE NONE; RESET 
 // cleanSession resets the session of conn to the authenticator's, whatever
 // set it (see resetSession).
 func cleanSession(ctx context.Context, conn *DbConn) error {
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
+	rctx := detach(ctx, conn)
+	defer attach(conn)
 	if conn.PgConn().TxStatus() != 'I' {
 		// in a transaction the cleanup could still be rolled back: the
 		// connection is discarded instead

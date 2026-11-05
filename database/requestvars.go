@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -37,6 +36,9 @@ type requestVars struct {
 	readOnly     bool
 	rc           *roleConfig
 	applied      bool
+	// writeTx: with TransactionMode "none", the request is a write that
+	// sends back its rows, in a transaction of the request (see writeRead)
+	writeTx bool
 }
 
 // PrepareRequest gets the connection of the request in ctx (FillContext) ready
@@ -165,6 +167,37 @@ type requestBatch struct {
 	lead   int  // the statements of the variables, before the request's own
 	commit bool // a transaction of the batch's own, to commit after them
 	tx     bool // the batch begins the request's transaction
+	own    bool // with TransactionMode "none": the BEGIN of a writeTx
+}
+
+// writeRead runs the write query of a request that asks for its rows back,
+// and serializes them. With TransactionMode "none" the write would commit
+// with its statement, before the serializer can refuse the rows (a single
+// object asked of several rows, a type it cannot represent): the request
+// begins a transaction in the batch of the statement instead, and
+// authn.Middleware ends it after the response is built, with ROLLBACK on an
+// error status, as in the other modes and in PostgREST. The BEGIN costs no
+// round trip; the COMMIT costs one. Only requests prepared by PrepareRequest
+// (the middleware's) do this: no other caller ends the transaction.
+func writeRead(ctx context.Context, query string, values []any) ([]byte, int64, error) {
+	gi := GetSmoothContext(ctx)
+	if gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	return querySerialize(ctx, query, values)
+}
+
+// ownTx says whether the next batch begins the transaction of a writeTx.
+func (gi *SmoothContext) ownTx() bool {
+	return gi.vars != nil && gi.vars.writeTx && gi.Conn.PgConn().TxStatus() == 'I'
+}
+
+// beginOwn queues the BEGIN of a writeTx, with the defaults of the session
+// (its access mode and isolation are the request's when the variables are
+// applied).
+func (b *requestBatch) beginOwn() {
+	b.Queue("BEGIN")
+	b.lead, b.own = 1, true
 }
 
 // newBatch starts the batch of the request's statements sqls (the empty ones
@@ -173,8 +206,12 @@ type requestBatch struct {
 // their own.
 func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*requestBatch, error) {
 	b := &requestBatch{}
+	own := gi.ownTx()
 	v := gi.pending()
 	if v == nil {
+		if own {
+			b.beginOwn()
+		}
 		return b, nil
 	}
 	// A write on a session that defaults to READ ONLY (an authenticator
@@ -186,6 +223,9 @@ func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*request
 		gi.Conn.PgConn().ParameterStatus(readOnlyGUC) == "on"
 	if writeOnReadOnly || !gi.prepared(sqls) {
 		_, err := gi.conn(ctx)
+		if err == nil && own {
+			b.beginOwn()
+		}
 		return b, err
 	}
 	switch {
@@ -193,6 +233,11 @@ func (gi *SmoothContext) newBatch(ctx context.Context, sqls ...string) (*request
 		b.Queue(v.begin())
 		v.queueLocal(&b.Batch, false)
 		b.lead, b.tx = 2, true
+	case own:
+		// the variables are transaction-local, in the writeTx
+		b.Queue(v.begin())
+		v.queueLocal(&b.Batch, false)
+		b.lead, b.tx, b.own = 2, true, true
 	case v.rc != nil && v.rc.isolation != "":
 		// an isolation is set before the first query of a transaction, which
 		// the variables already are: a transaction of the batch's own
@@ -233,14 +278,24 @@ func (gi *SmoothContext) send(ctx context.Context, b *requestBatch) (pgx.BatchRe
 		if _, err := gi.conn(ctx); err != nil {
 			return nil, err
 		}
-		own := &requestBatch{}
+		again := &requestBatch{}
+		if b.own {
+			again.beginOwn()
+		}
 		for _, q := range b.QueuedQueries[b.lead:] {
 			if !b.commit || q.SQL != "COMMIT" {
-				own.Queue(q.SQL, q.Arguments...)
+				again.Queue(q.SQL, q.Arguments...)
 			}
 		}
-		*b = *own
-		return gi.Conn.SendBatch(ctx, &b.Batch), nil
+		*b = *again
+		br := gi.Conn.SendBatch(ctx, &b.Batch)
+		for i := 0; i < b.lead; i++ {
+			if _, err := br.Exec(); err != nil {
+				br.Close()
+				return nil, err
+			}
+		}
+		return br, nil
 	}
 	if b.tx {
 		gi.vars.applied = true
@@ -269,9 +324,9 @@ func (gi *SmoothContext) end(ctx context.Context, br pgx.BatchResults, b *reques
 // rollback ends the batch's own transaction left open by an error.
 func (gi *SmoothContext) rollback(ctx context.Context, b *requestBatch) {
 	if b.commit && gi.Conn.PgConn().TxStatus() != 'I' {
-		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancel()
+		rctx := detach(ctx, gi.Conn)
 		gi.Conn.Exec(rctx, "ROLLBACK")
+		attach(gi.Conn)
 	}
 }
 

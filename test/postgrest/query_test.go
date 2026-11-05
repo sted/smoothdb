@@ -2184,7 +2184,17 @@ func TestPostgREST_Query(t *testing.T) {
 			Query:       "/articleStars?select=createdAt,article:articles(id),user:users(name)&limit=1",
 			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id": 1},"user":{"name": "Angela Martin"}}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a timestamp without time zone is written without Z; card 35454 (serializer divergence)",
+		},
+		// No hspec case reads test.arrays.numbers_mult (int[][]) as a whole
+		// (JsonOperatorSpec only applies -> to it). Live PostgREST 16.4 on the
+		// fixtures answers:
+		// [{"numbers_mult":[[1,2,3],[4,5,6],[7,8,9]]},
+		//  {"numbers_mult":[[11,12,13],[14,15,16],[17,18,19]]}]
+		{
+			Description: "returns a multi-dimensional array as nested JSON arrays",
+			Query:       "/arrays?select=numbers_mult&order=id",
+			Expected:    `[{"numbers_mult":[[1,2,3],[4,5,6],[7,8,9]]},{"numbers_mult":[[11,12,13],[14,15,16],[17,18,19]]}]`,
+			Status:      200,
 		},
 		{
 			Description: "can detect relations in views with column renames",

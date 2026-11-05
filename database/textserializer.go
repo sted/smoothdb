@@ -191,6 +191,38 @@ func (t *TextBuilder) appendTimestamp(buf []byte) {
 	t.Write(t.date)
 }
 
+// timestampLayout is to_json's form of a timestamp without time zone: no
+// zone, and the fraction without its trailing zeros (no dot when it is zero).
+const timestampLayout = "2006-01-02T15:04:05.999999"
+
+// appendTimestampNoZone writes a timestamp without time zone as to_json
+// writes it. A year before 1 is PostgreSQL's BC year (Go's year 0 is 1 BC)
+// with the " BC" suffix.
+func (t *TextBuilder) appendTimestampNoZone(buf []byte) {
+	switch toInt64(buf) { // PostgreSQL's sentinels for ±infinity
+	case math.MaxInt64:
+		t.WriteString("infinity")
+		return
+	case math.MinInt64:
+		t.WriteString("-infinity")
+		return
+	}
+	tim := toTimestamp(buf)
+	t.date = t.dateBuf[:0]
+	if year := tim.Year(); year > 0 {
+		t.date = tim.AppendFormat(t.date, timestampLayout)
+	} else {
+		bc := 1 - year
+		for d := 1000; d > 1 && bc < d; d /= 10 {
+			t.date = append(t.date, '0')
+		}
+		t.date = strconv.AppendInt(t.date, int64(bc), 10)
+		t.date = tim.AppendFormat(t.date, timestampLayout[4:])
+		t.date = append(t.date, " BC"...)
+	}
+	t.Write(t.date)
+}
+
 func (t *TextBuilder) appendDate(buf []byte) {
 	switch toInt32(buf) { // PostgreSQL's sentinels for ±infinity
 	case math.MaxInt32:
@@ -204,61 +236,6 @@ func (t *TextBuilder) appendDate(buf []byte) {
 	t.date = t.dateBuf[:0]
 	t.date = pgDate.AppendFormat(t.date, "2006-01-02")
 	t.Write(t.date)
-}
-
-func (t *TextBuilder) appendInterval(buf []byte) {
-	t.WriteByte('"')
-	microseconds := int64(binary.BigEndian.Uint64(buf))
-	days := int32(binary.BigEndian.Uint32(buf[8:]))
-	months := int32(binary.BigEndian.Uint32(buf[12:]))
-
-	years := months / 12
-	months %= 12
-	seconds := microseconds / 1000000
-	minutes := seconds / 60
-	seconds %= 60
-	hours := minutes / 60
-	minutes %= 60
-
-	started := false
-	if years > 0 {
-		t.WriteString(strconv.FormatInt(int64(years), 10))
-		t.WriteString(" year")
-		if years > 1 {
-			t.WriteByte('s')
-		}
-		started = true
-	}
-	if months > 0 {
-		if started {
-			t.WriteByte(' ')
-		}
-		t.WriteString(strconv.FormatInt(int64(months), 10))
-		t.WriteString(" mon")
-		if months > 1 {
-			t.WriteByte('s')
-		}
-		started = true
-	}
-	if days > 0 {
-		if started {
-			t.WriteByte(' ')
-		}
-		t.WriteString(strconv.FormatInt(int64(days), 10))
-		t.WriteString(" day")
-		if days > 1 {
-			t.WriteByte('s')
-		}
-		started = true
-	}
-	if hours > 0 || minutes > 0 || seconds > 0 {
-		if started {
-			t.WriteByte(' ')
-		}
-		timeStr := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
-		t.WriteString(timeStr)
-	}
-	t.WriteByte('"')
 }
 
 func (t *TextBuilder) appendJSON(buf []byte) {
@@ -415,9 +392,7 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 		return nil
 	}
 	if numDims != 1 {
-		// Multi-dimensional arrays use a different header/element layout that
-		// this flat decoder does not implement: refuse rather than misparse.
-		return &SerializeError{msg: "multi-dimensional arrays are not supported"}
+		return t.appendArrayMultiDim(buf, numDims, info, at)
 	}
 	rp += 4
 	// flags (has-null): unused
@@ -448,6 +423,58 @@ func (t *TextBuilder) appendArray(buf []byte, typ uint32, info *SchemaInfo, at a
 	}
 	t.WriteByte(']')
 	return nil
+}
+
+// maxArrayDims is PostgreSQL's MAXDIM.
+const maxArrayDims = 6
+
+// appendArrayMultiDim writes an array of two or more dimensions as nested
+// JSON arrays, as to_json does. The header has one (size, lower bound) pair
+// per dimension; the elements follow in row-major order. The lower bounds
+// do not show in to_json.
+func (t *TextBuilder) appendArrayMultiDim(buf []byte, numDims uint32, info *SchemaInfo, at appendTyper) error {
+	if numDims > maxArrayDims {
+		return &SerializeError{msg: "array has more dimensions than PostgreSQL allows"}
+	}
+	elemOID := binary.BigEndian.Uint32(buf[8:])
+	var dims [maxArrayDims]uint32
+	rp := uint32(12)
+	for d := uint32(0); d < numDims; d++ {
+		dims[d] = binary.BigEndian.Uint32(buf[rp:])
+		rp += 8 // size and lower bound
+	}
+	_, err := t.appendArrayDim(buf, rp, dims[:numDims], elemOID, info, at)
+	return err
+}
+
+// appendArrayDim writes the dimension dims[0] starting at buf[rp], recursing
+// into the inner ones, and returns the position after its last element.
+func (t *TextBuilder) appendArrayDim(buf []byte, rp uint32, dims []uint32, elemOID uint32, info *SchemaInfo, at appendTyper) (uint32, error) {
+	t.WriteByte('[')
+	for i := uint32(0); i < dims[0]; i++ {
+		if i > 0 {
+			t.WriteByte(',')
+		}
+		if len(dims) > 1 {
+			var err error
+			if rp, err = t.appendArrayDim(buf, rp, dims[1:], elemOID, info, at); err != nil {
+				return rp, err
+			}
+			continue
+		}
+		elemLen := binary.BigEndian.Uint32(buf[rp:])
+		rp += 4
+		if elemLen == 0xFFFFFFFF {
+			t.WriteString("null")
+			continue
+		}
+		if err := at.appendType(buf[rp:rp+elemLen], elemOID, info); err != nil {
+			return rp, err
+		}
+		rp += elemLen
+	}
+	t.WriteByte(']')
+	return rp, nil
 }
 
 func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, at appendTyper) error {
@@ -552,7 +579,11 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 		j.WriteByte('"')
 		j.appendDate(buf)
 		j.WriteByte('"')
-	case pgtype.TimestampOID, pgtype.TimestamptzOID:
+	case pgtype.TimestampOID:
+		j.WriteByte('"')
+		j.appendTimestampNoZone(buf)
+		j.WriteByte('"')
+	case pgtype.TimestamptzOID:
 		j.WriteByte('"')
 		j.appendTimestamp(buf)
 		j.WriteByte('"')
@@ -564,8 +595,6 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 			return err
 		}
 		j.appendJSON(text)
-	case pgtype.IntervalOID:
-		j.appendInterval(buf)
 	case pgtype.UUIDOID:
 		j.appendUUID(buf)
 	case pgtype.NumericOID:
@@ -712,7 +741,9 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 		csv.appendField(buf) //
 	case pgtype.DateOID:
 		csv.appendDate(buf)
-	case pgtype.TimestampOID, pgtype.TimestamptzOID:
+	case pgtype.TimestampOID:
+		csv.appendTimestampNoZone(buf)
+	case pgtype.TimestamptzOID:
 		csv.appendTimestamp(buf)
 	case pgtype.JSONOID:
 		csv.appendField(buf) //
@@ -722,8 +753,6 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 			return err
 		}
 		csv.appendField(text)
-	case pgtype.IntervalOID:
-		csv.appendInterval(buf)
 	case pgtype.UUIDOID:
 		csv.appendUUID(buf)
 	case pgtype.NumericOID:

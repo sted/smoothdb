@@ -963,14 +963,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = []
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST100 code and the parsec position and details; card 32494 (error body).
+		// The message prefix is PostgREST's; the body asserted is smoothdb's shape.
 		{
 			Description: "disallows blank ?columns",
 			Method:      "POST",
 			Query:       "/articles?columns=",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"details":"unexpected end of input expecting field name (* or [a..z0..9_$])","message":"\"failed to parse columns parameter ()\" (line 1, column 1)","code":"PGRST100","hint":null}`,
+			Expected:    `{"subsystem":"network","message":"failed to parse columns parameter (): unexpected end of input expecting field name","code":"","hint":"","details":null,"position":0}`,
 			Status:      400,
-			Skip:        "PostgREST 16.4: a blank ?columns is refused with 400 (PGRST100); no card",
 		},
 		//       it "disallows ?columns which don't exist" $
 		//         post

@@ -99,12 +99,6 @@ func CreateRole(ctx context.Context, role *Role) (*Role, error) {
 
 func UpdateRole(ctx context.Context, name string, role *RoleUpdate) error {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
 	prefix := "ALTER ROLE " + quote(name)
 	alter := prefix
 
@@ -150,19 +144,21 @@ func UpdateRole(ctx context.Context, name string, role *RoleUpdate) error {
 			alter += " NOBYPASSRLS"
 		}
 	}
-	_, err = conn.Exec(ctx, alter)
-	if err != nil {
-		return err
-	}
-
-	// NAME as the last update
-	if role.Name != nil && *role.Name != name {
-		_, err = conn.Exec(ctx, prefix+" RENAME TO "+quote(*role.Name))
+	return withTx(ctx, conn, func() error {
+		_, err := conn.Exec(ctx, alter)
 		if err != nil {
 			return err
 		}
-	}
-	return tx.Commit(ctx)
+
+		// NAME as the last update
+		if role.Name != nil && *role.Name != name {
+			_, err = conn.Exec(ctx, prefix+" RENAME TO "+quote(*role.Name))
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func DeleteRole(ctx context.Context, name string) error {

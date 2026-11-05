@@ -2,6 +2,7 @@ package database
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -85,14 +86,22 @@ func TestInjectionSetRoleQuoting(t *testing.T) {
 	}
 }
 
-// Finding 1: embedded-resource filter values take the nmarker == -1 branch of
-// appendValue, which interpolated the value with bare single quotes instead of
-// using a $N placeholder. This exercises that branch directly.
+// Finding 1: embedded-resource filter values were interpolated into the SQL,
+// their safety resting on quoteLit alone. They are bound now, as the root
+// filters (card 35451 builder-correctness): the value never reaches the SQL.
 func TestInjectionEmbeddedValueEscaping(t *testing.T) {
-	where, _, _ := appendValue("", `x' OR '1'='1`, nil, -1, false)
-	want := `'x'' OR ''1''=''1'`
-	if where != want {
-		t.Errorf("interpolated value not escaped\n want: %s\n  got: %s", want, where)
+	value := `x' OR '1'='1`
+	u, _ := url.Parse("?select=id,web_content(id)&web_content.name=eq." + url.QueryEscape(value))
+	parts, err := PostgRestParser{}.parse("web_content", u.Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, values, err := DirectQueryBuilder{}.BuildSelect("web_content", parts, &QueryOptions{}, selfEmbedInfo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "OR '1'") || len(values) != 1 || values[0] != value {
+		t.Errorf("embedded value not bound\n  sql: %s\n  values: %v", sql, values)
 	}
 }
 

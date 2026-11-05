@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -60,6 +61,108 @@ type BuildStack struct {
 	siblings        map[string]bool   // the names and aliases of the embeds of the select being built, for the next level
 	afterWithClause bool              //
 	maxRows         int64             // a read's cap on the rows of each to-many embed (see maxRows), 0 for none
+	st              *buildState       // what the build owns: its values and what it knows of the filters
+	countChain      bool              // the total of a ranged count reads this level: the root, or an embed reached through !inner embeds only
+	rootAlias       string            // the name the statement reads the root columns through (the CTE of a recursive select), "" for the table
+	pseudoAlias     string            // the same for __depth and __path only (the __dedup of a via recursion)
+}
+
+// buildState is what one build of a request owns: the values it binds and
+// what it knows of each filter. The parsed request (QueryParts) stays
+// unchanged, so a second build of it gives the same SQL and values.
+type buildState struct {
+	page      binder    // the statement the build returns
+	count     *binder   // the total of a ranged count, when it is a statement of its own (countApart)
+	countMode countMode // how the total reads the !inner embeds
+	levels    int       // the levels whose WHERE the page has built (see pageWhere)
+	rootRow   bool      // a computed embed reads the root row from the CTE of a recursive select
+	filterBuf [8]filterState
+}
+
+// countMode tells how the total of a ranged count reads the filters of the
+// !inner embeds (see buildAfterSelect).
+type countMode uint8
+
+const (
+	countNone   countMode = iota // no total of a ranged count
+	countInPage                  // in the page statement, with the page's markers
+	countApart                   // in a statement of its own, with its own markers
+)
+
+// binder collects the values one statement binds: the marker $n is
+// values[n-base-1].
+type binder struct {
+	values  []any
+	base    int
+	filters []filterState // the page's, per filter node (see WhereConditionNode.id)
+	level   int           // the level whose WHERE the page builds
+	// the count of a level takes the filters that the page took at that level
+	replay      *binder
+	replayLevel int
+}
+
+// filterState is what the page knows of one filter node.
+type filterState struct {
+	level   int // the level that took it, 0 when none did
+	matched int // how many leading elements of field.relPath a level matched (see checkFiltersApplied)
+}
+
+// newBuildState starts a build whose statement binds values first.
+func newBuildState(parts *QueryParts, values []any) *buildState {
+	st := &buildState{}
+	st.page.values = values
+	if n := parts.nodeCount + 1; n <= len(st.filterBuf) {
+		st.page.filters = st.filterBuf[:n]
+	} else {
+		st.page.filters = make([]filterState, n)
+	}
+	return st
+}
+
+// filter returns the state of a filter node.
+func (b *binder) filter(n *WhereConditionNode) *filterState {
+	if n.id >= len(b.filters) { // a tree built without the parser
+		b.filters = append(b.filters, make([]filterState, n.id+1-len(b.filters))...)
+	}
+	return &b.filters[n.id]
+}
+
+// bind appends the marker of a new value to where.
+func (b *binder) bind(where string, v any) string {
+	b.values = append(b.values, v)
+	return where + "$" + strconv.Itoa(b.base+len(b.values))
+}
+
+// pageWhere builds the WHERE of one level of the page and returns its level.
+func (st *buildState) pageWhere(table, schema, label string, node *WhereConditionNode, stack BuildStack) (string, int) {
+	st.levels++
+	st.page.level = st.levels
+	return whereClause(table, schema, label, node, &st.page, stack), st.levels
+}
+
+// countWhere builds the WHERE of a level for a total of its own (countApart):
+// the filters the page took at that level, with the count's markers.
+func (st *buildState) countWhere(table, schema, label string, node *WhereConditionNode, stack BuildStack, level int) string {
+	st.count.replay, st.count.replayLevel = &st.page, level
+	return whereClause(table, schema, label, node, st.count, stack)
+}
+
+// rootAliasFor returns the alias the statement reads a root column through,
+// "" for the table itself.
+func (stack BuildStack) rootAliasFor(name string) string {
+	if stack.pseudoAlias != "" && (name == "__depth" || name == "__path") {
+		return stack.pseudoAlias
+	}
+	return stack.rootAlias
+}
+
+// rootColumn is a column of the root relation, as the statement reads it. A
+// dotted name ("a.b" in the URL) is one column, as in PostgREST.
+func (stack BuildStack) rootColumn(table, schema, name string) string {
+	if alias := stack.rootAliasFor(name); alias != "" {
+		return quote(alias) + "." + quote(name)
+	}
+	return _sq(table, schema) + "." + quote(name)
 }
 
 // nextBuildStack creates a stack with a new level: the embed of the table rel
@@ -76,6 +179,7 @@ func nextBuildStack(stack BuildStack, rel string, label string, col string, name
 		namePath:    append(slices.Clip(stack.namePath), name),
 		siblingPath: append(slices.Clip(stack.siblingPath), stack.siblings),
 		maxRows:     stack.maxRows,
+		st:          stack.st,
 	}
 }
 
@@ -206,12 +310,17 @@ func labelWithNumber(table string, num int) string {
 // filter once.
 func selectForJoinClause(join Join, label string, parts *QueryParts, stack BuildStack) (sel, count string, err error) {
 	rel := join.rel
+	st := stack.st
+	// the count of this embed is read only along !inner embeds from the root
+	withCount := join.inner && stack.countChain
 	_, t1 := splitTableName(rel.RelatedTable)
 	label1 := quote(labelWithNumber(t1, stack.level+1))
 	var label2 string
 	if stack.level > 0 {
 		_, t2 := splitTableName(rel.Table)
 		label2 = quote(labelWithNumber(t2, stack.level))
+	} else if stack.rootAlias != "" {
+		label2 = quote(stack.rootAlias)
 	} else if label != "" {
 		label2 = label
 	} else {
@@ -219,15 +328,35 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 	}
 
 	var from, oc string
-	var conds []string
+	var conds, countConds []string
+	// where adds the filters of the embed to the page and, when it is
+	// counted, to the count
+	where := func(table, schema string, embedStack BuildStack) {
+		wc, level := st.pageWhere(table, schema, join.relLabel, parts.whereConditionsTree, embedStack)
+		if wc != "" {
+			conds = append(conds, wc)
+		}
+		if withCount && st.countMode == countApart {
+			wc = st.countWhere(table, schema, join.relLabel, parts.whereConditionsTree, embedStack, level)
+		}
+		if withCount && wc != "" {
+			countConds = append(countConds, wc)
+		}
+	}
 	if rel.Type == Computed {
 		// Computed relationship: call the function with parent row reference
 		// Use the unqualified table name as the row reference (the implicit alias from outer FROM),
 		// with a qualified cast for the type. This is needed because in nested subqueries
 		// (inside json_agg wrapper), the schema-qualified reference doesn't resolve as a row ref.
 		var parentRef string
+		parentType := "::" + quoteParts(rel.Table)
 		if stack.afterWithClause {
 			parentRef = quote("_source")
+		} else if stack.level == 0 && stack.rootAlias != "" {
+			// the CTE of a recursive select carries the root row as __row,
+			// already of the table's type
+			parentRef, parentType = quote(stack.rootAlias)+"."+quote("__row"), ""
+			st.rootRow = true
 		} else if stack.level > 0 {
 			_, t2 := splitTableName(rel.Table)
 			parentRef = quote(labelWithNumber(t2, stack.level))
@@ -237,18 +366,14 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 			_, t2 := splitTableName(rel.Table)
 			parentRef = quote(t2)
 		}
-		parentType := quoteParts(rel.Table)
 		funcRef := _sq(rel.FunctionName, rel.FunctionSchema)
-		from = " FROM " + funcRef + "(" + parentRef + "::" + parentType + ")"
+		from = " FROM " + funcRef + "(" + parentRef + parentType + ")"
 		from += " AS " + label1
 		// Apply embedded resource filters and orders (use function name for relPath matching)
 		schema, table := splitTableName(rel.RelatedTable)
 		stackRelName := join.relName
 		embedStack := nextBuildStack(stack, stackRelName, join.relLabel, "", join.relName)
-		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, embedStack)
-		if wc != "" {
-			conds = append(conds, wc)
-		}
+		where(table, schema, embedStack)
 		oc, err = levelOrderClause(table, schema, label1, parts.orderFields, join.selectFields, embedStack)
 		if err != nil {
 			return "", "", err
@@ -298,6 +423,9 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 			}
 		}
 		conds = append(conds, on)
+		if withCount {
+			countConds = append(countConds, on)
+		}
 		// where and order clause for the internal select: the expressions related to
 		// the external query are skipped inside the functions.
 		// A self-reference is filtered and ordered like any other embed: the
@@ -309,10 +437,7 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 			col = rel.Columns[0]
 		}
 		embedStack := nextBuildStack(stack, table, join.relLabel, col, join.relName)
-		wc, _ := whereClause(table, schema, join.relLabel, parts.whereConditionsTree, -1, embedStack)
-		if wc != "" {
-			conds = append(conds, wc)
-		}
+		where(table, schema, embedStack)
 		oc, err = levelOrderClause(table, schema, label1, parts.orderFields, join.selectFields, embedStack)
 		if err != nil {
 			return "", "", err
@@ -329,9 +454,11 @@ func selectForJoinClause(join Join, label string, parts *QueryParts, stack Build
 	if oc != "" {
 		sel += " ORDER BY " + oc
 	}
-	count = " SELECT 1" + from
-	if countConds := append(slices.Clip(conds), join.innerConds...); len(countConds) > 0 {
-		count += " WHERE " + strings.Join(countConds, " AND ")
+	if withCount {
+		count = " SELECT 1" + from
+		if countConds = append(countConds, join.innerConds...); len(countConds) > 0 {
+			count += " WHERE " + strings.Join(countConds, " AND ")
+		}
 	}
 	return sel, count, nil
 }
@@ -386,9 +513,10 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 
 // selectClause prepares the select clause of a query and builds the discovered joins.
 // The label parameter is used to construct a query for the execution of functions.
-// It
+// innerConds is an EXISTS per !inner embed of this level that the total of a
+// ranged count reads (see selectForJoinClause, buildAfterSelect).
 func selectClause(table, schema, label string, parts *QueryParts, stack BuildStack) (
-	selClause string, joins string, keys []string, err error) {
+	selClause string, joins string, keys []string, innerConds []string, err error) {
 
 	var parentTable string
 	var relatedTable string
@@ -409,7 +537,7 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 		}
 	}
 
-	for i, sfield := range parts.selectFields {
+	for _, sfield := range parts.selectFields {
 		if sfield.relation != nil {
 			if sfield.relation.parent != "" {
 				parentTable = sfield.relation.parent
@@ -418,7 +546,7 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			}
 			frel, err := findRelationship(parentTable, sfield.relation.name, sfield.relation.fk, schema, stack.info)
 			if err != nil {
-				return "", "", nil, err
+				return "", "", nil, nil, err
 			}
 			if sfield.label == "" {
 				labelRelName = sfield.relation.name
@@ -428,7 +556,9 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			joinName = labelWithNumber(parentTable+"_"+labelRelName, stack.level+1)
 
 			if len(sfield.relation.fields) != 0 {
-				if i != 0 {
+				// an empty embed adds no column, so the separator follows the
+				// columns written so far
+				if selClause != "" {
 					selClause += ", "
 				}
 				switch frel.Type {
@@ -440,15 +570,15 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 					}
 				case O2M, M2M:
 					if sfield.relation.spread {
-						err = &BuildError{"A spread operation on " + relatedTable + " is not possible"}
-						return "", "", nil, err
+						err = &BuildError{"A spread operation on " + sfield.relation.name + " is not possible"}
+						return "", "", nil, nil, err
 					}
 					selClause += " COALESCE(" + quote(joinName) + "." + quote("_"+joinName) + ", '[]') AS " + quote(labelRelName)
 				case Computed:
 					if frel.ReturnIsSet {
 						if sfield.relation.spread {
 							err = &BuildError{"A spread operation on " + sfield.relation.name + " is not possible"}
-							return "", "", nil, err
+							return "", "", nil, nil, err
 						}
 						selClause += " COALESCE(" + quote(joinName) + "." + quote("_"+joinName) + ", '[]') AS " + quote(labelRelName)
 					} else {
@@ -473,19 +603,23 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			if frel.Type != Computed && len(frel.Columns) == 1 {
 				col = frel.Columns[0]
 			}
-			sc, j, _, err := selectClause(relatedTable, schema, "", internalParts, nextBuildStack(stack, stackRelName, sfield.label, col, sfield.relation.name))
+			childStack := nextBuildStack(stack, stackRelName, sfield.label, col, sfield.relation.name)
+			childStack.countChain = stack.countChain && sfield.relation.inner
+			sc, j, _, childInner, err := selectClause(relatedTable, schema, "", internalParts, childStack)
 			if err != nil {
-				return "", "", nil, err
+				return "", "", nil, nil, err
 			}
-			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name, sfield.relation.fields, internalParts.innerEmbedConds})
+			joinSeq = append(joinSeq, Join{joinName, sc, j, sfield.relation.inner, frel, sfield.label, sfield.relation.name, sfield.relation.fields, childInner})
 		} else {
-			if i != 0 {
+			if selClause != "" {
 				selClause += ", "
 			}
 			var fieldPart string
 			if !stack.afterWithClause {
 				if stack.level == 0 {
-					if label == "" {
+					if alias := stack.rootAliasFor(sfield.field.name); alias != "" {
+						fieldPart = prepareFieldAs(alias, "", table, schema, sfield, stack.info)
+					} else if label == "" {
 						fieldPart = prepareField(table, schema, sfield, stack.info)
 					} else {
 						fieldPart = prepareFieldAs(label, "", table, schema, sfield, stack.info)
@@ -502,23 +636,19 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 	if selClause == "" {
 		selClause = "*"
 	}
-	root := stack.level == 0 && !stack.afterWithClause
-	if root {
-		parts.innerEmbedConds = nil
-	}
 	if len(joinSeq) > 0 {
 		for _, join := range joinSeq {
 			// the join name carries the user's label: quote it, never wrap it
 			qName, qAgg := quote(join.name), quote("_"+join.name)
 			selectForJoin, count, err := selectForJoinClause(join, label, parts, stack)
 			if err != nil {
-				return "", "", nil, err
+				return "", "", nil, nil, err
 			}
-			if join.inner && !stack.afterWithClause {
+			if count != "" {
 				// one EXISTS per !inner embed, for the total of a ranged count:
 				// the root's restrict it, a nested level's go into its
 				// parent's (see selectForJoinClause)
-				parts.innerEmbedConds = append(parts.innerEmbedConds, "EXISTS ("+count+")")
+				innerConds = append(innerConds, "EXISTS ("+count+")")
 			}
 			if join.inner {
 				joins += " INNER"
@@ -557,7 +687,7 @@ func selectClause(table, schema, label string, parts *QueryParts, stack BuildSta
 			}
 		}
 	}
-	return selClause, joins, keys, nil
+	return selClause, joins, keys, innerConds, nil
 }
 
 // embedLimit is the LIMIT of a to-many embed of a read under maxRows
@@ -647,7 +777,7 @@ func levelOrderClause(table, schema, label string, orderFields []OrderField,
 				fieldname = "(" + fieldname + o.field.jsonPath + ")"
 			}
 		} else if label == "" {
-			fieldname = _stq(o.field.name, schema, table)
+			fieldname = stack.rootColumn(table, schema, o.field.name)
 			if o.field.jsonPath != "" {
 				fieldname = "(" + toJson(table, schema, o.field.name, fieldname, info) +
 					o.field.jsonPath + ")"
@@ -711,22 +841,23 @@ func validateRelatedOrder(table, schema string, o OrderField, selectFields []Sel
 	return "", &BuildError{"'" + o.relation + "' is not an embedded resource in this request"}
 }
 
-func appendValue(where, value string, valueList []any, nmarker int, forceParam bool) (string, []any, int) {
-	if !forceParam && value == "not_null" {
-		where += "NOT NULL"
-	} else if !forceParam && (value == "null" ||
-		value == "true" ||
-		value == "false" ||
-		value == "unknown") {
-		where += value
-	} else if nmarker >= 0 {
-		nmarker++
-		where += "$" + strconv.Itoa(nmarker)
-		valueList = append(valueList, value)
-	} else {
-		where += quoteLit(value)
+// appendNull appends a NULL operand: a NULL parameter.
+func appendNull(where string, b *binder) string {
+	return b.bind(where, nil)
+}
+
+// appendValue appends an operand: the keyword of IS verbatim (forceParam
+// false), anything else as a parameter.
+func appendValue(where, value string, b *binder, forceParam bool) string {
+	if !forceParam {
+		if value == "not_null" {
+			return where + "NOT NULL"
+		}
+		if value == "null" || value == "true" || value == "false" || value == "unknown" {
+			return where + value
+		}
 	}
-	return where, valueList, nmarker
+	return b.bind(where, value)
 }
 
 // checkFiltersApplied refuses a filter that no level of the built query took,
@@ -735,23 +866,71 @@ func appendValue(where, value string, valueList []any, nmarker int, forceParam b
 // silently dropped and the request answered as if it were not there.
 // Filters on embeds are checked only when the representation was built
 // (withEmbeds), since only then the embed levels were visited; root filters
-// are skipped when skipRoot, as an insert ignores them.
-func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool) error {
+// are skipped when skipRoot, as an insert ignores them. b is the binder of
+// the page, which knows what each level took.
+// checkWriteFilters checks that a write takes every filter it was given,
+// embeds included: a filter that neither the WHERE of the write nor an embed
+// of its select takes must not be dropped, or the write reaches rows the
+// request excluded (PGRST108 in PostgREST, which validates the select
+// whatever the write returns). With a representation, st already built the
+// embeds. Without one, they are built here on a state of their own, only to
+// see which filters they take, and only when a filter names an embed. The
+// write's WHERE takes the root filters; skipRoot (an insert) has none.
+func checkWriteFilters(table, schema string, parts *QueryParts, options *QueryOptions, info *SchemaInfo,
+	st *buildState, skipRoot bool) error {
+	if options.ReturnRepresentation || !hasPathFilter(parts.whereConditionsTree) {
+		return checkFiltersApplied(parts.whereConditionsTree, skipRoot, true, &st.page)
+	}
+	dry := newBuildState(parts, nil)
+	if !skipRoot {
+		dry.pageWhere(table, schema, "", parts.whereConditionsTree, BuildStack{info: info})
+	}
+	if _, _, err := returningClause(table, schema, parts, info, dry); err != nil {
+		return err
+	}
+	return checkFiltersApplied(parts.whereConditionsTree, skipRoot, true, &dry.page)
+}
+
+// hasPathFilter reports whether a node of the tree names a relation path: an
+// embed filter, or a boolean node with its table.
+func hasPathFilter(node *WhereConditionNode) bool {
+	if node == nil {
+		return false
+	}
+	if len(node.field.relPath) > 0 {
+		return true
+	}
+	for _, n := range node.children {
+		if hasPathFilter(n) {
+			return true
+		}
+	}
+	return false
+}
+
+// errRecursiveWrite refuses the recursive filters (start., recurse.) on a
+// write: the write builders do not walk a hierarchy, and dropping the two
+// filters would widen the write to every row.
+var errRecursiveWrite = &BuildError{"recursive filters are only supported on reads"}
+
+func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool, b *binder) error {
 	if node == nil {
 		return nil
 	}
 	onEmbed := len(node.field.relPath) > 0
-	container := node.operator == "" || node.field.name == "" // the root or a boolean operator
+	container := node.isContainer()
 	if (onEmbed && !withEmbeds) || (!onEmbed && skipRoot && !container) {
 		return nil
 	}
-	if onEmbed && !node.inserted && node.matched < len(node.field.relPath) {
-		return &BuildError{"'" + node.field.relPath[node.matched] + "' is not an embedded resource in this request"}
+	if onEmbed {
+		if fs := b.filter(node); fs.level == 0 && fs.matched < len(node.field.relPath) {
+			return &BuildError{"'" + node.field.relPath[fs.matched] + "' is not an embedded resource in this request"}
+		}
 	}
 	if container {
 		// its path matched (or it is the root): check the children
 		for _, n := range node.children {
-			if err := checkFiltersApplied(n, skipRoot, withEmbeds); err != nil {
+			if err := checkFiltersApplied(n, skipRoot, withEmbeds, b); err != nil {
 				return err
 			}
 		}
@@ -760,15 +939,15 @@ func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool) er
 }
 
 // whereClause builds a WHERE condition string starting a root node of a condition tree.
-// Only nodes with fields related to passed table or label are processed (node.inserted is set to true).
-// The nmarker integer is used to keep track of the last marker inserted: the first one will be $(nmarker + 1).
-// To skip the usage of markers and to embed the condition values in the string pass -1.
-// It returns the condition string and the condition values.
-func whereClause(table, schema, label string, node *WhereConditionNode, nmarker int, stack BuildStack) (where string, valueList []any) {
+// Only nodes with fields related to passed table or label are processed: the
+// binder records that its level took them. Their values are bound by b: the
+// first new marker is $(b.base + len(b.values) + 1). A count binder (replay
+// set) takes the nodes the page took at the level it replays instead.
+func whereClause(table, schema, label string, node *WhereConditionNode, b *binder, stack BuildStack) (where string) {
 	if node == nil {
 		return
 	}
-	if node.operator == "" || node.field.name == "" {
+	if node.isContainer() {
 		// It is a root or a boolean operator
 
 		var bool_op string
@@ -784,51 +963,57 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			where += "("
 		}
 		var children_where string
-	outer:
 		for _, n := range node.children {
-			// check if the field is part of this where clause, by comparing
-			// each item in the field relPath with each item in the stack, table
-			// or label or FK column name; the longest prefix any level matches
-			// is kept, to name the first unmatched relation (see checkFiltersApplied)
-			matched := stack.matchPath(n.field.relPath)
-			n.matched = max(n.matched, matched)
-			if matched < len(n.field.relPath) || len(n.field.relPath) != len(stack.relPath) {
-				continue outer
-			}
-			if n.inserted {
-				// already taken by an earlier embed its path also names, as
-				// siblings embedding the same table (a parent and the children
-				// of a self-reference): it applies once, without a dangling AND
-				continue outer
+			if b.replay != nil {
+				if b.replay.filter(n).level != b.replayLevel {
+					continue
+				}
+			} else {
+				// check if the field is part of this where clause, by comparing
+				// each item in the field relPath with each item in the stack, table
+				// or label or FK column name; the longest prefix any level matches
+				// is kept, to name the first unmatched relation (see checkFiltersApplied)
+				fs := b.filter(n)
+				matched := stack.matchPath(n.field.relPath)
+				fs.matched = max(fs.matched, matched)
+				if matched < len(n.field.relPath) || len(n.field.relPath) != len(stack.relPath) {
+					continue
+				}
+				if fs.level != 0 {
+					// already taken by an earlier embed its path also names, as
+					// siblings embedding the same table (a parent and the children
+					// of a self-reference): it applies once, without a dangling AND
+					continue
+				}
 			}
 			if children_where != "" {
 				children_where += bool_op
 			}
-			w, list := whereClause(table, schema, label, n, nmarker, stack)
-			children_where += w
-			valueList = append(valueList, list...)
-			nmarker += len(list)
+			children_where += whereClause(table, schema, label, n, b, stack)
 		}
 		where += children_where
 		if node.not || node.operator == "OR" {
 			where += ")"
 		}
-		if node.operator != "" {
+		if node.operator != "" && b.replay == nil {
 			// a logic tree is taken as a whole, like a single filter
-			node.inserted = true
+			b.filter(node).level = b.level
 		}
 	} else {
-		// skip nodes already inserted
-		if node.inserted {
-			return
+		if b.replay == nil {
+			// skip nodes already inserted
+			fs := b.filter(node)
+			if fs.level != 0 {
+				return
+			}
+			fs.level = b.level
 		}
-		node.inserted = true
 		if node.not {
 			where += "NOT "
 		}
 		var fieldname string
 		if stack.level == 0 {
-			fieldname = _stq(node.field.name, schema, table)
+			fieldname = stack.rootColumn(table, schema, node.field.name)
 		} else {
 			fieldname = quote(labelWithNumber(table, stack.level)) + "." + quote(node.field.name)
 		}
@@ -836,12 +1021,13 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 			fieldname = "(" + toJson(table, schema, node.field.name, fieldname, stack.info) +
 				node.field.jsonPath + ")"
 		}
-		// On a JSON path every value is bound, so `->>k=eq.null` compares against
-		// the string 'null' as in PostgREST. The IS operator is the exception:
-		// its operand is one of the keywords null/not_null/true/false/unknown
+		// Every operand is bound, as in PostgREST (pgFmtFilter): eq.null and
+		// eq.true compare against the strings 'null' and 'true', and PostgreSQL
+		// casts them to the column type. The IS operator is the exception: its
+		// operand is one of the keywords null/not_null/true/false/unknown
 		// (enforced by the parser) and `x IS $1` is a syntax error, so the
-		// keyword is written verbatim whatever the field.
-		forceParam := node.field.jsonPath != "" && node.operator != "IS"
+		// keyword is written verbatim.
+		forceParam := node.operator != "IS"
 		if node.opModifier != "" {
 			// any/all modifier: expand to (field OP v1 OR/AND field OP v2 ...)
 			var boolOp string
@@ -856,14 +1042,19 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					where += boolOp
 				}
 				where += fieldname + " " + node.operator + " "
-				where, valueList, nmarker = appendValue(where, value, valueList, nmarker, forceParam)
+				if len(node.nullAt) != 0 && slices.Contains(node.nullAt, i) {
+					// an unquoted null element: a NULL parameter
+					where = appendNull(where, b)
+					continue
+				}
+				where = appendValue(where, value, b, forceParam)
 			}
 			where += ")"
 		} else {
 			where += fieldname
 			if node.operator == "IN" && len(node.values) == 0 {
 				where += " = ANY('{}')"
-				return where, valueList
+				return where
 			}
 			if node.operator == "@@" {
 				// If the column is not a tsvector, wrap with to_tsvector()
@@ -886,7 +1077,7 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					if i != 0 {
 						where += ", "
 					}
-					where, valueList, nmarker = appendValue(where, value, valueList, nmarker, forceParam)
+					where = appendValue(where, value, b, forceParam)
 				}
 				where += ")"
 			} else if node.operator == "@@" {
@@ -904,21 +1095,21 @@ func whereClause(table, schema, label string, node *WhereConditionNode, nmarker 
 					where += quoteLit(arg)
 					where += ", "
 				}
-				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, false)
+				where = appendValue(where, node.values[0], b, true)
 				where += ")"
 
 			} else {
-				where, valueList, _ = appendValue(where, node.values[0], valueList, nmarker, forceParam)
+				where = appendValue(where, node.values[0], b, forceParam)
 			}
 		}
 	}
-	return where, valueList
+	return where
 }
 
 // returningClause builds the RETURNING clause of a mutation and, when the
 // representation needs an outer select (embeds, or an order to apply), the
 // select over the _source CTE the callers wrap the mutation in.
-func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) (ret, sel string, err error) {
+func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo, st *buildState) (ret, sel string, err error) {
 	ret += " RETURNING "
 	// order= applies to the returned representation (PostgREST 13.0.0, #3013):
 	// it is built against the _source CTE the outer select reads. limit and
@@ -960,7 +1151,7 @@ func returningClause(table, schema string, parts *QueryParts, info *SchemaInfo) 
 	// (casts, aliases and json paths are applied there). So it must expose
 	// each base column once, raw and deduplicated by name: a formatted or
 	// duplicated fk column would make _source references ambiguous (42702).
-	sc, joins, keys, err := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true})
+	sc, joins, keys, _, err := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true, st: st})
 	if err != nil {
 		return "", "", err
 	}
@@ -1609,7 +1800,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 	if err != nil {
 		return "", nil, err
 	}
-	valueList = []any{rows}
+	st := newBuildState(parts, []any{rows})
 
 	insert = "INSERT INTO " + _sq(table, schema)
 	switch {
@@ -1631,7 +1822,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		insert += onConflict
 	}
 	if options.ReturnRepresentation {
-		ret, sel, err := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info, st)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1640,14 +1831,17 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 			insert = "WITH _source AS (" + insert + ") " + sel
 		}
 	}
-	if err := checkFiltersApplied(parts.whereConditionsTree, true, options.ReturnRepresentation); err != nil {
+	if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
 		return "", nil, err
 	}
-	return insert, valueList, nil
+	return insert, st.page.values, nil
 }
 
 func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	update string, valueList []any, err error) {
+	if parts.recursive != nil {
+		return "", nil, errRecursiveWrite
+	}
 
 	stack := BuildStack{info: info}
 	schema := options.Schema
@@ -1657,7 +1851,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 	var pairs string
 	var i int
 	// in a fixed order, as INSERT: one SQL text per set of columns, so one
-	// prepared statement in pgx's cache
+	// prepared statement in pgx's cache (the filters' markers follow)
 	for _, key := range orderedRecordKeys(record, parts.columnFields, nil) {
 		if pairs != "" {
 			pairs += ", "
@@ -1674,14 +1868,14 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		// reaches PostgreSQL, so a missing one answers 42P01.
 		return "SELECT * FROM " + _sq(table, schema) + " WHERE false", nil, nil
 	}
-	whereClause, whereValueList := whereClause(table, schema, "", parts.whereConditionsTree, i, stack)
-	valueList = append(valueList, whereValueList...)
+	st := newBuildState(parts, valueList)
+	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
 	update = "UPDATE " + _sq(table, schema) + " SET " + pairs
 	if whereClause != "" {
 		update += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel, err := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info, st)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1690,24 +1884,28 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 			update = "WITH _source AS (" + update + ") " + sel
 		}
 	}
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, options.ReturnRepresentation); err != nil {
+	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {
 		return "", nil, err
 	}
-	return update, valueList, nil
+	return update, st.page.values, nil
 }
 
 func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	delete string, valueList []any, err error) {
+	if parts.recursive != nil {
+		return "", nil, errRecursiveWrite
+	}
 
 	stack := BuildStack{info: info}
 	schema := options.Schema
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
+	st := newBuildState(parts, nil)
+	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
 	delete = "DELETE FROM " + _sq(table, schema)
 	if whereClause != "" {
 		delete += " WHERE " + whereClause
 	}
 	if options.ReturnRepresentation {
-		ret, sel, err := returningClause(table, schema, parts, info)
+		ret, sel, err := returningClause(table, schema, parts, info, st)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1716,10 +1914,10 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 			delete = "WITH _source AS (" + delete + ") " + sel
 		}
 	}
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, options.ReturnRepresentation); err != nil {
+	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {
 		return "", nil, err
 	}
-	return delete, valueList, nil
+	return delete, st.page.values, nil
 }
 
 // totalSetting is the transaction-local setting through which the page of a
@@ -1751,28 +1949,20 @@ const totalSetting = "smoothdb.total"
 // PostgreSQL evaluates once, as a one-time filter, before the first row; the
 // second statement reads the setting back. With limit=0 PostgreSQL reads
 // nothing for the page, and the second statement counts the function itself.
-func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, parts *QueryParts, options *QueryOptions) (string, []any, error) {
+//
+// innerConds is an EXISTS per !inner embed of the root (see selectClause);
+// count binds the values of their filters when the total is a statement of
+// its own (countApart), after the values that the page binds before its
+// embeds (the arguments of a function, the root filters).
+func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, innerConds []string, count *binder, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	options.totalQuery, options.totalValues, options.totalPrelude = "", nil, ""
-	var limit int64 = -1
-	hasLimit := parts.limit != "" || options.HasRange && options.RangeMax != -1
-	if hasLimit {
-		if options.HasRange {
-			limit = options.RangeMax - options.RangeMin + 1
-		} else {
-			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
-			options.RangeMax = limit - 1
+	limit, hasLimit, offset, hasOffset := pageBounds(parts, options)
+	if !options.HasRange {
+		if parts.limit != "" {
+			l, _ := strconv.ParseInt(parts.limit, 10, 64)
+			options.RangeMax = l - 1
 		}
-	}
-	if capRows := maxRows(); capRows > 0 && (limit == -1 || limit > capRows) {
-		limit, hasLimit = capRows, true
-	}
-	var offset int64 = -1
-	hasOffset := parts.offset != "" || options.HasRange
-	if hasOffset {
-		if options.HasRange {
-			offset = options.RangeMin
-		} else {
-			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
+		if hasOffset {
 			options.RangeMin = offset
 			if options.RangeMax == -1 {
 				options.RangeMax = 0
@@ -1781,8 +1971,8 @@ func buildAfterSelect(query, from string, once bool, joins, whereClause, groupBy
 		}
 	}
 
-	if options.Count != "" && (limit != -1 || offset > 0) {
-		conds := parts.innerEmbedConds
+	if countModeOf(options, once, limit, offset) != countNone {
+		conds := innerConds
 		if whereClause != "" {
 			conds = append([]string{whereClause}, conds...)
 		}
@@ -1793,6 +1983,12 @@ func buildAfterSelect(query, from string, once bool, joins, whereClause, groupBy
 		if !once || limit == 0 {
 			options.totalQuery = "SELECT COUNT(*) " + strings.TrimSpace(from) + countWhere
 			options.totalValues = valueList
+			if count != nil {
+				options.totalValues = valueList[:count.base:count.base]
+				if len(count.values) != 0 {
+					options.totalValues = slices.Concat(options.totalValues, count.values)
+				}
+			}
 		} else {
 			query = "WITH __source AS MATERIALIZED (SELECT * " + strings.TrimSpace(from) + ") " + query
 			from = "FROM __source t"
@@ -1840,6 +2036,57 @@ func buildAfterSelect(query, from string, once bool, joins, whereClause, groupBy
 	return query, valueList, nil
 }
 
+// pageBounds returns the LIMIT and the OFFSET of a read: from a Range or
+// from limit= and offset=, the limit capped by maxRows. -1 is none.
+func pageBounds(parts *QueryParts, options *QueryOptions) (limit int64, hasLimit bool, offset int64, hasOffset bool) {
+	limit = -1
+	hasLimit = parts.limit != "" || options.HasRange && options.RangeMax != -1
+	if hasLimit {
+		if options.HasRange {
+			limit = options.RangeMax - options.RangeMin + 1
+		} else {
+			limit, _ = strconv.ParseInt(parts.limit, 10, 64)
+		}
+	}
+	if capRows := maxRows(); capRows > 0 && (limit == -1 || limit > capRows) {
+		limit, hasLimit = capRows, true
+	}
+	offset = -1
+	hasOffset = parts.offset != "" || options.HasRange
+	if hasOffset {
+		if options.HasRange {
+			offset = options.RangeMin
+		} else {
+			offset, _ = strconv.ParseInt(parts.offset, 10, 64)
+		}
+	}
+	return
+}
+
+// countModeOf tells how the total of a ranged count is built (see
+// buildAfterSelect): a count with a limit or an offset has one, counted in a
+// statement of its own, or in the page for a function that must run once.
+func countModeOf(options *QueryOptions, once bool, limit, offset int64) countMode {
+	switch {
+	case options.Count == "" || limit == -1 && offset <= 0:
+		return countNone
+	case !once || limit == 0:
+		return countApart
+	}
+	return countInPage
+}
+
+// startCount prepares the build of the total of a ranged count, after the
+// page has bound the values that the total shares: the arguments of a
+// function and the root filters.
+func (st *buildState) startCount(parts *QueryParts, options *QueryOptions, once bool) {
+	limit, _, offset, _ := pageBounds(parts, options)
+	st.countMode = countModeOf(options, once, limit, offset)
+	if st.countMode == countApart {
+		st.count = &binder{base: len(st.page.values)}
+	}
+}
+
 const defaultMaxRecursiveDepth = 100
 
 // referencesField reports whether a where-condition tree filters on the named
@@ -1859,27 +2106,40 @@ func referencesField(node *WhereConditionNode, name string) bool {
 	return false
 }
 
+// recursiveAliases sets the names through which the outer query of a
+// recursive select reads the root columns (see buildRecursiveSelect).
+// Single-table mode selects from the CTE, which carries the rows, so every
+// root column is read from "__recursive". Via mode joins the table back
+// onto "__dedup", so its columns are read from the table itself and only the
+// pseudo-columns __depth and __path from "__dedup". The select list, the
+// filters, the order and the embeds are built with these names in the first
+// place: values and identifiers are never rewritten in the finished SQL.
+func recursiveAliases(stack *BuildStack, rec *RecursiveInfo) {
+	if rec.ViaTable == "" {
+		stack.rootAlias = "__recursive"
+	} else {
+		stack.pseudoAlias = "__dedup"
+	}
+}
+
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
 	selectClause, mainWhere, orderClause, joins string,
-	valueList []any, info *SchemaInfo) (string, []any, error) {
+	st *buildState, info *SchemaInfo) (string, []any, error) {
 
 	rec := parts.recursive
 	qtable := _sq(table, schema)
 	startField := quote(rec.StartField)
 	recurseField := quote(rec.RecurseField)
 	cteName := quote("__recursive")
+	b := &st.page
 
-	// Computed-relationship embeds call a function with the parent ROW, emitted as
-	// `"table"::schema.table` (an unqualified row ref + cast). The tablePrefix->cte
-	// rewrite below only repoints qualified column refs (`"schema"."table".col`), so
-	// that bare row ref is left dangling — the base-table alias doesn't exist in the
-	// recursive outer query (rows live in the CTE). When such an embed is present we
-	// carry the source row as a composite `__row` column on the CTE and repoint the
-	// embed at it. `via`+embed is rejected below, so this only applies single-table.
-	rowRef := quote(table) + "::" + qtable
-	needsRow := rec.ViaTable == "" && joins != "" && strings.Contains(joins, rowRef)
+	// Computed-relationship embeds call a function with the parent ROW. The base
+	// table is not in scope in the recursive outer query (rows live in the CTE), so
+	// when such an embed is present the CTE carries the source row as a composite
+	// `__row` column and the embed reads it (see selectForJoinClause). `via`+embed is
+	// rejected below, so this only applies single-table.
 	rowCol := ""
-	if needsRow {
+	if st.rootRow {
 		rowCol = ", " + quote(table) + " AS " + quote("__row")
 	}
 
@@ -1923,30 +2183,25 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		maxDepth = serverMax
 	}
 
-	// Parameter marker allocation order:
-	// 1. Via edge conditions (if any) — built first so they get the lowest markers
-	// 2. Start value ($N)
-	// 3. Max depth ($N+1)
-	// This ordering matters because whereClause() assigns markers sequentially from nmarker.
-	nmarker := len(valueList)
+	// Parameter marker allocation order, after the result filters and the
+	// embeds:
+	// 1. Via edge conditions (if any)
+	// 2. Walk conditions (if any)
+	// 3. Start value
+	// 4. Max depth
+	// The binder assigns markers in the order they are built.
 
 	// Build via edge table WHERE clause using the standard whereClause builder
 	var viaWhere string
 	if rec.ViaConditions != nil {
-		var viaValues []any
-		viaWhere, viaValues = whereClause(rec.ViaTable, schema, "", rec.ViaConditions, nmarker, BuildStack{})
-		valueList = append(valueList, viaValues...)
-		nmarker = len(valueList)
+		viaWhere, _ = st.pageWhere(rec.ViaTable, schema, "", rec.ViaConditions, BuildStack{})
 	}
 
 	// Build the walk-prune WHERE (walk.* filters) against the main table.
 	// Marker order stays via -> walk -> start -> depth.
 	var walkWhere string
 	if rec.WalkConditions != nil {
-		var walkValues []any
-		walkWhere, walkValues = whereClause(table, schema, "", rec.WalkConditions, nmarker, BuildStack{info: info})
-		valueList = append(valueList, walkValues...)
-		nmarker = len(valueList)
+		walkWhere, _ = st.pageWhere(table, schema, "", rec.WalkConditions, BuildStack{info: info})
 	}
 
 	var q strings.Builder
@@ -1961,9 +2216,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		// the seed row so it remains a traversal anchor even if it doesn't match them.
 		q.WriteString("SELECT " + qtable + ".*" + rowCol + ", 0 AS __depth, ARRAY[" + qtable + "." + startField + "] AS __path")
 		q.WriteString(" FROM " + qtable)
-		nmarker++
-		q.WriteString(" WHERE " + qtable + "." + startField + " = $" + strconv.Itoa(nmarker))
-		valueList = append(valueList, rec.StartValue)
+		q.WriteString(b.bind(" WHERE "+qtable+"."+startField+" = ", rec.StartValue))
 		if walkWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + walkWhere)
 		}
@@ -1983,9 +2236,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 			newField, prevField = startField, recurseField
 		}
 		q.WriteString(" INNER JOIN " + cteName + " ON " + qtable + "." + newField + " = " + cteName + "." + prevField)
-		nmarker++
-		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
-		valueList = append(valueList, maxDepth)
+		q.WriteString(b.bind(" WHERE "+cteName+".__depth < ", maxDepth))
 		q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
 		if walkWhere != "" {
 			q.WriteString(" AND " + walkWhere)
@@ -2023,10 +2274,8 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 			q.WriteString(", ARRAY[" + qtable + "." + startField + "] AS __path")
 		}
 		q.WriteString(" FROM " + qtable)
-		nmarker++
-		startMarker := "$" + strconv.Itoa(nmarker)
+		startMarker := b.bind("", rec.StartValue)
 		q.WriteString(" WHERE " + qtable + "." + startField + " = " + startMarker)
-		valueList = append(valueList, rec.StartValue)
 		if walkWhere != "" && !rec.ExcludeStart {
 			q.WriteString(" AND " + walkWhere)
 		}
@@ -2060,9 +2309,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		q.WriteString(" FROM " + cteName)
 		q.WriteString(" INNER JOIN (" + edges + ") " + edgeName + " ON " + edgeName + ".__from = " + cteName + ".__node")
 		q.WriteString(" INNER JOIN " + qtable + " ON " + qtable + "." + startField + " = " + edgeName + ".__to")
-		nmarker++
-		q.WriteString(" WHERE " + cteName + ".__depth < $" + strconv.Itoa(nmarker))
-		valueList = append(valueList, maxDepth)
+		q.WriteString(b.bind(" WHERE "+cteName+".__depth < ", maxDepth))
 		if withPath {
 			q.WriteString(" AND NOT " + qtable + "." + startField + " = ANY(" + cteName + ".__path)")
 		} else {
@@ -2096,27 +2343,13 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	q.WriteString(" ")
 
 	// --- Outer query ---
-	tablePrefix := qtable + "."
-	ctePrefix := cteName + "."
-	// outer rewrites a clause built against the table (select list, result filters,
-	// ORDER BY) for the outer query. Single-table mode selects from the CTE, which
-	// carries the rows, so every table reference moves to the CTE name. Via mode joins
-	// the table back onto "__dedup", so its columns are read from the table itself and
-	// only the pseudo-columns move, "table"."__depth" to "__dedup"."__depth".
-	outer := func(clause string) string {
-		if rec.ViaTable == "" {
-			return strings.ReplaceAll(clause, tablePrefix, ctePrefix)
-		}
-		for _, col := range []string{"__depth", "__path"} {
-			clause = strings.ReplaceAll(clause, tablePrefix+quote(col), dedupName+"."+quote(col))
-		}
-		return clause
-	}
+	// The select list, the result filters, the order and the embeds read the
+	// root columns through the names of recursiveAliases.
 
 	// Build the SELECT list (without keyword).
 	var sel string
 	if selectClause != "*" {
-		sel = outer(selectClause)
+		sel = selectClause
 	} else if rec.ViaTable != "" {
 		sel = qtable + ".*"
 	} else {
@@ -2138,19 +2371,11 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		}
 	}
 
-	// Embed joins (LEFT JOIN LATERAL) correlate to the base-table alias; rewrite
-	// the top-level "table". -> "__recursive". correlation. The lateral's own numbered
-	// alias (relationship_1.) is untouched, so the rewrite is surgical. via+embed is
+	// Embed joins (LEFT JOIN LATERAL) correlate to "__recursive". via+embed is
 	// rejected by the guard above, so joinsClause is only ever set in single-table mode.
 	var joinsClause string
 	if joins != "" {
-		joinsClause = " " + strings.ReplaceAll(joins, tablePrefix, ctePrefix)
-		if needsRow {
-			// Repoint computed-relationship embeds from the (now absent) base-table row
-			// ref to the CTE's `__row` composite column. `__row` is already the table's
-			// row type, so the original `::schema.table` cast is dropped with the ref.
-			joinsClause = strings.ReplaceAll(joinsClause, rowRef, ctePrefix+quote("__row"))
-		}
+		joinsClause = " " + joins
 	}
 
 	// Plain filters become a result WHERE on the outer query (composed with the
@@ -2167,7 +2392,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		if outerWhere != "" {
 			outerWhere += " AND "
 		}
-		outerWhere += outer(mainWhere)
+		outerWhere += mainWhere
 	}
 
 	if rec.ViaTable != "" {
@@ -2182,7 +2407,7 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	}
 
 	if orderClause != "" {
-		q.WriteString(" ORDER BY " + outer(orderClause))
+		q.WriteString(" ORDER BY " + orderClause)
 	}
 
 	// Limit
@@ -2200,15 +2425,11 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 		limit, hasLimit = capRows, true
 	}
 	if hasLimit {
-		nmarker++
-		q.WriteString(" LIMIT $" + strconv.Itoa(nmarker))
-		valueList = append(valueList, limit)
+		q.WriteString(b.bind(" LIMIT ", limit))
 	}
 
 	// Offset
 	if parts.offset != "" || options.HasRange {
-		nmarker++
-		q.WriteString(" OFFSET $" + strconv.Itoa(nmarker))
 		var offset int64
 		if options.HasRange {
 			offset = options.RangeMin
@@ -2220,14 +2441,19 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 			}
 			options.RangeMax += options.RangeMin
 		}
-		valueList = append(valueList, offset)
+		q.WriteString(b.bind(" OFFSET ", offset))
 	}
 
-	return q.String(), valueList, nil
+	return q.String(), b.values, nil
 }
 
 func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
+	if parts.recursive != nil {
+		// a call does not walk a hierarchy: dropping the recursive filters
+		// would return every row, and run a VOLATILE function anyway
+		return "", nil, &BuildError{"recursive filters are not supported on a function call"}
+	}
 
 	stack := BuildStack{info: info, maxRows: maxRows()}
 	schema := options.Schema
@@ -2257,6 +2483,12 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	var t, s string
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
+		if rettype == nil {
+			// the cache knows the function but not its return type: a schema
+			// cache that changed under the request
+			return "", nil, errors.New("the return type of function " + strconv.Quote(name) +
+				" is not in the schema cache; reload the schema cache")
+		}
 		if rettype.IsTable {
 			if rettype.IsDomain {
 				t = rettype.DomainSubType
@@ -2266,7 +2498,14 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			s = rettype.Schema
 		}
 	}
-	selectClause, joins, _, err := selectClause(t, s, "t", parts, stack)
+	// the root filters bind their values before the embeds (see buildAfterSelect)
+	st := newBuildState(parts, valueList)
+	stack.st = st
+	whereClause, _ := st.pageWhere("t", "", name, parts.whereConditionsTree, stack)
+	once := f == nil || f.Volatility == "v"
+	st.startCount(parts, options, once)
+	stack.countChain = st.countMode != countNone
+	selectClause, joins, _, innerConds, err := selectClause(t, s, "t", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
@@ -2291,14 +2530,8 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			selectClause = strings.Join(cols, ", ")
 		}
 	}
-	whereClause, whereValueList := whereClause("t", "", name, parts.whereConditionsTree, i, stack)
-	valueList = append(valueList, whereValueList...)
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true, &st.page); err != nil {
 		return "", nil, err
-	}
-	// patch order fields
-	for i := range parts.orderFields {
-		parts.orderFields[i].field.tablename = "t"
 	}
 	orderClause, err := orderClause("t", "", "", 0, parts.orderFields, parts.selectFields, info)
 	if err != nil {
@@ -2309,8 +2542,7 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	query = "SELECT " + selectClause
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	once := f == nil || f.Volatility == "v"
-	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
 }
 
 type DirectQueryBuilder struct {
@@ -2318,18 +2550,28 @@ type DirectQueryBuilder struct {
 }
 
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
-	stack := BuildStack{info: info, maxRows: maxRows()}
+	st := newBuildState(parts, nil)
+	stack := BuildStack{info: info, maxRows: maxRows(), st: st}
 	schema := options.Schema
-	selectClause, joins, _, err := selectClause(table, schema, "", parts, stack)
+	if parts.recursive != nil {
+		recursiveAliases(&stack, parts.recursive)
+	}
+	// the root filters bind their values before the embeds, so that the total
+	// of a ranged count shares them (see buildAfterSelect)
+	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
+	if parts.recursive == nil {
+		st.startCount(parts, options, false)
+		stack.countChain = st.countMode != countNone
+	}
+	selectClause, joins, _, innerConds, err := selectClause(table, schema, "", parts, stack)
 	if err != nil {
 		return "", nil, err
 	}
-	whereClause, valueList := whereClause(table, schema, "", parts.whereConditionsTree, 0, stack)
-	if err := checkFiltersApplied(parts.whereConditionsTree, false, true); err != nil {
+	if err := checkFiltersApplied(parts.whereConditionsTree, false, true, &st.page); err != nil {
 		return "", nil, err
 	}
 	groupByClause := groupByClause(table, schema, parts, info)
-	orderClause, err := orderClause(table, schema, "", 0, parts.orderFields, parts.selectFields, info)
+	orderClause, err := levelOrderClause(table, schema, "", parts.orderFields, parts.selectFields, stack)
 	if err != nil {
 		return "", nil, err
 	}
@@ -2339,13 +2581,13 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
 		}
 		return buildRecursiveSelect(table, schema, parts, options,
-			selectClause, whereClause, orderClause, joins, valueList, info)
+			selectClause, whereClause, orderClause, joins, st, info)
 	}
 
 	query := "SELECT " + selectClause
 	from := "FROM " + _sq(table, schema)
 
-	return buildAfterSelect(query, from, false, joins, whereClause, groupByClause, orderClause, valueList, parts, options)
+	return buildAfterSelect(query, from, false, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
 }
 
 // preferredSerializer: the response is written in Go from the raw row values

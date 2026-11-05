@@ -135,68 +135,65 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 	conn, schemaname := GetConnAndSchema(ctx)
 	ftablename := _sq(tablename, schemaname)
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	return withTx(ctx, conn, func() error {
+		var err error
+		var alter string
 
-	var alter string
+		prefix := "ALTER TABLE " + ftablename + " ALTER COLUMN "
+		// TYPE
+		if column.Type != nil {
+			alter = prefix + quote(name) + " TYPE " + *column.Type
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+		}
+		// NOT NULL
+		if column.NotNull != nil {
+			var set_drop string
+			if *column.NotNull {
+				set_drop = "SET"
+			} else {
+				set_drop = "DROP"
+			}
+			alter = prefix + quote(name) + " " + set_drop + " NOT NULL"
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+		}
+		// DEFAULT
+		if column.Default != nil {
+			if *column.Default != "" {
+				alter = prefix + quote(name) + " SET DEFAULT " + *column.Default
+			} else {
+				alter = prefix + quote(name) + " DROP DEFAULT"
+			}
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+		}
+		// COMMENT
+		if column.Comment != nil {
+			comment := "COMMENT ON COLUMN " + ftablename + "." + quote(name) + " IS " + quoteLit(*column.Comment)
+			_, err = conn.Exec(ctx, comment)
+			if err != nil {
+				return err
+			}
+		}
+		// NAME as the last update
+		if column.Name != nil && *column.Name != name {
+			alter = "ALTER TABLE " + ftablename + " RENAME " + quote(name) + " TO " + quote(*column.Name)
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+		}
 
-	prefix := "ALTER TABLE " + ftablename + " ALTER COLUMN "
-	// TYPE
-	if column.Type != nil {
-		alter = prefix + quote(name) + " TYPE " + *column.Type
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
-	// NOT NULL
-	if column.NotNull != nil {
-		var set_drop string
-		if *column.NotNull {
-			set_drop = "SET"
-		} else {
-			set_drop = "DROP"
-		}
-		alter = prefix + quote(name) + " " + set_drop + " NOT NULL"
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
-	// DEFAULT
-	if column.Default != nil {
-		if *column.Default != "" {
-			alter = prefix + quote(name) + " SET DEFAULT " + *column.Default
-		} else {
-			alter = prefix + quote(name) + " DROP DEFAULT"
-		}
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
-	// COMMENT
-	if column.Comment != nil {
-		comment := "COMMENT ON COLUMN " + ftablename + "." + quote(name) + " IS " + quoteLit(*column.Comment)
-		_, err = tx.Exec(ctx, comment)
-		if err != nil {
-			return err
-		}
-	}
-	// NAME as the last update
-	if column.Name != nil && *column.Name != name {
-		alter = "ALTER TABLE " + ftablename + " RENAME " + quote(name) + " TO " + quote(*column.Name)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
-
-	//db.refreshTable(ctx, ftablename)
-	return tx.Commit(ctx)
+		//db.refreshTable(ctx, ftablename)
+		return nil
+	})
 }
 
 func DeleteColumn(ctx context.Context, tablename string, name string, cascade bool) error {

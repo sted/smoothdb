@@ -62,42 +62,42 @@ func TestSelfEmbedFilter(t *testing.T) {
 		{
 			// the children (O2M)
 			"?select=id,web_content(name)&web_content.name=eq.fezz",
-			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = 'fezz' ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE`,
-			nil,
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = $1 ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE`,
+			[]any{"fezz"},
 		},
 		{
 			// the parent (M2O, by the fk column), as an inner join: the filter
 			// constrains the parent row and so the top-level rows
 			"?select=id,p_web_id!inner(name)&p_web_id.name=eq.wat",
-			`SELECT "web_content"."id",  row_to_json("web_content_p_web_id_1".*) AS "p_web_id" FROM "web_content"  INNER JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id" AND "web_content_1"."name" = 'wat') AS "web_content_p_web_id_1" ON TRUE`,
-			nil,
+			`SELECT "web_content"."id",  row_to_json("web_content_p_web_id_1".*) AS "p_web_id" FROM "web_content"  INNER JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id" AND "web_content_1"."name" = $1) AS "web_content_p_web_id_1" ON TRUE`,
+			[]any{"wat"},
 		},
 		{
 			// by the embed's alias
 			"?select=id,children:web_content(name)&children.name=eq.bar",
-			`SELECT "web_content"."id",  COALESCE("web_content_children_1"."_web_content_children_1", '[]') AS "children" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_children_1") AS "_web_content_children_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = 'bar' ) AS "_web_content_children_1") AS "web_content_children_1" ON TRUE`,
-			nil,
+			`SELECT "web_content"."id",  COALESCE("web_content_children_1"."_web_content_children_1", '[]') AS "children" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_children_1") AS "_web_content_children_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = $1 ) AS "_web_content_children_1") AS "web_content_children_1" ON TRUE`,
+			[]any{"bar"},
 		},
 		{
 			// the parent and the children side by side, both embedding
 			// web_content: each filter goes to one embed, once (UpdateSpec
 			// "embeds parent, children and grandchildren after update")
 			"?select=id,web_content(name),parent_content:p_web_id(name)&parent_content.name=neq.wat&web_content.name=eq.fezz",
-			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content",  row_to_json("web_content_parent_content_1".*) AS "parent_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = 'fezz' ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE LEFT JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id" AND "web_content_1"."name" <> 'wat') AS "web_content_parent_content_1" ON TRUE`,
-			nil,
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content",  row_to_json("web_content_parent_content_1".*) AS "parent_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = $1 ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE LEFT JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id" AND "web_content_1"."name" <> $2) AS "web_content_parent_content_1" ON TRUE`,
+			[]any{"fezz", "wat"},
 		},
 		{
 			// the same with a logic tree: it goes to the first embed its path
 			// names, and only there
 			"?select=id,web_content(name),parent_content:p_web_id(name)&web_content.or=(name.eq.fezz,name.eq.foo)",
-			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content",  row_to_json("web_content_parent_content_1".*) AS "parent_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND ("web_content_1"."name" = 'fezz' OR "web_content_1"."name" = 'foo') ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE LEFT JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id") AS "web_content_parent_content_1" ON TRUE`,
-			nil,
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content",  row_to_json("web_content_parent_content_1".*) AS "parent_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."p_web_id" = "web_content"."id" AND ("web_content_1"."name" = $1 OR "web_content_1"."name" = $2) ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE LEFT JOIN LATERAL ( SELECT "web_content_1"."name" FROM "web_content" AS "web_content_1" WHERE "web_content_1"."id" = "web_content"."p_web_id") AS "web_content_parent_content_1" ON TRUE`,
+			[]any{"fezz", "foo"},
 		},
 		{
 			// two levels: each filter on its own level, the top-level one on top
 			"?id=eq.0&select=id,web_content(name,web_content(name))&web_content.name=eq.fezz&web_content.web_content.id=eq.4",
-			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name",  COALESCE("web_content_web_content_2"."_web_content_web_content_2", '[]') AS "web_content" FROM "web_content" AS "web_content_1"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_2") AS "_web_content_web_content_2" FROM ( SELECT "web_content_2"."name" FROM "web_content" AS "web_content_2" WHERE "web_content_2"."p_web_id" = "web_content_1"."id" AND "web_content_2"."id" = '4' ) AS "_web_content_web_content_2") AS "web_content_web_content_2" ON TRUE WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = 'fezz' ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE WHERE "web_content"."id" = $1`,
-			[]any{"0"},
+			`SELECT "web_content"."id",  COALESCE("web_content_web_content_1"."_web_content_web_content_1", '[]') AS "web_content" FROM "web_content"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_1") AS "_web_content_web_content_1" FROM ( SELECT "web_content_1"."name",  COALESCE("web_content_web_content_2"."_web_content_web_content_2", '[]') AS "web_content" FROM "web_content" AS "web_content_1"  LEFT JOIN LATERAL ( SELECT json_agg("_web_content_web_content_2") AS "_web_content_web_content_2" FROM ( SELECT "web_content_2"."name" FROM "web_content" AS "web_content_2" WHERE "web_content_2"."p_web_id" = "web_content_1"."id" AND "web_content_2"."id" = $2 ) AS "_web_content_web_content_2") AS "web_content_web_content_2" ON TRUE WHERE "web_content_1"."p_web_id" = "web_content"."id" AND "web_content_1"."name" = $3 ) AS "_web_content_web_content_1") AS "web_content_web_content_1" ON TRUE WHERE "web_content"."id" = $1`,
+			[]any{"0", "4", "fezz"},
 		},
 	})
 }

@@ -144,9 +144,11 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 			dbi.cachedCheckConstraints[ftable] = append(dbi.cachedCheckConstraints[ftable], c)
 		}
 	}
+	// The tables in sorted order: the relationships of a table come out in
+	// the same order on every load (an embed by column takes the first match).
 	var pk *Constraint
-	for t, fkeys := range dbi.cachedForeignKeys {
-
+	for _, t := range slices.Sorted(maps.Keys(dbi.cachedForeignKeys)) {
+		fkeys := dbi.cachedForeignKeys[t]
 		c, ok := dbi.cachedPrimaryKeys[t]
 		if ok {
 			pk = &c
@@ -211,7 +213,46 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		}
 		dbi.cachedRelationships[sourceTable] = append(dbi.cachedRelationships[sourceTable], rel)
 	}
+	dbi.removeInternal(exposedSchemas())
 	return dbi, nil
+}
+
+// exposedSchemas is Database.ExposedSchemas; empty (every schema exposed)
+// without an engine.
+func exposedSchemas() []string {
+	if dbe == nil {
+		return nil
+	}
+	return dbe.config.ExposedSchemas
+}
+
+// isExposed reports whether schema is in exposed; every schema is when
+// exposed is empty.
+func isExposed(schema string, exposed []string) bool {
+	return len(exposed) == 0 || slices.Contains(exposed, schema)
+}
+
+// removeInternal drops the relationships to a relation outside the exposed
+// schemas, or through a junction outside them, as PostgREST's removeInternal
+// (SchemaCache.hs). An embed then never resolves to a relation that the API
+// does not expose. It does nothing when ExposedSchemas is empty.
+func (si *SchemaInfo) removeInternal(exposed []string) {
+	if len(exposed) == 0 {
+		return
+	}
+	for table, rels := range si.cachedRelationships {
+		si.cachedRelationships[table] = slices.DeleteFunc(rels, func(rel Relationship) bool {
+			relatedSchema, _ := splitTableName(rel.RelatedTable)
+			if !isExposed(relatedSchema, exposed) {
+				return true
+			}
+			if rel.Type == M2M {
+				junctionSchema, _ := splitTableName(rel.JunctionTable)
+				return !isExposed(junctionSchema, exposed)
+			}
+			return false
+		})
+	}
 }
 
 func (si *SchemaInfo) GetTypeById(id uint32) *Type {
@@ -443,9 +484,13 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 		key := baseCol{_s(d.BaseTable, d.BaseSchema), d.BaseColumn}
 		surfaceMap[key] = append(surfaceMap[key], surface{d.ViewName, d.ViewSchema, d.ViewColumn, true})
 	}
+	// The maps are read in sorted key order, so that the surfaces, and the
+	// relationships built from them, come out in the same order on every
+	// load.
+	fkTables := slices.Sorted(maps.Keys(si.cachedForeignKeys))
 	// Add base tables themselves as surfaces
-	for _, fkeys := range si.cachedForeignKeys {
-		for _, fk := range fkeys {
+	for _, t := range fkTables {
+		for _, fk := range si.cachedForeignKeys[t] {
 			for _, col := range fk.Columns {
 				key := baseCol{_s(fk.Table, fk.Schema), col}
 				surfaceMap[key] = append(surfaceMap[key], surface{fk.Table, fk.Schema, col, false})
@@ -457,8 +502,8 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 		}
 	}
 	// Add M2M endpoint columns as table surfaces
-	for _, rels := range si.cachedRelationships {
-		for _, rel := range rels {
+	for _, k := range slices.Sorted(maps.Keys(si.cachedRelationships)) {
+		for _, rel := range si.cachedRelationships[k] {
 			if rel.Type != M2M {
 				continue
 			}
@@ -499,6 +544,22 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 		cols         []string
 		isView       bool
 	}
+	// sortSurfaces puts the surfaces in an exposed schema first, then the
+	// views, then orders by schema and name. A surface in a hidden schema
+	// loses to any exposed one: removeInternal drops it later, so it must not
+	// win a deduplication. Among exposed surfaces a view comes before a base
+	// table. With ExposedSchemas empty every schema is exposed.
+	exposed := exposedSchemas()
+	sortSurfaces := func(s []surfaceEntry) {
+		slices.SortStableFunc(s, func(a, b surfaceEntry) int {
+			return cmp.Or(
+				-compareBool(isExposed(a.schema, exposed), isExposed(b.schema, exposed)),
+				-compareBool(a.isView, b.isView),
+				cmp.Compare(a.schema, b.schema),
+				cmp.Compare(a.name, b.name),
+			)
+		})
+	}
 	collectSurfaces := func(table, schema string, cols []string) []surfaceEntry {
 		fbase := _s(table, schema)
 		type skey struct{ name, schema string }
@@ -518,12 +579,13 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 				result = append(result, *se)
 			}
 		}
+		sortSurfaces(result)
 		return result
 	}
 
 	// For each FK, create relationships between all surface pairs (skipping table↔table)
-	for _, fkeys := range si.cachedForeignKeys {
-		for _, fk := range fkeys {
+	for _, t := range fkTables {
+		for _, fk := range si.cachedForeignKeys[t] {
 			fbaseTable := _s(fk.Table, fk.Schema)
 			var uniqueSource bool
 			if pk, ok := si.cachedPrimaryKeys[fbaseTable]; ok {
@@ -601,32 +663,21 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 
 			tableSurfaces := collectSurfaces(tName, tSchema, rel.Columns)
 			relSurfaces := collectSurfaces(rName, rSchema, rel.RelatedColumns)
-			juncSurfaces := collectSurfaces(jTable, jSchema, append(rel.JColumns, rel.JRelatedColumns...))
-			// Prefer view junctions over base-table junctions so the
+			// collectSurfaces puts the view junctions first, so the
 			// synthesized M2M between two view endpoints goes through a
-			// junction exposed in the same (or similarly accessible)
-			// schema, rather than leaking into a hidden base schema the
-			// caller may not have USAGE on. Stable alphabetical tiebreak
-			// keeps the choice deterministic across runs.
-			sortViewsFirst := func(s []surfaceEntry) {
-				sort.SliceStable(s, func(i, j int) bool {
-					if s[i].isView != s[j].isView {
-						return s[i].isView
-					}
-					if s[i].schema != s[j].schema {
-						return s[i].schema < s[j].schema
-					}
-					return s[i].name < s[j].name
-				})
-			}
-			sortViewsFirst(tableSurfaces)
-			sortViewsFirst(relSurfaces)
-			sortViewsFirst(juncSurfaces)
+			// junction in the same (or similarly accessible) schema, not
+			// through a hidden base schema the caller may have no USAGE on.
+			juncSurfaces := collectSurfaces(jTable, jSchema, append(rel.JColumns, rel.JRelatedColumns...))
 
 			for _, ts := range tableSurfaces {
 				for _, rs := range relSurfaces {
 					for _, js := range juncSurfaces {
 						if !ts.isView && !rs.isView && !js.isView {
+							continue
+						}
+						// a junction in a hidden schema never takes the
+						// place of an exposed one (see removeInternal)
+						if !isExposed(js.schema, exposed) {
 							continue
 						}
 						fts := _s(ts.name, ts.schema)

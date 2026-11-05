@@ -34,7 +34,7 @@ func TestRangedCountTotal(t *testing.T) {
 			name:  "a filtered !inner embed restricts the total",
 			table: "projects",
 			query: "?select=id,clients!inner(id)&clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) FROM "projects" WHERE EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id" AND "clients_1"."id" = '1')`,
+			total: `SELECT COUNT(*) FROM "projects" WHERE EXISTS ( SELECT 1 FROM "clients" AS "clients_1" WHERE "clients_1"."id" = "projects"."client_id" AND "clients_1"."id" = $1)`,
 		},
 		{
 			name:  "the root filters and the !inner embed are both applied",
@@ -46,13 +46,13 @@ func TestRangedCountTotal(t *testing.T) {
 			name:  "a to-many !inner embed is an EXISTS on its rows",
 			table: "clients",
 			query: "?select=id,projects!inner(id)&projects.id=gt.3&limit=1",
-			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND "projects_1"."id" > '3')`,
+			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND "projects_1"."id" > $1)`,
 		},
 		{
 			name:  "a nested !inner embed restricts through its parent",
 			table: "tasks",
 			query: "?select=id,projects!inner(id,clients!inner(id))&projects.clients.id=eq.1&limit=1",
-			total: `SELECT COUNT(*) FROM "tasks" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."id" = "tasks"."project_id" AND EXISTS ( SELECT 1 FROM "clients" AS "clients_2" WHERE "clients_2"."id" = "projects_1"."client_id" AND "clients_2"."id" = '1'))`,
+			total: `SELECT COUNT(*) FROM "tasks" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."id" = "tasks"."project_id" AND EXISTS ( SELECT 1 FROM "clients" AS "clients_2" WHERE "clients_2"."id" = "projects_1"."client_id" AND "clients_2"."id" = $1))`,
 		},
 		{
 			name:  "an aggregate in the !inner embed's select is dropped from the EXISTS",
@@ -64,7 +64,7 @@ func TestRangedCountTotal(t *testing.T) {
 			name:  "a nested aggregate is an EXISTS at its own level",
 			table: "clients",
 			query: "?select=id,projects!inner(id,tasks!inner(count()))&projects.tasks.id=eq.999&limit=1",
-			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND EXISTS ( SELECT 1 FROM "tasks" AS "tasks_2" WHERE "tasks_2"."project_id" = "projects_1"."id" AND "tasks_2"."id" = '999'))`,
+			total: `SELECT COUNT(*) FROM "clients" WHERE EXISTS ( SELECT 1 FROM "projects" AS "projects_1" WHERE "projects_1"."client_id" = "clients"."id" AND EXISTS ( SELECT 1 FROM "tasks" AS "tasks_2" WHERE "tasks_2"."project_id" = "projects_1"."id" AND "tasks_2"."id" = $1))`,
 		},
 		{
 			name:  "a left embed does not restrict the total",
@@ -249,7 +249,9 @@ func TestRangedCountTotalInOneTransaction(t *testing.T) {
 		total int64
 	}{
 		{"limit=1", 5},
-		{"id=eq.null&limit=1", 0},
+		// t.id = $1 with a NULL parameter: folded to false (it was id=eq.null,
+		// bound as the string 'null' since card 35450 filter-keywords)
+		{"id=eq(any).{null}&limit=1", 0},
 	} {
 		q, _ := url.ParseQuery(test.query)
 		gi.QueryOptions = base

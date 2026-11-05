@@ -335,26 +335,23 @@ func (dbe *DbEngine) CloneDatabase(ctx context.Context, name string, source stri
 // UpdateDatabase updates a database.
 func (dbe *DbEngine) UpdateDatabase(ctx context.Context, name string, update *DatabaseUpdate) error {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	if update.Owner != nil {
-		_, err = conn.Exec(ctx, buildAlterDatabaseOwner(name, *update.Owner))
-		if err != nil {
-			return err
+	return withTx(ctx, conn, func() error {
+		var err error
+		if update.Owner != nil {
+			_, err = conn.Exec(ctx, buildAlterDatabaseOwner(name, *update.Owner))
+			if err != nil {
+				return err
+			}
 		}
-	}
-	// NAME as the last update
-	if update.Name != nil && *update.Name != name {
-		_, err = conn.Exec(ctx, buildAlterDatabaseRename(name, *update.Name))
-		if err != nil {
-			return err
+		// NAME as the last update
+		if update.Name != nil && *update.Name != name {
+			_, err = conn.Exec(ctx, buildAlterDatabaseRename(name, *update.Name))
+			if err != nil {
+				return err
+			}
 		}
-	}
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 // DeleteDatabase deletes a database.

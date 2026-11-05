@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/sted/heligo"
@@ -198,24 +200,126 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	return ctx, session, authenticated, nil
 }
 
+// failedStatus says whether status rolls the transaction back: an error
+// status, except a 416. Like PostgREST (Response.hs, actionResponse), the 416
+// of an offset past the total is the answer of a call that ran, and its
+// writes commit. The 416 of a Range header refused before execution has
+// nothing to commit.
+func failedStatus(status int) bool {
+	return status >= http.StatusBadRequest && status != http.StatusRequestedRangeNotSatisfiable
+}
+
 func (m middleware) releaseSession(ctx context.Context, status int, session *Session) {
 	var err error
-	// An error status rolls the transaction back, except a 416: like
-	// PostgREST (Response.hs, actionResponse), the 416 of an offset past the
-	// total is the answer of a call that ran, and its writes commit. The 416
-	// of a Range header refused before execution has nothing to commit.
-	httpErr := status >= http.StatusBadRequest && status != http.StatusRequestedRangeNotSatisfiable
 	// The connection goes back to the pool at the end of the request, with
 	// its transaction ended and what the request set on it session-level
 	// reset: a session caches the claims of its token, not a connection.
 	if session.DbConn != nil {
-		err = database.ReleaseConnection(ctx, session.DbConn, httpErr, true)
+		err = database.ReleaseConnection(ctx, session.DbConn, failedStatus(status), true)
 		session.DbConn = nil
 	}
 	if err != nil {
 		m.GetLogger().Err(err).Msg("error releasing database connection")
 	}
 	m.SessionManager().leaveSession(session)
+}
+
+// heldResponse holds the response of a request until its transaction ends,
+// so that a COMMIT that fails (a deferred constraint, a serialization
+// failure) answers its own error and not the success of the handler. This is
+// PostgREST's order: App.hs runs the whole transaction (usePool), and only
+// then builds the response (actionResponse).
+//
+// The headers stay in the map of the writer below, which sends nothing
+// before its WriteHeader; keys are the headers set before the handler ran,
+// kept when the response is replaced. The body is copied into a buffer that
+// the heldResponse owns, as io.Writer requires: a handler may reuse its
+// slice after Write returns. The buffer goes back to the pool with the
+// heldResponse, up to maxHeldBuffer. Nothing under Middleware flushes or
+// streams.
+type heldResponse struct {
+	http.ResponseWriter
+	status int
+	body   []byte
+	keys   []string
+}
+
+// maxHeldBuffer is the largest body buffer kept in the pool for reuse.
+const maxHeldBuffer = 64 << 10
+
+var heldResponses = sync.Pool{New: func() any { return new(heldResponse) }}
+
+// holdResponse takes a heldResponse over w, with the headers set so far.
+func holdResponse(w http.ResponseWriter) *heldResponse {
+	hr := heldResponses.Get().(*heldResponse)
+	hr.ResponseWriter = w
+	for k := range w.Header() {
+		hr.keys = append(hr.keys, k)
+	}
+	return hr
+}
+
+func (hr *heldResponse) WriteHeader(status int) {
+	if hr.status == 0 {
+		hr.status = status
+	}
+}
+
+func (hr *heldResponse) Write(p []byte) (int, error) {
+	if hr.status == 0 {
+		hr.status = http.StatusOK
+	}
+	hr.body = append(hr.body, p...)
+	return len(p), nil
+}
+
+func (hr *heldResponse) Unwrap() http.ResponseWriter { return hr.ResponseWriter }
+
+// send writes what the handler wrote.
+func (hr *heldResponse) send() {
+	if hr.status != 0 {
+		hr.ResponseWriter.WriteHeader(hr.status)
+	}
+	if len(hr.body) != 0 {
+		hr.ResponseWriter.Write(hr.body)
+	}
+}
+
+// discard drops what the handler wrote, with the headers it set.
+func (hr *heldResponse) discard() {
+	h := hr.ResponseWriter.Header()
+	for k := range h {
+		if !slices.Contains(hr.keys, k) {
+			delete(h, k)
+		}
+	}
+}
+
+func (hr *heldResponse) release() {
+	body := hr.body[:0]
+	if cap(body) > maxHeldBuffer {
+		body = nil
+	}
+	*hr = heldResponse{keys: hr.keys[:0], body: body}
+	heldResponses.Put(hr)
+}
+
+// endBeforeResponse ends the transaction of the request, then sends the
+// response held in hr, or, when the COMMIT fails, the error of the COMMIT in
+// its place, with the status of its SQLSTATE.
+func (m middleware) endBeforeResponse(ctx context.Context, hr *heldResponse, status int, err error,
+	session *Session, authenticated bool) (int, error) {
+	failed := failedStatus(status)
+	if eerr := database.EndTransaction(ctx, session.DbConn, failed); eerr != nil {
+		if !failed {
+			hr.discard()
+			return m.writeError(hr.ResponseWriter, eerr, authenticated)
+		}
+		// the ROLLBACK of an error status: the answer stays the error
+		m.GetLogger().Err(eerr).Msg("error ending the transaction")
+	}
+	hr.send()
+	return status, err
 }
 
 type deferKey struct{}
@@ -250,8 +354,16 @@ func Middleware(cfg MiddlewareConfig, forceDBE bool, getDBName GetDatabaseNameFn
 			// left open is rolled back as on any error status
 			status := http.StatusInternalServerError
 			defer func() { m.releaseSession(ctx, status, session) }()
-			//w.(http.Flusher).Flush() // to enable Transfer-Encoding: chunked
-			status, err = next(ctx, w, r)
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				// READ ONLY: its COMMIT has nothing to refuse, so the
+				// response goes out first, as it is written
+				status, err = next(ctx, w, r)
+				return status, err
+			}
+			hr := holdResponse(w)
+			status, err = next(ctx, hr, r)
+			status, err = m.endBeforeResponse(ctx, hr, status, err, session, authenticated)
+			hr.release()
 			return status, err
 		}
 	}

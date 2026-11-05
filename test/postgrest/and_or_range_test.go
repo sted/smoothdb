@@ -137,6 +137,7 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Expected:    `[{"id":1}]`,
 			Headers:     nil,
 			Status:      200,
+			Skip:        "smoothdb divergence: input after a logic tree is a 400 (card 35452 parser-trailing, decision 2026-11-05); PostgREST 16.4 drops the stray ')' of this query",
 		},
 		// 	it "can handle lt and gt" $
 		// 	  get "/entities?or=(id.lt.2,id.gt.3)&select=id" `shouldRespondWith`

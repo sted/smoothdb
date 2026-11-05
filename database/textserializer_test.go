@@ -132,17 +132,6 @@ func TestSerializerMalformedBuffer(t *testing.T) {
 	}
 }
 
-// A multi-dimensional array has a header/element layout the flat decoder does
-// not implement. It must return an error rather than silently misparse.
-func TestArrayMultiDimRejected(t *testing.T) {
-	buf := make([]byte, 20)
-	binary.BigEndian.PutUint32(buf[0:], 2) // 2 dimensions
-	var j JSONSerializer
-	if err := j.appendArray(buf, pgtype.Int4OID, nil, &j); err == nil {
-		t.Error("expected error for a multi-dimensional array, got nil")
-	}
-}
-
 // When the wire row carries a different field count than the cached composite
 // definition (a stale cache), the decoder must error rather than read fields at
 // the wrong offsets.
@@ -163,8 +152,13 @@ func TestSerializeSurfacesDecoderError(t *testing.T) {
 	info := &SchemaInfo{cachedTypes: map[uint32]Type{
 		arrOID: {Id: arrOID, IsArray: true, ArraySubType: pgtype.Int4OID},
 	}}
-	buf := make([]byte, 20)
-	binary.BigEndian.PutUint32(buf[0:], 2) // 2 dimensions -> unsupported
+	// a 1-D array whose element type has no binary decoder
+	buf := make([]byte, 28)
+	binary.BigEndian.PutUint32(buf[0:], 1)      // 1 dimension
+	binary.BigEndian.PutUint32(buf[8:], 999998) // element type: unknown
+	binary.BigEndian.PutUint32(buf[12:], 1)     // 1 element
+	binary.BigEndian.PutUint32(buf[16:], 1)     // lower bound
+	binary.BigEndian.PutUint32(buf[20:], 4)     // element length
 	cr := &CustomRows{
 		FieldDescriptions_: []pgconn.FieldDescription{{Name: "x", DataTypeOID: arrOID, Format: pgtype.BinaryFormatCode}},
 		RawValues_:         [][][]byte{{buf}},
@@ -1073,8 +1067,8 @@ func TestSerializeSpecialValues(t *testing.T) {
 	}
 	want := `[{"f4n":"NaN","f4p":"Infinity","f8m":"-Infinity","f8":1.5,` +
 		`"nn":"NaN","np":"Infinity","nm":"-Infinity","n":1.50,` +
-		`"ts85":"1985-06-01T12:00:00.25Z","ts99":"1999-12-31T23:59:59.5Z",` +
-		`"ts60":"1960-01-01T00:00:00.5Z","ts15":"2015-12-08T04:22:57.472738Z",` +
+		`"ts85":"1985-06-01T12:00:00.25","ts99":"1999-12-31T23:59:59.5",` +
+		`"ts60":"1960-01-01T00:00:00.5","ts15":"2015-12-08T04:22:57.472738",` +
 		`"tsi":"infinity","tsm":"-infinity","tzi":"infinity",` +
 		`"di":"infinity","dm":"-infinity","d":"1985-06-01"}]`
 	if string(out) != want {
@@ -1093,7 +1087,7 @@ func TestSerializeSpecialValues(t *testing.T) {
 	}
 	wantCSV := "f4n,f4p,f8m,f8,nn,np,nm,n,ts85,ts99,ts60,ts15,tsi,tsm,tzi,di,dm,d\n" +
 		"NaN,Infinity,-Infinity,1.5,NaN,Infinity,-Infinity,1.50," +
-		"1985-06-01T12:00:00.25Z,1999-12-31T23:59:59.5Z,1960-01-01T00:00:00.5Z,2015-12-08T04:22:57.472738Z," +
+		"1985-06-01T12:00:00.25,1999-12-31T23:59:59.5,1960-01-01T00:00:00.5,2015-12-08T04:22:57.472738," +
 		"infinity,-infinity,infinity,infinity,-infinity,1985-06-01"
 	if string(out) != wantCSV {
 		t.Errorf("CSV\nexpected %q\n     got %q", wantCSV, out)
@@ -1129,5 +1123,214 @@ func TestBinarySerializerSurfacesRowError(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "division by zero") {
 			t.Errorf("%s: expected the division by zero raised at row 3, got %v", s.name, err)
 		}
+	}
+}
+
+// toJSONControl serializes query with the JSON serializer and compares the
+// result with PostgreSQL's row_to_json of the same query. The serializer
+// escapes the HTML-significant characters and row_to_json does not, so the
+// comparison undoes it.
+func toJSONControl(t *testing.T, ctx context.Context, query string) {
+	t.Helper()
+	gi := GetSmoothContext(ctx)
+	info := gi.Db.info.Load()
+	var row string
+	if err := gi.Conn.QueryRow(ctx, "select row_to_json(t)::text from ("+query+") t").Scan(&row); err != nil {
+		t.Fatal(err)
+	}
+	want := "[" + row + "]"
+	rows, err := gi.Conn.Query(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := (&JSONSerializer{}).Serialize(rows, false, false, info)
+	rows.Close()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := unescapeHTML(string(out)); got != want {
+		t.Errorf("expected %s\n     got %s", want, got)
+	}
+}
+
+// Intervals must come out as to_json prints them, under any IntervalStyle.
+// The binary decoder printed a part only when it was positive and the time
+// in whole seconds: '-1 day' and '0' came out as "", '1.5 seconds' as
+// "00:00:01", and a mixed-sign interval lost its negative parts.
+func TestSerializeIntervalLikeToJSON(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	gi := GetSmoothContext(ctx)
+
+	query := `select interval '-1 day' neg, interval '0' zero, interval '1.5 seconds' frac,
+		interval '1 year -2 mons 3 days -04:05:06.789' mixed, interval '-00:00:00.000001' tiny,
+		interval '1 year 2 mons 6 days 00:07:00' pos, interval '-178000000 years' big,
+		array[interval '1 day', interval '-2 hours', null] arr, null::interval nul`
+	for _, style := range []string{"postgres", "postgres_verbose", "sql_standard", "iso_8601"} {
+		t.Run(style, func(t *testing.T) {
+			if _, err := gi.Conn.Exec(ctx, "set intervalstyle = "+style); err != nil {
+				t.Fatal(err)
+			}
+			toJSONControl(t, ctx, query)
+			toJSONControl(t, ctx, `select array[[interval '1 day', interval '0'], [interval '-1.25 seconds', null]] arr2`)
+		})
+	}
+	if _, err := gi.Conn.Exec(ctx, "reset intervalstyle"); err != nil {
+		t.Fatal(err)
+	}
+
+	// CSV carries PostgreSQL's text for an interval
+	rows, err := gi.Conn.Query(ctx, `select interval '-1 day' neg, interval '0' zero, interval '1.5 seconds' frac,
+		interval '1 year -2 mons 3 days -04:05:06.789' mixed`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := (&CSVSerializer{}).Serialize(rows, false, false, gi.Db.info.Load())
+	rows.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "neg,zero,frac,mixed\n-1 days,00:00:00,00:00:01.5,10 mons 3 days -04:05:06.789"
+	if string(out) != want {
+		t.Errorf("CSV\nexpected %q\n     got %q", want, out)
+	}
+}
+
+// A timestamp without time zone has no zone, so to_json prints none: the
+// binary decoder wrote it with RFC 3339 and a Z. The fraction keeps only the
+// digits it needs, a whole second has no dot, and a year before 1 is written
+// as PostgreSQL writes it, with " BC". The timestamptz in the CSV is the
+// control: it stays in UTC with a Z (to_json writes the session TimeZone's
+// offset instead, +00:00 here; that divergence is not in this test).
+func TestSerializeTimestampWithoutZone(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+	gi := GetSmoothContext(ctx)
+	if _, err := gi.Conn.Exec(ctx, "set timezone = 'UTC'"); err != nil {
+		t.Fatal(err)
+	}
+	defer gi.Conn.Exec(ctx, "reset timezone")
+
+	toJSONControl(t, ctx, `select '2015-12-08 04:22:57.472738'::timestamp ts15,
+		'2015-12-08 04:22:57'::timestamp whole, '2015-12-08 04:22:57.5'::timestamp half,
+		'2015-12-08 04:22:57.000001'::timestamp micro, '1985-06-01 12:00:00.25'::timestamp ts85,
+		'1960-01-01 00:00:00.5'::timestamp ts60, '0001-01-01 00:00:00 BC'::timestamp bc1,
+		'0044-03-15 12:00:00.1 BC'::timestamp bc44, '4713-11-24 00:00:00 BC'::timestamp julian0,
+		'0001-01-01 00:00:00'::timestamp ad1, '10000-01-01 00:00:00'::timestamp y10k,
+		'infinity'::timestamp inf, '-infinity'::timestamp ninf,
+		array['2015-12-08 04:22:57.472738'::timestamp, '2015-12-08 04:22:57', null] arr`)
+
+	// CSV writes the same value without the quotes
+	rows, err := gi.Conn.Query(ctx, `select '2015-12-08 04:22:57.472738'::timestamp ts, '2015-12-08 04:22:57'::timestamp whole,
+		'0044-03-15 12:00:00.1 BC'::timestamp bc, '2015-12-08 04:22:57.472738+00'::timestamptz tz`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := (&CSVSerializer{}).Serialize(rows, false, false, gi.Db.info.Load())
+	rows.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ts,whole,bc,tz\n2015-12-08T04:22:57.472738,2015-12-08T04:22:57,0044-03-15T12:00:00.1 BC,2015-12-08T04:22:57.472738Z"
+	if string(out) != want {
+		t.Errorf("CSV\nexpected %q\n     got %q", want, out)
+	}
+}
+
+// Multi-dimensional arrays of the types decoded in binary nest as to_json
+// nests them. The serializer refused them, which failed the whole request.
+// The lower bounds do not show in to_json, and a NULL element is null.
+func TestSerializeArrayMultiDim(t *testing.T) {
+	ctx, conn, err := ContextWithDb(context.Background(), nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseConn(ctx, conn)
+
+	cases := []struct{ name, query string }{
+		{"int4 2-D", `select '{{1,2,3},{4,5,6},{7,8,9}}'::int[] a`},
+		{"int4 3-D", `select '{{{1,2},{3,4}},{{5,6},{7,NULL}}}'::int[] a`},
+		{"int4 one row", `select '{{1,2,3}}'::int[] a`},
+		{"int4 one column", `select '{{1},{2},{3}}'::int[] a`},
+		{"int4 lower bounds", `select '[0:1][2:3]={{1,2},{3,4}}'::int[] a, '[-2:-1]={1,2}'::int[] b`},
+		{"int8 and int2", `select '{{1,-2},{3,4}}'::int8[] a, '{{1,2},{3,4}}'::int2[] b`},
+		{"text 2-D", `select '{{a,"b c"},{NULL,"d\"e"}}'::text[] a`},
+		{"float8 2-D", `select '{{1.5,NaN},{Infinity,-0.25}}'::float8[] a, '{{1.5,2},{3,4}}'::float4[] b`},
+		{"numeric 2-D", `select '{{1.50,NaN},{-3,0.001}}'::numeric[] a`},
+		{"bool and uuid 2-D", `select '{{t,f},{NULL,t}}'::bool[] a, '{{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11}}'::uuid[] b`},
+		{"timestamp 2-D", `select '{{"2015-12-08 04:22:57.472738","2015-12-08 04:22:57"},{infinity,NULL}}'::timestamp[] a`},
+		{"date 2-D", `select '{{2015-12-08,NULL},{infinity,1985-06-01}}'::date[] a`},
+		{"jsonb 2-D", `select '{{"{\"k\": 1}","null"},{"[1]",NULL}}'::jsonb[] a`},
+		{"6-D", `select '{{{{{{1,2}}}}}}'::int[] a`},
+		{"1-D control", `select '{1,NULL,3}'::int[] a, '{}'::int[] e`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) { toJSONControl(t, ctx, c.query) })
+	}
+}
+
+// The binary multi-dimensional layout, DB-free: a zero-length inner
+// dimension nests empty arrays, as array_to_json writes them; a header that
+// claims more dimensions than PostgreSQL allows (6) is refused; a truncated
+// buffer is an error, not a panic.
+func TestArrayMultiDimBinary(t *testing.T) {
+	header := func(elemOID uint32, dims ...uint32) []byte {
+		buf := binary.BigEndian.AppendUint32(nil, uint32(len(dims)))
+		buf = binary.BigEndian.AppendUint32(buf, 0)
+		buf = binary.BigEndian.AppendUint32(buf, elemOID)
+		for _, d := range dims {
+			buf = binary.BigEndian.AppendUint32(buf, d)
+			buf = binary.BigEndian.AppendUint32(buf, 1)
+		}
+		return buf
+	}
+	int4 := func(buf []byte, v int32) []byte {
+		buf = binary.BigEndian.AppendUint32(buf, 4)
+		return binary.BigEndian.AppendUint32(buf, uint32(v))
+	}
+
+	var j JSONSerializer
+	if err := j.appendArray(header(pgtype.Int4OID, 2, 0), pgtype.Int4OID, nil, &j); err != nil {
+		t.Fatalf("2x0: unexpected error: %v", err)
+	}
+	if got := j.String(); got != "[[],[]]" {
+		t.Errorf("2x0: expected [[],[]], got %s", got)
+	}
+
+	j = JSONSerializer{}
+	buf := header(pgtype.Int4OID, 2, 2)
+	for _, v := range []int32{1, 2, 3, 4} {
+		buf = int4(buf, v)
+	}
+	buf = binary.BigEndian.AppendUint32(buf[:len(buf)-8], 0xFFFFFFFF) // last element NULL
+	if err := j.appendArray(buf, pgtype.Int4OID, nil, &j); err != nil {
+		t.Fatalf("2x2: unexpected error: %v", err)
+	}
+	if got := j.String(); got != "[[1,2],[3,null]]" {
+		t.Errorf("2x2: expected [[1,2],[3,null]], got %s", got)
+	}
+
+	j = JSONSerializer{}
+	if err := j.appendArray(header(pgtype.Int4OID, 1, 1, 1, 1, 1, 1, 1), pgtype.Int4OID, nil, &j); err == nil {
+		t.Error("7 dimensions: expected an error, got nil")
+	}
+
+	// truncated: the header says 2x2, the buffer holds one element
+	cr := &CustomRows{
+		FieldDescriptions_: []pgconn.FieldDescription{{Name: "x", DataTypeOID: pgtype.Int4ArrayOID, Format: pgtype.BinaryFormatCode}},
+		RawValues_:         [][][]byte{{int4(header(pgtype.Int4OID, 2, 2), 1)}},
+		CurrentRow:         -1,
+	}
+	info := &SchemaInfo{cachedTypes: map[uint32]Type{
+		pgtype.Int4ArrayOID: {Id: pgtype.Int4ArrayOID, IsArray: true, ArraySubType: pgtype.Int4OID},
+	}}
+	if _, _, err := (&JSONSerializer{}).Serialize(cr, false, false, info); err == nil {
+		t.Error("truncated: expected a SerializeError, got nil")
 	}
 }

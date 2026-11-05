@@ -17,6 +17,17 @@ func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request
 	}
 }
 
+// SchemaTableListHandler lists the tables of the request's schema; an
+// unexposed schema answers 406. It serves the API root.
+func SchemaTableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+	tables, err := database.GetSchemaTables(c)
+	if err == nil {
+		return heligo.WriteJSON(w, http.StatusOK, tables)
+	} else {
+		return WriteError(w, err)
+	}
+}
+
 func TableCreateHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	var tableInput database.Table
 	err := r.ReadJSON(&tableInput)

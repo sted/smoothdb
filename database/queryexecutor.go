@@ -220,7 +220,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		return querySerialize(ctx, insert, values)
+		return writeRead(ctx, insert, values)
 	} else {
 		tag, err := gi.exec(ctx, insert, values...)
 		if err != nil {
@@ -246,7 +246,7 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		return querySerialize(ctx, update, values)
+		return writeRead(ctx, update, values)
 	} else {
 		tag, err := gi.exec(ctx, update, values...)
 		if err != nil {
@@ -272,7 +272,7 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
-		return querySerialize(ctx, delete, values)
+		return writeRead(ctx, delete, values)
 	} else {
 		tag, err := gi.exec(ctx, delete, values...)
 		if err != nil {

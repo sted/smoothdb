@@ -101,3 +101,112 @@ func TestRequestVarsRecoverAStatementTheConnectionDropped(t *testing.T) {
 		t.Errorf("after the batch the connection carries %s %q", user, claims)
 	}
 }
+
+// With TransactionMode "none" a write that sends back its rows begins a
+// transaction in the batch of its statement (writeRead), on every way the
+// batch can take: the variables applied first on their own (a statement not
+// prepared yet, or variables already applied), the variables in the batch
+// (a prepared statement), and the way back of a statement the connection
+// dropped. The transaction stays open for the middleware to end, and the
+// write runs as the request's role.
+func TestWriteTxBeginsInTheBatch(t *testing.T) {
+	if dbe.config.TransactionMode != "none" {
+		t.Skip("needs TransactionMode none")
+	}
+	conn := requestVarsSetup(t)
+	admin, err := dbe.AcquireConnection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Release()
+	if _, err := admin.Exec(context.Background(), "GRANT INSERT ON rv_hidden.t TO rv_user"); err != nil {
+		t.Fatal(err)
+	}
+	count := func(n int) int {
+		var c int
+		if err := admin.QueryRow(context.Background(), "SELECT count(*) FROM rv_hidden.t WHERE n = $1", n).Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	newRequest := func() (context.Context, *SmoothContext) {
+		ctx := contextImpl(context.Background(), dbe.mainDb, conn, "rv_user")
+		gi := GetSmoothContext(ctx)
+		gi.vars = &requestVars{role: "rv_user", claims: `{"role":"rv_user"}`}
+		return ctx, gi
+	}
+	// write runs sql through writeRead and checks that it left the
+	// transaction open, as the role, with the row not visible outside
+	write := func(ctx context.Context, way, sql string, n int) {
+		t.Helper()
+		out, rows, err := writeRead(ctx, sql, nil)
+		if err != nil || rows != 1 {
+			t.Fatalf("%s: %q %d %v", way, out, rows, err)
+		}
+		if s := conn.PgConn().TxStatus(); s != 'T' {
+			t.Fatalf("%s: transaction status %q after the write, want T (open)", way, s)
+		}
+		var user string
+		if err := conn.QueryRow(ctx, "SELECT current_user::text").Scan(&user); err != nil {
+			t.Fatal(err)
+		}
+		if user != "rv_user" {
+			t.Errorf("%s: the transaction runs as %s, want rv_user", way, user)
+		}
+		if count(n) != 0 {
+			t.Errorf("%s: the row is visible before the end of the transaction", way)
+		}
+	}
+	end := func(way, sql string, n, want int) {
+		t.Helper()
+		if _, err := conn.Exec(context.Background(), sql); err != nil {
+			t.Fatal(err)
+		}
+		if err := resetSession(context.Background(), conn); err != nil {
+			t.Fatal(err)
+		}
+		if got := count(n); got != want {
+			t.Errorf("%s: %d rows after %s, want %d", way, got, sql, want)
+		}
+	}
+
+	insert2 := "INSERT INTO rv_hidden.t VALUES (2) RETURNING n"
+
+	// not prepared yet: the variables go first, session-level, then BEGIN
+	ctx, _ := newRequest()
+	write(ctx, "not prepared", insert2, 2)
+	end("not prepared", "ROLLBACK", 2, 0)
+
+	// prepared (under the role, above): BEGIN and the variables in the batch
+	ctx, gi := newRequest()
+	write(ctx, "prepared", insert2, 2)
+	if !gi.vars.applied {
+		t.Error("prepared: the variables did not ride in the batch of the BEGIN")
+	}
+	end("prepared", "COMMIT", 2, 1)
+
+	// variables applied already: a plain BEGIN
+	ctx, gi = newRequest()
+	if _, err := gi.conn(ctx); err != nil {
+		t.Fatal(err)
+	}
+	write(ctx, "applied", "INSERT INTO rv_hidden.t VALUES (4) RETURNING n", 4)
+	end("applied", "ROLLBACK", 4, 0)
+
+	// a statement the connection dropped: the way back begins it again
+	insert3 := "INSERT INTO rv_hidden.t VALUES (3) RETURNING n"
+	ctx, gi = newRequest()
+	gi.remember1(insert3)
+	write(ctx, "dropped", insert3, 3)
+	end("dropped", "ROLLBACK", 3, 0)
+
+	// positive control: without writeRead the write commits with its batch
+	ctx, _ = newRequest()
+	if _, _, err := querySerialize(ctx, "INSERT INTO rv_hidden.t VALUES (5) RETURNING n", nil); err != nil {
+		t.Fatal(err)
+	}
+	if s := conn.PgConn().TxStatus(); s != 'I' || count(5) != 1 {
+		t.Errorf("a read-write without writeRead: status %q, %d rows, want I and 1", s, count(5))
+	}
+	resetSession(context.Background(), conn)
+}

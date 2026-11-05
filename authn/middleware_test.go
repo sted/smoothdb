@@ -31,3 +31,44 @@ func TestLimitBodyZeroMeansUnlimited(t *testing.T) {
 		t.Fatalf("limit 4: expected *http.MaxBytesError, got %v", err)
 	}
 }
+
+// heldResponse sends nothing until send: the status, the headers and the body
+// wait for the end of the transaction. Every Write copies, as io.Writer
+// requires: a handler that reuses its slice after Write does not change the
+// held body. discard drops the headers the handler set and keeps the ones set
+// before it.
+func TestHeldResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rec.Header().Set("Server", "smoothdb")
+	hr := holdResponse(rec)
+	hr.Header().Set("Content-Range", "*/*")
+	hr.WriteHeader(http.StatusCreated)
+	body := []byte(`[{"id":1}]`)
+	hr.Write(body)
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 || rec.Flushed {
+		t.Fatalf("held response reached the writer: %d %q", rec.Code, rec.Body.String())
+	}
+	body[2] = 'X' // a handler that reuses its buffer after a single Write
+	hr.send()
+	if rec.Code != http.StatusCreated || rec.Body.String() != `[{"id":1}]` || rec.Header().Get("Content-Range") != "*/*" {
+		t.Errorf("sent: %d %q %v", rec.Code, rec.Body.String(), rec.Header())
+	}
+	hr.release()
+
+	rec = httptest.NewRecorder()
+	rec.Header().Set("Server", "smoothdb")
+	hr = holdResponse(rec)
+	hr.Header().Set("Content-Location", "/x")
+	first := []byte("ab")
+	hr.Write(first)
+	hr.Write([]byte("cd"))
+	first[0] = 'X' // a writer that reuses its buffer after the second Write
+	if string(hr.body) != "abcd" || hr.status != http.StatusOK {
+		t.Errorf("two writes: %q %d, want \"abcd\" 200", hr.body, hr.status)
+	}
+	hr.discard()
+	if rec.Header().Get("Content-Location") != "" || rec.Header().Get("Server") != "smoothdb" {
+		t.Errorf("discard: headers %v, want Server only", rec.Header())
+	}
+	hr.release()
+}

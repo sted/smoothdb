@@ -53,12 +53,6 @@ func GetUser(ctx context.Context, name string) (*User, error) {
 
 func CreateUser(ctx context.Context, user *User) (*User, error) {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
 	create := "CREATE ROLE " + quote(user.Name)
 	create += " NOLOGIN"
 	if user.CanCreateRoles {
@@ -67,17 +61,14 @@ func CreateUser(ctx context.Context, user *User) (*User, error) {
 	if user.CanCreateDatabases {
 		create += " CREATEDB"
 	}
-	_, err = tx.Exec(ctx, create)
-	if err != nil {
-		return nil, err
-	}
 	grant := "GRANT " + quote(user.Name) + " TO " + quote(dbe.authRole)
-	_, err = tx.Exec(ctx, grant)
-	if err != nil {
-		return nil, err
-	}
-
-	err = tx.Commit(ctx)
+	err := withTx(ctx, conn, func() error {
+		if _, err := conn.Exec(ctx, create); err != nil {
+			return err
+		}
+		_, err := conn.Exec(ctx, grant)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}

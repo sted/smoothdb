@@ -40,15 +40,31 @@ const tablesQuery = `
     JOIN pg_namespace n ON n.oid = c.relnamespace
   	WHERE c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])`
 
+// GetTables lists the tables of every schema but the system ones. It is the
+// listing of /admin.
 func GetTables(ctx context.Context) ([]Table, error) {
+	return listTables(ctx, " AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'")
+}
+
+// GetSchemaTables lists the tables of the request's schema only: the one of
+// the Accept-Profile header, or the default schema. It refuses a schema
+// outside Database.ExposedSchemas like the other API routes (406). It is the
+// listing of the API root, as PostgREST's root describes one schema.
+func GetSchemaTables(ctx context.Context) ([]Table, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, err
+	}
+	return listTables(ctx, " AND n.nspname = $1", GetQueryOptions(ctx).Schema)
+}
+
+func listTables(ctx context.Context, filter string, args ...any) ([]Table, error) {
 	conn := GetConn(ctx)
 	constraints, err := GetConstraints(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 	tables := []Table{}
-	rows, err := conn.Query(ctx, tablesQuery+
-		" AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1")
+	rows, err := conn.Query(ctx, tablesQuery+filter+" ORDER BY 1", args...)
 	if err != nil {
 		return tables, err
 	}
@@ -111,12 +127,6 @@ func composeColumnSQL(sql *string, column *Column) {
 
 func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
 	create := "CREATE TABLE "
 	if table.IfNotExists {
 		create += "IF NOT EXISTS "
@@ -138,52 +148,53 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 	if table.Inherits != "" {
 		create += "INHERITS (" + table.Inherits + ")"
 	}
-	_, err = conn.Exec(ctx, create)
-	if err != nil {
-		return nil, err
-	}
-
-	var alter string
-	prefix := "ALTER TABLE " + ftablename
-
-	// RLS
-	if table.RowSecurity {
-		alter = prefix + " ENABLE ROW LEVEL SECURITY"
-	} else {
-		alter = prefix + " DISABLE ROW LEVEL SECURITY"
-	}
-	_, err = tx.Exec(ctx, alter)
-	if err != nil {
-		return nil, err
-	}
-	// COMMENT
-	if table.Comment != nil {
-		comment := "COMMENT ON TABLE " + ftablename + " IS " + quoteLit(*table.Comment)
-		_, err = tx.Exec(ctx, comment)
+	err := withTx(ctx, conn, func() error {
+		_, err := conn.Exec(ctx, create)
 		if err != nil {
-			return nil, err
+			return err
 		}
-	}
-	// COLUMN COMMENTS
-	for _, col := range table.Columns {
-		if col.Comment != nil {
-			comment := "COMMENT ON COLUMN " + ftablename + "." + quote(col.Name) + " IS " + quoteLit(*col.Comment)
-			_, err = tx.Exec(ctx, comment)
+
+		var alter string
+		prefix := "ALTER TABLE " + ftablename
+
+		// RLS
+		if table.RowSecurity {
+			alter = prefix + " ENABLE ROW LEVEL SECURITY"
+		} else {
+			alter = prefix + " DISABLE ROW LEVEL SECURITY"
+		}
+		_, err = conn.Exec(ctx, alter)
+		if err != nil {
+			return err
+		}
+		// COMMENT
+		if table.Comment != nil {
+			comment := "COMMENT ON TABLE " + ftablename + " IS " + quoteLit(*table.Comment)
+			_, err = conn.Exec(ctx, comment)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
-	}
-	// OWNER as last operation, since changing owner revokes current role's privileges
-	if table.Owner != "" {
-		alter = prefix + " OWNER TO " + quote(table.Owner)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return nil, err
+		// COLUMN COMMENTS
+		for _, col := range table.Columns {
+			if col.Comment != nil {
+				comment := "COMMENT ON COLUMN " + ftablename + "." + quote(col.Name) + " IS " + quoteLit(*col.Comment)
+				_, err = conn.Exec(ctx, comment)
+				if err != nil {
+					return err
+				}
+			}
 		}
-	}
-
-	err = tx.Commit(ctx)
+		// OWNER as last operation, since changing owner revokes current role's privileges
+		if table.Owner != "" {
+			alter = prefix + " OWNER TO " + quote(table.Owner)
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -196,62 +207,59 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 	conn, schemaname := GetConnAndSchema(ctx)
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	return withTx(ctx, conn, func() error {
+		var err error
+		var alter string
+		prefix := "ALTER TABLE " + _sq(name, schemaname)
 
-	var alter string
-	prefix := "ALTER TABLE " + _sq(name, schemaname)
-
-	// RLS
-	if table.RowSecurity != nil {
-		if *table.RowSecurity {
-			alter = prefix + " ENABLE ROW LEVEL SECURITY"
-		} else {
-			alter = prefix + " DISABLE ROW LEVEL SECURITY"
+		// RLS
+		if table.RowSecurity != nil {
+			if *table.RowSecurity {
+				alter = prefix + " ENABLE ROW LEVEL SECURITY"
+			} else {
+				alter = prefix + " DISABLE ROW LEVEL SECURITY"
+			}
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
 		}
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
+		// COMMENT
+		if table.Comment != nil {
+			comment := "COMMENT ON TABLE " + _sq(name, schemaname) + " IS " + quoteLit(*table.Comment)
+			_, err = conn.Exec(ctx, comment)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	// COMMENT
-	if table.Comment != nil {
-		comment := "COMMENT ON TABLE " + _sq(name, schemaname) + " IS " + quoteLit(*table.Comment)
-		_, err = tx.Exec(ctx, comment)
-		if err != nil {
-			return err
+		// SCHEMA
+		if table.Schema != nil {
+			alter = prefix + " SET SCHEMA " + quote(*table.Schema)
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
+			prefix = "ALTER TABLE " + _sq(name, *table.Schema)
 		}
-	}
-	// SCHEMA
-	if table.Schema != nil {
-		alter = prefix + " SET SCHEMA " + quote(*table.Schema)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
+		// NAME
+		if table.Name != nil && *table.Name != name {
+			alter = prefix + " RENAME TO " + quote(*table.Name)
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
 		}
-		prefix = "ALTER TABLE " + _sq(name, *table.Schema)
-	}
-	// NAME
-	if table.Name != nil && *table.Name != name {
-		alter = prefix + " RENAME TO " + quote(*table.Name)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
+		// OWNER as last operation, since changing owner revokes current role's privileges
+		if table.Owner != nil {
+			alter = prefix + " OWNER TO " + quote(*table.Owner)
+			_, err = conn.Exec(ctx, alter)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	// OWNER as last operation, since changing owner revokes current role's privileges
-	if table.Owner != nil {
-		alter = prefix + " OWNER TO " + quote(*table.Owner)
-		_, err = tx.Exec(ctx, alter)
-		if err != nil {
-			return err
-		}
-	}
-	//db.refreshTable(ctx, column.Table)
-	return tx.Commit(ctx)
+		//db.refreshTable(ctx, column.Table)
+		return nil
+	})
 }
 
 func DeleteTable(ctx context.Context, name string, ifExists bool) error {

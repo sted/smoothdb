@@ -45,12 +45,6 @@ func TestQueryBuilder(t *testing.T) {
 			`SELECT "table"."a"::text, "table"."b"::integer AS "bbb", "table"."c" FROM "table"`,
 			nil,
 		},
-		{
-			// skipping a column
-			"?select=a,,c",
-			`SELECT "table"."a", "table"."c" FROM "table"`,
-			nil,
-		},
 		// {
 		// 	// for resource embedding
 		// 	"?select=a,table2(b,c)",
@@ -254,10 +248,11 @@ func TestQueryBuilder(t *testing.T) {
 			[]any{"null"},
 		},
 		{
-			// isdistinct.null on a plain column: unchanged (keyword)
+			// isdistinct.null on a plain column: bound too, as in PostgREST
+			// (pgFmtFilter IsDistinctFrom: unknownLiteral)
 			"?a=isdistinct.null",
-			`SELECT * FROM "table" WHERE "table"."a" IS DISTINCT FROM null`,
-			nil,
+			`SELECT * FROM "table" WHERE "table"."a" IS DISTINCT FROM $1`,
+			[]any{"null"},
 		},
 		{
 			// IN on a ->> path keeps binding keyword-looking values
@@ -717,7 +712,7 @@ func TestFilterValueErrors(t *testing.T) {
 		query  string
 		errMsg string
 	}{
-		{"?or=(x.eq.a,b)", "'=' expected"},
+		{"?or=(x.eq.a,b)", "failed to parse logic tree ((x.eq.a,b)): '=' expected"},
 		{"?x=eq", "'.' expected"},
 		{"?x=in", "'.' expected"},
 		{"?x=is.null.x", "IS operator requires null, not_null, true, false or unknown"},

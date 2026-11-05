@@ -1,7 +1,6 @@
 package database
 
 import (
-	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -60,6 +59,7 @@ type OrderField struct {
 }
 
 type WhereConditionNode struct {
+	id         int // its index in the build state of the filters (see buildState), from 1
 	field      Field
 	operator   string
 	opSource   string
@@ -67,13 +67,19 @@ type WhereConditionNode struct {
 	opModifier string // "any" or "all" modifier for operators like eq(any), like(all), etc.
 	not        bool
 	values     []string
-	inserted   bool
-	matched    int // how many leading elements of field.relPath a build level matched (see whereClause)
+	nullAt     []int // indexes of the values that are SQL NULL: an unquoted null in an any/all list
 	children   []*WhereConditionNode
 }
 
 func (node *WhereConditionNode) isRootNode() bool {
 	return node.operator == "" && node.field.name == ""
+}
+
+// isContainer reports whether node is the root or a boolean operator (and,
+// or): a node that holds conditions instead of being one. It is decided by
+// the operator, never by an empty field name.
+func (node *WhereConditionNode) isContainer() bool {
+	return node.operator == "" || node.operator == "AND" || node.operator == "OR"
 }
 
 // RecursiveInfo holds the parameters for a recursive CTE query.
@@ -103,9 +109,7 @@ type QueryParts struct {
 	offset              string
 	whereConditionsTree *WhereConditionNode
 	recursive           *RecursiveInfo
-	// set by selectClause: an EXISTS per !inner embed of the root, which
-	// restricts the total of a ranged count (see buildAfterSelect)
-	innerEmbedConds []string
+	nodeCount           int // how many filter nodes the trees have (see WhereConditionNode.id)
 }
 
 type QueryOptions struct {
@@ -153,7 +157,9 @@ type PostgRestParser struct {
 	ends    []int  // for each token, the offset in src just past it
 	scanned int    // the offset in src where scanning resumes (see fill)
 	cur     int
-	depth   int // current boolean-filter recursion depth (see maxFilterDepth)
+	nodes   int  // the filter nodes created so far (see WhereConditionNode.id)
+	pastEnd bool // the last read was at the end of input and did not move (see back)
+	depth   int  // current boolean-filter recursion depth (see maxFilterDepth)
 }
 
 // maxFilterDepth caps the nesting of boolean filters (and/or) so a crafted query
@@ -172,6 +178,26 @@ type ParseError struct {
 }
 
 func (e ParseError) Error() string { return e.msg }
+
+// parseFailure is a parse error in PostgREST's message shape (PGRST100):
+// "failed to parse <what> (<input>)", then what went wrong.
+func parseFailure(what, input, detail string) *ParseError {
+	return &ParseError{"failed to parse " + what + " (" + input + "): " + detail}
+}
+
+// wrapParseFailure puts a parse error of one parameter in PostgREST's message
+// shape. Other errors and errors already in that shape pass unchanged.
+func wrapParseFailure(err error, what, input string) error {
+	if pe, ok := err.(*ParseError); ok && !strings.HasPrefix(pe.msg, "failed to parse ") {
+		return parseFailure(what, input, pe.msg)
+	}
+	return err
+}
+
+// unexpectedToken describes input left after a complete expression.
+func unexpectedToken(tok string) string {
+	return "unexpected " + strconv.Quote(tok) + " expecting end of input"
+}
 
 // postgRestReservedWords are the parameter keys that are never a filter nor a
 // function argument. Besides PostgREST's select, columns and on_conflict, the
@@ -346,9 +372,13 @@ const scanChunk = 32
 // value and rescans from its end, and an eager scan would redo the rest of the
 // source every time, quadratic in the length of a list.
 func (p *PostgRestParser) scan(s string, sep string, longSep ...string) {
-	// the tokens left from a previous source stay ahead of the new ones, as
-	// they did when scanning was eager
-	p.fill(math.MaxInt - scanChunk)
+	// every source starts clean: tokens left unread by a previous parameter
+	// must not leak into this one
+	p.tokens = p.tokens[:0]
+	p.quoted = p.quoted[:0]
+	p.ends = p.ends[:0]
+	p.cur = 0
+	p.pastEnd = false
 	p.src = s
 	p.sep = sep
 	p.longSep = longSep
@@ -482,10 +512,12 @@ outer:
 func (p *PostgRestParser) next() string {
 	p.fill(p.cur + 1)
 	if p.cur == len(p.tokens) {
+		p.pastEnd = true
 		return ""
 	}
 	t := p.tokens[p.cur]
 	p.cur++
+	p.pastEnd = false
 	return t
 }
 
@@ -494,19 +526,41 @@ func (p *PostgRestParser) next() string {
 func (p *PostgRestParser) nextQuoted() (string, bool) {
 	p.fill(p.cur + 1)
 	if p.cur == len(p.tokens) {
+		p.pastEnd = true
 		return "", false
 	}
 	t := p.tokens[p.cur]
 	q := p.quoted[p.cur]
 	p.cur++
+	p.pastEnd = false
 	return t, q
 }
 
-// back takes one step back
+// back undoes the last next. A next at the end of input did not move the
+// cursor, so its back does not move it either.
 func (p *PostgRestParser) back() {
+	if p.pastEnd {
+		p.pastEnd = false
+		return
+	}
 	if p.cur != 0 {
 		p.cur--
 	}
+}
+
+// atEnd reports whether every token of the source was consumed.
+func (p *PostgRestParser) atEnd() bool {
+	p.fill(p.cur + 1)
+	return p.cur == len(p.tokens)
+}
+
+// isSeparator reports whether tok, unquoted, is a separator of the source
+// scanned last rather than a name.
+func (p *PostgRestParser) isSeparator(tok string) bool {
+	if len(tok) == 1 && strings.IndexByte(p.sep, tok[0]) >= 0 {
+		return true
+	}
+	return slices.Contains(p.longSep, tok)
 }
 
 // lookAhead returns the next token _without_ advancing the cursor.
@@ -529,6 +583,7 @@ func (p *PostgRestParser) reset() {
 	p.ends = nil
 	p.scanned = 0
 	p.cur = 0
+	p.pastEnd = false
 	p.depth = 0
 }
 
@@ -559,13 +614,20 @@ func (p *PostgRestParser) reset() {
 // ValueList := '(' Value (',' Value)* ')'
 
 func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, err error) {
-	token := p.next()
+	token, quoted := p.nextQuoted()
+	if token == "" && quoted {
+		// a quoted empty name ("") names no column; a filter on it must
+		// never pass for a boolean node, which has no field
+		return f, &ParseError{"field name expected, found an empty name"}
+	}
 	if token == "" {
 		if mayBeEmpty {
 			token = "*"
 		} else {
 			return f, &ParseError{"field expected"}
 		}
+	} else if !quoted && p.isSeparator(token) {
+		return f, &ParseError{"field expected, found " + strconv.Quote(token)}
 	}
 	if mayHaveTable {
 		// tables
@@ -606,8 +668,11 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 // castType reads the type after "::". The dot separates in a select, so a
 // schema-qualified type (public.mytype) arrives as several tokens: they are
 // joined, unless the dot starts an aggregate (field::int4.sum()).
-func (p *PostgRestParser) castType() string {
-	cast := p.next()
+func (p *PostgRestParser) castType() (string, error) {
+	cast, quoted := p.nextQuoted()
+	if cast == "" || (!quoted && p.isSeparator(cast)) {
+		return "", &ParseError{"cast type expected after '::'"}
+	}
 	for p.lookAhead() == "." {
 		next := p.cur + 1
 		p.fill(next + 2)
@@ -621,7 +686,7 @@ func (p *PostgRestParser) castType() string {
 		p.next() // the dot
 		cast += "." + p.next()
 	}
-	return cast
+	return cast, nil
 }
 
 // SELECT
@@ -629,12 +694,12 @@ func (p *PostgRestParser) parseSelect(s string) ([]SelectField, error) {
 	p.scan(s, selectSeparators, selectLongSeparators...)
 	fields, err := p.selectList(nil)
 	if err != nil {
-		return nil, err
+		return nil, wrapParseFailure(err, "select parameter", s)
 	}
 	// selectList stops at the first token that cannot continue the list: what
 	// is left is not part of any select item and must not be dropped silently
-	if rest := p.lookAhead(); rest != "" {
-		return nil, &ParseError{"unexpected " + strconv.Quote(rest) + " in select"}
+	if !p.atEnd() {
+		return nil, parseFailure("select parameter", s, unexpectedToken(p.lookAhead()))
 	}
 	return fields, nil
 }
@@ -659,6 +724,9 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 	}
 	for p.lookAhead() == "," {
 		p.next() // consume the comma
+		if p.atEnd() {
+			return nil, &ParseError{"select item expected after ','"}
+		}
 		fields, err := p.selectItem(rel)
 		if err != nil {
 			return nil, err
@@ -673,8 +741,12 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	var spread, inner bool
 	var explicitLabel bool
 	var field Field
-	token := p.next()
+	token, quoted := p.nextQuoted()
 	if token == "" {
+		if quoted {
+			// a quoted empty name ("") is not the end of the list
+			return nil, &ParseError{"field name expected, found an empty name"}
+		}
 		return nil, nil
 	}
 	if token == "..." {
@@ -687,6 +759,9 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		label = token
 		explicitLabel = true
 		p.next() // consume ':'
+		if p.atEnd() {
+			return nil, &ParseError{"field expected after the label " + strconv.Quote(label)}
+		}
 		token = p.next() // get the next token after ':'
 	}
 
@@ -718,7 +793,9 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		// Check for field cast before aggregate: field::cast.aggregate()
 		if p.lookAhead() == "::" {
 			p.next() // consume ::
-			cast = p.castType()
+			if cast, err = p.castType(); err != nil {
+				return nil, err
+			}
 		}
 
 		// Check for aggregate function: field.avg(), field.sum(), etc.
@@ -751,10 +828,13 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		p.next() // consume ::
 		if aggregate != "" {
 			// This is an aggregate cast
-			aggCast = p.castType()
+			aggCast, err = p.castType()
 		} else {
 			// This is a field cast (fallback case)
-			cast = p.castType()
+			cast, err = p.castType()
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	// Casts are interpolated verbatim into the SQL (they cannot be bind
@@ -854,40 +934,54 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 
 // COLUMNS
 func (p *PostgRestParser) parseColumns(s string) ([]string, error) {
-	var columnFields []string
-	p.scan(s, ",")
-	next := p.next()
-	if next != "" && next != "," {
-		columnFields = append(columnFields, next)
-		for p.next() == "," {
-			next = p.next()
-			if next != "" {
-				columnFields = append(columnFields, next)
-			}
-		}
-	}
-	return columnFields, nil
+	return p.parseNameList("columns parameter", s)
 }
 
 // CONFLICTS
 func (p *PostgRestParser) parseConflicts(s string) ([]string, error) {
-	var conflictFields []string
+	return p.parseNameList("on_conflict parameter", s)
+}
+
+// parseNameList parses a list of column names separated by commas, as
+// PostgREST's pColumns: at least one name, and no empty name.
+func (p *PostgRestParser) parseNameList(what, s string) ([]string, error) {
+	var names []string
 	p.scan(s, ",")
-	next := p.next()
-	if next != "" && next != "," {
-		conflictFields = append(conflictFields, next)
-		for p.next() == "," {
-			next = p.next()
-			if next != "" {
-				conflictFields = append(conflictFields, next)
+	for {
+		name, quoted := p.nextQuoted()
+		if name == "" || (!quoted && name == ",") {
+			detail := "field name expected"
+			if !quoted && name == "," {
+				detail = "unexpected \",\" expecting field name"
+			} else if p.pastEnd {
+				detail = "unexpected end of input expecting field name"
 			}
+			return nil, parseFailure(what, s, detail)
+		}
+		names = append(names, name)
+		if p.atEnd() {
+			return names, nil
+		}
+		if tok := p.next(); tok != "," {
+			return nil, parseFailure(what, s, "unexpected "+strconv.Quote(tok)+" expecting \",\" or end of input")
 		}
 	}
-	return conflictFields, nil
 }
 
 // ORDER
 func (p *PostgRestParser) parseOrderCondition(table, o string) (fields []OrderField, err error) {
+	fields, err = p.orderList(table, o)
+	if err != nil {
+		return nil, wrapParseFailure(err, "order", o)
+	}
+	// PostgREST ends every term at ',' or at the end of input (pEnd)
+	if !p.atEnd() {
+		return nil, parseFailure("order", o, "unexpected "+strconv.Quote(p.lookAhead())+" expecting \",\" or end of input")
+	}
+	return fields, nil
+}
+
+func (p *PostgRestParser) orderList(table, o string) (fields []OrderField, err error) {
 	var value1, value2 string
 	p.reset()
 	p.scan(o, ".,()", "->>", "->")
@@ -991,7 +1085,24 @@ func (p *PostgRestParser) scanWhereCondition(k, v string) {
 
 func (p *PostgRestParser) parseWhereCondition(mainTable, key, value string, root *WhereConditionNode) error {
 	p.scanWhereCondition(key, value)
-	return p.cond(mainTable, root)
+	err := p.cond(mainTable, root)
+	if hasBooleanOp(key) {
+		if err != nil {
+			return wrapParseFailure(err, "logic tree", value)
+		}
+		if !p.atEnd() {
+			return parseFailure("logic tree", value, unexpectedToken(p.lookAhead()))
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// a plain value runs to the end; a list (in, any/all) must end there too
+	if !p.atEnd() {
+		return parseFailure("filter", value, unexpectedToken(p.lookAhead()))
+	}
+	return nil
 }
 
 func (p *PostgRestParser) completeIfFloat() string {
@@ -1146,32 +1257,29 @@ func (p *PostgRestParser) value(node *WhereConditionNode, stop string) error {
 		quoted = false
 		value = p.rawValue(stop)
 	}
-	if quoted {
-		// PostgREST parses the operand of IS as a grammar token: the five keywords,
-		// never quoted. A quoted operand would otherwise skip the check below and
-		// reach Postgres as `IS foo` (42601).
-		if node.operator == "IS" {
+	if node.operator == "IS" {
+		// PostgREST parses the operand of IS as a grammar token (pIsVal): one of
+		// five keywords, in any case, never quoted. The whole operand must be a
+		// keyword: PostgREST matches it by prefix (its parser does not check for
+		// the end of input), so is.null.x and is.nullx pass as IS NULL there;
+		// smoothdb refuses them. The keyword is the only operand written into
+		// the SQL; every other operand is bound (see whereClause).
+		lvalue := strings.ToLower(value)
+		if quoted || (lvalue != "null" && lvalue != "true" && lvalue != "false" &&
+			lvalue != "unknown" && lvalue != "not_null") {
 			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
 		}
-		// quoted values skip keyword normalization;
-		// on json-typed paths (ending with ->) they must stay JSON strings
+		value = lvalue
+	} else if quoted {
+		// on json-typed paths (ending with ->) quoted values must stay JSON strings
 		if jsonPathIsJsonTyped(node.field.jsonPath) {
 			value = quoteJsonString(value)
 		}
-	} else if !literal {
-		lvalue := strings.ToLower(value)
-		if lvalue == "null" ||
-			lvalue == "true" ||
-			lvalue == "false" ||
-			lvalue == "unknown" ||
-			lvalue == "not_null" {
-			value = lvalue
-		} else if node.operator == "IS" {
-			// the whole operand must be a keyword: PostgREST matches it by prefix
-			// (its parser does not check for the end of input), so is.null.x and
-			// is.nullx pass as IS NULL there; smoothdb refuses them
-			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
-		}
+	} else if !literal && node.opModifier != "" && strings.EqualFold(strings.Trim(value, " \t\n\r\v\f"), "null") {
+		// PostgREST binds an any/all list as one array literal, where an
+		// unquoted null is a NULL element; the array parser ignores the ASCII
+		// whitespace around it (arrayfuncs.c), not a Unicode space
+		node.nullAt = append(node.nullAt, len(node.values))
 	}
 	// '*' is the URL-friendly stand-in for the LIKE/ILIKE wildcard; leave it
 	// literal for every other operator.
@@ -1222,7 +1330,8 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 	if p.depth > maxFilterDepth {
 		return &ParseError{"filter nesting too deep"}
 	}
-	node := &WhereConditionNode{}
+	p.nodes++
+	node := &WhereConditionNode{id: p.nodes}
 	token := p.lookAhead()
 	if token == "__boolean_later__" {
 		// here we know that the sequence is something like "__boolean_later__.(table.)*[not.](and|or)"
@@ -1251,8 +1360,14 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		}
 
 	} else if isBooleanOpStrict(token) {
+		// a nested and/or belongs to the embed of its parent, as a leaf does:
+		// without the path, x.and=(and(...)) left the inner filters to no level
 		node.field.tablename = mainTable
-		err = p.booleanOp(mainTable, node)
+		if parent.field.tablename != "" {
+			node.field.tablename = parent.field.tablename
+			node.field.relPath = parent.field.relPath
+		}
+		err = p.booleanOp(node.field.tablename, node)
 		if err != nil {
 			return err
 		}
@@ -1702,6 +1817,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 			}
 		}
 	}
+	parts.nodeCount = p.nodes
 	return parts, nil
 }
 

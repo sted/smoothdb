@@ -76,28 +76,25 @@ func CreateSchema(ctx context.Context, schema *Schema) (*Schema, error) {
 
 func UpdateSchema(ctx context.Context, name string, schema *SchemaUpdate) error {
 	conn := GetConn(ctx)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	return withTx(ctx, conn, func() error {
+		var err error
+		prefix := "ALTER SCHEMA " + quote(name)
 
-	prefix := "ALTER SCHEMA " + quote(name)
-
-	if schema.Owner != nil {
-		_, err = conn.Exec(ctx, prefix+" OWNER TO "+quote(*schema.Owner))
-		if err != nil {
-			return err
+		if schema.Owner != nil {
+			_, err = conn.Exec(ctx, prefix+" OWNER TO "+quote(*schema.Owner))
+			if err != nil {
+				return err
+			}
 		}
-	}
-	// NAME as the last update
-	if schema.Name != nil && *schema.Name != name {
-		_, err = conn.Exec(ctx, prefix+" RENAME TO "+quote(*schema.Name))
-		if err != nil {
-			return err
+		// NAME as the last update
+		if schema.Name != nil && *schema.Name != name {
+			_, err = conn.Exec(ctx, prefix+" RENAME TO "+quote(*schema.Name))
+			if err != nil {
+				return err
+			}
 		}
-	}
-	return tx.Commit(ctx)
+		return nil
+	})
 
 }
 

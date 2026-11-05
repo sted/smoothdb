@@ -1,8 +1,10 @@
 package postgrest
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/test"
 )
 
@@ -55,7 +57,6 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 			Headers:     test.Headers{"Accept-Profile": {"unknown"}},
 			Expected:    `{"subsystem":"network","message":"Invalid schema: unknown","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: the root endpoint serves the selected schema's description and refuses an unexposed one with 406 (smoothdb's root lists the tables of every schema, whatever the header); card 32493 (openapi)",
 		},
 		// @@ added: an RPC call checks the schema too
 		{
@@ -77,4 +78,82 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 	}
 
 	test.Execute(t, testConfig, tests)
+}
+
+// @@ added: the root lists the tables of one schema, as PostgREST's root
+// describes one schema (ApiRequest.hs, getSchema and ActSchemaRead): the
+// schema of the Accept-Profile header, or the first exposed schema without
+// it. A schema that is not exposed answers 406 like the other routes. The
+// body stays smoothdb's table list (PostgREST serves OpenAPI there; card
+// 32493 openapi). The /admin listing still shows every schema.
+func TestPostgREST_RootListsOneSchema(t *testing.T) {
+	client := test.InitClient()
+	schemasOf := func(t *testing.T, config test.Config, query string, headers test.Headers) map[string]int {
+		t.Helper()
+		body, _, status, err := test.Exec(client, config, &test.Command{Query: query, Headers: headers})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != 200 {
+			t.Fatalf("GET %s %v: %d %s", query, headers, status, body)
+		}
+		var tables []struct {
+			Name   string `json:"name"`
+			Schema string `json:"schema"`
+		}
+		if err := json.Unmarshal(body, &tables); err != nil {
+			t.Fatalf("GET %s: %v in %s", query, err, body)
+		}
+		schemas := map[string]int{}
+		for _, table := range tables {
+			schemas[table.Schema]++
+		}
+		return schemas
+	}
+	only := func(t *testing.T, schemas map[string]int, want string) {
+		t.Helper()
+		if schemas[want] == 0 {
+			t.Errorf("no table of schema %q in the root listing: %v", want, schemas)
+		}
+		for s, n := range schemas {
+			if s != want {
+				t.Errorf("the root listing for %q shows %d tables of schema %q", want, n, s)
+			}
+		}
+	}
+
+	t.Run("Accept-Profile on an exposed schema", func(t *testing.T) {
+		only(t, schemasOf(t, testConfig, "/", test.Headers{"Accept-Profile": {"test"}}), "test")
+	})
+	t.Run("Accept-Profile on the second exposed schema", func(t *testing.T) {
+		only(t, schemasOf(t, testConfig, "/", test.Headers{"Accept-Profile": {"تست"}}), "تست")
+	})
+	t.Run("no Accept-Profile selects the first exposed schema", func(t *testing.T) {
+		only(t, schemasOf(t, testConfig, "/", test.Headers{"Accept-Profile": {""}}), "test")
+	})
+	test.Execute(t, testConfig, []test.Test{
+		{
+			Description: "the root refuses a schema that exists but is not exposed",
+			Query:       "/",
+			Headers:     test.Headers{"Accept-Profile": {"private"}},
+			Expected:    `{"subsystem":"network","message":"Invalid schema: private","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Status:      406,
+		},
+	})
+	t.Run("the admin listing still shows every schema", func(t *testing.T) {
+		token, err := authn.GenerateToken("postgres", "reallyreallyreallyreallyverysafe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		admin := test.Config{
+			BaseUrl:       "http://localhost:8084/admin",
+			CommonHeaders: test.Headers{"Authorization": {token}},
+		}
+		schemas := schemasOf(t, admin, "/databases/pgrest/tables", nil)
+		for _, s := range []string{"test", "private", "v1", "تست"} {
+			if schemas[s] == 0 {
+				t.Errorf("no table of schema %q in the admin listing: %v", s, schemas)
+			}
+		}
+	})
 }

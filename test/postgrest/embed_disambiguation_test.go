@@ -346,7 +346,6 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 			Query:       "/articleStars?select=createdAt,article:articles(id),user(name)&limit=1",
 			Expected:    `[{"createdAt":"2015-12-08T04:22:57.472738","article":{"id":1},"user":{"name":"Angela Martin"}}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a timestamp without time zone is written without Z; card 35454 (serializer divergence)",
 		},
 		//       it "can specify a view!fk" $
 		//         get "/message?select=id,body,sender:person_detail!message_sender_fkey(name,sent),recipient:person_detail!message_recipient_fkey(name,received)&id=lt.4&order=id"
@@ -658,7 +657,6 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 			Query:       "/job?select=id,parent_id(*),children:job!parent_id(id,parent_id)&order=id",
 			Expected:    `[{"id":1,"parent_id":null,"children":[{"id":2,"parent_id":1}]},{"id":2,"parent_id":{"id":1,"parent_id":null},"children":[]}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a self embed on a view resolves through the view; smoothdb picks the private base table on about one server start in five (42501), so the case is flaky; no card",
 		},
 		//       it "can specify all view column names that reference the same base column" $ do
 		//         get "/i2459_self_v1?select=*,parent(*),grandparent(*)"
