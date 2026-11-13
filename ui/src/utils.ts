@@ -1,12 +1,3 @@
-import { makeRequest } from './api';
-
-// getData returns the JSON at url, or throws after the error toast.
-export async function getData(url: string): Promise<any> {
-	const response = await makeRequest(url);
-	if (!response.success) throw new Error(response.error);
-	return response.data;
-}
-
 // "PRIMARY KEY (a, "B c")" -> ["a", "B c"]
 export function parsePrimaryKey(constraints: string[] | null | undefined): string[] {
 	const def = (constraints ?? []).find((c) => c.startsWith('PRIMARY KEY'));

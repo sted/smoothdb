@@ -1,11 +1,12 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { ui } from "../config.svelte";
-    import { listDatabases } from "../data.svelte";
+    import { databaseList, listDatabases } from "../data.svelte";
     import { router } from "../routes";
     import Icon from "./Icon.svelte";
 
-    let databases: { name: string }[] = $state([]);
+    // the list is shared: an admin change of the databases refreshes it
+    let databases = $derived(databaseList.items);
     let search = $state("");
     let inData = $derived(router.path === "/ui/data" || router.path.startsWith("/ui/data/"));
     // The section of the current route is open; the user can toggle both.
@@ -18,7 +19,7 @@
     });
 
     onMount(async () => {
-        databases = await listDatabases();
+        databaseList.items = await listDatabases();
     });
 
     // the search box appears when the list is long

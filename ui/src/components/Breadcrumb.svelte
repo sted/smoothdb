@@ -2,11 +2,6 @@
 	import { router } from "../routes";
 	import Icon from "./Icon.svelte";
 
-	interface Props {
-		rowAdd: () => void;
-	}
-	let { rowAdd }: Props = $props();
-
 	interface Crumb {
 		title: string;
 		path: string;
@@ -28,7 +23,6 @@
 			.slice(1); // the "ui" base
 	});
 
-	let isDataRoute = $derived(router.path.startsWith("/ui/data/"));
 	let openIndex: number | null = $state(null);
 
 	// close the menu on any route change
@@ -91,13 +85,6 @@
 			{#if index < crumbs.length - 1}<li class="sep" aria-hidden="true"><Icon name="arrow-right-s" size={14} /></li>{/if}
 		{/each}
 
-		{#if !isDataRoute}
-			<li class="push-right">
-				<button class="btn btn-sm" onclick={rowAdd}>
-					<Icon name="add" size={14} /> New
-				</button>
-			</li>
-		{/if}
 	</ol>
 </nav>
 
@@ -177,8 +164,5 @@
 		background: var(--accent-soft);
 		color: var(--accent-text);
 		font-weight: 500;
-	}
-	.push-right {
-		margin-left: auto;
 	}
 </style>

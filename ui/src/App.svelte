@@ -13,9 +13,7 @@
 
 	const redirectKey = "smoothdb_redirectAfterLogin";
 
-	let page = $state<BasicPage>();
-
-	router.navigate(window.location.pathname + window.location.search, "", false);
+	router.navigate(window.location.pathname + window.location.search, false);
 
 	let needsLogin = $derived(ui.authRequired && !authStore.isAuthenticated);
 	let onLoginRoute = $derived(router.path === "/ui/login");
@@ -46,10 +44,10 @@
 				<NavigationSidebar />
 			</div>
 			<div class="breadcrumb">
-				<Breadcrumb rowAdd={() => page?.rowAdd()} />
+				<Breadcrumb />
 			</div>
 			<div class="router-content">
-				<BasicPage bind:this={page} />
+				<BasicPage />
 			</div>
 		</div>
 	</div>

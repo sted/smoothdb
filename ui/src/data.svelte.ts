@@ -158,6 +158,15 @@ export function listDatabases(): Promise<{ name: string }[]> {
     ).catch(() => []);
 }
 
+// The databases the sidebar shows; refreshDatabases reloads them after an
+// admin change of the database list.
+export const databaseList = $state({ items: [] as { name: string }[] });
+
+export async function refreshDatabases(): Promise<void> {
+    databases.clear();
+    databaseList.items = await listDatabases();
+}
+
 // forgetAll drops every cache, after a login or a logout.
 export function forgetAll() {
     defs.clear();

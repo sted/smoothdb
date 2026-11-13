@@ -5,6 +5,8 @@ export interface RouteConfig {
     page?: Component
     component?: any
     redirect?: string
+    // data for the page of the route, such as the kind of object it lists
+    meta?: Record<string, string>
 }
 
 interface Route {
@@ -13,6 +15,7 @@ interface Route {
     page?: Component
     component?: Component
     redirect?: string
+    meta?: Record<string, string>
 }
 
 interface RouteParams {
@@ -26,7 +29,7 @@ export default class Router {
     page: Component | undefined = $state()
     component: Component | undefined = $state()
     params: RouteParams = $state({})
-    schema: string = $state("")
+    meta: Record<string, string> = $state({})
 
     private basePath: string = '/ui';
     private routes: Route[]
@@ -35,15 +38,15 @@ export default class Router {
     constructor(routeDefs: RouteConfig[], defPage: any) {
         this.page = defPage
         // compile routes and pre-calculate segments
-        this.routes = routeDefs.map(({ pattern, page, component, redirect }: RouteConfig): Route => {
+        this.routes = routeDefs.map(({ pattern, page, component, redirect, meta }: RouteConfig): Route => {
             pattern = this.basePath + pattern;
             const { regex, paramNames } = this.compilePattern(pattern);
             this.precalculateNextSegments(pattern);
-            return { regex, paramNames, page, component, redirect }
+            return { regex, paramNames, page, component, redirect, meta }
         });
 
         window.addEventListener('popstate', () => {
-            this.navigate(window.location.pathname + window.location.search, this.schema, false);
+            this.navigate(window.location.pathname + window.location.search, false);
         });
         // Same-origin links under the base path change the route without a
         // page load. Modified clicks (new tab, new window) keep the browser default.
@@ -57,7 +60,7 @@ export default class Router {
         });
     }
 
-    navigate(path: string, schema = "", updateHistory = true): boolean {
+    navigate(path: string, updateHistory = true): boolean {
         let query = "";
         const q = path.indexOf("?");
         if (q >= 0) {
@@ -84,7 +87,7 @@ export default class Router {
 
                 if (route.redirect) {
                     const redirectPath = this.basePath + route.redirect.replace(/:([^\/]+)/g, (_, key) => paramValues[key]);
-                    return this.navigate(redirectPath, schema);
+                    return this.navigate(redirectPath);
                 }
 
                 this.path = path;
@@ -94,8 +97,7 @@ export default class Router {
                 }
                 this.component = route.component;
                 this.params = paramValues;
-                if (schema !== "")
-                    this.schema = schema; // if it is "", keep the current schema
+                this.meta = route.meta ?? {};
 
                 break;
             }
@@ -115,7 +117,7 @@ export default class Router {
 
     // setQuery changes the query string of the current route.
     setQuery(params: URLSearchParams, updateHistory = true): void {
-        this.navigate(this.path + (params.size ? "?" + params.toString() : ""), "", updateHistory);
+        this.navigate(this.path + (params.size ? "?" + params.toString() : ""), updateHistory);
     }
 
     getAltRoutes(path: string): string[] {

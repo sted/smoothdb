@@ -4,32 +4,31 @@ import type { RouteConfig } from './router.svelte'
 import BasicPage from './pages/BasicPage.svelte';
 import DataPage from './pages/DataPage.svelte';
 import LoginPage from './pages/LoginPage.svelte';
-import DatabaseForm from './forms/DatabaseForm.svelte';
-import RoleForm from './forms/RoleForm.svelte';
-import TableForm from './forms/TableForm.svelte';
-import SchemaForm from './forms/SchemaForm.svelte';
-import ColumnForm from './forms/ColumnForm.svelte';
-import ConstraintForm from './forms/ConstraintForm.svelte';
+import AdminPage from './admin/AdminPage.svelte';
+
+// An admin route names the kind of object it lists in meta.entity (admin/entities.ts).
+const admin = (pattern: string, entity: string): RouteConfig => ({ pattern, component: AdminPage, meta: { entity } });
 
 export const routeDefs: RouteConfig[] = [
     { pattern: '', redirect: '/databases' },
     { pattern: '/login', component: LoginPage },
-    
+
     // Admin routes (DDL/schema management)
-    { pattern: '/databases', component: DatabaseForm },
+    admin('/databases', 'databases'),
     { pattern: '/databases/:db', redirect: '/databases/:db/tables' },
-    { pattern: '/databases/:db/tables', component: TableForm },
-    { pattern: '/databases/:db/tables/:table', redirect: '/databases/:db/tables/:table/columns' },
-    { pattern: '/databases/:db/tables/:table/columns', component: ColumnForm },
-    { pattern: '/databases/:db/tables/:table/constraints', component: ConstraintForm },
-    { pattern: '/databases/:db/tables/:table/policies' },
-    { pattern: '/databases/:db/tables/:table/grants' },
-    { pattern: '/databases/:db/views' },
-    { pattern: '/databases/:db/functions' },
-    { pattern: '/databases/:db/schemas', component: SchemaForm },
-    { pattern: '/databases/:db/grants' },
-    { pattern: '/roles', component: RoleForm },
-    
+    admin('/databases/:db/tables', 'tables'),
+    { pattern: '/databases/:db/tables/:schema', redirect: '/databases/:db/tables' },
+    { pattern: '/databases/:db/tables/:schema/:table', redirect: '/databases/:db/tables/:schema/:table/columns' },
+    admin('/databases/:db/tables/:schema/:table/columns', 'columns'),
+    admin('/databases/:db/tables/:schema/:table/constraints', 'constraints'),
+    admin('/databases/:db/tables/:schema/:table/policies', 'policies'),
+    admin('/databases/:db/tables/:schema/:table/grants', 'tablegrants'),
+    admin('/databases/:db/views', 'views'),
+    admin('/databases/:db/functions', 'functions'),
+    admin('/databases/:db/schemas', 'schemas'),
+    admin('/databases/:db/grants', 'dbgrants'),
+    admin('/roles', 'roles'),
+
     // Data routes (actual table content)
     { pattern: '/data', component: DataPage },
     { pattern: '/data/:db', component: DataPage },
