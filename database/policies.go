@@ -128,7 +128,7 @@ func buildCreatePolicy(ftablename string, policy *Policy) (string, error) {
 // schema. The table name is literal.
 func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 	conn, schemaname := GetConnAndSchema(ctx)
-	create, err := buildCreatePolicy(quote(schemaname)+"."+quote(policy.Table), policy)
+	create, err := buildCreatePolicy(qualify(schemaname, policy.Table), policy)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 // the table tablename of the request's schema, then renames it.
 func UpdatePolicy(ctx context.Context, tablename string, name string, policy *PolicyUpdate) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	ftablename := quote(schemaname) + "." + quote(tablename)
+	ftablename := qualify(schemaname, tablename)
 	return withTx(ctx, conn, func() error {
 		alter := "ALTER POLICY " + quote(name) + " ON " + ftablename
 		var clauses string
@@ -174,6 +174,6 @@ func UpdatePolicy(ctx context.Context, tablename string, name string, policy *Po
 // schema.
 func DeletePolicy(ctx context.Context, tablename string, name string) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	_, err := conn.Exec(ctx, "DROP POLICY "+quote(name)+" ON "+quote(schemaname)+"."+quote(tablename))
+	_, err := conn.Exec(ctx, "DROP POLICY "+quote(name)+" ON "+qualify(schemaname, tablename))
 	return err
 }

@@ -220,7 +220,7 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 	return withTx(ctx, conn, func() error {
 		var err error
 		var alter string
-		prefix := "ALTER TABLE " + _sq(name, schemaname)
+		prefix := "ALTER TABLE " + qualify(schemaname, name)
 
 		// RLS
 		if table.RowSecurity != nil {
@@ -236,7 +236,7 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 		}
 		// COMMENT
 		if table.Comment != nil {
-			comment := "COMMENT ON TABLE " + _sq(name, schemaname) + " IS " + quoteLit(*table.Comment)
+			comment := "COMMENT ON TABLE " + qualify(schemaname, name) + " IS " + quoteLit(*table.Comment)
 			_, err = conn.Exec(ctx, comment)
 			if err != nil {
 				return err
@@ -250,7 +250,7 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 				return err
 			}
 			schemaname = *table.Schema
-			prefix = "ALTER TABLE " + _sq(name, schemaname)
+			prefix = "ALTER TABLE " + qualify(schemaname, name)
 		}
 		// NAME
 		if table.Name != nil && *table.Name != name {
@@ -260,7 +260,7 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 				return err
 			}
 			// the statements after the rename address the new name
-			prefix = "ALTER TABLE " + _sq(*table.Name, schemaname)
+			prefix = "ALTER TABLE " + qualify(schemaname, *table.Name)
 		}
 		// OWNER as last operation, since changing owner revokes current role's privileges
 		if table.Owner != nil {
@@ -277,7 +277,7 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 
 func DeleteTable(ctx context.Context, name string, ifExists bool) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	ftablename := _sq(name, schemaname)
+	ftablename := qualify(schemaname, name)
 
 	delete := "DROP TABLE"
 	if ifExists {

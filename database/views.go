@@ -123,7 +123,7 @@ func UpdateView(ctx context.Context, name string, view *ViewUpdate) error {
 		return err
 	}
 	return withTx(ctx, conn, func() error {
-		prefix := func() string { return "ALTER " + kind + " " + quote(schemaname) + "." + quote(name) }
+		prefix := func() string { return "ALTER " + kind + " " + qualify(schemaname, name) }
 		if view.Schema != nil && *view.Schema != schemaname {
 			if _, err := conn.Exec(ctx, prefix()+" SET SCHEMA "+quote(*view.Schema)); err != nil {
 				return err
@@ -152,7 +152,7 @@ func DeleteView(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = conn.Exec(ctx, "DROP "+kind+" "+quote(schemaname)+"."+quote(name))
+	_, err = conn.Exec(ctx, "DROP "+kind+" "+qualify(schemaname, name))
 	return err
 }
 

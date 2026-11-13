@@ -138,7 +138,7 @@ func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint,
 
 func DeleteConstraint(ctx context.Context, tablename string, name string) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	ftablename := _sq(tablename, schemaname)
+	ftablename := qualify(schemaname, tablename)
 
 	_, err := conn.Exec(ctx, "ALTER TABLE "+ftablename+" DROP CONSTRAINT "+quote(name))
 	if err != nil {

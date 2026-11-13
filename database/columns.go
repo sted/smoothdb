@@ -135,7 +135,7 @@ func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 
 func UpdateColumn(ctx context.Context, tablename string, name string, column *ColumnUpdate) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	ftablename := _sq(tablename, schemaname)
+	ftablename := qualify(schemaname, tablename)
 
 	return withTx(ctx, conn, func() error {
 		var err error
@@ -200,7 +200,7 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 
 func DeleteColumn(ctx context.Context, tablename string, name string, cascade bool) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	ftablename := _sq(tablename, schemaname)
+	ftablename := qualify(schemaname, tablename)
 
 	delete := "ALTER TABLE " + ftablename + " DROP COLUMN " + quote(name)
 	if cascade {

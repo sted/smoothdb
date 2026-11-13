@@ -96,12 +96,19 @@ func splitTableName(name string) (schemaname, tablename string) {
 	return
 }
 
+// qualify writes schema.name with each part quoted as one identifier. The
+// admin routes use it: a dot in name is part of the name, never a schema
+// separator (that is _sq).
+func qualify(schema, name string) string {
+	return quote(schema) + "." + quote(name)
+}
+
 func composeName(ctx context.Context, schemaname, tablename string) string {
 	if schemaname == "" {
 		options := GetQueryOptions(ctx)
 		schemaname = options.Schema
 	}
-	return quote(schemaname) + "." + quote(tablename)
+	return qualify(schemaname, tablename)
 }
 
 func isStar(s string) bool {

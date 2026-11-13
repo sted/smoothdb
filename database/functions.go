@@ -274,7 +274,7 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 // must address one function: an overloaded name fails (42725).
 func DeleteFunction(ctx context.Context, name string) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+quote(schemaname)+"."+quote(name))
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+qualify(schemaname, name))
 	return err
 }
 
@@ -294,7 +294,7 @@ func DeleteFunctionSignature(ctx context.Context, name string, types []string) e
 		}
 		canonical[i] = *c
 	}
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+quote(schemaname)+"."+quote(name)+"("+strings.Join(canonical, ", ")+")")
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+qualify(schemaname, name)+"("+strings.Join(canonical, ", ")+")")
 	return err
 }
 
