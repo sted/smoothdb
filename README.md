@@ -14,7 +14,7 @@ The main differences are:
 * Can be used both stand-alone and as a library (the main motivation for writing this)
 * It also supports DDL operations (create / alter / drop databases, tables, manage constraints, roles, etc)
 * Supports multiple databases with a single instance
-* It has an Admin UI web dashboard
+* It has a web UI to browse and edit data and to manage the schema
 
 See [TODO.md](TODO.md) for the many things to be completed.
 Please create issues to let me know your priorities.
@@ -72,82 +72,34 @@ The default Content-Type is "**application/json**".
 
 ### Authentication
 
-Like PostgREST (see [PostgREST Authentication](https://postgrest.org/en/stable/references/auth.html)), SmoothDB is designed to keep the database at the center of API security.
+As in PostgREST ([Authentication](https://postgrest.org/en/stable/references/auth.html)), the database is at the center of API security: a request runs as the role in its JWT, and the database grants and policies decide what it can do.
 
-To make an authenticated request, the client must include an Authorization HTTP header with the value **Bearer \<jwt\>**, where **jwt** is a [Java Web Token](jwt.io). 
-
-A valid JWT for SmoothDB must include at least the **role** claim in the payload:
-
-```json
-{
-    "role": "user1"
-}
-```
-
-To generate a JWT for testing, you can use the generator at [jwt.io](jwt.io), using as a secret the same value configured in the configuration file for JWTSecret.
-
-Token verification follows PostgREST's (`jwt-secret`, `jwt-secret-is-base64`, `jwt-aud`, `jwt-role-claim-key`), with a fixed 30-second clock skew on `exp`, `nbf` and `iat`:
-
-- `JWTRoleClaimKey` (default `$.role`) locates the role in the claims, with a subset of PostgREST's JSONPath: `$`, `.name`, `['name']`, `[index]` and one filter on the current element (`[?@ == "text"]`, `[?@ != "text"]`, `[?search(@, "regex")]`), e.g. `$.app_metadata.role`. Anything else stops the server at startup; the JSPath syntax of PostgREST 15 is still read. With `LoginMode: "db"` it must be the default.
-- `JWTAud`, when set, must appear in the token's `aud` claim.
-- `JWTSecretIsBase64` reads `JWTSecret` as base64.
-- `JWTSecret` is a passphrase (HS256), a JWK or a JWK set; with keys, a token is verified by those matching its `kid`, or by all when it has none.
-- `JWTKeys` (`SMOOTHDB_JWT_KEYS`) is a catalog of JWKs with unique `kid`s that verifies in place of `JWTSecret`: tokens without `kid` fall back to its `oct` keys, so HS256 and ES256 tokens verify at once during a key migration.
-
-Below is an example of an authenticated API call:
+Send the token in the `Authorization` header. The token needs at least a `role` claim, for example `{"role": "user1"}`:
 
 ```http
-GET /test HTTP/1.1
+GET /api/testdb/test HTTP/1.1
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic3RlZCJ9.-XquFDiIKNq5t6iov2bOD5k_LljFfAN7LqRzeWVuv7k
 ```
 
-#### Token Generation
+Token verification is the same as in PostgREST. Configure it with `JWTSecret` or `JWTKeys`, `JWTAud`, `JWTRoleClaimKey` and `JWTSecretIsBase64` (see [Configuration file](#configuration-file)). For a test token, sign `{"role": "..."}` on [jwt.io](https://jwt.io) with your `JWTSecret`.
 
-SmoothDB provides a `/token` endpoint that generates JWT tokens:
+#### Token generation
+
+`POST /token` signs a token. `LoginMode` selects how it checks the credentials:
+
+* `"db"` checks a PostgreSQL role and its password. Use it for development.
+* `"gotrue"` sends the credentials to the Supabase Auth service at `AuthURL`. Use it in production.
 
 ```http
 POST /token HTTP/1.1
 Content-Type: application/json
 
-{
-    "email": "user@example.com",
-    "password": "your_password"
-}
+{ "email": "user@example.com", "password": "your_password" }
 ```
 
-The response contains the access token and related information:
+The response holds `access_token`, `token_type`, `expires_in`, `expires_at`, `refresh_token` and `user`.
 
-```json
-{
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR...",
-    "token_type": "Bearer",
-    "expires_in": 3600,
-    "expires_at": 1683036800,
-    "refresh_token": "aaaabbbbccccddddeeee",
-    "user": {
-        "aud": "authenticated",
-        "role": "authenticated",
-        "email": "user@example.com"
-    }
-}
-```
-
-SmoothDB supports two authentication methods via the `LoginMode` configuration option:
-
-1. **Internal Authentication** (`LoginMode: "db"`), suitable for local development but not recommended for production. Credentials are verified against PostgreSQL database users. 
-
-2. **Supabase Auth** (`LoginMode: "gotrue"`), recommended for production applications. Authentication is delegated to the Supabase Auth service specified in the `AuthURL` configuration.
-
-**Important Notes:**
-
-- No explicit authorization step is needed beyond providing the JWT token with each request
-- Both authentication methods require email and password for token generation through the `/token` endpoint
-- `/token` is the one route reachable without credentials, so it is rate limited per client address (`LoginRateLimit` attempts per minute, answered `429` with a `Retry-After` header beyond that; proxy headers are not trusted for the address) and its body is capped by `RequestMaxBytes` like every other route
-- With `SessionMode: "claims"` (the default), a session keyed by the token caches the verified claims, so a repeated token is not re-verified; its expiry is still checked on every request, and a session left half-built by a failed request is discarded. `none` verifies every token on every request. Either way the database connection goes back to the pool at the end of each request: a request's role, claims and access mode are transaction-local and travel with its first statement, as in PostgREST.
-- `SessionMode: "role"` is deprecated and now means `claims` (the server warns at startup). It kept the prepared connection attached to the session between requests to save the role switch; once the request variables travel with the first statement that saved nothing measurable, and the connections the sessions kept starved the requests beyond the pool size.
-- `JWTSecret` must be set whenever authentication is enabled (`LoginMode` other than `none`; with `JWTKeys` only `"db"` needs it, to sign `/token` tokens): the server refuses to start with an empty secret, because an empty HMAC key would let anyone forge a token for any role. Set it in the configuration file or via the `SMOOTHDB_JWT_SECRET` environment variable. In debug mode (`SMOOTHDB_DEBUG=true`) a random secret is generated automatically for the run. With `LoginMode: "none"` the secret may stay empty, and then, without `JWTKeys`, every bearer token is refused with 401 rather than verified against the empty key.
-- When TLS is configured (`CertFile`/`KeyFile`), a certificate that fails to load is a fatal startup error - SmoothDB will not silently fall back to plaintext HTTP.
-- The configuration file holds secrets (the JWT secret and the database URL with its password); it is written with `0600` permissions. Keep it that way and out of version control.
+The server does not start without a `JWTSecret` when `LoginMode` is not `"none"` (with `JWTKeys`, only for `"db"`). `/token` is rate limited per client address (`LoginRateLimit`).
 
 We will omit the Authorization header in the following examples.
 
@@ -722,19 +674,21 @@ in the examples directory and browse to *localhost:8085/products* and *localhost
 
 ![](/misc/screenshot.png)
 
-A simple interface for the basic administration commands.
+The web UI is served at `/ui`. It has two areas:
 
-It allows to configure databases, tables, colums, roles, etc., must be explicitly enabled and for now needs the configuration of the anonymous role to work.
+* **Data**: browse, filter, sort and edit the rows of tables and views, with typed filters, related columns and a record panel.
+* **Admin**: manage databases, roles, schemas, tables, columns, constraints, policies, views, functions and grants, with guided forms.
 
-These are the required configurations:
+Enable it with `EnableAdminUI`. The Admin area also needs `EnableAdminRoute`:
 
-```json 
+```json
 {
-	"AllowAnon": true,
- 	"EnableAdminRoute": true,
-	"EnableAdminUI": true,
-} 
+	"EnableAdminRoute": true,
+	"EnableAdminUI": true
+}
 ```
+
+The UI signs in with `/token` (`LoginMode` `"db"` or `"gotrue"`). With `AllowAnon` and a `Database.AnonRole` it also works without a login.
 
 ## Plugins
 
@@ -795,11 +749,12 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | AuthURL | URL of the external AuthN service | "" |
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
 | AllowAnon | Allow unauthenticated connections; also requires a non-empty Database.AnonRole, otherwise anonymous requests are refused (401) | false |
-| JWTSecret | Secret for JWT tokens: a passphrase, a JWK or a JWK set, see [Authentication](#authentication) | "" |
+| JWTSecret | Secret for JWT tokens: a passphrase (HS256), a JWK or a JWK set. Required when LoginMode is not "none" (with JWTKeys, only for "db") | "" |
 | JWTSecretIsBase64 | JWTSecret is base64-encoded | false |
 | JWTAud | Audience the JWT `aud` claim must contain, when present; "" for any | "" |
-| JWTRoleClaimKey | JSONPath of the role in the JWT claims, see [Authentication](#authentication) | "$.role" |
-| JWTKeys | Key catalog verifying JWT tokens instead of JWTSecret: a JSON array of JWKs with kid, see [Authentication](#authentication) | "" |
+| JWTRoleClaimKey | JSONPath of the role in the JWT claims, a subset of PostgREST's (e.g. `$.app_metadata.role`) | "$.role" |
+| JWTKeys | Key catalog that verifies JWT tokens instead of JWTSecret: a JSON array of JWKs with unique kid | "" |
+| TokenExpiry | Expiry of the tokens that /token signs (seconds, 0 for no expiry) | 86400 |
 | SessionMode | Session mode: "none" (no cache), "claims" (cache the verified claims); "role" is a deprecated alias of "claims" | "claims" |
 | MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
 | EnableAdminRoute | Enable administration of databases and tables | false |
@@ -820,13 +775,14 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | VerboseErrors | Return full database error details (hint, detail) to clients; off by default because they help fingerprint the schema | false |
 | RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
-| Database.MinPoolConnections | Miminum connections per pool | 10 |
+| Database.MinPoolConnections | Minimum connections per pool | 10 |
 | Database.MaxPoolConnections | Maximum connections per pool | 100 |
 | Database.AnonRole | Role for anonymous requests, and for tokens without a role claim, when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path of the connections (name resolution of unqualified types, functions and views) | [] for Postgres search path |
 | Database.ExposedSchemas | Schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`); a header naming another schema answers 406 | [] for every schema, with the first of the search path as default |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
+| Database.MaxRows | Maximum rows a read answers, at the top level and in each embed (PostgREST's `db-max-rows`); 0 for no limit | 0 |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
 | Database.MaxRecursiveDepth | Maximum recursive query depth; 0 disables recursive queries | 100 |
 | Database.PoolAcquisitionTimeout | Seconds a request waits for a pool connection before answering 504 `PGRST003` (PostgREST's `db-pool-acquisition-timeout`); 0 to wait without a bound | 10 |

@@ -1,8 +1,15 @@
 # Change Log
 
-## Unreleased
+## 0.12.0 - 2026-11-13
 
-**PostgREST 16.4 spec cases: 1097 run, 528 skipped (67.5%)**
+**PostgREST 16.4 spec cases: 1098 run, 528 skipped (67.5%)**
+
+### Added
+* **New web UI** — a login page, a Data area to browse, filter and edit rows, with typed filters, related columns and a record panel, and an Admin area rebuilt on one side panel, with guided forms for constraints, views, functions, policies and grants; the server writes its login mode and base URLs into the UI page.
+* **Admin functions** — create or replace a function with its volatility, strictness and security, and drop one overload with `?args=`.
+* **Admin views** — replace a view, change its name, owner or schema with PATCH, and drop a materialized view.
+* **Admin policy PATCH** — change the name, roles, `USING` and `WITH CHECK` of a policy.
+* **Column `typedef`** — the admin column list gives the full type with its modifier, such as `numeric(10,2)`.
 
 ### Fixed
 * **`$info` describes only exposed tables** — `GET /api/<db>/$info/:table` refuses a schema that is not exposed with a 406, as the other routes do.
@@ -18,6 +25,12 @@
 * **Query builder correctness** — embed filter values are bound, `"a.b"` is one column at every level, a request builds the same SQL twice, and a recursive select keeps its values intact.
 * **Intervals, timestamps and multi-dimensional arrays as `to_json` writes them** — intervals are PostgreSQL's own text, a `timestamp` has no `Z`, and `int[][]` is nested arrays.
 * **Embeds resolve the same way on every schema load** — relationships are built in a fixed order, and a relationship to a schema that is not exposed is dropped, as PostgREST's `removeInternal`.
+* **Admin grants** — the table routes accept tables, column grants apply and show in the list, and the schema and function grants are readable.
+* **Admin policies** — the command must be one of PostgreSQL's, and the schema comes from the profile header.
+* **Admin names and status codes** — a dotted path segment is one object name, a table rename answers with the new name, and a table PATCH answers 200.
+
+### Changed
+* **The UI needs no anonymous access** — with `LoginMode` `"db"` or `"gotrue"` it shows a login page; `AllowAnon` is needed only to use it without a login.
 
 ## 0.11.0 - 2026-11-04
 
