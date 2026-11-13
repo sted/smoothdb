@@ -39,6 +39,7 @@ func TestAdminDottedNames(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/tables/a.b",
 			Body:        `{"comment": "dotted"}`,
+			Status:      200,
 		},
 		{
 			Description: "add a column",
@@ -91,6 +92,7 @@ func TestAdminDottedNames(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/tables/a.b",
 			Body:        `{"name": "c.d"}`,
+			Status:      200,
 		},
 		{
 			Description: "drop it",
@@ -105,16 +107,6 @@ func TestAdminDottedNames(t *testing.T) {
 			Status:      404,
 		},
 	}
-	// the PATCH status of a table is the subject of another change: check the
-	// two PATCH cases for success only
-	for i := range tests {
-		if tests[i].Method == "PATCH" && tests[i].Status == 0 {
-			tests[i].Status = tablePatchStatus
-		}
-	}
 	test.Execute(t, testConfig, tests)
 	execSQLAndReload(t, `DROP SCHEMA admdot_s CASCADE`)
 }
-
-// tablePatchStatus is the status of a successful PATCH /tables/:table.
-const tablePatchStatus = 201

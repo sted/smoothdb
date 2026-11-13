@@ -76,7 +76,7 @@ func TableUpdateHandler(c context.Context, w http.ResponseWriter, r heligo.Reque
 	}
 	err = database.UpdateTable(c, name, &tableUpdate)
 	if err == nil {
-		return heligo.WriteHeader(w, http.StatusCreated)
+		return heligo.WriteJSON(w, http.StatusOK, nil)
 	} else {
 		return WriteServerError(w, err)
 	}

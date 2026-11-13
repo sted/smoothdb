@@ -51,7 +51,7 @@ func TestComments(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/dbtest/tables/comments_test",
 			Body:        `{"comment": "Updated table comment"}`,
-			Status:      201,
+			Status:      200,
 		},
 		// update column comment via PATCH
 		{
