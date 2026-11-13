@@ -545,7 +545,7 @@ const functions: EntityDef = {
             help: 'Comma-separated: [in|out|inout|variadic] name type',
             read: (f) => formatArgs(f.arguments),
         },
-        { key: 'returns', label: 'Returns', kind: 'type', required: true, createOnly: true, placeholder: 'void, int4, setof t' },
+        { key: 'returns', label: 'Returns', kind: 'type', required: true, createOnly: true, placeholder: 'setof t, table (a int, b text)', options: ['void', 'integer', 'bigint', 'numeric', 'text', 'boolean', 'date', 'timestamptz', 'jsonb', 'trigger', 'setof record'] },
         { key: 'language', label: 'Language', kind: 'select', options: ['sql', 'plpgsql'] },
         { key: 'volatility', label: 'Volatility', kind: 'select', options: ['volatile', 'stable', 'immutable'], read: volatility },
         { key: 'strict', label: 'Strict', kind: 'bool', help: 'Returns NULL when an argument is NULL, without a call' },
