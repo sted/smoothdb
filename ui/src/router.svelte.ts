@@ -21,6 +21,8 @@ interface RouteParams {
 
 export default class Router {
     path: string = $state("")
+    // the query string of the route, without "?"
+    query: string = $state("")
     page: Component | undefined = $state()
     component: Component | undefined = $state()
     params: RouteParams = $state({})
@@ -41,14 +43,32 @@ export default class Router {
         });
 
         window.addEventListener('popstate', () => {
-            this.navigate(window.location.pathname, this.schema, false);
+            this.navigate(window.location.pathname + window.location.search, this.schema, false);
+        });
+        // Same-origin links under the base path change the route without a
+        // page load. Modified clicks (new tab, new window) keep the browser default.
+        document.addEventListener('click', (ev) => {
+            if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+            const a = (ev.target as Element | null)?.closest?.('a');
+            if (!a || a.target || a.hasAttribute('download')) return;
+            const url = new URL(a.href, window.location.href);
+            if (url.origin !== window.location.origin || !url.pathname.startsWith(this.basePath)) return;
+            if (this.navigate(url.pathname + url.search)) ev.preventDefault();
         });
     }
 
     navigate(path: string, schema = "", updateHistory = true): boolean {
-        const oldPath = this.path;
+        let query = "";
+        const q = path.indexOf("?");
+        if (q >= 0) {
+            query = path.slice(q + 1);
+            path = path.slice(0, q);
+        }
         if (!path.startsWith(this.basePath)) {
             path = this.basePath + path;
+        }
+        if (path.length > 1 && path.endsWith('/')) {
+            path = path.slice(0, -1);
         }
         let paramValues: RouteParams = {};
         let matched = false;
@@ -58,7 +78,7 @@ export default class Router {
             if (match) {
                 matched = true
                 paramValues = route.paramNames.reduce((acc: RouteParams, key, index) => {
-                    acc[key] = match[index + 1];
+                    acc[key] = decodeURIComponent(match[index + 1]);
                     return acc;
                 }, {});
 
@@ -68,6 +88,7 @@ export default class Router {
                 }
 
                 this.path = path;
+                this.query = query;
                 if (route.page) {
                     this.page = route.page;
                 }
@@ -81,11 +102,20 @@ export default class Router {
         }
 
         if (matched) {
-            if (updateHistory && oldPath !== this.path) {
-                window.history.pushState({}, '', path);
+            const url = this.path + (this.query ? "?" + this.query : "");
+            const current = window.location.pathname + window.location.search;
+            if (updateHistory && current !== url) {
+                window.history.pushState({}, '', url);
+            } else if (current !== url) {
+                window.history.replaceState({}, '', url);
             }
         }
         return matched;
+    }
+
+    // setQuery changes the query string of the current route.
+    setQuery(params: URLSearchParams, updateHistory = true): void {
+        this.navigate(this.path + (params.size ? "?" + params.toString() : ""), "", updateHistory);
     }
 
     getAltRoutes(path: string): string[] {
