@@ -40,6 +40,18 @@ const privilegesRelationQuery = `
 
 //AND  pg_table_is_visible(c.oid)
 
+// privilegesColumnQuery lists the column ACL entries of one table ($1 name,
+// $2 schema), in column order. A column grant lives in pg_attribute.attacl,
+// not in the table's relacl.
+const privilegesColumnQuery = `
+	SELECT a.attname, unnest(a.attacl) acl
+	FROM pg_catalog.pg_attribute a
+	JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+	WHERE c.relname = $1 AND n.nspname = $2
+		AND a.attnum > 0 AND NOT a.attisdropped AND a.attacl IS NOT NULL
+	ORDER BY a.attnum`
+
 const privilegesSchemaQuery = `
 	SELECT n.nspname name, '' schema, 'schema', unnest(n.nspacl) acl
 	FROM pg_catalog.pg_namespace n
@@ -195,8 +207,48 @@ func GetPrivileges(ctx context.Context, targetType string, targetName string) ([
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	rows.Close()
 
+	if targetType == "table" && targetName != "" {
+		schemaname, tablename := splitTableName(targetName)
+		columnPrivileges, err := getColumnPrivileges(ctx, conn, tablename, schemaname)
+		if err != nil {
+			return nil, err
+		}
+		privileges = append(privileges, columnPrivileges...)
+	}
 	return privileges, nil
+}
+
+// getColumnPrivileges returns the column grants of a table. The ACL entries
+// that are equal on several columns (same grantee, privileges and grantor)
+// become one privilege with the list of those columns.
+func getColumnPrivileges(ctx context.Context, conn *DbConn, table, schema string) ([]Privilege, error) {
+	rows, err := conn.Query(ctx, privilegesColumnQuery, table, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	privileges := []Privilege{}
+	byACL := map[string]int{}
+	for rows.Next() {
+		var column, acl string
+		if err := rows.Scan(&column, &acl); err != nil {
+			return nil, err
+		}
+		if i, ok := byACL[acl]; ok {
+			privileges[i].Columns = append(privileges[i].Columns, column)
+			continue
+		}
+		privilege := Privilege{TargetName: table, TargetSchema: schema, TargetType: "table", ACL: acl, Columns: []string{column}}
+		if err := parsePrivilege(acl, &privilege); err != nil {
+			return nil, err
+		}
+		byACL[acl] = len(privileges)
+		privileges = append(privileges, privilege)
+	}
+	return privileges, rows.Err()
 }
 
 // validPrivilegeTypes is the closed set of GRANT/REVOKE privilege keywords.

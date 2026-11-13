@@ -62,6 +62,10 @@ func TestAdminGrantsRoutes(t *testing.T) {
 	if got := user1Grants(t, testConfig, "/tables/admgr_s.t"); got != "SELECT" {
 		t.Errorf("table grants of user1: %q, want SELECT", got)
 	}
+	// the column grant is listed too, with its column
+	if got := user1ColumnGrants(t, testConfig, "/tables/admgr_s.t"); got != "UPDATE(b)" {
+		t.Errorf("column grants of user1: %q, want UPDATE(b)", got)
+	}
 	test.Execute(t, testConfig, tests[3:])
 	if got := user1Grants(t, testConfig, "/schema/admgr_s"); got != "USAGE" {
 		t.Errorf("schema grants of user1: %q, want USAGE", got)
@@ -69,25 +73,53 @@ func TestAdminGrantsRoutes(t *testing.T) {
 	execSQLAndReload(t, `DROP SCHEMA admgr_s CASCADE`)
 }
 
-// user1Grants returns the privilege types of user1 that GET query lists.
+// user1Grants returns the privilege types of user1 that GET query lists for
+// the whole object (not for some columns).
 func user1Grants(t *testing.T, config test.Config, query string) string {
+	t.Helper()
+	var types []string
+	for _, p := range user1Privileges(t, config, query) {
+		if len(p.Columns) == 0 {
+			types = append(types, p.Types...)
+		}
+	}
+	return strings.Join(types, ",")
+}
+
+// user1ColumnGrants returns the column privileges of user1, as TYPE(col,...).
+func user1ColumnGrants(t *testing.T, config test.Config, query string) string {
+	t.Helper()
+	var out []string
+	for _, p := range user1Privileges(t, config, query) {
+		if len(p.Columns) > 0 {
+			out = append(out, strings.Join(p.Types, ",")+"("+strings.Join(p.Columns, ",")+")")
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+type listedPrivilege struct {
+	Grantee string   `json:"grantee"`
+	Types   []string `json:"types"`
+	Columns []string `json:"columns"`
+}
+
+// user1Privileges returns the privileges of user1 that GET query lists.
+func user1Privileges(t *testing.T, config test.Config, query string) []listedPrivilege {
 	t.Helper()
 	body, _, status, err := test.Exec(test.InitClient(), config, &test.Command{Method: "GET", Query: query})
 	if err != nil || status != 200 {
 		t.Fatalf("GET %s: %d %v", query, status, err)
 	}
-	var privileges []struct {
-		Grantee string   `json:"grantee"`
-		Types   []string `json:"types"`
-	}
+	var privileges []listedPrivilege
 	if err := json.Unmarshal(body, &privileges); err != nil {
 		t.Fatalf("GET %s: %v: %s", query, err, body)
 	}
-	var types []string
+	var out []listedPrivilege
 	for _, p := range privileges {
 		if p.Grantee == "user1" {
-			types = append(types, p.Types...)
+			out = append(out, p)
 		}
 	}
-	return strings.Join(types, ",")
+	return out
 }
