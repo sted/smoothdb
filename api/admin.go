@@ -130,20 +130,32 @@ func InitAdminRouter(apiHelper Helper) {
 
 	grants := admin_db.Group("/grants")
 
+	// grantTargetType maps the plural path segment of the alternative routes
+	// (/databases/:db/tables/:name/grants, /grants/:db/tables/:name) to the
+	// object type of GRANT.
+	grantTargetType := func(t string) string {
+		switch t {
+		case "tables":
+			return "table"
+		case "schemas":
+			return "schema"
+		case "functions":
+			return "function"
+		}
+		return t
+	}
+
 	grantsGetHandler := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		var privileges []database.Privilege
 		var err error
 
 		dbname := r.Param("dbname")
-		targetType := r.Param("targettype")
+		targetType := grantTargetType(r.Param("targettype"))
 		targetName := r.Param("targetname")
 
 		if targetType == "" {
 			privileges, err = database.GetDatabasePrivileges(c, dbname)
 		} else {
-			if targetType == "tables" {
-				targetType = "table"
-			}
 			privileges, err = database.GetPrivileges(c, targetType, targetName)
 		}
 
@@ -160,7 +172,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 	grantsPostHandler := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		dbname := r.Param("dbname")
-		targetType := r.Param("targettype")
+		targetType := grantTargetType(r.Param("targettype"))
 		targetName := r.Param("targetname")
 
 		var privilegeInput database.Privilege
@@ -190,7 +202,7 @@ func InitAdminRouter(apiHelper Helper) {
 
 	grantsDeleteHandler := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		dbname := r.Param("dbname")
-		targetType := r.Param("targettype")
+		targetType := grantTargetType(r.Param("targettype"))
 		targetName := r.Param("targetname")
 
 		if targetType == "" {

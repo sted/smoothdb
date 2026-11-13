@@ -40,6 +40,17 @@ const privilegesRelationQuery = `
 
 //AND  pg_table_is_visible(c.oid)
 
+const privilegesSchemaQuery = `
+	SELECT n.nspname name, '' schema, 'schema', unnest(n.nspacl) acl
+	FROM pg_catalog.pg_namespace n
+	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'`
+
+const privilegesFunctionQuery = `
+	SELECT p.proname name, n.nspname schema, 'function', unnest(p.proacl) acl
+	FROM pg_catalog.pg_proc p
+	JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'`
+
 func parsePrivilege(s string, priv *Privilege) error {
 	var privilegeLetters string
 	var privilegeType string
@@ -137,13 +148,30 @@ func GetPrivileges(ctx context.Context, targetType string, targetName string) ([
 	var query string
 
 	var args []any
-	if targetType == "table" { // @@ table includes views etc for now
+	switch targetType {
+	case "table": // @@ table includes views etc for now
 		query = privilegesRelationQuery
 		if targetName != "" {
 			schemaname, tablename := splitTableName(targetName)
 			query += " AND c.relname = $1 AND n.nspname = $2"
 			args = append(args, tablename, schemaname)
 		}
+	case "schema":
+		query = privilegesSchemaQuery
+		if targetName != "" {
+			query += " AND n.nspname = $1"
+			args = append(args, targetName)
+		}
+	case "function":
+		// every overload of the name: the ACL is per signature
+		query = privilegesFunctionQuery
+		if targetName != "" {
+			schemaname, fname := splitTableName(targetName)
+			query += " AND p.proname = $1 AND n.nspname = $2"
+			args = append(args, fname, schemaname)
+		}
+	default:
+		return privileges, nil
 	}
 
 	rows, err := conn.Query(ctx, query, args...)
@@ -181,6 +209,12 @@ var validPrivilegeTypes = map[string]struct{}{
 	"MAINTAIN": {}, "ALL": {}, "ALL PRIVILEGES": {},
 }
 
+// validColumnPrivilegeTypes are the privileges that a GRANT can give on
+// single columns.
+var validColumnPrivilegeTypes = map[string]struct{}{
+	"SELECT": {}, "INSERT": {}, "UPDATE": {}, "REFERENCES": {},
+}
+
 // validTargetTypes is the closed set of object types that can follow ON in a
 // GRANT/REVOKE ... ON <type> statement.
 var validTargetTypes = map[string]struct{}{
@@ -200,15 +234,31 @@ func buildGrantRevoke(privilege *Privilege, grant bool) (string, error) {
 	} else {
 		b.WriteString("REVOKE ")
 	}
+	var columns string
+	for i, c := range privilege.Columns {
+		if i != 0 {
+			columns += ", "
+		}
+		columns += quote(c)
+	}
 	if len(privilege.Types) != 0 {
 		for i, t := range privilege.Types {
-			if _, ok := validPrivilegeTypes[strings.ToUpper(strings.TrimSpace(t))]; !ok {
+			upper := strings.ToUpper(strings.TrimSpace(t))
+			if _, ok := validPrivilegeTypes[upper]; !ok {
 				return "", &BuildError{"invalid privilege type: " + t}
+			}
+			if columns != "" {
+				if _, ok := validColumnPrivilegeTypes[upper]; !ok {
+					return "", &BuildError{"invalid privilege type with columns: " + t + " (use SELECT, INSERT, UPDATE or REFERENCES)"}
+				}
 			}
 			if i != 0 {
 				b.WriteString(", ")
 			}
 			b.WriteString(t)
+			if columns != "" {
+				b.WriteString(" (" + columns + ")")
+			}
 		}
 		if _, ok := validTargetTypes[strings.ToUpper(strings.TrimSpace(privilege.TargetType))]; !ok {
 			return "", &BuildError{"invalid target type: " + privilege.TargetType}

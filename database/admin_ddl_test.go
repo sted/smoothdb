@@ -520,3 +520,65 @@ func TestAdminPolicies(t *testing.T) {
 		}
 	}
 }
+
+// A column grant became a table grant (columns was ignored), and GET of the
+// grants of a schema or a function always returned [].
+func TestAdminGrantColumnsSchemaFunction(t *testing.T) {
+	got, err := buildGrantRevoke(&Privilege{Types: []string{"UPDATE", "select"}, TargetType: "table",
+		TargetName: "public.t", Columns: []string{"a", "B c"}, Grantee: "r"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `GRANT UPDATE ("a", "B c"), select ("a", "B c") ON table "public"."t" TO "r"`; got != want {
+		t.Errorf("column grant\n want: %s\n  got: %s", want, got)
+	}
+	for _, typ := range []string{"DELETE", "ALL"} {
+		_, err = buildGrantRevoke(&Privilege{Types: []string{typ}, TargetType: "table",
+			TargetName: "t", Columns: []string{"a"}, Grantee: "r"}, true)
+		if _, ok := err.(*BuildError); !ok {
+			t.Errorf("%s with columns: %T %v, want a BuildError", typ, err, err)
+		}
+	}
+
+	ctx := lane6DB(t, "lane6_admin_grants")
+	lane6Exec(t, ctx, `CREATE SCHEMA lane6_s`, `CREATE TABLE lane6_s.lane6_t (a int, b int)`,
+		`CREATE FUNCTION lane6_s.lane6_f() RETURNS int LANGUAGE sql AS 'SELECT 1'`,
+		`CREATE ROLE lane6_grantee`)
+	t.Cleanup(func() { lane6Exec(t, ctx, `DROP OWNED BY lane6_grantee`, `DROP ROLE lane6_grantee`) })
+
+	for _, p := range []Privilege{
+		{Types: []string{"USAGE"}, TargetType: "schema", TargetName: "lane6_s", Grantee: "lane6_grantee"},
+		{Types: []string{"EXECUTE"}, TargetType: "function", TargetName: "lane6_s.lane6_f", Grantee: "lane6_grantee"},
+		{Types: []string{"UPDATE"}, TargetType: "table", TargetName: "lane6_s.lane6_t", Columns: []string{"b"}, Grantee: "lane6_grantee"},
+	} {
+		if _, err := CreatePrivilege(ctx, &p); err != nil {
+			t.Fatalf("grant %+v: %v", p, err)
+		}
+	}
+	var colPriv, tablePriv bool
+	if err := GetConn(ctx).QueryRow(ctx, `SELECT has_column_privilege('lane6_grantee', 'lane6_s.lane6_t', 'b', 'UPDATE'),
+		has_table_privilege('lane6_grantee', 'lane6_s.lane6_t', 'UPDATE')`).Scan(&colPriv, &tablePriv); err != nil {
+		t.Fatal(err)
+	}
+	if !colPriv || tablePriv {
+		t.Errorf("column grant: column privilege %v, table privilege %v", colPriv, tablePriv)
+	}
+	for _, c := range []struct{ typ, name, want string }{
+		{"schema", "lane6_s", "USAGE"},
+		{"function", "lane6_s.lane6_f", "EXECUTE"},
+	} {
+		privileges, err := GetPrivileges(ctx, c.typ, c.name)
+		if err != nil {
+			t.Fatalf("GetPrivileges(%s): %v", c.typ, err)
+		}
+		found := false
+		for _, p := range privileges {
+			if p.Grantee == "lane6_grantee" && strings.Join(p.Types, ",") == c.want && p.TargetType == c.typ {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("GetPrivileges(%s, %s): %+v", c.typ, c.name, privileges)
+		}
+	}
+}
