@@ -10,3 +10,9 @@ export function formData<T extends object>(get: () => T): { initial: T; current:
 	let current = $state($state.snapshot(get()) as T);
 	return { initial, current };
 }
+
+// Reads props once, at mount, for forms that ModalPanel remounts on each open.
+// The thunk keeps the reads inside a closure, as for formData.
+export function propsOnce<T>(get: () => T): T {
+	return get();
+}
