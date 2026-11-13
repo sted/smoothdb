@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -315,5 +316,108 @@ func TestAdminColumnTypedef(t *testing.T) {
 	}
 	if c.Typedef != "numeric(10,2)" {
 		t.Errorf("GetColumn typedef = %q", c.Typedef)
+	}
+}
+
+// The functions API wrote the arguments with Go field names and a byte mode,
+// listed a zero-argument function with one empty argument, did not quote the
+// argument names, broke on a body with $$, could not drop one overload,
+// listed procedures and had no replace, volatility, strict or security.
+func TestAdminFunctions(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_fn")
+	lane6Exec(t, ctx, `CREATE PROCEDURE lane6_p() LANGUAGE sql AS 'SELECT 1'`,
+		`CREATE FUNCTION lane6_o(int4) RETURNS int LANGUAGE sql AS 'SELECT 1'`,
+		`CREATE FUNCTION lane6_o(int4, int4) RETURNS int LANGUAGE sql AS 'SELECT 2'`)
+
+	var in Function
+	if err := json.Unmarshal([]byte(`{"name": "lane6_f", "returns": "text",
+		"arguments": [{"name": "My Arg", "type": "int4"}, {"name": "o", "type": "text", "mode": "out"}],
+		"definition": "SELECT (\"My Arg\" + length($$a$$))::text || $fn$x$fn$",
+		"volatility": "immutable", "strict": true, "security": "definer"}`), &in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFunction(ctx, &in); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := CreateFunction(ctx, &in); err == nil {
+		t.Errorf("a second create without replace should fail")
+	}
+	in.Replace = true
+	if _, err := CreateFunction(ctx, &in); err != nil {
+		t.Fatalf("create or replace: %v", err)
+	}
+	if _, err := CreateFunction(ctx, &Function{Name: "lane6_z", Returns: "int", Definition: "SELECT 1"}); err != nil {
+		t.Fatalf("create zero-argument: %v", err)
+	}
+	for _, bad := range []Function{
+		{Name: "lane6_bad", Definition: "SELECT 1", Volatility: "immutable; DROP TABLE x"},
+		{Name: "lane6_bad", Definition: "SELECT 1", Security: "nobody"},
+	} {
+		if _, err := CreateFunction(ctx, &bad); err == nil {
+			t.Errorf("%+v should be refused", bad)
+		} else if _, ok := err.(*BuildError); !ok {
+			t.Errorf("%+v: %T %v, want a BuildError", bad, err, err)
+		}
+	}
+
+	functions, err := ListFunctions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string][]Function{}
+	for _, f := range functions {
+		byName[f.Name] = append(byName[f.Name], f)
+	}
+	if len(byName["lane6_p"]) != 0 {
+		t.Errorf("the procedure lane6_p is listed")
+	}
+	if len(byName["lane6_o"]) != 2 {
+		t.Errorf("lane6_o overloads: %+v", byName["lane6_o"])
+	}
+	f := byName["lane6_f"]
+	if len(f) != 1 {
+		t.Fatalf("lane6_f: %+v", f)
+	}
+	got, _ := json.Marshal(f[0].Arguments)
+	if want := `[{"name":"My Arg","type":"integer","mode":"in","typeid":23},{"name":"o","type":"text","mode":"out","typeid":25}]`; string(got) != want {
+		t.Errorf("lane6_f arguments: %s, want %s", got, want)
+	}
+	if f[0].Volatility != "i" || !f[0].Strict || f[0].Security != "definer" {
+		t.Errorf("lane6_f: volatility %q strict %v security %q", f[0].Volatility, f[0].Strict, f[0].Security)
+	}
+	z := byName["lane6_z"]
+	if len(z) != 1 {
+		t.Fatalf("lane6_z: %+v", z)
+	}
+	got, _ = json.Marshal(z[0])
+	if !strings.Contains(string(got), `"arguments":[]`) || !strings.Contains(string(got), `"strict":false`) ||
+		!strings.Contains(string(got), `"security":"invoker"`) {
+		t.Errorf("lane6_z: %s", got)
+	}
+	var out string
+	if err := GetConn(ctx).QueryRow(ctx, `SELECT lane6_f(2)`).Scan(&out); err != nil || out != "3x" {
+		t.Errorf("calling lane6_f: %q %v", out, err)
+	}
+	var n int
+	if err := GetConn(ctx).QueryRow(ctx, `SELECT count(*) FROM pg_proc WHERE proname = 'lane6_f'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+
+	// drop one overload by its argument types, then the zero-argument function
+	if err := DeleteFunctionSignature(ctx, "lane6_o", []string{"int4", "integer"}); err != nil {
+		t.Fatalf("drop lane6_o(int4, int4): %v", err)
+	}
+	if err := DeleteFunctionSignature(ctx, "lane6_z", []string{}); err != nil {
+		t.Fatalf("drop lane6_z(): %v", err)
+	}
+	if err := DeleteFunctionSignature(ctx, "lane6_o", []string{"no_such_type"}); err == nil {
+		t.Errorf("an unknown argument type should be refused")
+	}
+	if err := GetConn(ctx).QueryRow(ctx,
+		`SELECT count(*) FROM pg_proc WHERE proname IN ('lane6_o', 'lane6_z')`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("%d functions left, want lane6_o(int4) only", n)
 	}
 }

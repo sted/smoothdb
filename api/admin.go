@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/database"
@@ -535,7 +536,7 @@ func InitAdminRouter(apiHelper Helper) {
 	// FUNCTIONS
 
 	databases.Handle("GET", "/:dbname/functions", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
-		functions, err := database.GetFunctions(c)
+		functions, err := database.ListFunctions(c)
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusOK, functions)
 		} else {
@@ -549,22 +550,32 @@ func InitAdminRouter(apiHelper Helper) {
 		if err != nil {
 			return WriteBadRequest(w, err)
 		}
-		policy, err := database.CreateFunction(c, &functionInput)
+		function, err := database.CreateFunction(c, &functionInput)
 		if err == nil {
-			return heligo.WriteJSON(w, http.StatusCreated, policy)
+			return heligo.WriteJSON(w, http.StatusCreated, function)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
 		}
 	})
 
 	databases.Handle("DELETE", "/:dbname/functions/:name", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		name := r.Param("name")
 
-		err := database.DeleteFunction(c, name)
+		// ?args=int4,text drops that overload; ?args= the one with no argument
+		var err error
+		if args, ok := r.URL.Query()["args"]; ok {
+			var types []string
+			if len(args) > 0 && args[0] != "" {
+				types = strings.Split(args[0], ",")
+			}
+			err = database.DeleteFunctionSignature(c, name, types)
+		} else {
+			err = database.DeleteFunction(c, name)
+		}
 		if err == nil {
 			return heligo.WriteHeader(w, http.StatusOK)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
 		}
 	})
 

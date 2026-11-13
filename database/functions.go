@@ -1,12 +1,55 @@
 package database
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 type Argument struct {
-	Name   string
-	Type   string
-	Mode   byte   // i IN, o OUT, b INOUT, v VARIADIC, t TABLE
-	TypeId uint32 // OID of the argument type
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Mode   byte   `json:"mode"`   // i IN, o OUT, b INOUT, v VARIADIC, t TABLE; JSON uses argumentModes
+	TypeId uint32 `json:"typeid"` // OID of the argument type
+}
+
+// argumentModes maps the proargmodes letters to the words of the JSON API.
+// Mode 0 (proargmodes NULL: every argument is IN) is "in".
+var argumentModes = map[byte]string{
+	0: "in", 'i': "in", 'o': "out", 'b': "inout", 'v': "variadic", 't': "table",
+}
+
+// argumentJSON is Argument with the mode as a word.
+type argumentJSON struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Mode   string `json:"mode"`
+	TypeId uint32 `json:"typeid"`
+}
+
+func (a Argument) MarshalJSON() ([]byte, error) {
+	return json.Marshal(argumentJSON{a.Name, a.Type, argumentModes[a.Mode], a.TypeId})
+}
+
+func (a *Argument) UnmarshalJSON(data []byte) error {
+	var aj argumentJSON
+	if err := json.Unmarshal(data, &aj); err != nil {
+		return err
+	}
+	mode := strings.ToLower(aj.Mode)
+	a.Name, a.Type, a.TypeId, a.Mode = aj.Name, aj.Type, aj.TypeId, 0
+	if mode == "" || mode == "in" {
+		return nil
+	}
+	for letter, word := range argumentModes {
+		if letter != 0 && word == mode {
+			a.Mode = letter
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid argument mode %q: use in, out, inout, variadic or table", aj.Mode)
 }
 
 type Function struct {
@@ -19,11 +62,14 @@ type Function struct {
 	Definition   string     `json:"definition"`
 	ReturnTypeId uint32     `json:"rettypeid"`
 	ReturnIsSet  bool       `json:"retisset"`
-	ReturnRows   float32    `json:"retrows"` // prorows: estimated number of result rows
+	ReturnRows   float32    `json:"retrows"`    // prorows: estimated number of result rows
 	HasUnnamed   bool       `json:"hasunnamed"` // has unnamed parameters
 	HasOut       bool       `json:"hasout"`     // has OUT, INOUT, TABLE parameters
 	IsVariadic   bool       `json:"isvariadic"`
-	Volatility   string     `json:"volatility"` // provolatile: i IMMUTABLE, s STABLE, v VOLATILE
+	Volatility   string     `json:"volatility"`        // provolatile: i IMMUTABLE, s STABLE, v VOLATILE; input also takes the words
+	Strict       bool       `json:"strict"`            // proisstrict: RETURNS NULL ON NULL INPUT
+	Security     string     `json:"security"`          // prosecdef: "invoker" or "definer"
+	Replace      bool       `json:"replace,omitempty"` // input only: CREATE OR REPLACE
 }
 
 const functionsQuery = `
@@ -41,18 +87,47 @@ const functionsQuery = `
 		COALESCE(proargmodes::text[] && '{t,b,o}', false) hasout,
 		p.provariadic != 0 isvariadic,
 		p.provolatile::text volatility,
-		p.pronargdefaults argdefaults
+		p.pronargdefaults argdefaults,
+		p.proisstrict strict,
+		CASE WHEN p.prosecdef THEN 'definer' ELSE 'invoker' END security
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
 	LEFT JOIN UNNEST(proargnames, COALESCE(proallargtypes, proargtypes::oid[]), proargmodes) WITH ORDINALITY AS _(name, type, mode, idx) ON true
-	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
-	GROUP BY p.oid, n.nspname, l.lanname;`
+	WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'`
 
+const functionsGroupBy = `
+	GROUP BY p.oid, n.nspname, l.lanname`
+
+// GetFunctions reads every routine for the schema cache. A function with no
+// argument comes with one empty argument of type 0 (see inputArguments).
 func GetFunctions(ctx context.Context) ([]Function, error) {
+	return readFunctions(ctx, functionsQuery+functionsGroupBy)
+}
+
+// ListFunctions reads the functions for the /admin API: functions only
+// (prokind 'f'), so procedures, aggregates and window functions are not
+// listed. A function with no argument has an empty argument list.
+func ListFunctions(ctx context.Context) ([]Function, error) {
+	functions, err := readFunctions(ctx, functionsQuery+" AND p.prokind = 'f'"+functionsGroupBy+" ORDER BY 1, 2")
+	if err != nil {
+		return nil, err
+	}
+	for i := range functions {
+		args := []Argument{}
+		for _, a := range functions[i].Arguments {
+			if a.TypeId != 0 {
+				args = append(args, a)
+			}
+		}
+		functions[i].Arguments = args
+	}
+	return functions, nil
+}
+
+func readFunctions(ctx context.Context, query string) ([]Function, error) {
 	conn := GetConn(ctx)
 	functions := []Function{}
-	query := functionsQuery
 
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
@@ -76,7 +151,9 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 			&f.HasOut,
 			&f.IsVariadic,
 			&f.Volatility,
-			&f.ArgDefaults)
+			&f.ArgDefaults,
+			&f.Strict,
+			&f.Security)
 		if err != nil {
 			return nil, err
 		}
@@ -88,32 +165,65 @@ func GetFunctions(ctx context.Context) ([]Function, error) {
 	return functions, nil
 }
 
-func composeSignature(fname string, args []Argument) string {
+// composeSignature writes the argument list of CREATE FUNCTION. The names
+// are quoted identifiers; the types are type expressions and stay as given.
+func composeSignature(fname string, args []Argument) (string, error) {
 	sig := fname + "("
 	for i, a := range args {
 		if i != 0 {
 			sig += ", "
 		}
 		switch a.Mode {
+		case 0, 'i':
 		case 'o':
 			sig += "OUT "
 		case 'b':
 			sig += "INOUT "
+		case 'v':
+			sig += "VARIADIC "
+		default:
+			return "", &BuildError{"invalid argument mode for " + a.Name + ": use returns TABLE (...) for table columns"}
 		}
-		sig += a.Name + " " + a.Type
-		// if a.Default != "" {
-		// 	sig += " DEFAULT " + a.Default
-		// }
+		if a.Name != "" {
+			sig += quote(a.Name) + " "
+		}
+		sig += a.Type
 	}
 	sig += ")"
-	return sig
+	return sig, nil
 }
 
-func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
-	conn := GetConn(ctx)
-	create := "CREATE FUNCTION "
-	fname := composeName(ctx, function.Schema, function.Name)
-	create += composeSignature(fname, function.Arguments)
+// dollarTag returns a dollar-quote tag that does not occur in body: $fn$,
+// then $fn1$, $fn2$, ...
+func dollarTag(body string) string {
+	tag := "$fn$"
+	for i := 1; strings.Contains(body, tag); i++ {
+		tag = "$fn" + strconv.Itoa(i) + "$"
+	}
+	return tag
+}
+
+var functionVolatilities = map[string]string{
+	"immutable": "IMMUTABLE", "i": "IMMUTABLE",
+	"stable": "STABLE", "s": "STABLE",
+	"volatile": "VOLATILE", "v": "VOLATILE",
+}
+
+var functionSecurities = map[string]string{
+	"invoker": "SECURITY INVOKER", "definer": "SECURITY DEFINER",
+}
+
+func buildCreateFunction(fname string, function *Function) (string, error) {
+	create := "CREATE "
+	if function.Replace {
+		create += "OR REPLACE "
+	}
+	create += "FUNCTION "
+	sig, err := composeSignature(fname, function.Arguments)
+	if err != nil {
+		return "", err
+	}
+	create += sig
 	create += " RETURNS "
 	if function.Returns != "" {
 		create += function.Returns
@@ -122,24 +232,69 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 	}
 	create += " LANGUAGE "
 	if function.Language != "" {
-		create += function.Language
+		create += quote(strings.ToLower(function.Language))
 	} else {
 		create += "sql"
 	}
-	create += " AS $$ "
-	create += function.Definition
-	create += " $$;"
+	if function.Volatility != "" {
+		v, ok := functionVolatilities[strings.ToLower(function.Volatility)]
+		if !ok {
+			return "", &BuildError{"invalid volatility: " + function.Volatility + " (use immutable, stable or volatile)"}
+		}
+		create += " " + v
+	}
+	if function.Strict {
+		create += " STRICT"
+	}
+	if function.Security != "" {
+		s, ok := functionSecurities[strings.ToLower(function.Security)]
+		if !ok {
+			return "", &BuildError{"invalid security: " + function.Security + " (use invoker or definer)"}
+		}
+		create += " " + s
+	}
+	tag := dollarTag(function.Definition)
+	create += " AS " + tag + " " + function.Definition + " " + tag
+	return create, nil
+}
 
-	_, err := conn.Exec(ctx, create)
+func CreateFunction(ctx context.Context, function *Function) (*Function, error) {
+	conn := GetConn(ctx)
+	create, err := buildCreateFunction(composeName(ctx, function.Schema, function.Name), function)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.Exec(ctx, create); err != nil {
 		return nil, err
 	}
 	return function, nil
 }
 
+// DeleteFunction drops the function name of the request's schema. The name
+// must address one function: an overloaded name fails (42725).
 func DeleteFunction(ctx context.Context, name string) error {
 	conn, schemaname := GetConnAndSchema(ctx)
-	_, err := conn.Exec(ctx, "DROP FUNCTION "+_sq(name, schemaname))
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+quote(schemaname)+"."+quote(name))
+	return err
+}
+
+// DeleteFunctionSignature drops the function name with the input argument
+// types types (empty: no argument). Each type is resolved by PostgreSQL and
+// written back in its canonical form, so no client text reaches the DDL.
+func DeleteFunctionSignature(ctx context.Context, name string, types []string) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	canonical := make([]string, len(types))
+	for i, t := range types {
+		var c *string
+		if err := conn.QueryRow(ctx, "SELECT to_regtype($1)::text", strings.TrimSpace(t)).Scan(&c); err != nil {
+			return err
+		}
+		if c == nil {
+			return &BuildError{"unknown argument type: " + t}
+		}
+		canonical[i] = *c
+	}
+	_, err := conn.Exec(ctx, "DROP FUNCTION "+quote(schemaname)+"."+quote(name)+"("+strings.Join(canonical, ", ")+")")
 	return err
 }
 
