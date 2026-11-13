@@ -455,3 +455,68 @@ input[type="checkbox"] {
   color: var(--text-3);
   font-size: 11.5px;
 }
+
+/* Key-value rows of a side panel: <dl class="kv"><div class="kv-row"><dt>..</dt><dd>..</dd></div></dl> */
+.kv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+.kv-row:last-child {
+  border-bottom: none;
+}
+.kv-row.changed dt {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.kv-row.changed dd {
+  background: var(--accent-soft);
+}
+.kv dt {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-2);
+  font-size: 11.5px;
+  overflow: hidden;
+}
+.kv dd {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 30px;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+}
+.kv.editing dd {
+  padding: 2px 4px;
+}
+.kv dd.null {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.kv .kv-sub {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+}
+.kv .kv-help {
+  color: var(--text-3);
+  font-size: 11px;
+  padding: 0 2px 2px;
+}
+.kv .kv-error {
+  color: var(--danger);
+  font-size: 11px;
+  padding: 0 2px 2px;
+}

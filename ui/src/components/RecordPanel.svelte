@@ -7,7 +7,8 @@
     import { displayValue, editKind, fromInput, placeholderFor, splitTemporal, toInput } from "../rowvalues";
     import { formatCell } from "../utils";
     import FieldInput from "./FieldInput.svelte";
-    import { confirmDialog, dialog } from "../dialog.svelte";
+    import SidePanel from "./SidePanel.svelte";
+    import { confirmDialog } from "../dialog.svelte";
     import Icon from "./Icon.svelte";
 
     // A row, found by the value of a unique column.
@@ -276,12 +277,6 @@
         onClose();
     }
 
-    function onKey(ev: KeyboardEvent) {
-        if (!editing || dialog.current) return;
-        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) save(ev);
-        else if (ev.key === "Escape") cancel();
-    }
-
     // ---- reading
 
     // the text that names a row: its label column, else its key
@@ -306,217 +301,110 @@
     );
 </script>
 
-<svelte:window onkeydown={onKey} />
-
-<aside class="panel" class:editing aria-label={`${table}: ${title}`}>
-    <header>
-        <Icon name="table" size={14} />
-        <span class="mono table">{table}</span>
-        <span class="mono key">{title}</span>
-        <span class="tools">
-            {#if !editing && canEdit && row}
-                <button class="btn btn-sm" onclick={() => onEditing(true)}>
-                    <Icon name="edit" size={13} /> Edit
-                </button>
-            {/if}
-            <button class="btn btn-sm btn-ghost btn-icon" aria-label="Close" onclick={async () => {
-                if (await confirmLeave()) onClose();
-            }}>
-                <Icon name="close" size={15} />
-            </button>
-        </span>
-    </header>
-
+<SidePanel
+    icon="table"
+    title={table}
+    subtitle={title}
+    {editing}
+    {isNew}
+    canEdit={canEdit && !!row}
+    {busy}
+    {error}
+    changed={changed.length}
+    onEdit={() => onEditing(true)}
+    onCancel={cancel}
+    onSave={() => save()}
+    onDelete={remove}
+    onClose={async () => {
+        if (await confirmLeave()) onClose();
+    }}
+>
     {#if loading}
-        <p class="muted pad">Loading...</p>
+        <p class="muted">Loading...</p>
     {:else if !row}
-        <p class="muted pad">The row does not exist, or your role cannot read it.</p>
+        <p class="muted">The row does not exist, or your role cannot read it.</p>
     {:else}
-        <form class="body" onsubmit={save}>
-            {#if error}
-                <div class="banner banner-danger" role="alert">
-                    <Icon name="error-warning" size={15} />
-                    {error}
+        <dl class="kv" class:editing>
+            {#each fields as f}
+                {@const c = f.column}
+                {@const kind = columnKind(f.type)}
+                {@const fk = fks.get(f.name)}
+                <div class="kv-row" class:changed={changed.includes(f.name)}>
+                    <dt>
+                        <label for={`rf-${f.name}`} class="name">
+                            {#if def?.primaryKey.includes(f.name)}<span class="key-icon" title="Primary key"><Icon name="key-2" size={11} /></span>{/if}
+                            <span class="mono">{f.name}</span>
+                            {#if editing && c && c.notnull && c.default === null && !locked(c)}<span class="req" title="Required">*</span>{/if}
+                        </label>
+                        {#if editing && f.type}<span class="kv-sub">{typeLabel(f.type)}</span>{/if}
+                    </dt>
+                    <dd
+                        class:null={!editing && (row[f.name] === null || row[f.name] === undefined)}
+                        ondblclick={() => {
+                            if (!editing && canEdit && c && !locked(c)) onEditing(true, f.name);
+                        }}
+                    >
+                        {#if editing && ready && c && !locked(c)}
+                            <FieldInput
+                                id={`rf-${f.name}`}
+                                kind={editKind(c.type)}
+                                bind:value={values[f.name]}
+                                bind:isNull={nulls[f.name]}
+                                nullable={!c.notnull}
+                                disabled={busy}
+                                placeholder={placeholderFor(c, editKind(c.type), isNew, !!nulls[f.name])}
+                                invalid={!!errors[f.name]}
+                                autofocus={focus === f.name}
+                                zone={zones[f.name]}
+                                onblur={() => validate(c)}
+                            />
+                            {#if errors[f.name]}<span class="kv-error">{errors[f.name]}</span>{/if}
+                        {:else if isNew}
+                            <span class="muted">{c?.default?.startsWith("nextval(") ? "Generated" : "Default"}</span>
+                        {:else if fk && row[f.name] !== null && !editing}
+                            <button
+                                type="button"
+                                class="link"
+                                onclick={() => onOpen({ schema: fk.schema, table: fk.table, column: fk.refColumn, value: row![f.name] })}
+                            >
+                                {displayValue(row[f.name], kind)}
+                                <span class="target"><Icon name="arrow-right-up" size={12} />{fk.table}</span>
+                            </button>
+                        {:else}
+                            <span class="value" class:mono={kind === "json" || kind === "array"}>{displayValue(row[f.name], kind)}</span>
+                        {/if}
+                    </dd>
                 </div>
-            {/if}
-            <dl>
-                {#each fields as f}
-                    {@const c = f.column}
-                    {@const kind = columnKind(f.type)}
-                    {@const fk = fks.get(f.name)}
-                    {@const isChanged = changed.includes(f.name)}
-                    <div class="row" class:changed={isChanged} class:has-error={!!errors[f.name]}>
-                        <dt>
-                            <label for={`rf-${f.name}`} class="name">
-                                {#if def?.primaryKey.includes(f.name)}<span class="key-icon" title="Primary key"><Icon name="key-2" size={11} /></span>{/if}
-                                <span class="mono">{f.name}</span>
-                                {#if editing && c && c.notnull && c.default === null && !locked(c)}<span class="req" title="Required">*</span>{/if}
-                            </label>
-                            {#if editing && f.type}<span class="type mono">{typeLabel(f.type)}</span>{/if}
-                        </dt>
-                        <dd
-                            class:null={!editing && (row[f.name] === null || row[f.name] === undefined)}
-                            ondblclick={() => {
-                                if (!editing && canEdit && c && !locked(c)) onEditing(true, f.name);
-                            }}
-                        >
-                            {#if editing && ready && c && !locked(c)}
-                                <FieldInput
-                                    id={`rf-${f.name}`}
-                                    kind={editKind(c.type)}
-                                    bind:value={values[f.name]}
-                                    bind:isNull={nulls[f.name]}
-                                    nullable={!c.notnull}
-                                    disabled={busy}
-                                    placeholder={placeholderFor(c, editKind(c.type), isNew, !!nulls[f.name])}
-                                    invalid={!!errors[f.name]}
-                                    autofocus={focus === f.name}
-                                    zone={zones[f.name]}
-                                    onblur={() => validate(c)}
-                                />
-                                {#if errors[f.name]}<span class="field-error">{errors[f.name]}</span>{/if}
-                            {:else if isNew}
-                                <span class="muted">{c?.default?.startsWith("nextval(") ? "Generated" : "Default"}</span>
-                            {:else if fk && row[f.name] !== null && !editing}
-                                <button
-                                    type="button"
-                                    class="link"
-                                    onclick={() => onOpen({ schema: fk.schema, table: fk.table, column: fk.refColumn, value: row![f.name] })}
-                                >
-                                    {displayValue(row[f.name], kind)}
-                                    <span class="target"><Icon name="arrow-right-up" size={12} />{fk.table}</span>
-                                </button>
-                            {:else}
-                                <span class="value" class:mono={kind === "json" || kind === "array"}>{displayValue(row[f.name], kind)}</span>
-                            {/if}
-                        </dd>
-                    </div>
+            {/each}
+        </dl>
+
+        {#if !editing && target.kind === "row"}
+            <a class="btn btn-sm open" href={dataHref(target.record.schema, target.record.table, target.record.column, target.record.value)}>
+                <Icon name="table" size={14} /> Open in grid
+            </a>
+
+            {#if groups.length > 0}
+                <h3>Referenced by</h3>
+                {#each groups as g}
+                    <section class="group">
+                        <div class="group-head">
+                            <span class="mono">{g.table}<span class="muted">.{g.column}</span></span>
+                            <span class="badge">{g.count ?? g.rows.length}</span>
+                        </div>
+                        {#each g.rows as r}
+                            <button type="button" class="ref" onclick={() => openRow(g, r)}>{rowLabel(g.def, r)}</button>
+                        {/each}
+                        {#if (g.count ?? 0) > 0}
+                            <a class="all" href={g.href}>Show all {g.count} in grid <Icon name="arrow-right-s" size={13} /></a>
+                        {/if}
+                    </section>
                 {/each}
-            </dl>
-
-            {#if !editing && target.kind === "row"}
-                <a class="btn btn-sm open" href={dataHref(target.record.schema, target.record.table, target.record.column, target.record.value)}>
-                    <Icon name="table" size={14} /> Open in grid
-                </a>
-
-                {#if groups.length > 0}
-                    <h3>Referenced by</h3>
-                    {#each groups as g}
-                        <section class="group">
-                            <div class="group-head">
-                                <span class="mono">{g.table}<span class="muted">.{g.column}</span></span>
-                                <span class="badge">{g.count ?? g.rows.length}</span>
-                            </div>
-                            {#each g.rows as r}
-                                <button type="button" class="ref" onclick={() => openRow(g, r)}>{rowLabel(g.def, r)}</button>
-                            {/each}
-                            {#if (g.count ?? 0) > 0}
-                                <a class="all" href={g.href}>Show all {g.count} in grid <Icon name="arrow-right-s" size={13} /></a>
-                            {/if}
-                        </section>
-                    {/each}
-                {/if}
             {/if}
-        </form>
-
-        {#if editing}
-            <footer>
-                {#if !isNew}
-                    <button type="button" class="btn btn-sm btn-ghost btn-danger" disabled={busy} onclick={remove}>
-                        <Icon name="delete-bin-6" size={13} /> Delete
-                    </button>
-                {/if}
-                <span class="spacer"></span>
-                <span class="hint">
-                    {#if changed.length}{changed.length} {changed.length === 1 ? "change" : "changes"}{:else}<span class="kbd">⌘</span><span class="kbd">↵</span>{/if}
-                </span>
-                <button type="button" class="btn btn-sm" onclick={cancel}>Cancel</button>
-                <button type="button" class="btn btn-sm btn-primary" disabled={busy || (!isNew && changed.length === 0)} onclick={() => save()}>
-                    {busy ? "Saving..." : isNew ? "Create" : "Save"}
-                </button>
-            </footer>
         {/if}
     {/if}
-</aside>
+</SidePanel>
 
 <style>
-    .panel {
-        display: flex;
-        flex-direction: column;
-        width: 400px;
-        flex-shrink: 0;
-        border-left: 1px solid var(--border);
-        background: var(--bg);
-        font-size: 12.5px;
-    }
-    header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 40px;
-        padding: 0 6px 0 12px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text-3);
-    }
-    .table {
-        color: var(--text);
-        font-weight: 600;
-    }
-    .key {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--text-3);
-    }
-    .tools {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-    }
-    .pad {
-        padding: 16px 12px;
-    }
-    .body {
-        flex: 1;
-        overflow: auto;
-        padding: 10px 12px 16px;
-    }
-    .banner {
-        margin-bottom: 10px;
-    }
-    dl {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        overflow: hidden;
-    }
-    .row {
-        display: grid;
-        grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
-        border-bottom: 1px solid var(--border);
-    }
-    .row:last-child {
-        border-bottom: none;
-    }
-    .row.changed dt {
-        box-shadow: inset 2px 0 0 var(--accent);
-    }
-    .row.changed dd {
-        background: var(--accent-soft);
-    }
-    dt {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 1px;
-        min-height: 30px;
-        padding: 4px 8px;
-        border-right: 1px solid var(--border);
-        background: var(--bg-subtle);
-        color: var(--text-2);
-        font-size: 11.5px;
-        overflow: hidden;
-    }
     .name {
         display: flex;
         align-items: center;
@@ -528,10 +416,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-    .type {
-        color: var(--text-3);
-        font-size: 10.5px;
-    }
     .key-icon {
         display: inline-flex;
         color: var(--warning);
@@ -540,29 +424,8 @@
         color: var(--danger);
         font-weight: 600;
     }
-    dd {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 2px;
-        min-height: 30px;
-        padding: 2px 8px;
-        overflow-wrap: anywhere;
-    }
-    .editing dd {
-        padding: 2px 4px;
-    }
-    dd.null {
-        color: var(--text-3);
-        font-size: 11.5px;
-    }
     .value.mono {
         font-size: 11.5px;
-    }
-    .field-error {
-        color: var(--danger);
-        font-size: 11px;
-        padding: 0 2px 2px;
     }
     .link {
         display: inline-flex;
@@ -637,23 +500,5 @@
     }
     .all:hover {
         background: var(--bg-hover);
-    }
-    footer {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 10px;
-        border-top: 1px solid var(--border);
-        background: var(--bg-subtle);
-    }
-    .spacer {
-        flex: 1;
-    }
-    .hint {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        color: var(--text-3);
-        font-size: 11.5px;
     }
 </style>
