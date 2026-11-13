@@ -61,7 +61,7 @@ func TestUIRedirectWritesOnce(t *testing.T) {
 			return status, err
 		}
 	})
-	InitAdminUI(routesHelper{router: router})
+	InitAdminUI(routesHelper{router: router}, UIConfig{})
 
 	// control: a UI page is served with index.html
 	w, status := serveCounting(t, router, httptest.NewRequest("GET", "/ui/databases", nil), &reported)

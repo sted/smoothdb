@@ -42,7 +42,13 @@ func (s *Server) initHTTPServer() error {
 		api.InitAdminRouter(s)
 
 		if cfg.EnableAdminUI {
-			api.InitAdminUI(s)
+			api.InitAdminUI(s, api.UIConfig{
+				LoginMode:   cfg.LoginMode,
+				AllowAnon:   cfg.AllowAnon,
+				AdminURL:    cfg.BaseAdminURL,
+				APIURL:      cfg.BaseAPIURL,
+				ShortAPIURL: cfg.ShortAPIURL,
+			})
 		}
 	}
 	if cfg.EnableAPIRoute {
