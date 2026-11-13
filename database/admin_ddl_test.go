@@ -282,3 +282,38 @@ func TestAdminUpdateTableRenameAndOwner(t *testing.T) {
 		t.Fatalf("schema rename and owner: %v", err)
 	}
 }
+
+// The columns were listed with the pg_type name only, so numeric(10,2) read
+// as numeric: the typmod was lost. typedef carries format_type.
+func TestAdminColumnTypedef(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_typedef")
+	lane6Exec(t, ctx, `CREATE DOMAIN lane6_d AS varchar(5)`,
+		`CREATE TABLE lane6_t (a numeric(10,2), b varchar(20), c text[], d int, e lane6_d)`)
+
+	want := map[string][2]string{
+		"a": {"numeric", "numeric(10,2)"},
+		"b": {"varchar", "character varying(20)"},
+		"c": {"_text", "text[]"},
+		"d": {"int4", "integer"},
+		"e": {"varchar", "lane6_d"},
+	}
+	columns, err := GetColumns(ctx, "lane6_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) != len(want) {
+		t.Fatalf("columns: %+v", columns)
+	}
+	for _, c := range columns {
+		if got := [2]string{c.Type, c.Typedef}; got != want[c.Name] {
+			t.Errorf("column %s: type, typedef = %v, want %v", c.Name, got, want[c.Name])
+		}
+	}
+	c, err := GetColumn(ctx, "lane6_t", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Typedef != "numeric(10,2)" {
+		t.Errorf("GetColumn typedef = %q", c.Typedef)
+	}
+}

@@ -7,7 +7,8 @@ import (
 
 type Column struct {
 	Name        string   `json:"name"`
-	Type        string   `json:"type"`
+	Type        string   `json:"type"`              // pg_type name (int4, _text, numeric); a domain reports its base type
+	Typedef     string   `json:"typedef,omitempty"` // format_type of the column: typmod kept (numeric(10,2), text[])
 	NotNull     bool     `json:"notnull"`
 	Default     *string  `json:"default"`
 	Generated   string   `json:"generated,omitempty"` // "stored" or "virtual" (PostgreSQL 18) for a GENERATED ALWAYS AS column
@@ -34,6 +35,7 @@ type ColumnUpdate struct {
 const columnsSelect = `
 	SELECT a.attname,
 		CASE WHEN t.typtype = 'd' THEN bt.typname ELSE t.typname END,
+		format_type(a.atttypid, a.atttypmod),
 		CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
 		CASE WHEN a.attgenerated = '' THEN pg_get_expr(d.adbin, d.adrelid) END,
 		CASE a.attgenerated WHEN 's' THEN 'stored' WHEN 'v' THEN 'virtual' ELSE '' END,
@@ -74,7 +76,7 @@ func GetColumns(ctx context.Context, tablename string) ([]Column, error) {
 	var nullable string
 	column := Column{}
 	for rows.Next() {
-		err := rows.Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
+		err := rows.Scan(&column.Name, &column.Type, &column.Typedef, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
 		if err != nil {
 			return columns, err
 		}
@@ -99,7 +101,7 @@ func GetColumn(ctx context.Context, tablename string, name string) (*Column, err
 	column := &Column{}
 	var nullable string
 	err = conn.QueryRow(ctx, columnQuery, tablename, schemaname, name).
-		Scan(&column.Name, &column.Type, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
+		Scan(&column.Name, &column.Type, &column.Typedef, &nullable, &column.Default, &column.Generated, &column.Comment, &column.Table, &column.Schema)
 	if err != nil {
 		return nil, err
 	}

@@ -40,15 +40,15 @@ func TestGeneratedColumns(t *testing.T) {
 	row := `{"a":"x","b":"x!"}`
 	updatedRow := `{"a":"y","b":"y!"}`
 	csvRows := "a,b\nx,x!"
-	infoColumns := `{"name":"a","type":"text","notnull":false,"default":null,"readonly":false,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"},` +
-		`{"name":"b","type":"text","notnull":false,"default":null,"generated":"stored","readonly":true,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"}`
+	infoColumns := `{"name":"a","type":"text","typedef":"text","notnull":false,"default":null,"readonly":false,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"},` +
+		`{"name":"b","type":"text","typedef":"text","notnull":false,"default":null,"generated":"stored","readonly":true,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"}`
 	if virtual {
 		columns += `,
 				{"name": "c", "type": "text", "constraints": ["GENERATED ALWAYS AS (a || '?') VIRTUAL"]}`
 		row = `{"a":"x","b":"x!","c":"x?"}`
 		updatedRow = `{"a":"y","b":"y!","c":"y?"}`
 		csvRows = "a,b,c\nx,x!,x?"
-		infoColumns += `,{"name":"c","type":"text","notnull":false,"default":null,"generated":"virtual","readonly":true,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"}`
+		infoColumns += `,{"name":"c","type":"text","typedef":"text","notnull":false,"default":null,"generated":"virtual","readonly":true,"comment":null,"constraints":null,"table":"generated_cols","schema":"public"}`
 	}
 
 	cmdConfig := test.Config{
