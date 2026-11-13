@@ -8,6 +8,13 @@ type View struct {
 	Owner        string `json:"owner"`
 	Definition   string `json:"definition"`
 	Materialized bool   `json:"materialized"`
+	Replace      bool   `json:"replace,omitempty"` // input only: CREATE OR REPLACE VIEW
+}
+
+type ViewUpdate struct {
+	Name   *string `json:"name"`
+	Owner  *string `json:"owner"`
+	Schema *string `json:"schema"`
 }
 
 const viewsQuery = `
@@ -72,7 +79,13 @@ func GetView(ctx context.Context, name string) (*View, error) {
 
 func CreateView(ctx context.Context, view *View) (*View, error) {
 	conn := GetConn(ctx)
+	if view.Replace && view.Materialized {
+		return nil, &BuildError{"replace is not available for a materialized view: drop it and create it again"}
+	}
 	create := "CREATE "
+	if view.Replace {
+		create += "OR REPLACE "
+	}
 	if view.Materialized {
 		create += "MATERIALIZED "
 	}
@@ -85,15 +98,62 @@ func CreateView(ctx context.Context, view *View) (*View, error) {
 	return view, nil
 }
 
-func DeleteView(ctx context.Context, name string) error {
-	conn, schemaname := GetConnAndSchema(ctx)
-	fviewname := _sq(name, schemaname)
+// viewKind returns "VIEW" or "MATERIALIZED VIEW" for the view name of
+// schema, or pgx.ErrNoRows (404) when there is no such view.
+func viewKind(ctx context.Context, conn *DbConn, schema, name string) (string, error) {
+	var kind string
+	err := conn.QueryRow(ctx, `SELECT c.relkind::text FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.relname = $1 AND n.nspname = $2 AND c.relkind IN ('v', 'm')`, name, schema).Scan(&kind)
+	if err != nil {
+		return "", err
+	}
+	if kind == "m" {
+		return "MATERIALIZED VIEW", nil
+	}
+	return "VIEW", nil
+}
 
-	_, err := conn.Exec(ctx, "DROP VIEW "+fviewname)
+// UpdateView moves, changes the owner of and renames a view or a
+// materialized view, in this order: the rename is the last statement.
+func UpdateView(ctx context.Context, name string, view *ViewUpdate) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	kind, err := viewKind(ctx, conn, schemaname, name)
 	if err != nil {
 		return err
 	}
-	return nil
+	return withTx(ctx, conn, func() error {
+		prefix := func() string { return "ALTER " + kind + " " + quote(schemaname) + "." + quote(name) }
+		if view.Schema != nil && *view.Schema != schemaname {
+			if _, err := conn.Exec(ctx, prefix()+" SET SCHEMA "+quote(*view.Schema)); err != nil {
+				return err
+			}
+			schemaname = *view.Schema
+		}
+		if view.Owner != nil {
+			if _, err := conn.Exec(ctx, prefix()+" OWNER TO "+quote(*view.Owner)); err != nil {
+				return err
+			}
+		}
+		// NAME as the last update
+		if view.Name != nil && *view.Name != name {
+			if _, err := conn.Exec(ctx, prefix()+" RENAME TO "+quote(*view.Name)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteView drops a view or a materialized view.
+func DeleteView(ctx context.Context, name string) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	kind, err := viewKind(ctx, conn, schemaname, name)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Exec(ctx, "DROP "+kind+" "+quote(schemaname)+"."+quote(name))
+	return err
 }
 
 // ViewColDep maps a view column back to its originating base table column,

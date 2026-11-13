@@ -421,3 +421,49 @@ func TestAdminFunctions(t *testing.T) {
 		t.Errorf("%d functions left, want lane6_o(int4) only", n)
 	}
 }
+
+// DeleteView always ran DROP VIEW, so a materialized view could not be
+// dropped; POST had no replace and there was no PATCH.
+func TestAdminViewsUpdateReplaceDelete(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_views2")
+	lane6Exec(t, ctx, `CREATE TABLE lane6_t (id int, n int)`, `CREATE SCHEMA lane6_s`)
+
+	for _, materialized := range []bool{false, true} {
+		name := "lane6_v"
+		if materialized {
+			name = "lane6_mv"
+		}
+		if _, err := CreateView(ctx, &View{Name: name, Materialized: materialized,
+			Definition: "SELECT id FROM lane6_t"}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := CreateView(ctx, &View{Name: name, Materialized: materialized, Replace: true,
+			Definition: "SELECT id, n FROM lane6_t"})
+		if materialized {
+			if _, ok := err.(*BuildError); !ok {
+				t.Errorf("replace of a materialized view: %T %v, want a BuildError", err, err)
+			}
+		} else if err != nil {
+			t.Errorf("replace of a view: %v", err)
+		}
+		newName, owner, schema := name+"2", "postgres", "lane6_s"
+		if err := UpdateView(ctx, name, &ViewUpdate{Name: &newName, Owner: &owner, Schema: &schema}); err != nil {
+			t.Fatalf("update %s: %v", name, err)
+		}
+		var n int
+		if err := GetConn(ctx).QueryRow(ctx, `SELECT count(*) FROM pg_class c JOIN pg_namespace n
+			ON n.oid = c.relnamespace WHERE relname = $1 AND nspname = 'lane6_s'`, newName).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 {
+			t.Errorf("lane6_s.%s missing after the update", newName)
+		}
+	}
+	GetQueryOptions(ctx).Schema = "lane6_s"
+	defer func() { GetQueryOptions(ctx).Schema = "public" }()
+	for _, name := range []string{"lane6_v2", "lane6_mv2"} {
+		if err := DeleteView(ctx, name); err != nil {
+			t.Errorf("drop %s: %v", name, err)
+		}
+	}
+}

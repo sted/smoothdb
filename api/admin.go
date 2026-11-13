@@ -378,7 +378,22 @@ func InitAdminRouter(apiHelper Helper) {
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, view)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
+		}
+	})
+
+	databases.Handle("PATCH", "/:dbname/views/:view", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		var viewUpdate database.ViewUpdate
+		name := r.Param("view")
+		err := r.ReadJSON(&viewUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = database.UpdateView(c, name, &viewUpdate)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, nil)
+		} else {
+			return WriteError(w, err)
 		}
 	})
 
