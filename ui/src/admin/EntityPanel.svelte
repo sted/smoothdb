@@ -17,7 +17,9 @@
         ctx: AdminContext;
         target: EntityTarget;
         editing: boolean;
-        onEditing: (editing: boolean) => void;
+        // the field to focus when the edit starts; the first editable field if none
+        focus?: string;
+        onEditing: (editing: boolean, focus?: string) => void;
         // after a create or an update: the list reloads and selects the object by
         // its key, or by its name when the server writes the key differently
         // (a function argument int4 comes back as integer)
@@ -25,7 +27,7 @@
         onRemoved: () => void;
         onClose: () => void;
     }
-    let { def, ctx, target, editing, onEditing, onSaved, onRemoved, onClose }: Props = $props();
+    let { def, ctx, target, editing, focus = "", onEditing, onSaved, onRemoved, onClose }: Props = $props();
 
     let isNew = $derived(target.kind === "new");
     let item: Item = $derived(target.kind === "item" ? target.item : {});
@@ -233,7 +235,12 @@
                         {f.label}{#if editing && f.required && editable(f)}<span class="req">*</span>{/if}
                     </label>
                 </dt>
-                <dd class:null={!editing && shown(f, valueOf(f)) === ""}>
+                <dd
+                    class:null={!editing && shown(f, valueOf(f)) === ""}
+                    ondblclick={() => {
+                        if (!editing && canEdit && !isNew && editable(f)) onEditing(true, f.key);
+                    }}
+                >
                     {#if editing && ready && editable(f)}
                         <AdminField
                             id={`af-${f.key}`}
@@ -243,7 +250,7 @@
                             bind:value={values[f.key]}
                             disabled={busy}
                             invalid={!!errors[f.key]}
-                            autofocus={f === fields.find(editable)}
+                            autofocus={f === (fields.find((x) => x.key === focus && editable(x)) ?? fields.find(editable))}
                         />
                         {#if errors[f.key]}<span class="kv-error">{errors[f.key]}</span>
                         {:else if f.help}<span class="kv-help">{f.help}</span>{/if}

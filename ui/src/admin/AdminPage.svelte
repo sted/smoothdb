@@ -24,6 +24,8 @@
 
     let target = $state<EntityTarget | null>(null);
     let editing = $state(false);
+    // the field to focus when the edit starts from a double click on a cell
+    let focus = $state("");
     let panel: EntityPanel | undefined = $state();
 
     // every load has a number: a response that arrives after a later load is dropped
@@ -60,8 +62,9 @@
         sortKey = "";
     });
 
-    async function show(next: EntityTarget | null, edit = false) {
+    async function show(next: EntityTarget | null, edit = false, field = "") {
         if (panel && !(await panel.confirmLeave())) return;
+        focus = field;
         target = next;
         editing = edit || next?.kind === "new";
     }
@@ -173,6 +176,7 @@
                         {isSelected}
                         onRowClick={(row) => show({ kind: "item", item: row })}
                         onEdit={def.update ? (row) => show({ kind: "item", item: row }, true) : undefined}
+                        onCellDoubleClick={def.update ? (row, key) => show({ kind: "item", item: row }, true, key) : undefined}
                     >
                         {#snippet cell(row, key)}
                             {@const col = def.columns.find((c) => c.key === key)}
@@ -197,7 +201,11 @@
                     {ctx}
                     {target}
                     {editing}
-                    onEditing={(on) => (editing = on)}
+                    {focus}
+                    onEditing={(on, field) => {
+                        focus = field ?? "";
+                        editing = on;
+                    }}
                     onSaved={(key, name) => {
                         editing = false;
                         load(def.kind, ctx, key, name);
