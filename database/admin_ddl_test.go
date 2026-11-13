@@ -249,3 +249,36 @@ func TestAdminUpdateColumnQuoting(t *testing.T) {
 		t.Errorf("columns of lane6_t: %v, want %v", cols, want)
 	}
 }
+
+// UpdateTable renamed the table and then ran OWNER TO with the old name, so a
+// PATCH with both name and owner always failed with 42P01.
+func TestAdminUpdateTableRenameAndOwner(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_tables")
+	lane6Exec(t, ctx, `CREATE TABLE lane6_t (id int)`, `CREATE SCHEMA lane6_s`)
+
+	newName, owner := "lane6_t2", "postgres"
+	if err := UpdateTable(ctx, "lane6_t", &TableUpdate{Name: &newName, Owner: &owner}); err != nil {
+		t.Fatalf("rename and owner: %v", err)
+	}
+	// schema, name, owner and comment together
+	schema, name3, comment := "lane6_s", "lane6_t3", "c"
+	yes := true
+	if err := UpdateTable(ctx, "lane6_t2", &TableUpdate{Schema: &schema, Name: &name3,
+		Owner: &owner, Comment: &comment, RowSecurity: &yes}); err != nil {
+		t.Fatalf("schema, rename and owner: %v", err)
+	}
+	var n int
+	if err := GetConn(ctx).QueryRow(ctx, `SELECT count(*) FROM pg_class c JOIN pg_namespace n
+		ON n.oid = c.relnamespace WHERE relname = 'lane6_t3' AND nspname = 'lane6_s'
+		AND relrowsecurity AND obj_description(c.oid) = 'c'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("lane6_s.lane6_t3 missing after the update")
+	}
+	// UpdateSchema already renames last: owner and name together work.
+	schema2 := "lane6_s2"
+	if err := UpdateSchema(ctx, "lane6_s", &SchemaUpdate{Name: &schema2, Owner: &owner}); err != nil {
+		t.Fatalf("schema rename and owner: %v", err)
+	}
+}

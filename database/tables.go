@@ -249,7 +249,8 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 			if err != nil {
 				return err
 			}
-			prefix = "ALTER TABLE " + _sq(name, *table.Schema)
+			schemaname = *table.Schema
+			prefix = "ALTER TABLE " + _sq(name, schemaname)
 		}
 		// NAME
 		if table.Name != nil && *table.Name != name {
@@ -258,6 +259,8 @@ func UpdateTable(ctx context.Context, name string, table *TableUpdate) error {
 			if err != nil {
 				return err
 			}
+			// the statements after the rename address the new name
+			prefix = "ALTER TABLE " + _sq(*table.Name, schemaname)
 		}
 		// OWNER as last operation, since changing owner revokes current role's privileges
 		if table.Owner != nil {
