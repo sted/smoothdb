@@ -532,7 +532,23 @@ func InitAdminRouter(apiHelper Helper) {
 		if err == nil {
 			return heligo.WriteJSON(w, http.StatusCreated, policy)
 		} else {
-			return WriteServerError(w, err)
+			return WriteError(w, err)
+		}
+	})
+
+	databases.Handle("PATCH", "/:dbname/tables/:table/policies/:name", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		var policyUpdate database.PolicyUpdate
+		table := r.Param("table")
+		name := r.Param("name")
+		err := r.ReadJSON(&policyUpdate)
+		if err != nil {
+			return WriteBadRequest(w, err)
+		}
+		err = database.UpdatePolicy(c, table, name, &policyUpdate)
+		if err == nil {
+			return heligo.WriteJSON(w, http.StatusOK, nil)
+		} else {
+			return WriteError(w, err)
 		}
 	})
 

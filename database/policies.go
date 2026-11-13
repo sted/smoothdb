@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 )
 
 type Policy struct {
@@ -12,6 +13,18 @@ type Policy struct {
 	Roles      []string `json:"roles"`
 	Using      *string  `json:"using"`
 	Check      *string  `json:"check"`
+}
+
+type PolicyUpdate struct {
+	Name  *string  `json:"name"`
+	Roles []string `json:"roles"`
+	Using *string  `json:"using"`
+	Check *string  `json:"check"`
+}
+
+// policyCommands is the closed set of the FOR clause; empty means ALL.
+var policyCommands = map[string]struct{}{
+	"ALL": {}, "SELECT": {}, "INSERT": {}, "UPDATE": {}, "DELETE": {},
 }
 
 const policyQuery = `
@@ -40,13 +53,14 @@ const policyQuery = `
 	JOIN pg_class c ON c.oid = pol.polrelid
 	JOIN pg_namespace n ON n.oid = c.relnamespace`
 
-func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
-	conn := GetConn(ctx)
+// GetPolicies lists the policies of the table tablename of the request's
+// schema (the profile header). The name is literal: a dot is part of it.
+func GetPolicies(ctx context.Context, tablename string) ([]Policy, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
 	policies := []Policy{}
 	query := policyQuery
-	schemaname, tablename := splitTableName(ftablename)
 	query += " WHERE c.relname = $1 AND n.nspname = $2"
-	query += " ORDER BY tablename"
+	query += " ORDER BY tablename, name"
 	rows, err := conn.Query(ctx, query, tablename, schemaname)
 	if err != nil {
 		return nil, err
@@ -69,40 +83,97 @@ func GetPolicies(ctx context.Context, ftablename string) ([]Policy, error) {
 	return policies, nil
 }
 
-func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
-	conn := GetConn(ctx)
-	create := "CREATE POLICY " + quote(policy.Name) + " ON " + quoteParts(policy.Table)
+func composeRoles(roles []string) string {
+	var list string
+	for i, role := range roles {
+		if i != 0 {
+			list += ", "
+		}
+		list += quote(role)
+	}
+	return list
+}
+
+// buildCreatePolicy writes CREATE POLICY on ftablename, the quoted and
+// qualified table name. USING and WITH CHECK are SQL expressions by design
+// (like PostgREST RLS policies) and cannot be parameterized: CreatePolicy is
+// only reachable via the admin API, which requires EnableAdminRoute and
+// authentication.
+func buildCreatePolicy(ftablename string, policy *Policy) (string, error) {
+	command := strings.ToUpper(strings.TrimSpace(policy.Command))
+	if command == "" {
+		command = "ALL"
+	}
+	if _, ok := policyCommands[command]; !ok {
+		return "", &BuildError{"invalid policy command: " + policy.Command + " (use ALL, SELECT, INSERT, UPDATE or DELETE)"}
+	}
+	create := "CREATE POLICY " + quote(policy.Name) + " ON " + ftablename
 	if policy.Retrictive {
 		create += " AS RESTRICTIVE"
 	}
-	create += " FOR " + policy.Command
+	create += " FOR " + command
 	if len(policy.Roles) != 0 {
-		create += " TO "
-		for i, role := range policy.Roles {
-			if i != 0 {
-				create += ", "
-			}
-			create += quote(role)
-		}
+		create += " TO " + composeRoles(policy.Roles)
 	}
-	// USING and WITH CHECK are SQL expressions by design (like PostgREST RLS policies)
-	// and cannot be parameterized. This is safe because CreatePolicy is only reachable
-	// via the admin API which requires EnableAdminRoute + authentication.
 	if policy.Using != nil {
 		create += " USING (" + *policy.Using + ")"
 	}
 	if policy.Check != nil {
 		create += " WITH CHECK (" + *policy.Check + ")"
 	}
-	_, err := conn.Exec(ctx, create)
+	return create, nil
+}
+
+// CreatePolicy creates a policy on the table policy.Table of the request's
+// schema. The table name is literal.
+func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
+	conn, schemaname := GetConnAndSchema(ctx)
+	create, err := buildCreatePolicy(quote(schemaname)+"."+quote(policy.Table), policy)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.Exec(ctx, create); err != nil {
 		return nil, err
 	}
 	return policy, nil
 }
 
-func DeletePolicy(ctx context.Context, table string, name string) error {
-	conn := GetConn(ctx)
-	_, err := conn.Exec(ctx, "DROP POLICY "+quote(name)+" ON "+quoteParts(table))
+// UpdatePolicy alters the roles, USING and WITH CHECK of the policy name on
+// the table tablename of the request's schema, then renames it.
+func UpdatePolicy(ctx context.Context, tablename string, name string, policy *PolicyUpdate) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	ftablename := quote(schemaname) + "." + quote(tablename)
+	return withTx(ctx, conn, func() error {
+		alter := "ALTER POLICY " + quote(name) + " ON " + ftablename
+		var clauses string
+		if len(policy.Roles) != 0 {
+			clauses += " TO " + composeRoles(policy.Roles)
+		}
+		if policy.Using != nil {
+			clauses += " USING (" + *policy.Using + ")"
+		}
+		if policy.Check != nil {
+			clauses += " WITH CHECK (" + *policy.Check + ")"
+		}
+		if clauses != "" {
+			if _, err := conn.Exec(ctx, alter+clauses); err != nil {
+				return err
+			}
+		}
+		// NAME as the last update
+		if policy.Name != nil && *policy.Name != name {
+			if _, err := conn.Exec(ctx, alter+" RENAME TO "+quote(*policy.Name)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeletePolicy drops the policy name on the table tablename of the request's
+// schema.
+func DeletePolicy(ctx context.Context, tablename string, name string) error {
+	conn, schemaname := GetConnAndSchema(ctx)
+	_, err := conn.Exec(ctx, "DROP POLICY "+quote(name)+" ON "+quote(schemaname)+"."+quote(tablename))
 	return err
 }

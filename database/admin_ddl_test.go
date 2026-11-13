@@ -467,3 +467,56 @@ func TestAdminViewsUpdateReplaceDelete(t *testing.T) {
 		}
 	}
 }
+
+// The policies took the schema from a dot in the table name, ignoring the
+// profile header, concatenated command with no whitelist (an empty one gave
+// "FOR  USING") and could not be altered.
+func TestAdminPolicies(t *testing.T) {
+	ctx := lane6DB(t, "lane6_admin_policies")
+	lane6Exec(t, ctx, `CREATE SCHEMA lane6_s`, `CREATE TABLE lane6_s.lane6_t (id int)`,
+		`CREATE ROLE lane6_pol_role`)
+	t.Cleanup(func() { lane6Exec(t, ctx, `DROP OWNED BY lane6_pol_role`, `DROP ROLE lane6_pol_role`) })
+	GetQueryOptions(ctx).Schema = "lane6_s"
+	defer func() { GetQueryOptions(ctx).Schema = "public" }()
+
+	using := "id > 0"
+	if _, err := CreatePolicy(ctx, &Policy{Name: "lane6_all", Table: "lane6_t", Using: &using}); err != nil {
+		t.Fatalf("empty command: %v", err)
+	}
+	if _, err := CreatePolicy(ctx, &Policy{Name: "lane6_sel", Table: "lane6_t", Command: "select", Using: &using}); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	_, err := CreatePolicy(ctx, &Policy{Name: "lane6_bad", Table: "lane6_t", Command: "SELECT USING (true); --"})
+	if _, ok := err.(*BuildError); !ok {
+		t.Errorf("a bad command: %T %v, want a BuildError", err, err)
+	}
+
+	newName, using2, check := "lane6_all2", "id > 1", "id < 10"
+	if err := UpdatePolicy(ctx, "lane6_t", "lane6_all", &PolicyUpdate{Name: &newName,
+		Roles: []string{"lane6_pol_role"}, Using: &using2, Check: &check}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	policies, err := GetPolicies(ctx, "lane6_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range policies {
+		got[p.Name] = p.Command + "|" + strings.Join(p.Roles, ",") + "|" + *p.Using
+		if p.Check != nil {
+			got[p.Name] += "|" + *p.Check
+		}
+	}
+	want := map[string]string{
+		"lane6_all2": "ALL|lane6_pol_role|(id > 1)|(id < 10)",
+		"lane6_sel":  "SELECT|public|(id > 0)",
+	}
+	if len(got) != len(want) || got["lane6_all2"] != want["lane6_all2"] || got["lane6_sel"] != want["lane6_sel"] {
+		t.Errorf("policies: %v, want %v", got, want)
+	}
+	for _, name := range []string{"lane6_all2", "lane6_sel"} {
+		if err := DeletePolicy(ctx, "lane6_t", name); err != nil {
+			t.Errorf("drop %s: %v", name, err)
+		}
+	}
+}
