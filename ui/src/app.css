@@ -1,44 +1,114 @@
+/* Design tokens. Every color goes through a token, so that the dark theme
+   only redefines the tokens. */
 :root {
-  color-scheme: light ;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  font-weight: 300;
+  --bg: #ffffff;
+  --bg-subtle: #f8f8f9;
+  --bg-muted: #f1f1f3;
+  --bg-hover: rgba(24, 24, 27, 0.045);
+  --bg-active: rgba(24, 24, 27, 0.08);
+  --bg-overlay: rgba(24, 24, 27, 0.32);
+
+  --border: #e6e6e9;
+  --border-strong: #d6d6db;
+
+  --text: #18181b;
+  --text-2: #55555d;
+  --text-3: #8a8a93;
+
+  --accent: #3d5bd9;
+  --accent-hover: #3350c8;
+  --accent-fg: #ffffff;
+  --accent-soft: #eef1fd;
+  --accent-text: #2f47ad;
+  --focus-ring: 0 0 0 3px rgba(61, 91, 217, 0.18);
+
+  --danger: #c8322a;
+  --danger-soft: #fdf0ef;
+  --success: #17805a;
+  --success-soft: #ecf8f2;
+  --warning: #a35a00;
+  --warning-soft: #fff6e6;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-sheet: -12px 0 32px rgba(0, 0, 0, 0.1);
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --h-control: 28px;
+  --h-control-sm: 24px;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
   font-synthesis: none;
-  line-height: 1.5;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121214;
+    --bg-subtle: #17171a;
+    --bg-muted: #1f1f23;
+    --bg-hover: rgba(255, 255, 255, 0.05);
+    --bg-active: rgba(255, 255, 255, 0.09);
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+
+    --border: #27272c;
+    --border-strong: #36363d;
+
+    --text: #ececef;
+    --text-2: #a6a6ae;
+    --text-3: #72727b;
+
+    --accent: #6f86f2;
+    --accent-hover: #8296f5;
+    --accent-fg: #0d0f1a;
+    --accent-soft: rgba(111, 134, 242, 0.14);
+    --accent-text: #a9b6fb;
+    --focus-ring: 0 0 0 3px rgba(111, 134, 242, 0.28);
+
+    --danger: #f2766d;
+    --danger-soft: rgba(242, 118, 109, 0.12);
+    --success: #4cc38a;
+    --success-soft: rgba(76, 195, 138, 0.12);
+    --warning: #f0b450;
+    --warning-soft: rgba(240, 180, 80, 0.12);
+
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-sheet: -12px 0 32px rgba(0, 0, 0, 0.45);
+
+    color-scheme: dark;
+  }
+}
+
 *,
 *::before,
 *::after {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  font-size: 1rem
+  background: var(--bg);
 }
 
-input, button, select {
-  font-size: inherit;  
-}
-
-input[type=text], select {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.remixicon {
-  vertical-align: -2px;
-  width: 16px;
-  height: 16px;
+input,
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
 }
 
 a {
@@ -46,10 +116,342 @@ a {
   color: inherit;
 }
 
-input[type="checkbox"] + label {
-  margin-left: 5px;
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
 }
 
-label + input, label + .select-wrapper {
-  margin-top: 5px;
+/* Buttons. The default is the quiet one; one primary per view. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--h-control);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn:hover {
+  background: var(--bg-hover);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.btn-primary:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+.btn-ghost:hover {
+  color: var(--text);
+}
+.btn-danger {
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+.btn-sm {
+  height: var(--h-control-sm);
+  padding: 0 8px;
+  font-size: 12px;
+}
+.btn-icon {
+  width: var(--h-control);
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: var(--h-control-sm);
+}
+
+/* Fields */
+.input {
+  display: block;
+  width: 100%;
+  height: var(--h-control);
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.input::placeholder {
+  color: var(--text-3);
+}
+.input:hover {
+  border-color: var(--text-3);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.input:disabled,
+.input[readonly] {
+  background: var(--bg-subtle);
+  color: var(--text-2);
+}
+.input:disabled:hover,
+.input[readonly]:hover {
+  border-color: var(--border-strong);
+}
+textarea.input {
+  height: auto;
+  min-height: 64px;
+  padding: 6px 8px;
+  resize: vertical;
+  line-height: 1.5;
+}
+select.input {
+  appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238a8a93'%3E%3Cpath d='M12 13.17 16.95 8.22 18.36 9.64 12 16 5.64 9.64 7.05 8.22z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 16px;
+}
+.input-sm {
+  height: var(--h-control-sm);
+  font-size: 12px;
+}
+.input.mono {
+  font-size: 12.5px;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+/* A toggle switch: <input type="checkbox" class="switch"> */
+.switch {
+  appearance: none;
+  position: relative;
+  width: 28px !important;
+  height: 16px !important;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  flex-shrink: 0;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.switch:checked {
+  background: var(--accent);
+}
+.switch:checked::after {
+  transform: translateX(12px);
+}
+.switch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.muted {
+  color: var(--text-3);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Side sheet: the frame of every edit form (ModalPanel). A form inside it is
+   <form class="sheet-form"> with .sheet-header, .sheet-body and .sheet-footer. */
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.sheet-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 14px 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sheet-title h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sheet-title p {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-header .btn-icon {
+  margin-left: auto;
+}
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sheet-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 10px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+.sheet-footer .spacer {
+  flex: 1;
+}
+.sheet-footer .hint {
+  color: var(--text-3);
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.banner {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+}
+.banner-danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.banner-info {
+  background: var(--bg-subtle);
+  color: var(--text-2);
+}
+
+/* A form field: label row, control, help line. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.field-help {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.field-error {
+  color: var(--danger);
+  font-size: 11.5px;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A switch with its label on one row. */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.toggle-row:has(:disabled) {
+  cursor: default;
+  color: var(--text-3);
+}
+
+/* an empty cell, when a cell snippet draws the cell */
+.cell-null {
+  color: var(--text-3);
+  font-size: 11.5px;
 }
