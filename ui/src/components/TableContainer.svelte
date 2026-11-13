@@ -17,7 +17,7 @@
     function rowClick(d: Data) {
         const name = d.name;
         const schema = d.schema ?? "";
-        if (!router.navigate(window.location.pathname + "/" + name, schema)) rowEdit(d);
+        if (!router.navigate(router.path + "/" + encodeURIComponent(name), schema)) rowEdit(d);
     }
 </script>
 

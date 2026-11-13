@@ -1,8 +1,19 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import { adminDbUrl } from "../main";
+    import { adminDbUrl } from "../config.svelte";
     import { router } from "../routes";
+    import { makeRequest } from "../api";
     import type { Data } from "../api";
+    import { showInfo } from "../toast.svelte";
+    import { confirmDialog } from "../dialog.svelte";
+    import { forget } from "../data.svelte";
+    import Icon from "./Icon.svelte";
+
+    // a schema change makes the cached table definitions of the Data area stale
+    function changed() {
+        if (router.params.db) forget(router.params.db);
+        formSubmitted(true);
+    }
 
     interface Props {
         entityName: string;
@@ -17,107 +28,73 @@
     let isButtonDisabled = $derived(
         isEditing && JSON.stringify(initialData) === JSON.stringify(currentData));
 
+    let busy = $state(false);
+
+    function entityUrl(): string {
+        return adminDbUrl + dataUrl + (isEditing ? `/${encodeURIComponent(initialData.name)}` : "");
+    }
+
+    function profile(): Record<string, string> {
+        const schema = initialData.schema ?? router.schema;
+        return schema ? { "Content-Profile": schema } : {};
+    }
+
+    // On failure the error toast reports the cause and the panel stays open.
     async function handleSubmit(ev: Event) {
         ev.preventDefault();
-        const method = isEditing ? "PATCH" : "POST";
-        const url = adminDbUrl + dataUrl + (isEditing ? `/${initialData.name}`: '');
-        const schema = initialData.schema ?? router.schema;
-
-        fetch(url, {
-            method,
-            headers: { "Content-Type": "application/json", "Content-Profile": schema },
+        busy = true;
+        const response = await makeRequest(entityUrl(), {
+            method: isEditing ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json", ...profile() },
             body: JSON.stringify(currentData),
-        })
-        .then(() => formSubmitted(true))
-        .catch((error) => console.error("Failed to create or update database:", error));
+        });
+        busy = false;
+        if (response.success) changed();
     }
 
     async function handleDelete() {
-        const method = "DELETE";
-        const url = adminDbUrl + dataUrl + `/${initialData.name}`;
-        const schema = initialData.schema ?? router.schema;
-
-        fetch(url, { 
-            method,
-            headers: { "Content-Profile": schema },
-        })
-        .then(() => formSubmitted(true))
-        .catch((error) => console.error("Failed to drop database:", error));
+        const ok = await confirmDialog({
+            title: `Drop ${entityName} ${initialData.name}?`,
+            message: `The ${entityName} and everything in it are removed from the database. You cannot undo this.`,
+            confirmLabel: `Drop ${entityName}`,
+            danger: true,
+        });
+        if (!ok) return;
+        busy = true;
+        const response = await makeRequest(entityUrl(), { method: "DELETE", headers: profile() });
+        busy = false;
+        if (response.success) {
+            showInfo(`Dropped ${entityName} "${initialData.name}"`);
+            changed();
+        }
     }
 </script>
 
-<h3>{(isEditing ? "Edit" : "Create") + " " + entityName}</h3>
+<form class="sheet-form" onsubmit={handleSubmit}>
+    <div class="sheet-header">
+        <div class="sheet-title">
+            <h2>{isEditing ? `Edit ${entityName}` : `New ${entityName}`}</h2>
+            <p>{isEditing ? initialData.name : dataUrl}</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-icon" aria-label="Close" onclick={() => formSubmitted(false)}>
+            <Icon name="close" size={16} />
+        </button>
+    </div>
 
-<form onsubmit={handleSubmit}>
-    <div class="control-container">
+    <div class="sheet-body">
         {@render children()}
     </div>
 
-    <div class="button-container">
+    <div class="sheet-footer">
         {#if isEditing}
-            <button class="button-drop" type="button" onclick={handleDelete}>Drop</button>
+            <button class="btn btn-ghost btn-danger" type="button" disabled={busy} onclick={handleDelete}>
+                <Icon name="delete-bin-6" size={14} /> Drop
+            </button>
         {/if}
-        <button class="button-primary" type="submit" disabled={isButtonDisabled}
-            >{isEditing ? "Update" : "Create"}
+        <span class="spacer"></span>
+        <button class="btn" type="button" onclick={() => formSubmitted(false)}>Cancel</button>
+        <button class="btn btn-primary" type="submit" disabled={isButtonDisabled || busy}>
+            {isEditing ? "Save changes" : `Create ${entityName}`}
         </button>
-        <button class="button-cancel" type="button" onclick={()=>formSubmitted(false)}>Cancel</button>
     </div>
 </form>
-
-<style>
-    h3 {
-        margin-bottom: 10px;
-    }
-
-    form {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        overflow: hidden;
-    }
-
-    .control-container {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        gap: 20px;
-        overflow: auto;
-        padding: 2px;
-    }
-    
-    .button-container {
-        display: flex;
-        justify-content: flex-start;
-        margin-top: 10px;
-    }
-
-    button {
-        padding: 10px;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-
-    .button-primary {
-        background-color: #10378cca;
-        margin-left: auto;
-    }
-
-    .button-drop {
-        background-color: rgb(255, 102, 102);
-    }
-    .button-cancel {
-        background-color: #6e6e6ed2;
-        margin-left: 10px;
-    }
-
-    button:hover {
-        filter: brightness(80%);
-    }
-
-    button:disabled {
-        pointer-events: none;
-        opacity: 0.5;
-    }
-</style>

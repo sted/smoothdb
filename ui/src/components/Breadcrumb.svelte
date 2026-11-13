@@ -1,181 +1,184 @@
 <script lang="ts">
 	import { router } from "../routes";
-	import type { MouseEventHandler } from "svelte/elements";
-	import RiExpandUpDownLine from "/assets/images/expand-up-down-line.svg";
-	import RiAddLine from "/assets/images/add-line.svg";
+	import Icon from "./Icon.svelte";
 
 	interface Props {
-		rowAdd: MouseEventHandler<HTMLButtonElement>;
+		rowAdd: () => void;
 	}
-
 	let { rowAdd }: Props = $props();
 
-	interface Breadcrumb {
+	interface Crumb {
 		title: string;
 		path: string;
-		hasMultipleChoices: boolean;
+		// the routes beside this one, this one included: the crumb is a switcher
+		siblings: string[];
 	}
 
-	let breadcrumbs: Breadcrumb[] = $state([]);
-	let activeDropdownIndex: number | null = $state(null);
-	let dropdownRoutes: string[] = $state([]);
+	// alternatives that are not pages of their own
+	const hidden = (seg: string) => seg === "login" || seg.startsWith(":");
 
-	$effect(() => {
-		router.path;
-		const segments = window.location.pathname.split("/").filter(Boolean);
-		const bcrumbs = segments.map((segment, index) => {
-			const path = "/" + segments.slice(0, index + 1).join("/");
-			const nextRoutes = router.getAltRoutes(path);
-			return {
-				title: segment,
-				path,
-				hasMultipleChoices: nextRoutes.length > 1,
-			};
-		});
-		activeDropdownIndex = null;
-		breadcrumbs = bcrumbs.slice(1);
+	let crumbs: Crumb[] = $derived.by(() => {
+		const segments = router.path.split("/").filter(Boolean);
+		return segments
+			.map((segment, i) => {
+				const path = "/" + segments.slice(0, i + 1).join("/");
+				const siblings = router.getAltRoutes(path).filter((s) => !hidden(s));
+				return { title: decodeURIComponent(segment), path, siblings: siblings.length > 1 ? siblings : [] };
+			})
+			.slice(1); // the "ui" base
 	});
 
-	function handleSegmentClick(event: MouseEvent, path: string): void {
-		event.preventDefault();
-		router.navigate(path);
-		closeDropdown();
+	let isDataRoute = $derived(router.path.startsWith("/ui/data/"));
+	let openIndex: number | null = $state(null);
+
+	// close the menu on any route change
+	$effect(() => {
+		router.path;
+		openIndex = null;
+	});
+
+	function siblingPath(path: string, sibling: string): string {
+		return path.slice(0, path.lastIndexOf("/") + 1) + sibling;
 	}
 
-	function handleDropdownClick(event: MouseEvent, path: string, index: number): void {
-		event.stopPropagation();
-
-		const nextRoutes = router.getAltRoutes(path);
-		if (nextRoutes.length > 1) {
-			activeDropdownIndex = index === activeDropdownIndex ? null : index;
-			dropdownRoutes = nextRoutes;
-		}
+	function handleWindowClick(ev: MouseEvent) {
+		if (openIndex !== null && !(ev.target as Element).closest?.(".switcher")) openIndex = null;
 	}
 
-	function closeDropdown(): void {
-		activeDropdownIndex = null;
-	}
-
-	function handleClickOutside(event: MouseEvent) {
-		if (!(event.target instanceof Element)) return;
-		if (
-			activeDropdownIndex !== null &&
-			!event.target.closest(".dropdown") &&
-			!event.target.closest(".breadcrumb-item")
-		) {
-			closeDropdown();
-		}
-	}
-
-	function navigateFromDropdown(path: string, route: string): void {
-		const segments = path.split("/").filter(Boolean);
-		const newPath = "/" + segments.slice(0, -1).join("/") + "/" + route;
-		router.navigate(newPath);
-		closeDropdown();
-	}
-
-	// keyboard activation for list items that act as menu entries
-	function activateOnKey(event: KeyboardEvent, action: () => void) {
-		if (event.key === "Enter" || event.key === " ") {
-			event.preventDefault();
-			action();
-		}
+	function handleKey(ev: KeyboardEvent) {
+		if (ev.key === "Escape") openIndex = null;
 	}
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleWindowClick} onkeydown={handleKey} />
 
 <nav aria-label="breadcrumb">
-	<ol>
-		{#each breadcrumbs as { title, path, hasMultipleChoices }, index}
-			<li class="breadcrumb-item">
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<span
-					role="button"
-					tabindex="0"
-					onclick={(event) => handleSegmentClick(event, path)}>{title}</span
-				>
-				{#if hasMultipleChoices}
-					<button
-						tabindex="0"
-						aria-label="Show alternatives"
-						onclick={(event) => handleDropdownClick(event, path, index)}
-					>
-						<img class="remixicon" src={RiExpandUpDownLine} alt="" />
-					</button>
+	<ol class="crumbs">
+		{#each crumbs as crumb, index}
+			<li>
+				{#if crumb.siblings.length > 0}
+					<div class="switcher">
+						<button
+							class="crumb"
+							class:current={index === crumbs.length - 1}
+							aria-haspopup="menu"
+							aria-expanded={openIndex === index}
+							onclick={() => (openIndex = openIndex === index ? null : index)}
+						>
+							{crumb.title}
+							<Icon name="expand-up-down" size={13} />
+						</button>
+						{#if openIndex === index}
+							<ul class="menu" role="menu">
+								{#each crumb.siblings as sibling}
+									<li role="none">
+										<a
+											role="menuitem"
+											class:selected={sibling === crumb.title}
+											href={siblingPath(crumb.path, sibling)}>{sibling}</a
+										>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				{:else if index < crumbs.length - 1}
+					<a class="crumb" href={crumb.path}>{crumb.title}</a>
+				{:else}
+					<span class="crumb current">{crumb.title}</span>
 				{/if}
-				{#if index === activeDropdownIndex}
-					<ol class="dropdown" role="menu">
-						{#each dropdownRoutes as route}
-							<li
-								class="dropdown-item"
-								role="menuitem"
-								tabindex="0"
-								onclick={() => navigateFromDropdown(path, route)}
-								onkeydown={(event) => activateOnKey(event, () => navigateFromDropdown(path, route))}
-							>
-								{route}
-							</li>
-						{/each}
-					</ol>
-				{/if}
-				{#if index < breadcrumbs.length - 1}<span> / </span>{/if}
 			</li>
+			{#if index < crumbs.length - 1}<li class="sep" aria-hidden="true"><Icon name="arrow-right-s" size={14} /></li>{/if}
 		{/each}
-		<li>
-			<button tabindex="0" aria-label="Add" onclick={rowAdd}>
-				<img class="remixicon" src={RiAddLine} alt="" />
-			</button>
-		</li>
+
+		{#if !isDataRoute}
+			<li class="push-right">
+				<button class="btn btn-sm" onclick={rowAdd}>
+					<Icon name="add" size={14} /> New
+				</button>
+			</li>
+		{/if}
 	</ol>
 </nav>
 
 <style>
-	ol {
-		display: flex;
-		list-style: none;
-		padding: 0;
-		margin-top: 20px;
+	nav {
+		height: 100%;
 	}
-
-	li {
-		padding: 5px;
-		color: #4d4d4d;
+	.crumbs {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		height: 100%;
+		padding: 0 12px;
+		list-style: none;
+	}
+	.sep {
+		display: inline-flex;
+		color: var(--text-3);
+	}
+	.crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 6px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-2);
+		font-size: 12.5px;
 		cursor: pointer;
 	}
-
-	li:hover {
-		text-decoration: underline;
+	.crumb :global(.icon) {
+		color: var(--text-3);
 	}
-
-	li span {
-		padding-left: 5px;
+	a.crumb:hover,
+	button.crumb:hover {
+		background: var(--bg-hover);
+		color: var(--text);
 	}
-
-	li:not(:last-child)::after {
-		margin-left: 10px;
-		color: #ccc;
+	.crumb.current {
+		color: var(--text);
+		font-weight: 500;
 	}
-
-	.breadcrumb-item {
+	span.crumb {
+		cursor: default;
+	}
+	.switcher {
 		position: relative;
 	}
-
-	.dropdown {
-		flex-direction: column;
+	.menu {
 		position: absolute;
-		left: 20px;
-		background-color: #f9f9f9;
-		box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2);
-		z-index: 1;
+		top: calc(100% + 4px);
+		left: 0;
+		z-index: 60;
+		min-width: 160px;
+		padding: 4px;
+		list-style: none;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+		background: var(--bg);
+		box-shadow: var(--shadow-pop);
 	}
-
-	.dropdown li {
-		padding: 8px 16px;
-		cursor: pointer;
+	.menu a {
+		display: flex;
+		align-items: center;
+		height: 28px;
+		padding: 0 8px;
+		border-radius: var(--radius-sm);
+		color: var(--text-2);
 	}
-
-	.dropdown li:hover {
-		background-color: #f1f1f1;
+	.menu a:hover {
+		background: var(--bg-hover);
+		color: var(--text);
+	}
+	.menu a.selected {
+		background: var(--accent-soft);
+		color: var(--accent-text);
+		font-weight: 500;
+	}
+	.push-right {
+		margin-left: auto;
 	}
 </style>

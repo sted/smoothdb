@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { formData } from "./formdata.svelte";
-	import { adminDbUrl } from "../main";
+	import { adminDbUrl } from "../config.svelte";
 	import { router } from "../routes";
 	import { getData } from "../utils";
 	import RecordForm from "../components/RecordForm.svelte";
@@ -52,20 +52,20 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-	<div>
-		<label for="name"> Name </label>
-		<input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
+	<div class="field">
+		<label class="field-label" for="name">Name</label>
+		<input id="name" class="input" type="text" autocomplete="off" bind:value={currentData.name} bind:this={nameInput} />
 	</div>
-	<div>
-		<label for="type"> Type </label>
+	<div class="field">
+		<label class="field-label" for="type">Type</label>
 		<Select id="type" bind:value={currentData.type} data={types}></Select>
 	</div>
-	<div>
-		<input id="notnull" type="checkbox" bind:checked={currentData.notnull} />
-		<label for="notnull">Not null</label>
-	</div>
-	<div>
-		<label for="default"> Default </label>
-		<input id="default" type="text" bind:value={currentData.default} />
+	<label class="toggle-row" for="notnull">
+		<input id="notnull" class="switch" type="checkbox" bind:checked={currentData.notnull} />
+		<span>Not null</span>
+	</label>
+	<div class="field">
+		<label class="field-label" for="default">Default</label>
+		<input id="default" class="input" type="text" autocomplete="off" bind:value={currentData.default} />
 	</div>
 </RecordForm>

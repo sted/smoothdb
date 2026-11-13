@@ -1,12 +1,14 @@
 <script lang="ts">
-    import { slide } from "svelte/transition";
-    import RiCloseLine from "/assets/images/close-line.svg";
+    import type { Snippet } from "svelte";
+    import { fade, fly } from "svelte/transition";
     import { router } from "../routes";
 
     interface Props {
         formSubmitted: (refreshTable: boolean) => void;
+        // the form for the row; without it, the form of the current route
+        form?: Snippet<[any]>;
     }
-    let { formSubmitted }: Props = $props();
+    let { formSubmitted, form }: Props = $props();
 
     let openModal = $state(false);
     let data: any = $state();
@@ -18,61 +20,43 @@
     export function close() {
         openModal = false;
     }
+
+    function onKey(ev: KeyboardEvent) {
+        if (openModal && ev.key === "Escape") close();
+    }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 {#if openModal}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="overlay" onclick={close}></div>
-    <div class="panel" transition:slide={{ duration: 200, axis: "x" }}>
-        <button class="close-btn" aria-label="Close" onclick={close}>
-            <img class="remixicon" src={RiCloseLine} alt="" />
-        </button>
-        <div class="content">
+    <div class="overlay" onclick={close} transition:fade={{ duration: 120 }}></div>
+    <div class="sheet" role="dialog" aria-modal="true" transition:fly={{ x: 32, duration: 160 }}>
+        {#if form}
+            {@render form(data)}
+        {:else}
             <router.component {data} {formSubmitted}></router.component>
-        </div>
+        {/if}
     </div>
 {/if}
 
 <style>
     .overlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
+        inset: 0;
         z-index: 50;
+        background: var(--bg-overlay);
     }
-    .panel {
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+    .sheet {
         position: fixed;
+        top: 0;
         right: 0;
-        top: 0;
-        width: 30%;
-        max-width: 400px;
-        height: 100%;
-        padding: 30px;
-        background: white;
         z-index: 100;
-        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
-    }
-    .content {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        overflow: hidden;
-        margin-top: 10px;
-    }
-    .close-btn {
-        position: absolute;
-        top: 0;
-        left: 0;
-        border: none;
-        background: transparent;
-        /* font-size: 0.6rem; */
-        cursor: pointer;
+        width: min(500px, calc(100vw - 48px));
+        height: 100%;
+        background: var(--bg);
+        border-left: 1px solid var(--border);
+        box-shadow: var(--shadow-sheet);
     }
 </style>

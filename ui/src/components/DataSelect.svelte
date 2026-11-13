@@ -1,5 +1,4 @@
 <script lang="ts">
-	import RiExpandUpDownLine from "/assets/images/expand-up-down-line.svg";
 
 	type InputData = Promise<any[]> | Promise<object> | any[] | object;
 	type NormalizedData = { key: string; value: string }[];
@@ -41,31 +40,8 @@
 	});
 </script>
 
-<div class="select-wrapper">
-	<select {id} bind:value>
-		{#each items as item}
-			<option value={item.value}>{item.key}</option>
-		{/each}
-	</select>
-	<div class="expand-widget">
-		<img class="remixicon" src={RiExpandUpDownLine} alt="" />
-	</div>
-</div>
-
-<style>
-	.select-wrapper {
-		position: relative;
-	}
-
-	select {
-		appearance: none;
-	}
-
-	.expand-widget {
-		position: absolute;
-		right: 0.5em;
-		top: 50%;
-		transform: translateY(-50%);
-		pointer-events: none;
-	}
-</style>
+<select {id} class="input" bind:value>
+	{#each items as item}
+		<option value={item.value}>{item.key}</option>
+	{/each}
+</select>

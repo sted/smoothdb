@@ -31,32 +31,32 @@
 </script>
 
 <RecordForm {entityName} {dataUrl} {initialData} {currentData} {formSubmitted}>
-    <div>
-        <label for="name"> Name </label>
-        <input id="name" type="text" bind:value={currentData.name} bind:this={nameInput} />
-    </div>
-    <div>
-        <input id="login" type="checkbox" bind:checked={currentData.canlogin} />
-        <label for="login">Can login</label>
-    </div>
-    <div>
-        <input id="inherit" type="checkbox" bind:checked={currentData.noinherit} />
-        <label for="inherit">No inherit privileges</label>
-    </div>
-    <div>
-        <input id="superuser" type="checkbox" bind:checked={currentData.issuperuser} />
-        <label for="superuser">Superuser</label>
-    </div>
-    <div>
-        <input id="createdb" type="checkbox" bind:checked={currentData.cancreatedatabases} />
-        <label for="createdb">Can create databases</label>
-    </div>
-    <div>
-        <input id="createrole" type="checkbox" bind:checked={currentData.cancreateroles} />
-        <label for="createrole">Can create roles</label>
-    </div>
-    <div>
-        <input id="bypassrls" type="checkbox" bind:checked={currentData.canbypassrls} />
-        <label for="bypassrls">Can bypass RLS</label>
-    </div>
+    <div class="field">
+		<label class="field-label" for="name">Name</label>
+		<input id="name" class="input" type="text" autocomplete="off" bind:value={currentData.name} bind:this={nameInput} />
+	</div>
+    <label class="toggle-row" for="login">
+		<input id="login" class="switch" type="checkbox" bind:checked={currentData.canlogin} />
+		<span>Can login</span>
+	</label>
+    <label class="toggle-row" for="inherit">
+		<input id="inherit" class="switch" type="checkbox" bind:checked={currentData.noinherit} />
+		<span>No inherit privileges</span>
+	</label>
+    <label class="toggle-row" for="superuser">
+		<input id="superuser" class="switch" type="checkbox" bind:checked={currentData.issuperuser} />
+		<span>Superuser</span>
+	</label>
+    <label class="toggle-row" for="createdb">
+		<input id="createdb" class="switch" type="checkbox" bind:checked={currentData.cancreatedatabases} />
+		<span>Can create databases</span>
+	</label>
+    <label class="toggle-row" for="createrole">
+		<input id="createrole" class="switch" type="checkbox" bind:checked={currentData.cancreateroles} />
+		<span>Can create roles</span>
+	</label>
+    <label class="toggle-row" for="bypassrls">
+		<input id="bypassrls" class="switch" type="checkbox" bind:checked={currentData.canbypassrls} />
+		<span>Can bypass RLS</span>
+	</label>
 </RecordForm>
