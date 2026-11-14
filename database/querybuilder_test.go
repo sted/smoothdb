@@ -793,8 +793,8 @@ func TestNotEmbeddedFilterErrors(t *testing.T) {
 			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
 			continue
 		}
-		if _, ok := err.(*BuildError); !ok {
-			t.Errorf("%d. Expected a BuildError for %q, got %T", i, test.query, err)
+		if re, ok := err.(*RequestError); !ok || re.Code != "PGRST108" {
+			t.Errorf("%d. Expected a PGRST108 RequestError for %q, got %T", i, test.query, err)
 		}
 		if err.Error() != test.errMsg {
 			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
@@ -1096,8 +1096,8 @@ func TestBuildInsertKeys(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error %q, got nil (SQL: %s)", test.wantErr, q)
 				}
-				if _, ok := err.(*BuildError); !ok || err.Error() != test.wantErr {
-					t.Fatalf("expected *BuildError %q, got %T %q", test.wantErr, err, err.Error())
+				if re, ok := err.(*RequestError); !ok || re.Code != "PGRST102" || err.Error() != test.wantErr {
+					t.Fatalf("expected a PGRST102 RequestError %q, got %T %q", test.wantErr, err, err.Error())
 				}
 				return
 			}

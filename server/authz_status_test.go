@@ -273,12 +273,12 @@ func TestAuthRefusalsCarryTheChallenge(t *testing.T) {
 						t.Errorf("%s token on %s: expected 401, got %d %s", tk.name, path, resp.StatusCode, body)
 						continue
 					}
-					var e struct{ Subsystem, Message, Code string }
+					var e struct{ Message, Code string }
 					if err := json.Unmarshal(body, &e); err != nil {
 						t.Errorf("%s token on %s: body %s: %v", tk.name, path, body, err)
 						continue
 					}
-					if e.Subsystem != "auth" || e.Code != tk.code || e.Message == "" {
+					if e.Code != tk.code || e.Message == "" {
 						t.Errorf("%s token on %s: expected an auth error with code %s, got %s", tk.name, path, tk.code, body)
 					}
 					want := `Bearer error="invalid_token", error_description=` + strconv.Quote(e.Message)

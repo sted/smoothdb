@@ -1376,7 +1376,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
 			Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
 			Headers:     nil,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'non_existent_projects' is not an embedded resource in this request"}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'non_existent_projects' is included in the 'select' query parameter.","message":"'non_existent_projects' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		// 	get "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*" `shouldRespondWith`
@@ -1401,14 +1401,14 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource is aliased and the filter names the table",
 			Query:       "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*",
 			Headers:     nil,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'amiga_projectsss' is not an embedded resource in this request"}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'amiga_projectsss' is included in the 'select' query parameter.","message":"'amiga_projectsss' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		{
 			Description: "errs when a nested embedded resource doesn't exist and a filter is applied to it",
 			Query:       "/clients?select=id,projects(id,tasks(id,name))&projects.tasks2.name=like.Design*",
 			Headers:     nil,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'tasks2' is not an embedded resource in this request"}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'tasks2' is included in the 'select' query parameter.","message":"'tasks2' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 

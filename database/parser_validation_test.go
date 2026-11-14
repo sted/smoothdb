@@ -13,7 +13,7 @@ import (
 func TestParserRejectsInvalidLimitOffset(t *testing.T) {
 	bad := []struct{ query, errSubstr string }{
 		{"?limit=abc", "limit"},
-		{"?limit=-1", "limit"},
+		{"?limit=-1", "Requested range not satisfiable"}, // PostgREST: 416 PGRST103
 		{"?limit=", "limit"},
 		{"?offset=xyz", "offset"},
 		{"?offset=-5", "offset"},

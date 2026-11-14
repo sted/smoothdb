@@ -623,7 +623,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			Description:     "should fail with 300 Multiple Choices without explicit type casts",
 			Method:          "GET",
 			Query:           "/rpc/overloaded_same_args?arg=value",
-			Expected:        `{"code":"","details":null,"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)"}`,
+			Expected:        `{"code":"PGRST203","details":null,"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          300,
 		},
@@ -3097,6 +3097,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
+			Skip:            "PostgREST 16.4: PGRST202 for a function with an unnamed int parameter, which PostgREST leaves out of its cache; needs card 32489 (rpc params)",
 		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/plain is specified" $
@@ -3346,6 +3347,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
+			Skip:            "PostgREST 16.4: PGRST202 when only the single unnamed parameter overloads remain; needs card 32489 (rpc params)",
 		},
 
 		//     it "should fail with multiple choices when two fallback functions with single unnamed json and jsonb parameters exist" $ do

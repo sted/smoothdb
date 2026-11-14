@@ -749,7 +749,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Query:       "/articles?id=eq.1&columns=helicopter",
 			Body:        `{"body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
+			Expected:    `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
 			Status:      400,
 		},
 		//       it "returns missing table error even if also has invalid ?columns" $ do

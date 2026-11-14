@@ -166,7 +166,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:           "/articles",
 			Body:            `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
 			Headers:         nil,
-			Expected:        `{"code":"","details":null,"hint":null,"message":"All object keys must match"}`,
+			Expected:        `{"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -961,7 +961,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Method:      "POST",
 			Query:       "/articles?columns=",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"failed to parse columns parameter (): unexpected end of input expecting field name"}`,
+			Expected:    `{"code":"PGRST100","details":"unexpected end of input expecting field name","hint":null,"message":"failed to parse columns parameter ()"}`,
 			Status:      400,
 		},
 		//       it "disallows ?columns which don't exist" $
@@ -981,7 +981,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Method:      "POST",
 			Query:       "/articles?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
+			Expected:    `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
 			Status:      400,
 		},
 		//       it "returns missing table error even if also has invalid ?columns" $
@@ -1010,7 +1010,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id,nosuch(*)",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"code":"","details":null,"hint":null,"message":"cannot find relationship for table articles with table nosuch"}`,
+			Expected:    `{"code":"PGRST200","details":"Searched for a foreign key relationship between 'articles' and 'nosuch' in the schema 'test', but no matches were found.","hint":null,"message":"Could not find a relationship between 'articles' and 'nosuch' in the schema cache"}`,
 			Status:      400,
 		},
 		// @@ added: a filter on a relation that is not embedded is refused on a
@@ -1022,7 +1022,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id&nosuch.id=eq.1",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'nosuch' is not an embedded resource in this request"}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'nosuch' is included in the 'select' query parameter.","message":"'nosuch' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		//       it "disallows array elements that are not json objects" $

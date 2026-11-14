@@ -220,7 +220,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_types",
 			Body:        `[{"id": 2, "nope": 1}]`,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'nope' column of 'bulk_types' in the schema cache"}`,
+			Expected:    `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'nope' column of 'bulk_types' in the schema cache"}`,
 			Status:      400,
 		},
 		{
@@ -267,7 +267,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_defaults",
 			Body:        `[null, {}]`,
-			Expected:    `{"code":"","details":null,"hint":null,"message":"All object keys must match"}`,
+			Expected:    `{"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}`,
 			Status:      400,
 		},
 		{
