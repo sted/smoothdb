@@ -11,6 +11,48 @@ import (
 // getRanges): they make one range, intersected with the rows from 0. A value
 // that is not an integer is ignored, and an empty range is 416 PGRST103,
 // except the range of limit 0.
+func TestPageRangeOf(t *testing.T) {
+	huge := strings.Repeat("9", 1_000_000)
+	cases := []struct {
+		name                                 string
+		limits, offsets                      []string
+		limit, offset, limitHuge, offsetHuge string
+		code                                 string // "" for no error
+	}{
+		{"ordinary", []string{"10"}, []string{"20"}, "10", "20", "", "", ""},
+		{"spaces", []string{" 2 "}, nil, "2", "", "", "", ""},
+		{"leading zeros", []string{"00002"}, nil, "2", "", "", "", ""},
+		{"last occurrence, empty", []string{"2", ""}, nil, "", "", "", "", ""},
+		{"empty limit with an offset", []string{""}, []string{"5"}, "", "", "", "", "PGRST103"},
+		{"offset in 64 bits", []string{"1"}, []string{"9223372036854775807"}, "1", "9223372036854775807", "", "", ""},
+		{"offset beyond 64 bits", []string{"1"}, []string{"9223372036854775808"}, "1", "", "", "9223372036854775808", ""},
+		{"limit beyond 64 bits", []string{"9223372036854775808"}, nil, "", "", "9223372036854775808", "", ""},
+		{"a million digits", []string{huge}, nil, "", "", huge, "", ""},
+		{"minus a million digits", []string{"-" + huge}, nil, "", "", "", "", "PGRST103"},
+		{"offset of a million digits", nil, []string{huge}, "", "", "", huge, ""},
+		{"negative offset of a million digits", []string{"3"}, []string{"-" + huge}, "", "", "", "", "PGRST103"},
+	}
+	for _, c := range cases {
+		limit, offset, limitHuge, offsetHuge, err := pageRangeOf(c.limits, c.offsets)
+		code := ""
+		if re, ok := err.(*RequestError); ok {
+			code = re.Code
+		} else if err != nil {
+			code = err.Error()
+		}
+		if code != c.code || limit != c.limit || offset != c.offset || limitHuge != c.limitHuge || offsetHuge != c.offsetHuge {
+			t.Errorf("%s: got %q %q huge %.20q %.20q err %q", c.name, limit, offset, limitHuge, offsetHuge, code)
+		}
+	}
+	// ordinary paging and a value of a million digits allocate nothing
+	for _, v := range [][2]string{{"10", "20"}, {huge, "0"}} {
+		limits, offsets := []string{v[0]}, []string{v[1]}
+		if n := testing.AllocsPerRun(10, func() { pageRangeOf(limits, offsets) }); n != 0 {
+			t.Errorf("limit %.20s: %v allocations, want 0", v[0], n)
+		}
+	}
+}
+
 func TestParserLimitOffsetFollowPostgREST(t *testing.T) {
 	for _, q := range []string{"?limit=-1", "?limit=-99999999999999999999", "?limit=0&offset=100", "?limit=3&offset=-4", "?offset=-4&limit=abc"} {
 		u, _ := url.Parse(q)

@@ -163,6 +163,54 @@ func TestPostgREST_ErrorBodies(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Length": "116"},
 			Status:          400,
 		},
+		// an empty value is a value that is not an integer, and the last
+		// occurrence of a parameter counts (QueryParams.hs, nonemptyParams)
+		{
+			Description: "refuses an empty limit with an offset",
+			Query:       "/items?select=id&order=id&limit=&offset=5",
+			Expected:    `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
+			Status:      416,
+		},
+		{
+			Description:     "takes the last limit, even when it is empty",
+			Query:           "/items?select=id&order=id&id=lt.4&limit=2&limit=",
+			Expected:        `[{"id":1},{"id":2},{"id":3}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-2/*"},
+			Status:          200,
+		},
+		// readMaybe reads an integer between spaces and with leading zeros
+		{
+			Description:     "reads a limit between spaces",
+			Query:           "/items?select=id&order=id&limit=%202%20",
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
+		},
+		{
+			Description:     "reads a limit with leading zeros",
+			Query:           "/items?select=id&order=id&limit=00002",
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
+		},
+		// the Range header narrows a limit beyond 64 bits before PostgreSQL
+		{
+			Description:     "narrows a limit beyond 64 bits with the Range header",
+			Query:           "/items?select=id&order=id&limit=9223372036854775808",
+			Headers:         test.Headers{"Range": {"0-1"}},
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
+		},
+		// with ?columns a PATCH sends the body as it is, as a POST does
+		{
+			Description: "sends a scalar PATCH body with columns to PostgreSQL",
+			Method:      "PATCH",
+			Query:       "/articles?id=eq.1&columns=body",
+			Body:        `true`,
+			Expected:    `{"code":"22023","details":null,"hint":null,"message":"cannot call json_to_recordset on a scalar"}`,
+			Status:      400,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
