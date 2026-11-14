@@ -102,18 +102,26 @@ func indexFunctions(functions []Function) functionIndex {
 		if f.Kind != "f" || f.Returns == "trigger" {
 			continue
 		}
-		inputs := f.inputArguments()
-		unnamed := 0
-		for _, a := range inputs {
-			if a.Name == "" {
-				unnamed++
-			}
-		}
-		if unnamed == 0 || (unnamed == 1 && slices.Contains(singleUnnamedTypes, inputs[0].Type)) {
+		if postgrestCaches(&f) {
 			idx.callable[f.Schema] = append(idx.callable[f.Schema], f.Name)
 		}
 	}
 	return idx
+}
+
+// postgrestCaches reports whether PostgREST keeps f in its schema cache
+// (SchemaCache.hs, funcsSqlQuery: callable). PostgREST counts as unnamed
+// only an argument whose name is NULL, that is, every argument of a
+// function with no proargnames: an empty name in proargnames is a name.
+// HasUnnamed keeps that difference, which Argument.Name loses. So f is
+// cached when it has no unnamed argument, or when its only input argument
+// is unnamed and of a type that a body can fill.
+func postgrestCaches(f *Function) bool {
+	if !f.HasUnnamed {
+		return true
+	}
+	inputs := f.inputArguments()
+	return len(inputs) == 1 && slices.Contains(singleUnnamedTypes, inputs[0].Type)
 }
 
 // noRpc returns PostgREST's NoRpc error (PGRST202) for a call of name
@@ -123,9 +131,16 @@ func indexFunctions(functions []Function) functionIndex {
 // its body as RawBody names it: "json", "text", "xml", "bytea", or "" for
 // none, a form or CSV.
 func (si *SchemaInfo) noRpc(name string, keys []string, post bool, raw string) error {
+	// The overloads that PostgREST caches: a function with an unnamed
+	// argument of another type is not one, so the hint looks for a close
+	// function name instead (as for unnamed_int_param).
 	var overloads []Function
 	if si != nil {
-		overloads = si.cachedFunctions[name]
+		for _, f := range si.cachedFunctions[name] {
+			if postgrestCaches(&f) {
+				overloads = append(overloads, f)
+			}
+		}
 	}
 	schema, proc := splitTableName(name)
 	keys = slices.Sorted(slices.Values(keys))
