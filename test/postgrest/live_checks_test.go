@@ -2,6 +2,7 @@ package postgrest
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/sted/smoothdb/test"
@@ -19,6 +20,7 @@ type liveCheck struct {
 	status  int
 	code    string // the error code of the body, when set
 	notCode string // an error code the body must not have, when set
+	message string // the start of the error message, when set
 	profile string // the Content-Profile header; "" asserts that it is absent
 }
 
@@ -36,14 +38,20 @@ func runLiveChecks(t *testing.T, cfg test.Config, checks []liveCheck) {
 			t.Errorf("%s: status %d, want %d (body %s)", c.desc, status, c.status, body)
 			continue
 		}
-		if c.code != "" || c.notCode != "" {
-			var e struct{ Code string }
-			_ = json.Unmarshal(body, &e)
+		if c.code != "" || c.notCode != "" || c.message != "" {
+			var e struct{ Code, Message string }
+			if err := json.Unmarshal(body, &e); err != nil {
+				t.Errorf("%s: the body is not a JSON error: %v (body %q)", c.desc, err, body)
+				continue
+			}
 			if c.code != "" && e.Code != c.code {
 				t.Errorf("%s: code %q, want %q (body %s)", c.desc, e.Code, c.code, body)
 			}
 			if c.notCode != "" && e.Code == c.notCode {
 				t.Errorf("%s: code %q, want another (body %s)", c.desc, e.Code, body)
+			}
+			if !strings.HasPrefix(e.Message, c.message) {
+				t.Errorf("%s: message %q, want it to start with %q", c.desc, e.Message, c.message)
 			}
 		}
 		if got := headers.Get("Content-Profile"); got != c.profile {
@@ -63,9 +71,11 @@ func TestLive_AggregatesDisabled(t *testing.T) {
 		{desc: "an update with an empty body refuses an aggregate", method: "PATCH",
 			query: "/items?select=id.sum()&id=eq.-99", body: `{}`, headers: json, status: 400, code: "PGRST123"},
 		{desc: "a select parse error comes before the aggregate check",
-			query: "/items?select=count(),", status: 400, notCode: "PGRST123"},
+			query: "/items?select=count(),", status: 400, notCode: "PGRST123",
+			message: "failed to parse select parameter (count(),)"},
 		{desc: "an order parse error comes before the aggregate check",
-			query: "/items?select=id.sum()&order=foo.bar.baz", status: 400, notCode: "PGRST123"},
+			query: "/items?select=id.sum()&order=foo.bar.baz", status: 400, notCode: "PGRST123",
+			message: "failed to parse order (foo.bar.baz)"},
 	}
 	withVariant(t, map[string]any{"Database.AggregatesEnabled": false}, false, func(cfg test.Config) {
 		runLiveChecks(t, cfg, checks)
@@ -84,6 +94,12 @@ func TestLive_ContentProfile(t *testing.T) {
 		{desc: "an offset past the counted total", query: "/items?offset=999999",
 			headers: test.Headers{"Prefer": {"count=exact"}}, status: 416, code: "PGRST103", profile: "test"},
 		{desc: "the root", query: "/", status: 200, profile: "test"},
+		{desc: "an insert of no rows names an unexposed schema", method: "POST", query: "/items", body: `[]`,
+			headers: test.Headers{"Prefer": {"return=representation"}, "Content-Profile": {"private"}},
+			status:  406, message: "Invalid schema: private", profile: ""},
+		{desc: "an update with an empty body names an unexposed schema", method: "PATCH", query: "/items?id=eq.-99", body: `{}`,
+			headers: test.Headers{"Prefer": {"return=representation"}, "Content-Profile": {"private"}},
+			status:  406, message: "Invalid schema: private", profile: ""},
 		{desc: "an insert without a representation", method: "POST", query: "/items", body: `{"id":-5}`,
 			status: 201, profile: ""},
 	}
