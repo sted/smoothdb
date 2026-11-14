@@ -12,6 +12,7 @@ type Config struct {
 	ExposedSchemas         []string `comment:"Schemas a Profile header may select, the first is the default (default: [] for every schema, the first of the search path as default)"`
 	TransactionMode        string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
 	AggregatesEnabled      bool     `comment:"Enable aggregate functions (default: true)"`
+	PlanEnabled            bool     `comment:"Answer the EXPLAIN plan of a request with Accept: application/vnd.pgrst.plan, as PostgREST's db-plan-enabled (default: false)"`
 	MaxRecursiveDepth      int      `comment:"Maximum recursive query depth; 0 disables recursive queries (default: 100)"`
 	PoolAcquisitionTimeout int      `comment:"Seconds a request waits for a pool connection before answering 504, 0 to wait without a bound (default: 10)"`
 	MaxRows                int64    `comment:"Maximum rows a read answers, at the top level and in each embed, as PostgREST's db-max-rows (default: 0 for no limit)"`

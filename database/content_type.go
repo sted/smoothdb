@@ -9,6 +9,7 @@ import (
 
 type mediaType struct {
 	Type        string
+	Params      map[string]string
 	Quality     float64
 	Specificity int
 }
@@ -23,26 +24,36 @@ var supportedOutputContentTypes = []string{
 var defaultOutputContentType = "application/json"
 
 // contentNegotiation to choose the output content type.
-// It Supports also q (quality) parameters
-func contentNegotiation(acceptHeaders []string) string {
+// It Supports also q (quality) parameters. A plan (see PlanRequest) is
+// chosen when plans are enabled and the media type of its for is served;
+// otherwise the next media type is tried, as in PostgREST (Negotiate.hs).
+func contentNegotiation(acceptHeaders []string) (string, *PlanRequest) {
 	if len(acceptHeaders) == 0 {
-		return defaultOutputContentType
+		return defaultOutputContentType, nil
 	}
 
 	parsedTypes := parseMediaTypes(acceptHeaders)
 
 	for _, parsedType := range parsedTypes {
+		if isPlanMediaType(parsedType.Type) {
+			if dbe != nil && dbe.config.PlanEnabled {
+				if plan := parsePlan(parsedType.Type, parsedType.Params); planOutputType(plan) != "" {
+					return planMediaType, plan
+				}
+			}
+			continue
+		}
 		for _, supportedType := range supportedOutputContentTypes {
 			if parsedType.Type == supportedType {
-				return supportedType
+				return supportedType, nil
 			}
 			if matchesWildcard(parsedType.Type, supportedType) {
-				return supportedType
+				return supportedType, nil
 			}
 		}
 	}
 
-	return ""
+	return "", nil
 }
 
 func parseMediaTypes(acceptHeaders []string) []mediaType {
@@ -73,11 +84,13 @@ func parseMediaTypes(acceptHeaders []string) []mediaType {
 				specificity = 2
 			}
 
-			types = append(types, mediaType{Type: mt, Quality: q, Specificity: specificity})
+			types = append(types, mediaType{Type: mt, Params: params, Quality: q, Specificity: specificity})
 		}
 	}
 
-	sort.Slice(types, func(i, j int) bool {
+	// stable: of the media types of the same quality and specificity the
+	// first one given wins
+	sort.SliceStable(types, func(i, j int) bool {
 		if types[i].Quality == types[j].Quality {
 			return types[i].Specificity > types[j].Specificity
 		}

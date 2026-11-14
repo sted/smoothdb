@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"math"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -146,6 +147,9 @@ type QueryOptions struct {
 	CountPreference string
 	JQ              string // jq program from the jq= query parameter
 	JQArgs          string // raw JSON object from the jq_args= query parameter
+	// Plan is the plan the request asks for, nil for its rows (see
+	// PlanRequest)
+	Plan *PlanRequest
 	// Inserted is the number of rows a merge-duplicates insert created, as
 	// opposed to the rows it updated; -1 when the executor of an insert does
 	// not count them (written by the executor, see insertedCounter)
@@ -2100,11 +2104,16 @@ var rangeRe = regexp.MustCompile(`^(\d+)?-(\d+)?$`)
 
 // acceptedMediaTypes lists the media types of the Accept headers without
 // their parameters, separated by ", ", as PostgREST's MediaTypeError
-// (PGRST107) names them.
+// (PGRST107) names them. A plan keeps its format, for and options (see
+// PlanRequest.mediaType), as PostgREST's toMime.
 func acceptedMediaTypes(headers []string) string {
 	var types []string
 	for _, h := range headers {
 		for _, t := range strings.Split(h, ",") {
+			if mt, params, err := mime.ParseMediaType(t); err == nil && isPlanMediaType(mt) {
+				types = append(types, parsePlan(mt, params).mediaType())
+				continue
+			}
 			t, _, _ = strings.Cut(t, ";")
 			if t = strings.TrimSpace(t); t != "" {
 				types = append(types, t)
@@ -2119,8 +2128,13 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	options := QueryOptions{}
 
 	acceptHeaders := header.Values("Accept")
-	mediatype := contentNegotiation(acceptHeaders)
+	mediatype, plan := contentNegotiation(acceptHeaders)
 	options.accept = acceptHeaders
+	if plan != nil {
+		// the statement explained is the one of the plan's for
+		options.Plan = plan
+		mediatype = planOutputType(plan)
+	}
 
 	switch mediatype {
 	case "application/vnd.pgrst.object+json":

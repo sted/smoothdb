@@ -691,6 +691,24 @@ func setContentProfile(w http.ResponseWriter, options *database.QueryOptions) {
 	}
 }
 
+// writePlan answers the plan of a request (see database.PlanRequest): 200,
+// the media type of the plan and the length, as PostgREST (Response.hs,
+// DbPlanResult). No header of the rows follows (Content-Range,
+// Content-Location, Location): the plan is no rows. ok is false when the
+// request asks for no plan.
+func writePlan(c context.Context, w http.ResponseWriter, content []byte) (ok bool, status int, err error) {
+	options := database.GetQueryOptions(c)
+	if options.Plan == nil {
+		return false, 0, nil
+	}
+	w.Header().Set("Content-Type", options.Plan.ContentType())
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	setContentProfile(w, options)
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(content)
+	return true, http.StatusOK, err
+}
+
 // WriteContent writes the response and its content type
 func WriteContent(ctx context.Context, w http.ResponseWriter, status int, content []byte) (int, error) {
 	sc := database.GetSmoothContext(ctx)

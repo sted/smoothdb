@@ -140,6 +140,7 @@ func getEnvironment(c *Config) {
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 		c.EnableDebugRoute = true
+		c.Database.PlanEnabled = true
 		// Debug mode enables auth (LoginMode: db) but shouldn't force the operator
 		// to set a secret by hand. Never fall back to the empty (forgeable) key:
 		// generate a strong random secret for this run.

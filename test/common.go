@@ -57,6 +57,10 @@ type Test struct {
 	// tracks it ("PostgREST 16.4: 405 on DELETE /rpc; card 32490 (rpc details)").
 	// Execute logs it and counts it in Skipped.
 	Skip string
+	// Check, when set, runs on the body and the headers of the response,
+	// for the assertions that Expected cannot state (a number in a plan, a
+	// substring). It reports through t.
+	Check func(t *testing.T, body []byte, headers http.Header)
 }
 
 // counts of the cases Execute ran and skipped, for the compatibility number
@@ -241,6 +245,11 @@ func Execute(t *testing.T, config Config, tests []Test) {
 				}
 			}
 
+		}
+		if test.Check != nil && err == nil {
+			t.Run(fmt.Sprintf("%d. %v", i, test.Description), func(t *testing.T) {
+				test.Check(t, body, *headers)
+			})
 		}
 		if test.Status != 0 && test.Status != status {
 			t.Errorf("\n%d. %v\nExpected status \n\t\"%v\", \ngot \n\t\"%v\"", i,

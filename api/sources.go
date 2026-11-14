@@ -30,6 +30,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		sourcename := r.Param("sourcename")
 		json, count, err := database.GetRecords(c, sourcename, r.URL.Query())
 		if err == nil {
+			if ok, status, err := writePlan(c, w, json); ok {
+				return status, err
+			}
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
@@ -48,6 +51,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
 		if err != nil {
 			return WriteError(w, database.TableNotFound(c, sourcename, err))
+		}
+		if ok, status, err := writePlan(c, w, data); ok {
+			return status, err
 		}
 		SetResponseHeaders(c, w, r, count)
 		options := database.GetQueryOptions(c)
@@ -86,6 +92,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil {
 			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
+		if ok, status, err := writePlan(c, w, data); ok {
+			return status, err
+		}
 		SetResponseHeaders(c, w, r, count)
 		if data == nil {
 			return heligo.WriteHeader(w, http.StatusNoContent)
@@ -114,6 +123,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		}
 		data, count, err := database.UpdateRecords(c, sourcename, record, r.URL.Query())
 		if err == nil {
+			if ok, status, err := writePlan(c, w, data); ok {
+				return status, err
+			}
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {
 				return heligo.WriteHeader(w, http.StatusNoContent)
@@ -129,6 +141,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		sourcename := r.Param("sourcename")
 		data, count, err := database.DeleteRecords(c, sourcename, r.URL.Query())
 		if err == nil {
+			if ok, status, err := writePlan(c, w, data); ok {
+				return status, err
+			}
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {
 				return heligo.WriteHeader(w, http.StatusNoContent)
@@ -146,6 +161,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		fname := r.Param("fname")
 		json, count, err := database.ExecFunction(c, fname, nil, r.URL.Query(), true)
 		if err == nil {
+			if ok, status, err := writePlan(c, w, json); ok {
+				return status, err
+			}
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
@@ -163,6 +181,9 @@ func InitSourcesRouter(apiHelper Helper) {
 		}
 		data, count, err := database.CallFunction(c, fname, record, raw, payloadFilters(r))
 		if err == nil {
+			if ok, status, err := writePlan(c, w, data); ok {
+				return status, err
+			}
 			data, err = database.JQTransformResponse(c, data)
 		}
 		if err == nil {

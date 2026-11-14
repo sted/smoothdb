@@ -171,6 +171,8 @@ func runReadRows(ctx context.Context, query string, values []any, scalar, single
 	info := gi.Db.info.Load()
 	var serializer TextSerializer
 	switch {
+	case options.Plan != nil:
+		serializer = planSerializer{}
 	case options.locate:
 		serializer = LocationSerializer{}
 	case options.ContentType == "text/csv":
@@ -273,6 +275,9 @@ func Select(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	if err != nil {
 		return nil, 0, err
 	}
+	if options.Plan != nil {
+		return runPlan(ctx, query, values)
+	}
 	return querySerialize(ctx, query, values)
 }
 
@@ -313,6 +318,9 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	// primary key or ?on_conflict= (Response.hs, responsePreferences).
 	options.ResolutionApplied = (options.MergeDuplicates || options.IgnoreDuplicates) &&
 		(len(parts.conflictFields) > 0 || (info != nil && info.GetPrimaryKey(_s(table, options.Schema)) != nil))
+	if options.Plan != nil {
+		return runPlan(ctx, insert, values)
+	}
 	options.Inserted = -1
 	if options.MergeDuplicates {
 		options.insertedQuery = insertedQuery
@@ -462,6 +470,11 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
+	if options.Plan != nil {
+		// the plan of the write, whatever its body: PostgREST checks the
+		// key after the write (MainTx.hs, failPut)
+		return runPlan(ctx, insert, values)
+	}
 	// A body without the key of the URL writes no row, but a statement
 	// trigger can still run: the write ends in a transaction of the request,
 	// rolled back on the error, as in PostgREST (MainTx.hs, failPut).
@@ -551,6 +564,9 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
+	if options.Plan != nil {
+		return runPlan(ctx, update, values)
+	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, update, values)
 	}
@@ -581,6 +597,9 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
+	}
+	if options.Plan != nil {
+		return runPlan(ctx, delete, values)
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, delete, values)
@@ -678,6 +697,9 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	exec, values, err := gi.QueryBuilder.BuildExecute(function, f, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
+	}
+	if options.Plan != nil {
+		return runPlan(ctx, exec, values)
 	}
 	var scalar bool
 	if f != nil {

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-**PostgREST 16.4 spec cases: 1396 run, 278 skipped (83.4%)**
+**PostgREST 16.4 spec cases: 1454 run, 292 skipped (83.3%)**
 
 ### Added
 * **PostgREST error body** — errors answer `{code, details, hint, message}` with PostgREST's PGRST codes, messages, `Proxy-Status` and "Perhaps you meant" hints; the `subsystem` and `position` keys are removed.
@@ -10,6 +10,7 @@
 * **Write response headers** — writes send `Preference-Applied`, PATCH reports its rows in `Content-Range`, and `return=headers-only` answers a `Location` header.
 * **RPC parameters** — VARIADIC, a single unnamed parameter that takes the whole body, an empty body that calls the function with no argument, and `fts(lang)` on GET.
 * **Record results** — functions that return `record` or `setof record` answer as PostgREST, through `pgrst_scalar`.
+* **Query plans** — `Accept: application/vnd.pgrst.plan` answers the EXPLAIN of a read, write or call, with its `for` and `options`; `Database.PlanEnabled` turns it on (off by default, on with `SMOOTHDB_DEBUG`).
 * **Content-Profile on responses** — a response with a body names its schema when the request selects one or more than one schema is exposed.
 
 ### Changed

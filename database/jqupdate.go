@@ -37,7 +37,8 @@ func jqParseArgs(raw string) (map[string]any, error) {
 func JQTransformResponse(ctx context.Context, data []byte) ([]byte, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
-	if options.JQ == "" || data == nil {
+	if options.JQ == "" || data == nil || options.Plan != nil {
+		// a plan is not the rows that jq transforms
 		return data, nil
 	}
 	if !jqeval.Enabled() {
@@ -90,6 +91,10 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	countEstimated(options)
 	if !jqeval.Enabled() {
 		return nil, 0, &BuildError{"jq evaluation is disabled (see the JQ configuration section)"}
+	}
+	if options.Plan != nil {
+		// a jq update runs several statements: none of them is the plan
+		return nil, 0, &BuildError{"a jq update has no plan"}
 	}
 	program := options.JQ
 	args, err := jqParseArgs(options.JQArgs)
