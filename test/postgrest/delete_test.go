@@ -227,14 +227,13 @@ func TestPostgREST_Delete(t *testing.T) {
 		//             { matchStatus = 404
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST205 body (smoothdb answers 42P01); card 32494 (error body)
 		{
 			Description: "totally unknown route fails with 404",
 			Method:      "DELETE",
 			Query:       "/foozle?id=eq.101",
 			Body:        ``,
 			Headers:     nil,
-			Expected:    ``,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.foozle' in the schema cache"}`,
 			Status:      404,
 		},
 		//     context "table with limited privileges" $ do

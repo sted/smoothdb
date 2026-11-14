@@ -164,13 +164,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchStatus = 406
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		// @@ not asserted, PostgREST 16.4: the PGRST116 body and its application/json Content-Type (smoothdb answers 406 with an empty body); card 32494 (error body)
 		{
 			Description: "when updating rows raises an error for multiple rows with return=rep",
 			Method:      "PATCH",
 			Query:       "/addresses",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
 			Body:        `{ "address": "zzz" }`,
+			Expected:    `{"details":"The result contains 4 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
 			Status:      406,
 		},
 		//       -- the rows should not be updated, either
@@ -211,13 +211,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchStatus = 406
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		// @@ not asserted, PostgREST 16.4: the PGRST116 body and its application/json Content-Type (smoothdb answers 406 with an empty body); card 32494 (error body)
 		{
 			Description: "when updating rows raises an error for zero rows with return=rep",
 			Method:      "PATCH",
 			Query:       "/items?id=gt.0&id=lt.0",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
 			Body:        `{"id":1}`,
+			Expected:    `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
 			Status:      406,
 		},
 		//
@@ -304,13 +304,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchStatus = 406
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		// @@ not asserted, PostgREST 16.4: the PGRST116 body and its application/json Content-Type (smoothdb answers 406 with an empty body); card 32494 (error body)
 		{
 			Description: "when creating rows raises an error when attempting to create multiple entities with return=rep",
 			Method:      "POST",
 			Query:       "/addresses",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
 			Body:        `[ { "id": 202, "address": "xxx" }, { "id": 203, "address": "yyy" } ]`,
+			Expected:    `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
 			Status:      406,
 		},
 		//       -- the rows should not exist, either
@@ -462,12 +462,12 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchStatus = 406
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		// @@ not asserted, PostgREST 16.4: the PGRST116 body and its application/json Content-Type (smoothdb answers 406 with an empty body); card 32494 (error body)
 		{
 			Description: "when deleting rows raises an error when attempting to delete multiple entities with return=rep",
 			Method:      "DELETE",
 			Query:       "/items?id=gt.5&id=lt.11",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
+			Expected:    `{"details":"The result contains 5 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
 			Status:      406,
 		},
 		//       -- the rows should still exist
@@ -511,12 +511,12 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchStatus = 406
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
-		// @@ not asserted, PostgREST 16.4: the PGRST116 body and its application/json Content-Type (smoothdb answers 406 with an empty body); card 32494 (error body)
 		{
 			Description: "when deleting rows raises an error when deleting zero entities with return=rep",
 			Method:      "DELETE",
 			Query:       "/items?id=lt.0",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
+			Expected:    `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
 			Status:      406,
 		},
 		//

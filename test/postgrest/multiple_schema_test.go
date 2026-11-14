@@ -101,11 +101,11 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 		//               { matchStatus = 404
 		//               , matchHeaders = []
 		//               }
-		// the PGRST205 body is PostgREST's error shape (card 32494): status only
 		{
 			Description: "doesn't find another_table in schema v1",
 			Query:       "/another_table",
 			Headers:     test.Headers{"Accept-Profile": {"v1"}},
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'v1.another_table' in the schema cache"}`,
 			Status:      404,
 		},
 		//         it "succeeds in reading a table from a schema with uppercase and special characters in its name" $

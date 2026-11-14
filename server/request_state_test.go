@@ -121,7 +121,7 @@ func statusAndCode(t *testing.T, url, token string) (int, string) {
 //
 // smoothdb switched the role in the middleware, before the handler, and
 // answered 401 to all three. A filter it cannot parse is refused before any
-// statement now, with 400 (the PGRST100 body is card 32494's, error body);
+// statement now, with 400;
 // an unknown function is looked up by the database, not in the schema cache,
 // so there the role still fails first (401 22023, not asserted here).
 //

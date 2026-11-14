@@ -21,13 +21,13 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 404
 		//             , matchHeaders = ["Content-Length" <:> "115"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST205 body and its Content-Length (smoothdb answers 42P01); card 32494 (error body)
 		{
 			Description: "indicates no table found by returning 404",
 			Method:      "PATCH",
 			Query:       "/fake",
 			Body:        `{ "real": false }`,
 			Headers:     nil,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.fake' in the schema cache"}`,
 			Status:      404,
 		},
 		//     context "on an empty table" $
@@ -64,7 +64,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Content-Length" <:> "80"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 body "Empty or invalid json" and its Content-Length; card 32494 (error body)
 		{
 			Description:     "with invalid json payload fails with 400 and error",
 			Method:          "PATCH",
@@ -72,6 +71,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `}{ x = 2`,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "with no payload" $
@@ -81,7 +81,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 body "Empty or invalid json"; card 32494 (error body)
 		{
 			Description:     "with no payload fails with 400 and error",
 			Method:          "PATCH",
@@ -89,6 +88,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            ``,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "insignificant whitespace" $ do
@@ -742,7 +742,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             }
 		// @@ the body asserted is smoothdb's: the message is PostgREST's, the
 		// envelope is not.
-		// @@ not asserted, PostgREST 16.4: code PGRST204 with null hint and details; card 32494 (error body)
 		{
 			Description: "disallows ?columns which don't exist",
 			Method:      "PATCH",
@@ -768,13 +767,13 @@ func TestPostgREST_Update(t *testing.T) {
 		// json_to_recordset and updates with whichever row PostgreSQL picks;
 		// smoothdb refuses a multi-object PATCH body (see below), so the body
 		// is a single object here and the multi-object case is pinned separately
-		// @@ not asserted, PostgREST 16.4: the PGRST205 body and its Content-Length; card 32494 (error body)
 		{
 			Description: "returns missing table error even if also has invalid ?columns",
 			Method:      "PATCH",
 			Query:       "/garlic?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}]`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"}`,
 			Status:      404,
 		},
 		// @@ added: a PATCH body with more than one object is refused with 400
@@ -1515,7 +1514,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 body (smoothdb has the message, not the code); card 32494 (error body)
 		{
 			Description:     "Data representations with ?columns parameter fails if at least one specified column doesn't exist",
 			Method:          "PATCH",
@@ -1523,6 +1521,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos_computed' in the schema cache"}`,
 			Status:          400,
 		},
 		//       it "ignores json keys and gives 200 if no record updated" $

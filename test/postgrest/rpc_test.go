@@ -616,15 +616,13 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 300
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
-		// The code stays empty until SmoothDB adopts PostgREST's PGRST codes.
-		// (16.4 also matches "Content-Length" <:> "353", the length of the
-		// PGRST203 body: not asserted here, card 32494 (error body).)
+		// (16.4 also matches "Content-Length" <:> "353")
 		{
 			Description:     "should fail with 300 Multiple Choices without explicit type casts",
 			Method:          "GET",
 			Query:           "/rpc/overloaded_same_args?arg=value",
 			Expected:        `{"code":"PGRST203","details":null,"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)"}`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Length": "353", "Content-Type": "application/json; charset=utf-8"},
 			Status:          300,
 		},
 
@@ -1518,13 +1516,14 @@ func TestPostgREST_RPC(t *testing.T) {
 		//       { matchStatus  = 405
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
-		// (16.4 also matches "Content-Length" <:> "94"; the PGRST101 body is
-		// not asserted, card 32494 (error body))
+		// (16.4 also matches "Content-Length" <:> "94")
 		{
-			Description: "unsupported method: DELETE fails",
-			Method:      "DELETE",
-			Query:       "/rpc/sayhello",
-			Status:      405,
+			Description:     "unsupported method: DELETE fails",
+			Method:          "DELETE",
+			Query:           "/rpc/sayhello",
+			Expected:        `{"message":"Cannot use the DELETE method on RPC","code":"PGRST101","details":null,"hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "94", "Content-Type": "application/json; charset=utf-8"},
+			Status:          405,
 		},
 		//   it "PATCH fails" $
 		//     request methodPatch "/rpc/sayhello" [] ""

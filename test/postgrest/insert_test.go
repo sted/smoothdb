@@ -140,7 +140,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("All object keys must match"); card 32494 (error body)
 		{
 			Description:     "rejects json array that isn't exclusivily composed of objects",
 			Method:          "POST",
@@ -148,6 +147,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `[{"id": 100, "body": "xxxxx"}, 123, "xxxx", {"id": 111, "body": "xxxx"}]`,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"All object keys must match","code":"PGRST102","hint":null,"details":null}`,
 			Status:          400,
 		},
 		//       it "rejects json array that has objects with different keys" $
@@ -158,15 +158,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body (code, null hint); card 32494 (error body).
-		// The message is PostgREST's; the body asserted is smoothdb's shape.
 		{
 			Description:     "rejects json array that has objects with different keys",
 			Method:          "POST",
 			Query:           "/articles",
 			Body:            `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
 			Headers:         nil,
-			Expected:        `{"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}`,
+			Expected:        `{"message":"All object keys must match","code":"PGRST102","hint":null,"details":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -406,13 +404,12 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               { matchStatus = 400
 		//               , matchHeaders = [matchContentTypeJson]
 		//               }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description:     "into a table with simple pk fails with 400 and error",
 			Method:          "POST",
 			Query:           "/simple_pk",
 			Body:            `{ "extra":"foo"}`,
-			Expected:        `{"code":"23502","details":"Failing row contains (null, foo).","hint":null,"message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint"}`,
+			Expected:        `{"hint":null,"details":"Failing row contains (null, foo).","code":"23502","message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -558,7 +555,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Content-Length" <:> "80"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("Empty or invalid json"); card 32494 (error body)
 		{
 			Description:     "with invalid json payload fails with 400 and error",
 			Method:          "POST",
@@ -566,6 +562,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `}{ x = 2`,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "with no payload" $
@@ -575,7 +572,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("Empty or invalid json"); card 32494 (error body)
 		{
 			Description:     "with no payload fails with 400 and error",
 			Method:          "POST",
@@ -583,6 +579,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            ``,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "with valid json payload" $
@@ -612,14 +609,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           `shouldRespondWith` [json|{"hint":null,"details":"Key (k)=(xyyx) already exists.","code":"23505","message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}|]
 		//             { matchStatus = 409
 		//             }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "attempting to insert a row with the same primary key",
 			Method:      "POST",
 			Query:       "/simple_pk",
 			Body:        `{ "k":"xyyx", "extra":"e1" }`,
 			Headers:     nil,
-			Expected:    `{"code":"23505","details":"Key (k)=(xyyx) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}`,
+			Expected:    `{"hint":null,"details":"Key (k)=(xyyx) already exists.","code":"23505","message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}`,
 			Status:      409,
 		},
 		//     context "attempting to insert a row with conflicting unique constraint" $
@@ -954,8 +950,8 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST100 code and the parsec position and details; card 32494 (error body).
-		// The message prefix is PostgREST's; the body asserted is smoothdb's shape.
+		// @@ partly asserted: the code and the message prefix are PostgREST's;
+		// the parsec quotes, position and expected list are not.
 		{
 			Description: "disallows blank ?columns",
 			Method:      "POST",
@@ -974,8 +970,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body (code, null hint); card 32494 (error body).
-		// The message is PostgREST's; the body asserted is smoothdb's shape.
 		{
 			Description: "disallows ?columns which don't exist",
 			Method:      "POST",
@@ -994,12 +988,12 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 404
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST205 error body; card 32494 (error body)
 		{
 			Description: "returns missing table error even if also has invalid ?columns",
 			Method:      "POST",
 			Query:       "/garlic?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"}`,
 			Status:      404,
 		},
 		// @@ added: an unknown embed in the select of the representation is
@@ -1174,7 +1168,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               }
 		// @@ missing=default is not implemented: with ?columns= a key absent from an
 		// object is inserted as NULL, which the generated column refuses all the same
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "fails with a good error message on generated always columns",
 			Method:      "POST",
@@ -1436,7 +1429,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body; card 32494 (error body)
 		{
 			Description:     "with wrong number of columns fails for too few",
 			Method:          "POST",
@@ -1444,6 +1436,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            "a,b\nfoo,bar\nbaz",
 			Headers:         test.Headers{"Content-Type": {"text/csv"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"All lines must have same number of fields","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//   describe "Row level permission" $
@@ -1536,14 +1529,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           { matchStatus = 401
 		//           , matchHeaders = []
 		//           }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "table with limited privileges fails inserting if more columns are selected",
 			Method:      "POST",
 			Query:       "/limited_article_stars?select=article_id,user_id,created_at",
 			Body:        `{"article_id": 2, "user_id": 2}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    ``,
+			Expected:    `{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}`,
 			Status:      401,
 		},
 		//     it "fails inserting if select is not specified" $
@@ -1556,13 +1548,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           { matchStatus = 401
 		//           , matchHeaders = []
 		//           }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "table with limited privileges fails inserting if select is not specified",
 			Method:      "POST",
 			Query:       "/limited_article_stars",
 			Body:        `{"article_id": 3, "user_id": 1}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}`,
 			Status:      401,
 		},
 		//     it "can insert in a table with no select and return=minimal" $ do
@@ -1805,7 +1797,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body; card 32494 (error body)
 		{
 			Description:     "data representations fail without parsing anything if a ?columns column doesn't exist",
 			Method:          "POST",
@@ -1813,6 +1804,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00+00", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos' in the schema cache"}`,
 			Status:          400,
 		},
 		//     context "on updatable view" $ do
@@ -1928,7 +1920,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body; card 32494 (error body)
 		{
 			Description:     "data representations on an updatable view fail without parsing anything if a ?columns column doesn't exist",
 			Method:          "POST",
@@ -1936,6 +1927,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00+00", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos_computed' in the schema cache"}`,
 			Status:          400,
 		},
 		// @@ added

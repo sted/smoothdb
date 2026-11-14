@@ -74,10 +74,6 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
@@ -85,7 +81,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
 			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -239,10 +235,6 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
@@ -250,7 +242,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
 			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -590,10 +582,6 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
@@ -601,7 +589,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
 			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -941,10 +929,6 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
@@ -952,7 +936,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
 			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		// it "refuses a range requesting start past last item" $
