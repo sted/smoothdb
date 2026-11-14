@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-**PostgREST 16.4 spec cases: 1454 run, 292 skipped (83.3%)**
+**PostgREST 16.4 spec cases: 1535 run, 429 skipped (78.2%)**
 
 ### Added
 * **PostgREST error body** — errors answer `{code, details, hint, message}` with PostgREST's PGRST codes, messages, `Proxy-Status` and "Perhaps you meant" hints; the `subsystem` and `position` keys are removed.
@@ -23,6 +23,7 @@
 * **Single object on writes and calls** — `vnd.pgrst.object` refuses zero or many rows with 406 PGRST116 and rolls the write back, also without `return=representation`.
 * **Upsert status** — a merge-duplicates insert that creates no row answers 200; `POST []` runs the insert.
 * **Spaces in logic trees** — `and ( … )` and `or ( … )` with spaces before the parenthesis are accepted, as in PostgREST.
+* **Invalid paths** — a path with more segments than a table or `/rpc/name` answers 404 PGRST125, after the token check and with no connection.
 * **PGRST205 and PGRST202 after PostgreSQL** — smoothdb decides them only after PostgreSQL fails, so a table or function created after the schema cache load still works (PostgREST answers from its cache alone).
 
 ## 0.12.0 - 2026-11-13

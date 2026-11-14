@@ -3134,7 +3134,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: PGRST202 for a function with an unnamed int parameter, which PostgREST leaves out of its cache; needs card 32489 (rpc params)",
 		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/plain is specified" $
@@ -3381,7 +3380,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: PGRST202 when only the single unnamed parameter overloads remain; needs card 32489 (rpc params)",
 		},
 
 		//     it "should fail with multiple choices when two fallback functions with single unnamed json and jsonb parameters exist" $ do
