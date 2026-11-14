@@ -1643,6 +1643,34 @@ func TestPostgREST_Update(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*", "Content-Location": ""},
 			Status:          204,
 		},
+		{
+			Description:     "an empty body with return=minimal reads no column: a table with column privileges",
+			Method:          "PATCH",
+			Query:           "/app_users?id=eq.1",
+			Body:            `{}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          204,
+		},
+		{
+			Description:     "an empty body with return=minimal ignores the select",
+			Method:          "PATCH",
+			Query:           "/app_users?id=eq.1&select=nope",
+			Body:            `{}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          204,
+		},
+		{
+			Description:     "count=planned is listed in Preference-Applied, and a write does not count",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.1",
+			Body:            `{"id": 1}`,
+			Headers:         test.Headers{"Prefer": {"count=planned"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*", "Preference-Applied": "count=planned"},
+			Status:          204,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

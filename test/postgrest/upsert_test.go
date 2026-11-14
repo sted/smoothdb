@@ -1326,6 +1326,30 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "", "Content-Location": ""},
 			Status:          204,
 		},
+		{
+			Description: "PUT with return=headers-only returns the selected columns: an unknown one is refused",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?name=eq.Java&select=nope",
+			Body:        `{"name": "Java", "rank": 1}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description: "PUT refuses its filters before it negotiates the media type",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?rank=eq.1",
+			Body:        `{"name": "Java", "rank": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      405,
+		},
+		{
+			Description:   "PUT accepts offset=00, the whole range",
+			Method:        "PUT",
+			Query:         "/tiobe_pls?name=eq.Java&offset=00",
+			Body:          `{"name": "Java", "rank": 1}`,
+			ExpectedEmpty: true,
+			Status:        204,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

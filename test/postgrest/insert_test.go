@@ -2053,6 +2053,32 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:        `[]`,
 			Status:      200,
 		},
+		{
+			Description: "return=headers-only resolves the embeds of a star select: an unknown one is refused",
+			Method:      "POST",
+			Query:       "/items?select=*,missing(*)",
+			Body:        `{"id": 9201}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description:     "return=headers-only accepts a spread of a one-to-many embed",
+			Method:          "POST",
+			Query:           "/factories?select=name,...processes(name)",
+			Body:            `{"id": 9301, "name": "f"}`,
+			Headers:         test.Headers{"Prefer": {"return=headers-only"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Location": "/factories?id=eq.9301"},
+			Status:          201,
+		},
+		{
+			Description: "an unknown embed wins over an Accept that no handler serves",
+			Method:      "POST",
+			Query:       "/items?select=*,missing(*)",
+			Body:        `{"id": 9202}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      400,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
