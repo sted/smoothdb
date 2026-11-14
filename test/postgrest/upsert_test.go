@@ -30,7 +30,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on pk conflict",
 			Method:          "POST",
@@ -38,7 +37,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "name": "Javascript", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
 			Expected:        `[{ "name": "Javascript", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "UPDATEs rows on pk conflict" $
@@ -68,7 +67,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[{ "name": "Python", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
 		},
 		//       it "INSERTs and UPDATEs row on composite pk conflict" $
 		//         request
@@ -124,7 +122,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on composite pk conflict for partitioned tables",
 			Method:          "POST",
@@ -132,7 +129,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "name": "Murcielago", "year": 2001, "car_brand_name": null}, { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }]`,
 			Expected:        `[{ "name": "Murcielago", "year": 2001, "car_brand_name": null}, { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds when the payload has no elements" $
@@ -154,7 +151,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
 		},
 		//       it "INSERTs and UPDATEs rows on single unique key conflict" $
 		//         request
@@ -172,7 +168,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on single unique key conflict",
 			Method:          "POST",
@@ -180,7 +175,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }]`,
 			Expected:        `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows on compound unique keys conflict" $
@@ -199,7 +194,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
 			Method:          "POST",
@@ -207,7 +201,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }]`,
 			Expected:        `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		// @@added - with quotes
@@ -314,7 +308,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , matchContentTypeJson
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates succeeds if the table has only PK cols and no other cols",
 			Method:          "POST",
@@ -322,7 +315,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
 			Expected:        `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK" $
@@ -338,7 +331,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK",
 			Method:          "POST",
@@ -346,7 +338,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[ { "a": "1", "b": "0" } ]`,
 			Expected:        `[ { "a": "1", "b": "0" } ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//
@@ -366,7 +358,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates INSERTs and ignores rows on pk conflict",
 			Method:          "POST",
@@ -374,7 +365,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[{ "name": "PHP", "rank": 9 }, { "name": "Python", "rank": 10 }]`,
 			Expected:        `[{ "name": "PHP", "rank": 9 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and ignores rows on composite pk conflict" $
@@ -429,7 +420,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates INSERTs and ignores rows on composite pk conflict for partitioned tables",
 			Method:          "POST",
@@ -437,7 +427,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[{ "name": "Murcielago", "year": 2001, "car_brand_name": "Ferrari" }, { "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }]`,
 			Expected:        `[{ "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and ignores rows on single unique key conflict" $
@@ -457,15 +447,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with POST ignore-duplicates INSERTs and ignores rows on single unique key conflict",
-			Method:      "POST",
-			Query:       "/single_unique?on_conflict=unique_key",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
-			Expected:    `[{ "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
-			Status:      201,
+			Description:     "with POST ignore-duplicates INSERTs and ignores rows on single unique key conflict",
+			Method:          "POST",
+			Query:           "/single_unique?on_conflict=unique_key",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
+			Expected:        `[{ "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows on compound unique keys conflict" $
 		//         request
@@ -484,15 +474,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with POST ignore-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
-			Method:      "POST",
-			Query:       "/compound_unique?on_conflict=key1,key2",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
-			Expected:    `[{ "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
-			Status:      201,
+			Description:     "with POST ignore-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
+			Method:          "POST",
+			Query:           "/compound_unique?on_conflict=key1,key2",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
+			Expected:        `[{ "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows with SERIAL surrogate primary keys using Prefer: missing=default" $
 		//         request
@@ -585,7 +575,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , matchContentTypeJson
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates succeeds if the table has only PK cols and no other cols",
 			Method:          "POST",
@@ -593,7 +582,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[ { "id": 1 }, { "id": 2 }, { "id": 3} ]`,
 			Expected:        `[ { "id": 3} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds if not a single resource is created" $ do
@@ -1161,15 +1150,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 201
 		//           , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation"]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with a camel case pk column works with POST and merge-duplicates",
-			Method:      "POST",
-			Query:       "/UnitTest",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
-			Body:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Expected:    `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Status:      201,
+			Description:     "with a camel case pk column works with POST and merge-duplicates",
+			Method:          "POST",
+			Query:           "/UnitTest",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Body:            `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			Expected:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=merge-duplicates, return=representation"},
+			Status:          201,
 		},
 		//     it "works with POST and ignore-duplicates headers" $ do
 		//       request
@@ -1186,15 +1175,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 201
 		//           , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with a camel case pk column works with POST and ignore-duplicates headers",
-			Method:      "POST",
-			Query:       "/UnitTest",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Expected:    `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Status:      201,
+			Description:     "with a camel case pk column works with POST and ignore-duplicates headers",
+			Method:          "POST",
+			Query:           "/UnitTest",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			Expected:        `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//     it "works with PUT" $ do
 		//       put
@@ -1303,17 +1292,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
-		},
-		// @@ added: the same request, its ordering asserted without the status (see the skip above)
-		{
-			Description:     "with ordering works with batch upserts and embedded resource, status not asserted",
-			Method:          "POST",
-			Query:           "/artists?select=id,name,albums(title)&order=id.desc",
-			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
-			Body:            `[{ "id": 1, "name": "duster-updated" }, { "id": 2, "name": "bcnr-updated" }]`,
-			Expected:        `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 	}
 

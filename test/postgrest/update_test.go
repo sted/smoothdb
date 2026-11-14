@@ -125,7 +125,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Content-Range" <:> "0-0/*"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* (smoothdb answers */*); card 32479 (write headers)
 		{
 			Description:     "in a nonempty table can update a single item",
 			Method:          "PATCH",
@@ -133,7 +132,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id":42 }`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "0-0/*"},
 			Status:          204,
 		},
 		//       it "returns empty array when no rows updated and return=rep" $
@@ -149,7 +148,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Content-Length" <:> "2"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "returns empty array when no rows updated and return=rep",
 			Method:          "PATCH",
@@ -157,7 +155,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id":999999 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[]`,
-			ExpectedHeaders: map[string]string{"Content-Length": "2"},
+			ExpectedHeaders: map[string]string{"Content-Length": "2", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "returns status code 200 when no rows updated" $
@@ -189,15 +187,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "returns updated object as array when return=rep",
-			Method:      "PATCH",
-			Query:       "/items?id=eq.2",
-			Body:        `{ "id":2 }`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{"id":2}]`,
-			Status:      200,
+			Description:     "returns updated object as array when return=rep",
+			Method:          "PATCH",
+			Query:           "/items?id=eq.2",
+			Body:            `{ "id":2 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*", "Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//       it "can update multiple items" $ do
 		//         get "/no_pk?select=a&b=eq.1"
@@ -223,7 +221,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Preference-Applied" <:> "tx=commit"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-1/* and Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can update multiple items",
 			Method:          "PATCH",
@@ -231,7 +228,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "b": "1" }`,
 			Headers:         test.Headers{"Prefer": {"tx=commit"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "0-1/*", "Preference-Applied": "tx=commit"},
 			Status:          204,
 		},
 		//         -- check it really got updated
@@ -299,7 +296,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "filtering by a computed column is successful",
 			Method:          "PATCH",
@@ -307,7 +303,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 100 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "id": 100 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//         it "returns empty array when no rows updated and return=rep" $
@@ -320,15 +316,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               { matchStatus = 200
 		//               , matchHeaders = ["Preference-Applied" <:> "return=representation"]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "filtering by a computed column returns empty array when no rows updated and return=rep",
-			Method:      "PATCH",
-			Query:       "/items?always_true=eq.false",
-			Body:        `{ "id": 100 }`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "filtering by a computed column returns empty array when no rows updated and return=rep",
+			Method:          "PATCH",
+			Query:           "/items?always_true=eq.false",
+			Body:            `{ "id": 100 }`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//       context "with representation requested" $ do
 		//         it "can provide a representation" $ do
@@ -351,7 +347,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//           void $ request methodPatch "/items?id=eq.99" [] [json| { "id":1 } |]
 		// @@ the setup POST and the restoring PATCH are not ported: their answers
 		// are not asserted upstream, and every request here rolls back
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with representation requested can provide a representation",
 			Method:          "PATCH",
@@ -359,7 +354,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 99 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"id":99}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//         it "can return computed columns" $
@@ -374,7 +369,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can return computed columns",
 			Method:          "PATCH",
@@ -382,7 +376,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 1 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "id": 1, "always_true": true }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//         it "can select overloaded computed columns" $ do
@@ -397,7 +391,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can select overloaded computed columns",
 			Method:          "PATCH",
@@ -405,7 +398,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 1 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "id": 1, "computed_overload": true }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//           request
@@ -419,7 +412,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can select overloaded computed columns (items2)",
 			Method:          "PATCH",
@@ -427,7 +419,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 1 }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "id": 1, "computed_overload": true }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "ignores ?select= when return not set or return=minimal" $ do
@@ -445,7 +437,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "ignores ?select= when return not set or return=minimal",
 			Method:          "PATCH",
@@ -453,7 +444,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 1 }`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "0-0/*", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//         request
@@ -470,7 +461,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Content-Range 0-0/* and Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "ignores ?select= when return not set or return=minimal (repeated)",
 			Method:          "PATCH",
@@ -478,7 +468,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "id": 1 }`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "0-0/*", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		// @@ added: the "return not set" half of the case, which older spec
@@ -508,7 +498,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select=",
 			Method:          "PATCH",
@@ -516,7 +505,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{}`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//           request
@@ -532,7 +521,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select= (empty array)",
 			Method:          "PATCH",
@@ -540,7 +528,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `[]`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//           request
@@ -556,7 +544,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "when patching with an empty body makes no updates and returns 204 without return= and without ?select= (array of empty object)",
 			Method:          "PATCH",
@@ -564,7 +551,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `[{}]`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//         it "makes no updates and returns 204 without return= and with ?select=" $ do
@@ -581,7 +568,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "makes no updates and returns 204 without return= and with ?select=",
 			Method:          "PATCH",
@@ -589,7 +575,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{}`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//           request
@@ -605,7 +591,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "makes no updates and returns 204 without return= and with ?select= (empty array)",
 			Method:          "PATCH",
@@ -613,7 +598,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `[]`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//           request
@@ -629,7 +614,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Content-Range" <:> "*/*"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op); card 32479 (write headers)
 		{
 			Description:     "makes no updates and returns 204 without return= and with ?select= (array of empty object)",
 			Method:          "PATCH",
@@ -637,7 +621,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `[{}]`,
 			Headers:         nil,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
 			Status:          204,
 		},
 		//         it "makes no updates and returns 200 with return=rep and without ?select=" $
@@ -649,15 +633,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "makes no updates and returns 200 with return=rep and without ?select=",
-			Method:      "PATCH",
-			Query:       "/items",
-			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "makes no updates and returns 200 with return=rep and without ?select=",
+			Method:          "PATCH",
+			Query:           "/items",
+			Body:            `{}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*", "Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//         it "makes no updates and returns 200 with return=rep and with ?select=" $
 		//           request methodPatch "/items?select=id" [("Prefer", "return=representation")] [json| {} |]
@@ -668,15 +652,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "makes no updates and returns 200 with return=rep and with ?select=",
-			Method:      "PATCH",
-			Query:       "/items?select=id",
-			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "makes no updates and returns 200 with return=rep and with ?select=",
+			Method:          "PATCH",
+			Query:           "/items?select=id",
+			Body:            `{}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*", "Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//         it "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns" $
 		//           request methodPatch "/items?select=id,computed_overload" [("Prefer", "return=representation")] [json| {} |]
@@ -687,15 +671,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Content-Range */* (smoothdb sends none on the empty-body no-op) and Preference-Applied; card 32479 (write headers)
 		{
-			Description: "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns",
-			Method:      "PATCH",
-			Query:       "/items?select=id,computed_overload",
-			Body:        `{}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "makes no updates and returns 200 with return=rep and with ?select= for overloaded computed columns",
+			Method:          "PATCH",
+			Query:           "/items?select=id,computed_overload",
+			Body:            `{}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*", "Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//     context "with unicode values" $
 		//       it "succeeds and returns values intact" $ do
@@ -895,15 +879,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "bit and char columns with length: should update a bit column with length",
-			Method:      "PATCH",
-			Query:       "/bitchar_with_length?select=bit,char&char=eq.aaaaa",
-			Body:        `{"bit": "11100"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "bit": "11100", "char": "aaaaa" }]`,
-			Status:      200,
+			Description:     "bit and char columns with length: should update a bit column with length",
+			Method:          "PATCH",
+			Query:           "/bitchar_with_length?select=bit,char&char=eq.aaaaa",
+			Body:            `{"bit": "11100"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "bit": "11100", "char": "aaaaa" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		//       it "should update a char column with length" $
 		//         request
@@ -915,15 +899,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = ["Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "bit and char columns with length: should update a char column with length",
-			Method:      "PATCH",
-			Query:       "/bitchar_with_length?select=bit,char&bit=eq.00000",
-			Body:        `{"char": "zzzyy"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `[{ "bit": "00000", "char": "zzzyy" }]`,
-			Status:      200,
+			Description:     "bit and char columns with length: should update a char column with length",
+			Method:          "PATCH",
+			Query:           "/bitchar_with_length?select=bit,char&bit=eq.00000",
+			Body:            `{"char": "zzzyy"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{ "bit": "00000", "char": "zzzyy" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "return=representation"},
+			Status:          200,
 		},
 		// @@ added: no upstream case selects a range column whose bounds
 		// PostgreSQL quotes (contract.time is a tsrange); the body is the
@@ -951,7 +935,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "tables with self reference foreign keys embeds children after update",
 			Method:          "PATCH",
@@ -959,7 +942,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "tardis-patched"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with ordering on top-level resource" $
@@ -976,7 +959,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds children after update with ordering on top-level resource",
 			Method:      "PATCH",
@@ -986,7 +968,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected: `[ { "a": null, "b": "1" },
 			              { "a": "2", "b": "1" },
 			              { "a": "1", "b": "1" } ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with filters" $
@@ -1001,7 +983,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "tables with self reference foreign keys embeds children after update with filters",
 			Method:          "PATCH",
@@ -1009,7 +990,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "tardis-patched"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//     context "embeds parent, children and grandchildren after update" $ do
@@ -1034,7 +1015,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds parent, children and grandchildren after update",
 			Method:      "PATCH",
@@ -1053,7 +1033,7 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ] `,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with filters" $
@@ -1076,7 +1056,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds parent, children and grandchildren after update with filters",
 			Method:      "PATCH",
@@ -1094,7 +1073,7 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ] `,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//     context "embeds children after update without explicitly including the id in the ?select" $ do
@@ -1110,7 +1089,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "embeds children after update without explicitly including the id in the ?select",
 			Method:          "PATCH",
@@ -1118,7 +1096,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "tardis-patched"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "name": "tardis-patched", "web_content": [ { "name": "fezz" }, { "name": "foo" }, { "name": "bar" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with filters" $
@@ -1133,7 +1111,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "embeds children after update without explicitly including the id in the ?select with filters",
 			Method:          "PATCH",
@@ -1141,7 +1118,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "tardis-patched"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "name": "tardis-patched", "web_content": [ { "name": "bar" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//   context "tables with foreign keys referencing other tables" $ do
@@ -1166,7 +1143,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an M2M relationship plus parent after update",
 			Method:      "PATCH",
@@ -1184,7 +1160,7 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with filters" $
@@ -1205,7 +1181,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an M2M relationship plus parent after update with filters",
 			Method:      "PATCH",
@@ -1221,7 +1196,7 @@ func TestPostgREST_Update(t *testing.T) {
 				            ]
 				          }
 				        ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//     context "embeds an O2O relationship after update" $ do
@@ -1240,7 +1215,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an O2O relationship after update",
 			Method:      "PATCH",
@@ -1253,7 +1227,7 @@ func TestPostgREST_Update(t *testing.T) {
 				             "students_info":{"address":"Street 1"}
 				           }
 				         ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//         request
@@ -1270,7 +1244,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "embeds an O2O relationship after update (from the other side)",
 			Method:      "PATCH",
@@ -1283,7 +1256,7 @@ func TestPostgREST_Update(t *testing.T) {
 				             "students":{"name": "John Doe"}
 				           }
 				         ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//       it "with filters" $ do
@@ -1301,7 +1274,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "embeds an O2O relationship after update with filters",
 			Method:          "PATCH",
@@ -1309,7 +1281,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "Johnny Doe"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"name": "Johnny Doe", "students_info": null}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//   context "table with limited privileges" $ do
@@ -1327,7 +1299,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , "Preference-Applied" <:> "return=minimal"
 		//               ]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "table with limited privileges succeeds updating row and gives a 204 when using return=minimal",
 			Method:          "PATCH",
@@ -1335,7 +1306,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{ "password": "passxyz" }`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//     it "can update without return=minimal and no explicit select" $
@@ -1599,7 +1570,6 @@ func TestPostgREST_Update(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with ordering works with request method PATCH and embedded resource",
 			Method:          "PATCH",
@@ -1607,7 +1577,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"name": "tardis-patched"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "id": 0, "name": "tardis-patched", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		// @@ added

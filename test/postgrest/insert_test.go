@@ -59,7 +59,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "filters columns in result using &select",
 			Method:      "POST",
@@ -71,7 +70,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				 	}]`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"integer":14,"varchar":"testing!"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "37"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "37", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//       it "ignores &select when return not set or using return=minimal" $ do
@@ -118,7 +117,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "ignores &select when return not set or using return=minimal",
 			Method:      "POST",
@@ -130,7 +128,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				 	}]`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Preference-Applied": "return=minimal"},
 			Status:          201,
 		},
 		//     context "non uniform json array" $ do
@@ -188,7 +186,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation, count=exact"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "requesting full representation includes related data after insert",
 			Method:          "POST",
@@ -196,7 +193,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":6,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
 			Expected:        `[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/1"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/1", "Preference-Applied": "return=representation, count=exact"},
 			Status:          201,
 		},
 		//       it "can rename and cast the selected columns" $
@@ -214,7 +211,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can rename and cast the selected columns",
 			Method:          "POST",
@@ -222,7 +218,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":7,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"pId":"7","pName":"New Project","cId":"2"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//       it "should not throw and return location header when selecting without PK" $
@@ -240,7 +236,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "should not throw and return location header when selecting without PK",
 			Method:          "POST",
@@ -248,7 +243,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":10,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"name":"New Project","client_id":2}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//     context "requesting headers only representation" $ do
@@ -277,7 +272,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/projects?id=eq.11", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       it "should not throw and return location header for partitioned tables when selecting without PK" $
 		//         request
@@ -304,7 +298,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/car_models?name=eq.Enzo&year=eq.2021", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//     context "requesting no representation" $
 		//       it "should not throw and return no location header when selecting without PK" $
@@ -372,7 +365,7 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                   , matchHeaderAbsent hContentLength
 		//                   ]
 		//               }
-		// @@ the reset only prepares the Location of the next request: skipped with it
+		// @@ the reset prepares the Location of the next request
 		{
 			Description:     "into a table with auto-incrementing pk: reset the sequence",
 			Method:          "POST",
@@ -382,7 +375,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//           request
 		//             methodPost
@@ -407,7 +399,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0", "Location": "/auto_incrementing_pk?id=eq.2", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       context "into a table with simple pk" $
 		//         it "fails with 400 and error" $
@@ -461,7 +452,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "returns full details of inserted record if asked",
 			Method:          "POST",
@@ -469,7 +459,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{ "a":"bar", "b":"baz" }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "a":"bar", "b":"baz" }]`,
-			ExpectedHeaders: map[string]string{"Location": ""},
+			ExpectedHeaders: map[string]string{"Location": "", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//         it "returns empty array when no items inserted, and return=rep" $ do
@@ -1333,14 +1323,12 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Location": "/simple_pk2?k=eq.%E5%9C%8D%E6%A3%8B"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		{
 			Description: "with unicode values the location header is usable by a GET",
 			Query:       "/simple_pk2?k=eq.%E5%9C%8D%E6%A3%8B",
 			Expected:    `[ { "k":"圍棋", "extra":"￥" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		{
 			Description:     "with unicode values the location header is usable by a DELETE",
@@ -1350,7 +1338,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//   describe "CSV insert" $ do
 		//     context "disparate csv types" $
@@ -1593,7 +1580,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               , "Preference-Applied" <:> "return=minimal"
 		//               ]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can insert in a table with no select and return=minimal",
 			Method:          "POST",
@@ -1601,7 +1587,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{ "v":"some value" }`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0"},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0", "Preference-Applied": "return=minimal"},
 			Status:          201,
 		},
 		//   describe "Inserting into VIEWs" $ do
@@ -1652,7 +1638,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/with_multiple_pks?pk1=eq.1&pk2=eq.2", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//     context "requesting header only representation" $ do
 		//       it "returns a location header with a composite PK col" $
@@ -1680,7 +1665,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/compound_pk_view?k1=eq.1&k2=eq.test", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       it "should not throw and return location header when a PK is null" $
 		//         request
@@ -1707,7 +1691,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/test_null_pk_competitors_sponsors?id=eq.1&sponsor_id=is.null", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//   describe "Data representations" $ do
 		//     context "on regular table" $ do

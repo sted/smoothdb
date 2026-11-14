@@ -116,7 +116,6 @@ func TestPostgREST_Singular(t *testing.T) {
 		//               , "Preference-Applied" <:> "return=minimal"
 		//               ]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "when updating rows works for one row with return=minimal",
 			Method:          "PATCH",
@@ -124,7 +123,7 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=minimal"}},
 			Body:            `{ "address": "C Street" }`,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//     it "raises an error for multiple rows" $ do
@@ -144,7 +143,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
 			Body:        `{ "address": "zzz" }`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//       -- the rows should not be updated, either
 		//       get "/addresses?id=eq.1"
@@ -155,7 +153,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Query:       "/addresses?id=eq.1",
 			Expected:    `[{"id":1,"address":"address 1"}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//     it "raises an error for multiple rows with return=rep" $ do
 		//       request
@@ -203,7 +200,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
 			Body:        `{"id":1}`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses zero rows (406, PGRST116); no card",
 		},
 		//     it "raises an error for zero rows with return=rep" $
 		//       request
@@ -260,7 +256,6 @@ func TestPostgREST_Singular(t *testing.T) {
 		//               , "Preference-Applied" <:> "return=minimal"
 		//               ]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "when creating rows works for one row with return=minimal",
 			Method:          "POST",
@@ -268,7 +263,7 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=minimal"}},
 			Body:            `[ { "id": 103, "address": "xxx" } ]`,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Range": "*/*", "Preference-Applied": "return=minimal"},
 			Status:          201,
 		},
 		//     it "raises an error when attempting to create multiple entities" $ do
@@ -288,7 +283,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
 			Body:        `[ { "id": 200, "address": "xxx" }, { "id": 201, "address": "yyy" } ]`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//       -- the rows should not exist, either
 		//       get "/addresses?id=eq.200"
@@ -299,7 +293,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Query:       "/addresses?id=eq.200",
 			Expected:    `[]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//     it "raises an error when attempting to create multiple entities with return=rep" $ do
 		//       request
@@ -347,7 +340,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=minimal"}},
 			Body:        `[ { "id": 204, "address": "xxx" }, { "id": 205, "address": "yyy" } ]`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//       -- the rows should not exist, either
 		//       get "/addresses?id=eq.204"
@@ -358,7 +350,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Query:       "/addresses?id=eq.204",
 			Expected:    `[]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//     it "raises an error when creating zero entities" $
 		//       request
@@ -377,7 +368,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
 			Body:        `[ ]`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses zero rows (406, PGRST116); no card",
 		},
 		//     it "raises an error when creating zero entities with return=rep" $
 		//       request
@@ -396,7 +386,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
 			Body:        `[ ]`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a POST of zero rows refuses it (406, PGRST116), smoothdb answers 201 with an empty body; no card",
 		},
 		//
 		//   context "when deleting rows" $ do
@@ -448,7 +437,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Query:       "/items?id=gt.0&id=lt.6",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//       -- the rows should still exist
 		//       get "/items?id=gt.0&id=lt.6&order=id"
@@ -463,7 +451,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Expected:        `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5}]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "0-4/*"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses more than one row (406, PGRST116) and rolls back; no card",
 		},
 		//     it "raises an error when attempting to delete multiple entities with return=rep" $ do
 		//       request
@@ -513,7 +500,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Query:       "/items?id=lt.0",
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on a write without return=representation still refuses zero rows (406, PGRST116); no card",
 		},
 		//     it "raises an error when deleting zero entities with return=rep" $
 		//       request
