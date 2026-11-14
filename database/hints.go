@@ -1,10 +1,63 @@
 package database
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// maxTablesForFuzzySearch is PostgREST's maxDbTablesForFuzzySearch: a schema
+// with as many tables gets no hint.
+const maxTablesForFuzzySearch = 500
+
+// TableNotFound returns PostgREST's TableNotFound error (PGRST205) when err
+// is the undefined_table error (42P01) of the relation that the request
+// names, and err otherwise. smoothdb runs the request even when the cache
+// does not hold the relation, because the relation can be newer than the
+// cache.
+func TableNotFound(ctx context.Context, table string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "42P01" {
+		return err
+	}
+	gi := GetSmoothContext(ctx)
+	schema, name := splitTableName(_s(table, gi.QueryOptions.Schema))
+	if pgErr.Message != `relation "`+schema+"."+name+`" does not exist` {
+		return err
+	}
+	return &RequestError{
+		Status:  http.StatusNotFound,
+		Code:    "PGRST205",
+		Message: "Could not find the table '" + schema + "." + name + "' in the schema cache",
+		Hint:    gi.Db.info.Load().tableNotFoundHint(schema, name),
+	}
+}
+
+// tableNotFoundHint is PostgREST's tableNotFoundHint (Error.hs): the closest
+// table of the schema.
+func (si *SchemaInfo) tableNotFoundHint(schema, name string) string {
+	if si == nil {
+		return ""
+	}
+	var tables []string
+	for qualified := range si.cachedTables {
+		if s, t := splitTableName(qualified); s == schema {
+			tables = append(tables, t)
+		}
+	}
+	if len(tables) >= maxTablesForFuzzySearch {
+		return ""
+	}
+	slices.Sort(tables)
+	if found, ok := newFuzzySet(tables).getOne(name, 0.75); ok {
+		return "Perhaps you meant the table '" + schema + "." + found + "'"
+	}
+	return ""
+}
 
 // functionIndex lists the functions of the database by name, for the
 // PGRST202 error of a call that no function can take (see noRpc).

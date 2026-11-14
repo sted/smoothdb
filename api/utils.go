@@ -331,15 +331,25 @@ func decodeJSONRecords(body []byte) ([]database.Record, error) {
 	if jsonIsArray(body) {
 		var records []database.Record
 		if err := decoder.Decode(&records); err != nil {
-			return nil, err
+			return nil, jsonBodyError(body)
 		}
 		return records, nil
 	}
 	var record database.Record
 	if err := decoder.Decode(&record); err != nil {
-		return nil, err
+		return nil, jsonBodyError(body)
 	}
 	return []database.Record{record}, nil
+}
+
+// jsonBodyError is PostgREST's InvalidBody (PGRST102) for a JSON body that
+// does not decode to records: a body that is not JSON, or JSON that is not
+// an object or an array of objects (Payload.hs, getPayload).
+func jsonBodyError(body []byte) error {
+	if json.Valid(body) {
+		return database.InvalidBody("All object keys must match")
+	}
+	return database.InvalidBody("Empty or invalid json")
 }
 
 // readInputRecords is the low-level function to read and convert the data in the request body.
@@ -363,13 +373,20 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 	case "text/csv":
 		reader := csv.NewReader(r.Body)
 		csvData, err := reader.ReadAll()
+		if errors.Is(err, csv.ErrFieldCount) {
+			return nil, nil, database.InvalidBody("All lines must have same number of fields")
+		}
+		var parseErr *csv.ParseError
+		if errors.As(err, &parseErr) {
+			return nil, nil, database.InvalidBody(err.Error())
+		}
 		if err != nil {
 			return nil, nil, err
 		}
 
 		if len(csvData) == 0 {
 			// no header: PostgREST answers 400 (PGRST102) with the parser's message
-			return nil, nil, errors.New(`parse error (not enough input) at ""`)
+			return nil, nil, database.InvalidBody(`parse error (not enough input) at ""`)
 		}
 		// Assuming the first row contains headers
 		headers := csvData[0]
@@ -437,7 +454,11 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 		// read input records
 		records, jsonBody, err = readInputRecords(r, ctype)
 		if err != nil {
-			status, err = WriteBadRequest(w, err)
+			if rerr, ok := err.(*database.RequestError); ok {
+				status, err = writeRequestError(w, rerr)
+			} else {
+				status, err = WriteBadRequest(w, err)
+			}
 			return
 		}
 	}

@@ -35,7 +35,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err == nil {
 			return writeRead(c, w, r, json, count)
 		} else {
-			return WriteError(w, err)
+			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
 	})
 
@@ -47,7 +47,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		}
 		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
 		if err != nil {
-			return WriteError(w, err)
+			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
 		SetResponseHeaders(c, w, r, count)
 		options := database.GetQueryOptions(c)
@@ -121,7 +121,7 @@ func InitSourcesRouter(apiHelper Helper) {
 				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
-			return WriteError(w, err)
+			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
 	})
 
@@ -136,7 +136,7 @@ func InitSourcesRouter(apiHelper Helper) {
 				return WriteContent(c, w, http.StatusOK, data)
 			}
 		} else {
-			return WriteError(w, err)
+			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
 	})
 
