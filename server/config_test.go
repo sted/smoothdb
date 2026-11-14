@@ -49,6 +49,44 @@ func TestVerboseErrorsDefaultsToFalse(t *testing.T) {
 	}
 }
 
+// ErrorVerbosity is normal, verbose or minimal. VerboseErrors true is an alias
+// of verbose, and contradicts any other explicit value.
+func TestCheckConfigErrorVerbosity(t *testing.T) {
+	if got := defaultConfig().ErrorVerbosity; got != "normal" {
+		t.Errorf("default ErrorVerbosity: got %q, want \"normal\"", got)
+	}
+	tests := []struct {
+		verbosity string
+		verbose   bool
+		want      string // "" for a configuration error
+	}{
+		{"normal", false, "normal"},
+		{"verbose", false, "verbose"},
+		{"minimal", false, "minimal"},
+		{"normal", true, "verbose"},
+		{"verbose", true, "verbose"},
+		{"minimal", true, ""},
+		{"bogus", false, ""},
+	}
+	for _, tt := range tests {
+		cfg := defaultConfig()
+		cfg.ErrorVerbosity = tt.verbosity
+		cfg.VerboseErrors = tt.verbose
+		err := checkConfig(cfg)
+		if tt.want == "" {
+			if err == nil || !strings.Contains(err.Error(), "ErrorVerbosity") {
+				t.Errorf("%s, VerboseErrors %v: want an ErrorVerbosity error, got %v", tt.verbosity, tt.verbose, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s, VerboseErrors %v: %v", tt.verbosity, tt.verbose, err)
+		} else if cfg.ErrorVerbosity != tt.want {
+			t.Errorf("%s, VerboseErrors %v: got %q, want %q", tt.verbosity, tt.verbose, cfg.ErrorVerbosity, tt.want)
+		}
+	}
+}
+
 // SessionMode selects how much a session caches: nothing ("none"), the verified
 // claims and the prepared connection ("role"), or the claims only ("claims").
 // Anything else is a configuration error, caught before the JWT secret check.

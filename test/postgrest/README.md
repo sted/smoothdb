@@ -41,9 +41,30 @@ package fails)
 (`SKIP ...` lines). Implementing a behaviour removes its skips and moves the
 number. Run with `-run`, the number covers only the selected tests.
 
+## Spec files that are not ported
+
+smoothdb does not want these features, so their spec files are not ported:
+
+- `Query/CustomMediaSpec.hs`: media type handler functions and custom media types.
+- `Query/PostGISSpec.hs`: GeoJSON output.
+- `Query/Preferences/TimezoneSpec.hs`: `Prefer: timezone=`.
+- `NoSuperuserSpec.hs`: it checks the test environment, not the API.
+
+The planned features are ported as skipped cases, each with the card that
+tracks it (OpenAPI, Server-Timing, the pre-request function,
+`handling` and `max-affected`, `nulls=stripped`).
+
+## Tools
+
+`tools/hspec2go` converts a spec file into Go cases in the format above, and
+its drift mode compares the port with the spec files: values that differ,
+checks the port does not do, quoted text that changed upstream, missing
+cases, and the coverage of the `it` blocks. See `tools/hspec2go/README.md`.
+
 ## Moving the target
 
-To move to a newer PostgREST: compare its `test/spec` with the tag above, port
-the new and changed cases (live or skipped), refresh `fixtures/` from its
+To move to a newer PostgREST: compare its `test/spec` with the tag above (the
+drift mode of `tools/hspec2go` does most of it), port the new and changed
+cases (live or skipped), refresh `fixtures/` from its
 `test/spec/fixtures`, and update `PostgRESTVersion`, this file and the README
 of the project.

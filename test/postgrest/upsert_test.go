@@ -65,7 +65,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "name": "Python", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
 			Expected:        `[{ "name": "Python", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          200,
 		},
 		//       it "INSERTs and UPDATEs row on composite pk conflict" $
@@ -91,7 +91,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "first_name": "Frances M.", "last_name": "Roe", "salary": "30000" }, { "first_name": "Peter S.", "last_name": "Yang", "salary": 42000 }]`,
 			Expected:        `[{ "first_name": "Frances M.", "last_name": "Roe", "salary": "$30,000.00", "company": "One-Up Realty", "occupation": "Author" }, { "first_name": "Peter S.", "last_name": "Yang", "salary": "$42,000.00", "company": null, "occupation": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: a money column is serialized as its text (\"$30,000.00\"), smoothdb answers a number; no card",
 		},
@@ -237,7 +237,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "updated value", "extra": "existing value" }, { "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -264,7 +264,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "updated value", "extra": "existing value" }, { "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -291,7 +291,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "updated value", "extra": "existing value cs" }, { "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -390,7 +390,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[{ "first_name": "Daniel B.", "last_name": "Lyon", "salary": "72000", "company": null, "occupation": null }, { "first_name": "Sara M.", "last_name": "Torpey", "salary": 60000, "company": "Burstein-Applebee", "occupation": "Soil scientist" }]`,
 			Expected:        `[{ "first_name": "Sara M.", "last_name": "Torpey", "salary": "$60,000.00", "company": "Burstein-Applebee", "occupation": "Soil scientist" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: a money column is serialized as its text (\"$60,000.00\"), smoothdb answers a number; no card",
 		},
@@ -506,7 +506,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -532,7 +532,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -558,7 +558,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates", "missing=default"}},
 			Body:            `[{ "id": 1, "name": "updated value" }, { "name": "new value" }]`,
 			Expected:        `[{ "name": "new value", "extra": null }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, missing=default, return=representation"},
 			Status:          201,
 			Skip:            "PostgREST 16.4: Prefer missing=default fills the ?columns keys a row lacks with the column default (smoothdb answers 23502); card 32482 (prefer options)",
 		},
@@ -986,6 +986,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           `shouldRespondWith` [json|{ "name": "Java", "rank": 19 }|]
 		//             { matchHeaders = [matchContentTypeSingular]
 		//             }
+		// @@ not asserted, PostgREST 16.4: Content-Type "application/vnd.pgrst.object+json; charset=utf-8" (smoothdb sends no charset); card 32503 (media types)
 		{
 			Description: "with PUT updating row succeeds if the payload has more than one row, but it only puts the first element",
 			Method:      "PUT",
@@ -1123,6 +1124,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 201
 		//           , matchHeaders = [matchContentTypeSingular]
 		//           }
+		// @@ not asserted, PostgREST 16.4: Content-Type "application/vnd.pgrst.object+json; charset=utf-8" (smoothdb sends no charset); card 32503 (media types)
 		{
 			Description: "with PUT works with return=representation and vnd.pgrst.object+json",
 			Method:      "PUT",
@@ -1231,7 +1233,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			Body:            `[ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]`,
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//       get "/UnitTest?idUnitTest=eq.1"
@@ -1264,7 +1266,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Body:            `{ "id": 0, "name": "tardis-upserted", "p_web_id": 5 }`,
 			Expected:        `[ { "id": 0, "name": "tardis-upserted", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		//     it "works with batch upserts and embedded resource" $

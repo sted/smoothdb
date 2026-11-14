@@ -22,13 +22,14 @@ func TestPostgREST_Update(t *testing.T) {
 		//             , matchHeaders = ["Content-Length" <:> "115"]
 		//             }
 		{
-			Description: "indicates no table found by returning 404",
-			Method:      "PATCH",
-			Query:       "/fake",
-			Body:        `{ "real": false }`,
-			Headers:     nil,
-			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.fake' in the schema cache"}`,
-			Status:      404,
+			Description:     "indicates no table found by returning 404",
+			Method:          "PATCH",
+			Query:           "/fake",
+			Body:            `{ "real": false }`,
+			Headers:         nil,
+			Expected:        `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.fake' in the schema cache"}`,
+			Status:          404,
+			ExpectedHeaders: map[string]string{"Content-Length": "115"},
 		},
 		//     context "on an empty table" $
 		//       it "succeeds with status code 204" $
@@ -70,7 +71,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Query:           "/simple_pk",
 			Body:            `}{ x = 2`,
 			Headers:         nil,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "80"},
 			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
@@ -768,13 +769,14 @@ func TestPostgREST_Update(t *testing.T) {
 		// smoothdb refuses a multi-object PATCH body (see below), so the body
 		// is a single object here and the multi-object case is pinned separately
 		{
-			Description: "returns missing table error even if also has invalid ?columns",
-			Method:      "PATCH",
-			Query:       "/garlic?columns=helicopter",
-			Body:        `[{"id": 204, "body": "yyy"}]`,
-			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"}`,
-			Status:      404,
+			Description:     "returns missing table error even if also has invalid ?columns",
+			Method:          "PATCH",
+			Query:           "/garlic?columns=helicopter",
+			Body:            `[{"id": 204, "body": "yyy"}]`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"}`,
+			Status:          404,
+			ExpectedHeaders: map[string]string{"Content-Length": "117"},
 		},
 		// @@ added: a PATCH body with more than one object is refused with 400
 		// (it used to be a nil dereference, recovered as 500)
@@ -811,14 +813,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
 		//               }
 		{
-			Description: "apply defaults on missing values: updates table using default values(field-with_sep) when json keys are undefined",
-			Method:      "PATCH",
-			Query:       "/complex_items?id=eq.3&columns=name,field-with_sep",
-			Body:        `{"name": "Tres"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
-			Expected:    `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			Description:     "apply defaults on missing values: updates table using default values(field-with_sep) when json keys are undefined",
+			Method:          "PATCH",
+			Query:           "/complex_items?id=eq.3&columns=name,field-with_sep",
+			Body:            `{"name": "Tres"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:        `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			ExpectedHeaders: map[string]string{"Preference-Applied": "missing=default, return=representation"},
 		},
 		//         it "updates table default values(field-with_sep) when json keys are undefined" $ do
 		//           request
@@ -833,14 +836,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
 		//               }
 		{
-			Description: "apply defaults on missing values: updates table default values(field-with_sep) when json keys are undefined",
-			Method:      "PATCH",
-			Query:       "/complex_items?id=eq.3&columns=name,field-with_sep",
-			Body:        `{"name": "Tres"}`,
-			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
-			Expected:    `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			Description:     "apply defaults on missing values: updates table default values(field-with_sep) when json keys are undefined",
+			Method:          "PATCH",
+			Query:           "/complex_items?id=eq.3&columns=name,field-with_sep",
+			Body:            `{"name": "Tres"}`,
+			Headers:         test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:        `[{"id":3,"name":"Tres","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":[1,2,3],"field-with_sep":1}]`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			ExpectedHeaders: map[string]string{"Preference-Applied": "missing=default, return=representation"},
 		},
 		//         it "updates view default values(field-with_sep) when json keys are undefined" $
 		//           request
@@ -857,14 +861,15 @@ func TestPostgREST_Update(t *testing.T) {
 		//               , matchHeaders = ["Preference-Applied" <:> "missing=default, return=representation"]
 		//               }
 		{
-			Description: "apply defaults on missing values: updates view default values(field-with_sep) when json keys are undefined",
-			Method:      "PATCH",
-			Query:       "/complex_items_view?id=eq.3&columns=arr_data,name",
-			Body:        `{"arr_data":null}`,
-			Headers:     test.Headers{"Prefer": {"return=representation", "missing=default"}},
-			Expected:    `[{"id":3,"name":"Default","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":null,"field-with_sep":3}]`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			Description:     "apply defaults on missing values: updates view default values(field-with_sep) when json keys are undefined",
+			Method:          "PATCH",
+			Query:           "/complex_items_view?id=eq.3&columns=arr_data,name",
+			Body:            `{"arr_data":null}`,
+			Headers:         test.Headers{"Prefer": {"return=representation", "missing=default"}},
+			Expected:        `[{"id":3,"name":"Default","settings":{"foo":{"int":1,"bar":"baz"}},"arr_data":null,"field-with_sep":3}]`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: Prefer missing=default sets the ?columns keys absent from the body to their default; card 32482 (prefer options)",
+			ExpectedHeaders: map[string]string{"Preference-Applied": "missing=default, return=representation"},
 		},
 		//     -- https://github.com/PostgREST/postgrest/issues/2861
 		//     context "bit and char columns with length" $ do
@@ -1380,7 +1385,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"label_color": "#221100", "due_at": "2019-01-03T11:00:00Z"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"id":2, "label_color": "#221100"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
 		},
@@ -1405,7 +1410,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"label_color": "#221100", "due_at": "2019-01-03T11:00:20Z"}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:20Z"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
 		},
@@ -1439,7 +1444,7 @@ func TestPostgREST_Update(t *testing.T) {
 				{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880"},
 				{"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880"}
 			]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
 		},
@@ -1472,7 +1477,7 @@ func TestPostgREST_Update(t *testing.T) {
 				{"id":2, "name": "Essay", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"},
 				{"id":3, "name": "Algebra", "label_color": "#221100", "dark_color":"#110880", "due_at":"2019-01-03T11:00:00Z"}
 			]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-2/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: data representations, payload and output values converted through the domain's json casts (smoothdb answers 22P02); no card",
 		},
@@ -1500,7 +1505,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00Z", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"id":2, "name": "Essay", "label_color": "#000100", "dark_color": "#000080", "due_at":"2019-01-03T11:00:00Z"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Range": "0-0/*", "Preference-Applied": "return=representation"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: data representations, output values formatted through the domain's json cast (smoothdb answers label_color 256); no card",
 		},

@@ -21,9 +21,10 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 		//   request methodGet "/parents" [("Accept-Profile", "unknown")] "" `shouldRespondWith`
 		//     [json|{"message":"Invalid schema: unknown","code":"PGRST106","details":null,"hint":"Only the following schemas are exposed: v1, v2, SPECIAL \"@/\\#~_-"}|]
 		//     { matchStatus = 406 }
+		// @@ partly asserted: the hint names the schemas the suite exposes (test, تست)
 		{
 			Description: "fails trying to read table from unknown schema",
-			Query:       "/projects",
+			Query:       "/parents",
 			Headers:     test.Headers{"Accept-Profile": {"unknown"}},
 			Expected:    `{"code":"PGRST106","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
@@ -37,11 +38,12 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 		//     `shouldRespondWith` [json|{"message":"Invalid schema: unknown","code":"PGRST106","details":null,"hint":"Only the following schemas are exposed: v1, v2, SPECIAL \"@/\\#~_-"}|]
 		//       { matchStatus = 406
 		//       }
+		// @@ partly asserted: the hint names the schemas the suite exposes (test, تست)
 		{
 			Description: "fails when inserting on an unknown schema",
 			Method:      "POST",
-			Query:       "/projects",
-			Body:        `{"id": 999, "name": "x"}`,
+			Query:       "/children",
+			Body:        `{"name": "child 4", "parent_id": 4}`,
 			Headers:     test.Headers{"Content-Profile": {"unknown"}},
 			Expected:    `{"code":"PGRST106","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
@@ -51,6 +53,7 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 		//     `shouldRespondWith` [json|{"message":"Invalid schema: unknown","code":"PGRST106","details":null,"hint":"Only the following schemas are exposed: v1, v2, SPECIAL \"@/\\#~_-"}|]
 		//       { matchStatus = 406
 		//       }
+		// @@ partly asserted: the hint names the schemas the suite exposes (test, تست)
 		{
 			Description: "fails trying to read definitions from unknown schema",
 			Query:       "/",
