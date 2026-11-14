@@ -2381,7 +2381,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         }
 		{
 			Description:     "binary output: Proc that returns scalar can query without selecting column",
-			Method:          "GET", // @@ POST -> GET; ret_image returns the bytea itself (the spec's ret_base64_bin its base64), hence ExpectedBase64
+			Method:          "POST", // @@ ret_image returns the bytea itself (the spec's ret_base64_bin its base64), hence ExpectedBase64
 			Query:           "/rpc/ret_image",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCC`,
@@ -2447,7 +2447,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		//         }
 		{
 			Description:     "binary output: Proc that returns scalar can query if a single column is selected",
-			Method:          "GET", // @@ POST -> GET
+			Method:          "POST",
 			Query:           "/rpc/ret_rows_with_base64_bin?select=img",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        `iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEUAAAD/AAAb/40iAAAAP0lEQVQI12NgwAbYG2AE/wEYwQMiZB4ACQkQYZEAIgqAhAGIKLCAEQ8kgMT/P1CCEUwc4IMSzA3sUIIdCHECAGSQEkeOTUyCAAAAAElFTkSuQmCCiVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAQMAAAAB/jzhAAAABlBMVEX///8AAP94wDzzAAAAL0lEQVQIW2NgwAb+HwARH0DEDyDxwAZEyGAhLODqHmBRzAcn5GAS///A1IF14AAA5/Adbiiz/0gAAAAASUVORK5CYII=`,
@@ -2462,7 +2462,7 @@ func TestPostgREST_RPC(t *testing.T) {
 		//           { matchStatus = 406 }
 		{
 			Description:     "binary output: Proc that returns scalar fails if a single column is not selected",
-			Method:          "GET", // @@ POST -> GET
+			Method:          "POST",
 			Query:           "/rpc/ret_rows_with_base64_bin",
 			Headers:         test.Headers{"Accept": []string{"application/octet-stream"}},
 			Expected:        ``,
