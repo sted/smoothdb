@@ -471,6 +471,9 @@ func WriteContent(ctx context.Context, w http.ResponseWriter, status int, conten
 		ct += "; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", ct)
+	if sc.QueryOptions.SchemaNegotiated {
+		w.Header().Set("Content-Profile", sc.QueryOptions.Schema)
+	}
 	w.WriteHeader(status)
 	_, err := w.Write(content)
 	return status, err

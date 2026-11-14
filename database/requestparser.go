@@ -113,7 +113,11 @@ type QueryParts struct {
 }
 
 type QueryOptions struct {
-	Schema               string
+	Schema string
+	// SchemaNegotiated says that the response names Schema in a
+	// Content-Profile header: the request names the schema, or more than
+	// one schema is exposed (PostgREST ApiRequest.hs, getSchema)
+	SchemaNegotiated     bool
 	ContentType          string // json, csv
 	ReturnRepresentation bool
 	MergeDuplicates      bool
@@ -1915,9 +1919,11 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	}
 	if ap := header.Get(schemaProfile); ap != "" {
 		options.Schema = ap
+		options.SchemaNegotiated = true
 	}
 	if options.Schema == "" {
 		options.Schema = getDefaultSchema()
+		options.SchemaNegotiated = len(exposedSchemas()) > 1
 	}
 	return options
 }
