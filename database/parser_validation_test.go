@@ -7,11 +7,12 @@ import (
 	"time"
 )
 
-// limit and offset follow PostgREST 16.4 (QueryParams.hs, readMaybe): a
-// value that is not an integer is ignored, a negative offset is a no-op, and
-// a negative limit, of any size, is 416 PGRST103.
+// limit and offset follow PostgREST 16.4 (QueryParams.hs, ApiRequest.hs
+// getRanges): they make one range, intersected with the rows from 0. A value
+// that is not an integer is ignored, and an empty range is 416 PGRST103,
+// except the range of limit 0.
 func TestParserLimitOffsetFollowPostgREST(t *testing.T) {
-	for _, q := range []string{"?limit=-1", "?limit=-99999999999999999999"} {
+	for _, q := range []string{"?limit=-1", "?limit=-99999999999999999999", "?limit=0&offset=100", "?limit=3&offset=-4", "?offset=-4&limit=abc"} {
 		u, _ := url.Parse(q)
 		_, err := PostgRestParser{}.parse("t", u.Query())
 		if re, ok := err.(*RequestError); !ok || re.Code != "PGRST103" {
@@ -30,7 +31,7 @@ func TestParserLimitOffsetFollowPostgREST(t *testing.T) {
 			t.Errorf("%s: want no limit and no offset, got %q and %q", q, parts.limit, parts.offset)
 		}
 	}
-	valid := []string{"?limit=10", "?offset=0", "?limit=0&offset=100"}
+	valid := []string{"?limit=10", "?offset=0", "?limit=0", "?limit=3&offset=-3"}
 	for _, q := range valid {
 		u, _ := url.Parse(q)
 		if _, err := (PostgRestParser{}).parse("t", u.Query()); err != nil {

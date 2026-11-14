@@ -73,8 +73,10 @@ func TestPostgREST_ErrorBodies(t *testing.T) {
 			Expected:    `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
 			Status:      416,
 		},
-		// a filter without a valid operator is a parse failure (PGRST100);
-		// PostgREST also quotes the message and adds the parsec position
+		// a filter without a valid operator is a parse failure (PGRST100).
+		// Gap: PostgREST quotes the message, adds the parsec position
+		// ("(line 1, column 1)") and lists the unexpected and expected tokens
+		// in the details; smoothdb's parser does not track them.
 		{
 			Description: "refuses an unknown operator with PGRST100",
 			Query:       "/items?id=noop.1",
@@ -86,6 +88,80 @@ func TestPostgREST_ErrorBodies(t *testing.T) {
 			Query:       "/items?id=eq",
 			Expected:    `{"code":"PGRST100","details":"'.' expected","hint":null,"message":"failed to parse filter (eq)"}`,
 			Status:      400,
+		},
+		// limit and offset beyond 64 bits reach PostgreSQL, which refuses them
+		{
+			Description: "refuses an offset beyond 64 bits with 22003",
+			Query:       "/items?select=id&order=id&offset=9223372036854775808&limit=1",
+			Expected:    `{"code":"22003","details":null,"hint":null,"message":"value \"9223372036854775808\" is out of range for type bigint"}`,
+			Status:      400,
+		},
+		{
+			Description: "refuses a limit beyond 64 bits with 22003",
+			Query:       "/items?select=id&order=id&limit=9223372036854775808",
+			Expected:    `{"code":"22003","details":null,"hint":null,"message":"value \"9223372036854775808\" is out of range for type bigint"}`,
+			Status:      400,
+		},
+		// limit and offset make one range, intersected with the rows from 0
+		// (QueryParams.hs, ApiRequest.hs getRanges)
+		{
+			Description: "refuses a range that ends before the first row",
+			Query:       "/items?select=id&order=id&limit=3&offset=-4",
+			Expected:    `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
+			Status:      416,
+		},
+		{
+			Description:     "cuts a range that starts before the first row",
+			Query:           "/items?select=id&order=id&limit=3&offset=-1",
+			Expected:        `[{"id":1},{"id":2}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/*"},
+			Status:          200,
+		},
+		{
+			Description:     "answers no row for a range that ends just before the first row",
+			Query:           "/items?select=id&order=id&limit=3&offset=-3",
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
+		},
+		{
+			Description: "refuses limit 0 with an offset",
+			Query:       "/items?select=id&order=id&limit=0&offset=5",
+			Expected:    `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
+			Status:      416,
+		},
+		{
+			Description: "refuses a negative offset with a limit that is not an integer",
+			Query:       "/items?select=id&order=id&offset=-4&limit=abc",
+			Expected:    `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
+			Status:      416,
+		},
+		// with ?columns the body goes to PostgreSQL as it is
+		{
+			Description: "sends a scalar body with columns to PostgreSQL",
+			Method:      "POST",
+			Query:       "/articles?columns=id",
+			Body:        `true`,
+			Expected:    `{"code":"22023","details":null,"hint":null,"message":"cannot call json_to_recordset on a scalar"}`,
+			Status:      400,
+		},
+		// the errors name the request's media types in full
+		{
+			Description: "lists every Accept alternative in PGRST107",
+			Query:       "/images?select=img,name&name=eq.A.png",
+			Headers:     test.Headers{"Accept": {"application/octet-stream, image/png"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream, image/png"}`,
+			Status:      406,
+		},
+		{
+			Description:     "keeps the parameters of an unsupported Content-Type",
+			Method:          "POST",
+			Query:           "/articles",
+			Body:            `<a/>`,
+			Headers:         test.Headers{"Content-Type": {"application/xml; profile=foo"}},
+			Expected:        `{"code":"PGRST102","details":null,"hint":null,"message":"Content-Type not acceptable: application/xml; profile=foo"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "116"},
+			Status:          400,
 		},
 	}
 
