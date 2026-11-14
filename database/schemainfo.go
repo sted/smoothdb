@@ -58,6 +58,7 @@ type SchemaInfo struct {
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
 	functions               functionIndex         // every function by name, see noRpc
+	tableNames              map[string][]string   // the tables and views of each schema, for the PGRST205 hint
 	// the primary key columns of a view, inferred from its base tables
 	// (see addViewPrimaryKeys)
 	cachedViewPrimaryKeys map[string][]string
@@ -123,6 +124,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 			}
 		}
 	}
+	dbi.tableNames = indexTables(dbi.cachedTables)
 	// Column types
 	colTypes, err := GetColumnTypes(ctx)
 	if err != nil {

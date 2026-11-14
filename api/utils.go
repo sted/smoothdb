@@ -282,6 +282,19 @@ func writeIfZeroRecordsToUpdate(w http.ResponseWriter, records []database.Record
 	return true, 0, err
 }
 
+// firstNonSpace returns the first byte of a JSON text after its whitespace,
+// and 0 for a text that is only whitespace.
+func firstNonSpace(content []byte) byte {
+	for _, b := range content {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		}
+		return b
+	}
+	return 0
+}
+
 // jsonIsArray checks if a stringified json is an array
 func jsonIsArray(content []byte) bool {
 	for len(content) > 0 {
@@ -323,23 +336,38 @@ func recordsJSON(records []database.Record) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// decodeJSONRecords decodes a JSON body, an object or an array of objects.
-// Numbers stay json.Number, so that large integers keep their digits.
+// decodeJSONRecords decodes a JSON body as PostgREST's getPayload reads it:
+// an object or an array of objects. A scalar, null included, is no record
+// (Payload.hs, payloadAttributes). A body that is not one JSON value is
+// PGRST102. Numbers stay json.Number, so that large integers keep their
+// digits.
 func decodeJSONRecords(body []byte) ([]database.Record, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
-	if jsonIsArray(body) {
-		var records []database.Record
+	var records []database.Record
+	switch firstNonSpace(body) {
+	case '[':
 		if err := decoder.Decode(&records); err != nil {
 			return nil, jsonBodyError(body)
 		}
-		return records, nil
+	case '{':
+		var record database.Record
+		if err := decoder.Decode(&record); err != nil {
+			return nil, jsonBodyError(body)
+		}
+		records = append(records, record)
+	default:
+		if !json.Valid(body) {
+			return nil, database.InvalidBody("Empty or invalid json")
+		}
+		return nil, nil
 	}
-	var record database.Record
-	if err := decoder.Decode(&record); err != nil {
-		return nil, jsonBodyError(body)
+	// The body is one JSON value: text after it makes the body invalid,
+	// as PostgREST decodes the whole body.
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, database.InvalidBody("Empty or invalid json")
 	}
-	return []database.Record{record}, nil
+	return records, nil
 }
 
 // jsonBodyError is PostgREST's InvalidBody (PGRST102) for a JSON body that
@@ -368,6 +396,17 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 		jsonBody = body
 		if records, err = decodeJSONRecords(body); err != nil {
 			return nil, nil, err
+		}
+		if c := firstNonSpace(body); c != '[' && c != '{' {
+			if r.URL.Query().Has("columns") {
+				// with ?columns PostgREST sends the body as it is, and
+				// PostgreSQL refuses a scalar: one empty record keeps the
+				// request going to the database with the body
+				return []database.Record{nil}, body, nil
+			}
+			// PostgREST reads a scalar body, null included, as an empty
+			// array (Payload.hs, payloadAttributes)
+			return nil, []byte("[]"), nil
 		}
 
 	case "text/csv":
@@ -447,8 +486,13 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (records []database.Record, jsonBody []byte, status int, err error) {
 	ctype := getContentType(r)
 	if ctype == "" {
-		// "accepted" content-type not supported
-		status, err = heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
+		// PostgREST answers a body it has no reader for as an invalid
+		// body (Payload.hs, getPayload), not with 415
+		header := r.Header.Get("Content-Type")
+		if mt, _, perr := mime.ParseMediaType(header); perr == nil {
+			header = mt
+		}
+		status, err = writeRequestError(w, database.InvalidBody("Content-Type not acceptable: "+header))
 		return
 	} else {
 		// read input records

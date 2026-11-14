@@ -70,6 +70,7 @@ type Function struct {
 	Strict       bool       `json:"strict"`            // proisstrict: RETURNS NULL ON NULL INPUT
 	Security     string     `json:"security"`          // prosecdef: "invoker" or "definer"
 	Replace      bool       `json:"replace,omitempty"` // input only: CREATE OR REPLACE
+	Kind         string     `json:"-"`                 // prokind: f function, p procedure, a aggregate, w window
 }
 
 const functionsQuery = `
@@ -89,7 +90,8 @@ const functionsQuery = `
 		p.provolatile::text volatility,
 		p.pronargdefaults argdefaults,
 		p.proisstrict strict,
-		CASE WHEN p.prosecdef THEN 'definer' ELSE 'invoker' END security
+		CASE WHEN p.prosecdef THEN 'definer' ELSE 'invoker' END security,
+		p.prokind::text kind
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -153,7 +155,8 @@ func readFunctions(ctx context.Context, query string) ([]Function, error) {
 			&f.Volatility,
 			&f.ArgDefaults,
 			&f.Strict,
-			&f.Security)
+			&f.Security,
+			&f.Kind)
 		if err != nil {
 			return nil, err
 		}

@@ -43,20 +43,30 @@ func (si *SchemaInfo) tableNotFoundHint(schema, name string) string {
 	if si == nil {
 		return ""
 	}
-	var tables []string
-	for qualified := range si.cachedTables {
-		if s, t := splitTableName(qualified); s == schema {
-			tables = append(tables, t)
-		}
-	}
+	tables := si.tableNames[schema]
 	if len(tables) >= maxTablesForFuzzySearch {
 		return ""
 	}
-	slices.Sort(tables)
 	if found, ok := newFuzzySet(tables).getOne(name, 0.75); ok {
 		return "Perhaps you meant the table '" + schema + "." + found + "'"
 	}
 	return ""
+}
+
+// indexTables lists the names of the tables and views per schema, sorted,
+// for the hint of PGRST205. A partition is left out, as PostgREST leaves it
+// out of its schema cache (SchemaCache.hs, tablesSqlQuery).
+func indexTables(tables map[string]Table) map[string][]string {
+	names := map[string][]string{}
+	for _, t := range tables {
+		if !t.IsPartition {
+			names[t.Schema] = append(names[t.Schema], t.Name)
+		}
+	}
+	for _, n := range names {
+		slices.Sort(n)
+	}
+	return names
 }
 
 // functionIndex lists the functions of the database by name, for the
@@ -81,6 +91,11 @@ func indexFunctions(functions []Function) functionIndex {
 	idx := functionIndex{unnamed: map[string]bool{}, callable: map[string][]string{}}
 	for _, f := range functions {
 		name := _s(f.Name, f.Schema)
+		idx.unnamed[name] = idx.unnamed[name] // the name exists
+		// PostgREST caches functions only, and no trigger function
+		if f.Kind != "f" || f.Returns == "trigger" {
+			continue
+		}
 		inputs := f.inputArguments()
 		unnamed := 0
 		for _, a := range inputs {

@@ -199,6 +199,21 @@ type PostgRestParser struct {
 // Real queries never approach this.
 const maxFilterDepth = 100
 
+// isNegativeInteger reports whether s is a negative base-10 integer of any
+// size.
+func isNegativeInteger(s string) bool {
+	digits, ok := strings.CutPrefix(s, "-")
+	if !ok || digits == "" {
+		return false
+	}
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
+			return false
+		}
+	}
+	return strings.Trim(digits, "0") != ""
+}
+
 // isNonNegativeInt reports whether s is a base-10 non-negative 64-bit integer.
 func isNonNegativeInt(s string) bool {
 	n, err := strconv.ParseInt(s, 10, 64)
@@ -1184,7 +1199,7 @@ func (p *PostgRestParser) parseWhereCondition(mainTable, key, value string, root
 		return nil
 	}
 	if err != nil {
-		return err
+		return wrapParseFailure(err, "filter", value)
 	}
 	// a plain value runs to the end; a list (in, any/all) must end there too
 	if !p.atEnd() {
@@ -1701,23 +1716,23 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 
 	// LIMIT
 	// limit=100
+	// PostgREST reads limit and offset with readMaybe (QueryParams.hs): a
+	// value that is not an integer is ignored. A negative limit, of any
+	// size, empties the range (416 PGRST103); a negative offset is a no-op.
 	if limitFilter, ok := filters["limit"]; ok {
-		if !isNonNegativeInt(limitFilter[0]) {
-			if n, err := strconv.ParseInt(limitFilter[0], 10, 64); err == nil && n < 0 {
-				return nil, negativeLimit
-			}
-			return nil, &ParseError{msg: "limit must be a non-negative integer"}
+		if isNonNegativeInt(limitFilter[0]) {
+			parts.limit = limitFilter[0]
+		} else if isNegativeInteger(limitFilter[0]) {
+			return nil, negativeLimit
 		}
-		parts.limit = limitFilter[0]
 		delete(filters, "limit")
 	}
 	// OFFSET
 	// offset=50
 	if offsetFilter, ok := filters["offset"]; ok {
-		if !isNonNegativeInt(offsetFilter[0]) {
-			return nil, &ParseError{msg: "offset must be a non-negative integer"}
+		if isNonNegativeInt(offsetFilter[0]) {
+			parts.offset = offsetFilter[0]
 		}
-		parts.offset = offsetFilter[0]
 		delete(filters, "offset")
 	}
 

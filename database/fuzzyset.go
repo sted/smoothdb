@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // fuzzySet finds the entries closest to a word. It ports the fuzzyset
@@ -30,6 +31,9 @@ type gramCount struct {
 const (
 	fuzzyGramLower = 2
 	fuzzyGramUpper = 3
+	// maxFuzzyBytes is the longest value that get compares. PostgREST has
+	// no limit; smoothdb gives no hint for a longer value.
+	maxFuzzyBytes = 512
 )
 
 // newFuzzySet returns a set of the entries.
@@ -72,6 +76,11 @@ type fuzzyMatch struct {
 // get returns the entries with a score of at least minScore, the best
 // first. An entry equal to value, ignoring case, is the only match.
 func (fs *fuzzySet) get(value string, minScore float64) []fuzzyMatch {
+	// A value from the request can be as long as the body. No hint is
+	// worth the work of comparing a value this long, so it gets none.
+	if len(value) > maxFuzzyBytes {
+		return nil
+	}
 	key := strings.ToLower(value)
 	if e, ok := fs.exact[key]; ok {
 		return []fuzzyMatch{{1, e}}
@@ -129,7 +138,16 @@ func (fs *fuzzySet) matches(key string, minScore float64, size int) []fuzzyMatch
 	slices.SortStableFunc(results, byScore)
 	// the Levenshtein score of the best 50 entries replaces the cosine one
 	results = results[:min(50, len(results))]
+	keyLen := utf8.RuneCountInString(key)
 	for i := range results {
+		// the distance is at least the difference of the lengths: skip an
+		// entry that cannot reach minScore
+		entryLen := utf8.RuneCountInString(results[i].entry)
+		longer := max(keyLen, entryLen)
+		if longer > 0 && 1-float64(max(keyLen-entryLen, entryLen-keyLen))/float64(longer) < minScore {
+			results[i].score = 0
+			continue
+		}
 		results[i].score = levenshteinScore(results[i].entry, key)
 	}
 	slices.SortStableFunc(results, byScore)

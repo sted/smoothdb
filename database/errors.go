@@ -157,7 +157,7 @@ func invalidBody(message string) *RequestError {
 }
 
 // InvalidBody returns PostgREST's InvalidBody error (PGRST102).
-func InvalidBody(message string) error { return invalidBody(message) }
+func InvalidBody(message string) *RequestError { return invalidBody(message) }
 
 // negativeLimit is PostgREST's InvalidRange NegativeLimit (PGRST103): a
 // negative limit makes the range of the request empty.
