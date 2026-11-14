@@ -115,6 +115,52 @@ func TestAudienceJwtSecretSpec(t *testing.T) {
 	})
 }
 
+// Feature/Auth/AudienceJwtSecretSpec.hs: disabledSpec, without jwt-aud. The
+// server ignores the aud claim.
+func TestAudienceJwtSecretDisabledSpec(t *testing.T) {
+	cfg := startJWTServer(t, 8149, map[string]any{"JWTSecret": postgrestSecret})
+	aud := func(aud string) test.Headers {
+		return authHeader(signPayload(t, `{"exp":9999999999,"role":"postgrest_test_author","id":"jdoe"`+aud+`}`))
+	}
+	test.Execute(t, cfg, []test.Test{
+		// it "ignores the audience claim and suceeds" $ do
+		//   let auth = authHeaderJWT $ generateJWT jwtPayload
+		//       jwtPayload = ... "aud": "youraudience"
+		//   request methodGet "/authors_only" [auth] ""
+		//     `shouldRespondWith` 200
+		{Description: "ignores the audience claim and suceeds", Query: "/authors_only",
+			Headers: aud(`,"aud":"youraudience"`), Status: 200},
+		// it "ignores the audience claim and suceeds when it's empty" $ do
+		//   ... "aud": ""
+		//   request methodGet "/authors_only" [auth] ""
+		//     `shouldRespondWith` 200
+		{Description: "ignores the audience claim and suceeds when it's empty", Query: "/authors_only",
+			Headers: aud(`,"aud":""`), Status: 200},
+		// it "ignores the audience claim and suceeds when it has 1 element" $ do
+		//   ... "aud": ["youraudience"]
+		{Description: "ignores the audience claim and suceeds when it has 1 element", Query: "/authors_only",
+			Headers: aud(`,"aud":["youraudience"]`), Status: 200},
+		// it "ignores the audience claim and suceeds when it has more than 1 element" $ do
+		//   ... "aud": ["notyouraudience", "youraudience", "anotheraudience"]
+		{Description: "ignores the audience claim and suceeds when it has more than 1 element", Query: "/authors_only",
+			Headers: aud(`,"aud":["notyouraudience","youraudience","anotheraudience"]`), Status: 200},
+		// it "ignores the audience claim and suceeds when it's empty" $ do
+		//   ... "aud": []
+		{Description: "ignores the audience claim and suceeds when it's empty", Query: "/authors_only",
+			Headers: aud(`,"aud":[]`), Status: 200},
+		// it "ignores the audience claim and succeeds when it's null" $ do
+		//   ... "aud": null
+		{Description: "ignores the audience claim and succeeds when it's null", Query: "/authors_only",
+			Headers: aud(`,"aud":null`), Status: 200},
+		// it "succeeds with a JWT with no audience claim" $ do
+		{Description: "succeeds with a JWT with no audience claim", Query: "/authors_only",
+			Headers: aud(``), Status: 200},
+		// it "succeeds without a JWT" $
+		//   get "/has_count_column" `shouldRespondWith` 200
+		{Description: "succeeds without a JWT", Query: "/has_count_column", Status: 200},
+	})
+}
+
 // Feature/Auth/AuthSpec.hs: the cases about token verification, and the 30 s
 // clock skew of Auth/Jwt.hs:70-76.
 func TestAuthSpecJWT(t *testing.T) {
