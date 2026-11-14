@@ -1276,38 +1276,75 @@ func insertedCounter(add bool) string {
 		"', true), '')::int, 0) " + op + " 1)::text, true) <> '" + never + "'"
 }
 
-// locationReturning is the RETURNING clause of an insert with
-// return=headers-only: the primary key columns as text, to build the
-// Location header (see LocationSerializer). The columns come in the order
-// of PostgREST's locationF: the key order when the select is the default
-// one, else alphabetical. The key of a view is inferred from its base
-// tables. A relation without a key returns no column.
-func locationReturning(table, schema string, parts *QueryParts, info *SchemaInfo) string {
+// headersOnly wraps the write query of a request with return=headers-only.
+// The write returns the columns PostgREST infers from the select (Plan.hs,
+// inferColsEmbedNeeds): every column for the default select or a star, else
+// the selected columns, the keys of the embeds and the key of the relation.
+// So the select needs the same columns and privileges as in PostgREST. The
+// statement answers one row: the number of rows written and, when withLocation
+// and the write is one row, the "key=eq.value" items of the Location header,
+// read from row_to_json as PostgREST does (SqlFragment.hs, locationF).
+func headersOnly(query, table, schema string, parts *QueryParts, info *SchemaInfo, st *buildState, withLocation bool) (string, error) {
 	var keys []string
 	if info != nil {
 		keys = info.GetKeyColumns(_s(table, schema))
 	}
-	if len(keys) == 0 {
-		return " RETURNING 1"
-	}
-	cols := slices.Clone(keys)
 	star := len(parts.selectFields) == 0
+	hasEmbed := false
 	for _, f := range parts.selectFields {
-		if f.relation == nil && f.field.name == "*" {
+		if f.relation != nil {
+			hasEmbed = true
+		} else if isStar(f.field.name) {
 			star = true
 		}
 	}
-	if !star {
-		sort.Strings(cols)
-	}
-	ret := " RETURNING "
-	for i, c := range cols {
-		if i > 0 {
-			ret += ", "
+	var cols []string
+	if star {
+		cols = []string{"*"}
+	} else {
+		seen := map[string]bool{}
+		add := func(name string) {
+			if name != "" && !seen[name] {
+				seen[name] = true
+				cols = append(cols, name)
+			}
 		}
-		ret += quote(c) + "::text AS " + quote(c)
+		for _, f := range parts.selectFields {
+			if f.relation == nil {
+				add(f.field.name)
+			}
+		}
+		if hasEmbed {
+			// the columns of the embed joins, from a dry build
+			_, _, embedKeys, _, err := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true, st: newBuildState(parts, nil)})
+			if err != nil {
+				return "", err
+			}
+			for _, k := range embedKeys {
+				add(k)
+			}
+		}
+		for _, k := range keys {
+			add(k)
+		}
+		sort.Strings(cols)
+		for i, c := range cols {
+			cols[i] = quote(c)
+		}
 	}
-	return ret
+	location := "NULL::text[]"
+	if withLocation && len(keys) > 0 {
+		// row_to_json keeps the order of the returned columns: the table's
+		// for a star, alphabetical otherwise, as PostgREST's set of columns
+		order := ""
+		if !star {
+			order = " ORDER BY j.key COLLATE \"C\""
+		}
+		location = st.page.bind("CASE WHEN pg_catalog.count(*) = 1 THEN (SELECT array_agg(j.key || '=' || coalesce('eq.' || j.value, 'is.null')"+order+
+			") FROM (SELECT row_to_json(_) AS r FROM _source AS _ LIMIT 1) d CROSS JOIN json_each_text(d.r) AS j WHERE j.key = ANY(", keys) + ")) END"
+	}
+	return "WITH _source AS (" + query + " RETURNING " + strings.Join(cols, ", ") + ") SELECT pg_catalog.count(*), " +
+		location + " FROM _source", nil
 }
 
 // orderedRecordKeys returns record's keys in a deterministic order for use
@@ -1902,7 +1939,9 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 			insert = "WITH _source AS (" + insert + ") " + sel
 		}
 	} else if options.Return == "headers-only" {
-		insert += locationReturning(table, schema, parts, info)
+		if insert, err = headersOnly(insert, table, schema, parts, info, st, true); err != nil {
+			return "", nil, err
+		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
 		return "", nil, err
@@ -1956,6 +1995,10 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		if sel != "" {
 			update = "WITH _source AS (" + update + ") " + sel
 		}
+	} else if options.Return == "headers-only" {
+		if update, err = headersOnly(update, table, schema, parts, info, st, false); err != nil {
+			return "", nil, err
+		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {
 		return "", nil, err
@@ -1985,6 +2028,10 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += ret
 		if sel != "" {
 			delete = "WITH _source AS (" + delete + ") " + sel
+		}
+	} else if options.Return == "headers-only" {
+		if delete, err = headersOnly(delete, table, schema, parts, info, st, false); err != nil {
+			return "", nil, err
 		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {

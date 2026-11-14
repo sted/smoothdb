@@ -60,6 +60,16 @@ func checkSchema(ctx context.Context) error {
 	return nil
 }
 
+// checkWriteMedia refuses a write whose Accept header names no media type
+// that smoothdb serves, before the write runs: PostgREST negotiates the media
+// type first, whatever the return preference (Plan/Negotiate.hs, PGRST107).
+func checkWriteMedia(options *QueryOptions) error {
+	if options.ContentType == "unknown/unknown" {
+		return &ContentTypeError{msg: "Content type not available"}
+	}
+	return nil
+}
+
 // ignoreRange drops the Range header of a table write (insert, update or
 // delete), as PostgREST does: the header pages reads (GET, and a function
 // call whatever its method), never a mutation. The write and its
@@ -217,6 +227,9 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	if err := checkWriteMedia(options); err != nil {
+		return nil, 0, err
+	}
 	ignoreRange(options)
 	info := gi.Db.info.Load()
 	if body == nil {
@@ -243,18 +256,26 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	case options.ReturnRepresentation:
 		return writeRead(ctx, insert, values)
 	case options.Return == "headers-only":
-		options.locate = true
-		defer func() { options.locate = false }()
-		if options.Singular {
-			// a refused row count rolls the insert back
-			return writeRead(ctx, insert, values)
-		}
-		// no rows to refuse: no transaction of the request, no COMMIT
-		return runRead(ctx, insert, values, false, false)
+		return writeHeadersOnly(ctx, insert, values)
 	default:
 		n, err := writeExec(ctx, insert, values)
 		return nil, n, err
 	}
+}
+
+// writeHeadersOnly runs the write query of a request with
+// return=headers-only (see headersOnly) and answers the Location items and
+// the number of rows written.
+func writeHeadersOnly(ctx context.Context, query string, values []any) ([]byte, int64, error) {
+	options := GetQueryOptions(ctx)
+	options.locate = true
+	defer func() { options.locate = false }()
+	if options.Singular {
+		// a refused row count rolls the write back
+		return writeRead(ctx, query, values)
+	}
+	// no rows to refuse: no transaction of the request, no COMMIT
+	return runRead(ctx, query, values, false, false)
 }
 
 // PutError is a PUT that PostgREST refuses before or after its write
@@ -280,9 +301,9 @@ type putCondition struct {
 }
 
 // putConditions reads the primary key of a PUT from its filters: an eq
-// filter on each column of the key, and no other root filter. A logic
-// filter (and, or) is refused at any level. ok is false when the filters do
-// not address one row, or when the relation has no key.
+// filter on each column of the key, and no other filter, on the relation or
+// on an embedded resource (Plan.hs, mutatePlan). ok is false when the
+// filters do not address one row, or when the relation has no key.
 func putConditions(root *WhereConditionNode, keys []string) (conds []putCondition, ok bool) {
 	if len(keys) == 0 {
 		return nil, false
@@ -296,11 +317,7 @@ func putConditions(root *WhereConditionNode, keys []string) (conds []putConditio
 			if n.isContainer() {
 				return nil, false
 			}
-			if len(n.field.relPath) > 0 {
-				// a filter on an embedded resource
-				continue
-			}
-			if n.operator != "=" || n.not || n.opModifier != "" || n.field.jsonPath != "" ||
+			if len(n.field.relPath) > 0 || n.operator != "=" || n.not || n.opModifier != "" || n.field.jsonPath != "" ||
 				!slices.Contains(keys, n.field.name) || len(n.values) != 1 {
 				return nil, false
 			}
@@ -329,11 +346,19 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	if err != nil {
 		return nil, 0, err
 	}
-	if parts.limit != "" || parts.offset != "" {
+	// limit and offset are refused when they narrow the range: offset=0
+	// keeps it whole (ApiRequest.hs, getRanges)
+	if parts.limit != "" || (parts.offset != "" && parts.offset != "0") {
 		return nil, 0, errPutLimit
 	}
 	options := &gi.QueryOptions
+	if err := checkWriteMedia(options); err != nil {
+		return nil, 0, err
+	}
 	ignoreRange(options)
+	// PostgREST ignores ?columns= on a PUT (ApiRequest/Payload.hs): every key
+	// of the body is written
+	parts.columnFields = nil
 	info := gi.Db.info.Load()
 	if body == nil {
 		if info, err = info.withColumnTypesOf(ctx, table, options.Schema); err != nil {
@@ -354,16 +379,28 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 		parts.conflictFields[k] = struct{}{}
 	}
 	options.MergeDuplicates, options.IgnoreDuplicates = true, false
+	// a PUT answers no Location: return=headers-only is return=minimal
+	ret := options.Return
+	if ret == "headers-only" {
+		options.Return = ""
+	}
 	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
+	options.Return = ret
 	if err != nil {
 		return nil, 0, err
+	}
+	// A body without the key of the URL writes no row, but a statement
+	// trigger can still run: the write ends in a transaction of the request,
+	// rolled back on the error, as in PostgREST (MainTx.hs, failPut).
+	if gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
 	}
 	options.Inserted = -1
 	options.insertedQuery = insertedQuery
 	defer func() { options.insertedQuery = "" }()
 	if options.ReturnRepresentation {
 		data, n, err := writeRead(ctx, insert, values)
-		if _, single := err.(*SerializeError); single && options.Singular {
+		if _, single := err.(*CardinalityError); single && options.Singular {
 			// the representation of no row: the body has not the key
 			return nil, 0, errPutPayload
 		}
@@ -372,7 +409,7 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 		}
 		return data, n, err
 	}
-	// one row or none: nothing to roll back, and no single object to check
+	// one row or none: no single object to check
 	singular := options.Singular
 	options.Singular = false
 	n, err := writeExec(ctx, insert, values)
@@ -426,6 +463,9 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	if err := checkWriteMedia(options); err != nil {
+		return nil, 0, err
+	}
 	ignoreRange(options)
 	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info.Load())
 	if err != nil {
@@ -433,6 +473,10 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, update, values)
+	}
+	if options.Return == "headers-only" {
+		_, n, err := writeHeadersOnly(ctx, update, values)
+		return nil, n, err
 	}
 	n, err := writeExec(ctx, update, values)
 	return nil, n, err
@@ -448,6 +492,9 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
+	if err := checkWriteMedia(options); err != nil {
+		return nil, 0, err
+	}
 	ignoreRange(options)
 	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info.Load())
 	if err != nil {
@@ -455,6 +502,10 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, delete, values)
+	}
+	if options.Return == "headers-only" {
+		_, n, err := writeHeadersOnly(ctx, delete, values)
+		return nil, n, err
 	}
 	n, err := writeExec(ctx, delete, values)
 	return nil, n, err

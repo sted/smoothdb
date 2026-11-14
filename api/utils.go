@@ -360,9 +360,6 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 		}
 	}
 	// check preconditions
-	var zero bool
-	sc := database.GetSmoothContext(c)
-	options := &sc.QueryOptions
 	// A POST of no rows ([]) runs its insert all the same, as in PostgREST:
 	// the table must exist, a single object is refused (406), a merge
 	// answers 200 and an insert 201.
@@ -374,13 +371,8 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 			status, err = WriteBadRequest(w, errors.New("a PATCH body must be a single object"))
 			return
 		}
-		// {}, [] and [{}] as input cause no updates
-		if len(records) == 0 || len(records[0]) == 0 {
-			SetResponseHeaders(c, w, r, 0)
-		}
-		if zero, status, err = writeIfZeroRecordsToUpdate(w, records, options); zero {
-			return
-		}
+		// {}, [] and [{}] update nothing, but run all the same: the
+		// relation must exist, and a single object is refused (406)
 	}
 	return records, jsonBody, status, err
 }
@@ -398,8 +390,7 @@ func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Req
 	}
 	sc := database.GetSmoothContext(ctx)
 	options := &sc.QueryOptions
-	// @@ must check if the table has a pk
-	w.Header().Set("Content-Location", r.RequestURI)
+	// no Content-Location: PostgREST sends it on reads only (Response.hs)
 	if r.Method == "PUT" {
 		// a PUT has no Content-Range (Response.hs, MutationSingleUpsert)
 		setPreferenceApplied(w, r, options)

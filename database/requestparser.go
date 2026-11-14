@@ -1912,6 +1912,7 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	}
 
 	preferValues := header.Values("Prefer")
+	countSeen := false
 	for _, prefer := range preferValues {
 		parts := strings.Split(prefer, ",")
 		for _, part := range parts {
@@ -1943,8 +1944,15 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 				if !options.TxCommit {
 					options.TxRollback = true
 				}
-			case "count=exact":
-				options.Count = "exact"
+			case "count=exact", "count=planned", "count=estimated":
+				// count=estimated counts the rows exactly, as PostgREST does
+				// below max-rows; count=planned is not honoured
+				if !countSeen {
+					countSeen = true
+					if preferValue != "count=planned" {
+						options.Count = preferValue[len("count="):]
+					}
+				}
 			}
 		}
 	}

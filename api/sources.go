@@ -108,7 +108,11 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil || status != 0 {
 			return status, err
 		}
-		data, count, err := database.UpdateRecords(c, sourcename, records[0], r.URL.Query())
+		record := database.Record{}
+		if len(records) > 0 {
+			record = records[0]
+		}
+		data, count, err := database.UpdateRecords(c, sourcename, record, r.URL.Query())
 		if err == nil {
 			SetResponseHeaders(c, w, r, count)
 			if data == nil {
