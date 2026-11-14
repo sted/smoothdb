@@ -429,7 +429,7 @@ func TestViaEmbedRejected(t *testing.T) {
 			// unknown relationship.
 			Description: "via() recursion with an embed — rejected",
 			Query:       "/doc?id=after.1&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id,doc_rel!src_id(rel_type)",
-			Expected:    `{"code":"","details":null,"hint":null,"message":"embedding is not supported with via() recursion"}`,
+			Expected:    `{"code":"PGRST100","details":null,"hint":null,"message":"embedding is not supported with via() recursion"}`,
 			Status:      400,
 		},
 	}
@@ -481,13 +481,13 @@ func TestRecurseUp(t *testing.T) {
 		{
 			Description: "'!up' on start is rejected (only valid on recurse)",
 			Query:       "/tree_node?id=start!up.5&parent_id=recurse.all&select=id",
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'!up' is only valid on 'recurse'"}`,
+			Expected:    `{"code":"PGRST100","details":null,"hint":null,"message":"'!up' is only valid on 'recurse'"}`,
 			Status:      400,
 		},
 		{
 			Description: "recurse!up is rejected with via (reverse a via walk by swapping its columns)",
 			Query:       "/doc?id=start.1&id=recurse!up.all&doc_rel=via(src_id,dst_id)&select=id",
-			Expected:    `{"code":"","details":null,"hint":null,"message":"'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns"}`,
+			Expected:    `{"code":"PGRST100","details":null,"hint":null,"message":"'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns"}`,
 			Status:      400,
 		},
 	}
