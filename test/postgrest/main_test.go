@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"testing"
 
@@ -21,8 +22,14 @@ var testConfig test.Config
 const PostgRESTVersion = "16.4"
 
 // suiteConfig is the configuration of the suite server. A variant server
-// (see withVariant) starts from it and changes some keys.
+// (see withVariant) starts from it and changes some keys. The servers ignore
+// the SMOOTHDB_ environment variables (see startServer), except
+// SMOOTHDB_DATABASE_URL, which sets Database.URL here.
 func suiteConfig() map[string]any {
+	dbURL := os.Getenv("SMOOTHDB_DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgresql://postgres:postgres@localhost:5432/postgres"
+	}
 	return map[string]any{
 		"Address":                   "localhost:8084",
 		"VerboseErrors":             true, // the suites assert hint/details in error bodies
@@ -33,7 +40,7 @@ func suiteConfig() map[string]any {
 		"Logging.FileLogging":       true,
 		"Logging.FilePath":          "../../smoothdb.log",
 		"Logging.StdOut":            false,
-		"Database.URL":              "postgresql://postgres:postgres@localhost:5432/postgres",
+		"Database.URL":              dbURL,
 		"Database.SchemaSearchPath": []string{"test"},
 		// the schemas a Profile header may select (PostgREST db-schemas); تست
 		// is exposed but not on the search path, as UnicodeSpec runs upstream
@@ -50,19 +57,39 @@ func suiteConfig() map[string]any {
 var suiteServer *server.Server
 
 // startServer starts a server with the configuration c and waits until it
-// answers.
+// answers. The environment does not change c: a variant gets exactly its
+// overrides. The address must be free, so that no other process answers in
+// place of the new server.
 func startServer(c map[string]any) (*server.Server, error) {
+	addr := c["Address"].(string)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("the address of the server is not free: %w", err)
+	}
+	l.Close()
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
 			ConfigFilePath: "../../config.jsonc",
 
 			SkipFlags: true,
+			SkipEnv:   true,
 		})
 	if err != nil {
 		return nil, err
 	}
-	go s.Start()
-	if err := test.WaitForServer("http://" + c["Address"].(string)); err != nil {
+	started := make(chan error, 1)
+	go func() { started <- s.Start() }()
+	err = test.WaitForServer("http://" + addr)
+	if err == nil {
+		// a failed bind returns at once: when Start has returned, the
+		// answer came from another process
+		select {
+		case err = <-started:
+			err = fmt.Errorf("the server did not start: %w", err)
+		default:
+		}
+	}
+	if err != nil {
 		s.Shutdown(context.Background())
 		return nil, err
 	}
