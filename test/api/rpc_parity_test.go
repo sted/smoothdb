@@ -258,6 +258,15 @@ func TestRPCParity(t *testing.T) {
 			Status:          200,
 		},
 		{
+			// no separate count: the total is the count of the page (countF)
+			Description:     "one value filtered out, counted",
+			Query:           "/rpc/rpcp_record?pgrst_scalar->id=eq.999",
+			Headers:         test.Headers{"Prefer": {"count=exact"}},
+			Expected:        `null`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
+		{
 			Description:     "one value with limit=0",
 			Query:           "/rpc/rpcp_sayhello?name=x&limit=0",
 			Expected:        `null`,
