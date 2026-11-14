@@ -1601,6 +1601,48 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[{"id":3,"name":"IOS v2","client_id":2,"clients":{"id":2,"name":"Apple"}}]`,
 			Status:      200,
 		},
+		// @@ added: the cases below are not in the spec. Each answer was read on a
+		// live PostgREST 16.4.
+		{
+			Description: "an empty body with a single object asked is refused: no row",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1",
+			Body:        `{}`,
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Status:      406,
+		},
+		{
+			Description: "an empty body on an unknown table answers 404",
+			Method:      "PATCH",
+			Query:       "/no_such_table",
+			Body:        `{}`,
+			Status:      404,
+		},
+		{
+			Description: "an update with an Accept that no handler serves is refused before it runs",
+			Method:      "PATCH",
+			Query:       "/items?id=eq.1",
+			Body:        `{"id": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      406,
+		},
+		{
+			Description: "return=headers-only returns the selected columns: an unknown one is refused",
+			Method:      "PATCH",
+			Query:       "/projects?id=eq.1&select=nope",
+			Body:        `{"name": "y"}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description:     "return=minimal ignores the select",
+			Method:          "PATCH",
+			Query:           "/projects?id=eq.1&select=nope",
+			Body:            `{"name": "y"}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*", "Content-Location": ""},
+			Status:          204,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

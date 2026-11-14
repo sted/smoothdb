@@ -643,15 +643,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST114 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions fails if limit is specified",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.Javascript&limit=1",
 			Body:            `[ { "name": "Javascript", "rank": 1 } ]`,
-			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST114 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "fails if offset is specified" $
 		//         put
@@ -661,15 +661,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST114 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions fails if offset is specified",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.Javascript&offset=1",
 			Body:            `[ { "name": "Javascript", "rank": 1 } ]`,
-			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST114 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "rejects every other filter than pk cols eq's" $ do
 		//         put
@@ -679,15 +679,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions rejects every other filter than pk cols eq's",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?rank=eq.19",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?id=not.eq.Java"
@@ -696,15 +696,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions rejects every other filter than pk cols eq's",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?id=not.eq.Java",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?id=in.(Go)"
@@ -713,15 +713,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions rejects every other filter than pk cols eq's",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?id=in.(Go)",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?and=(id.eq.Go)"
@@ -730,15 +730,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions rejects every other filter than pk cols eq's",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?and=(id.eq.Go)",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "fails if not all composite key cols are specified as eq filters" $ do
 		//         put
@@ -748,15 +748,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions fails if not all composite key cols are specified as eq filters",
 			Method:          "PUT",
 			Query:           "/employees?first_name=eq.Susan",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/employees?last_name=eq.Heidt"
@@ -765,15 +765,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 405
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT restrictions fails if not all composite key cols are specified as eq filters",
 			Method:          "PUT",
 			Query:           "/employees?last_name=eq.Heidt",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     it "fails if the uri primary key doesn't match the payload primary key" $ do
 		//       put "/tiobe_pls?name=eq.MATLAB" [json| [ { "name": "Perl", "rank": 17 } ]|]
@@ -781,15 +781,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 400
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		// @@ not asserted, PostgREST 16.4: the PGRST115 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT fails if the uri primary key doesn't match the payload primary key",
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.MATLAB",
 			Body:            `[ { "name": "Perl", "rank": 17 } ]`,
-			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST115 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       put
 		//         "/employees?first_name=eq.Wendy&last_name=eq.Anderson"
@@ -798,15 +798,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 400
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		// @@ not asserted, PostgREST 16.4: the PGRST115 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT fails if the uri primary key doesn't match the payload primary key",
 			Method:          "PUT",
 			Query:           "/employees?first_name=eq.Wendy&last_name=eq.Anderson",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST115 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     it "fails if the table has no PK" $
 		//       put "/no_pk?a=eq.one&b=eq.two" [json| [ { "a": "one", "b": "two" } ]|]
@@ -814,15 +814,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 405
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
+		// @@ not asserted, PostgREST 16.4: the PGRST105 error body (code, null details and hint);
+		// card 32494 (error body)
 		{
 			Description:     "with PUT fails if the table has no PK",
 			Method:          "PUT",
 			Query:           "/no_pk?a=eq.one&b=eq.two",
 			Body:            `[ { "a": "one", "b": "two" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     context "Inserting row" $ do
 		//       it "succeeds on table with single pk col" $ do
@@ -1298,6 +1298,33 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
+		},
+		// @@ added: the cases below are not in the spec. Each answer was read on a
+		// live PostgREST 16.4.
+		{
+			Description: "PUT ignores ?columns=: every key of the body is written",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?name=eq.Java&columns=name",
+			Body:        `{"name": "Java", "rank": 77}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"name": "Java", "rank": 77}]`,
+			Status:      200,
+		},
+		{
+			Description: "PUT refuses a filter on an embedded resource",
+			Method:      "PUT",
+			Query:       "/projects?id=eq.1&select=*,clients(*)&clients.id=eq.999",
+			Body:        `{"id": 1, "name": "x", "client_id": 1}`,
+			Status:      405,
+		},
+		{
+			Description:     "PUT accepts offset=0, the whole range",
+			Method:          "PUT",
+			Query:           "/tiobe_pls?name=eq.Java&offset=0",
+			Body:            `{"name": "Java", "rank": 77}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "", "Content-Location": ""},
+			Status:          204,
 		},
 	}
 
