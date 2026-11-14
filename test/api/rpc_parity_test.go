@@ -246,12 +246,6 @@ func TestRPCParity(t *testing.T) {
 			Expected:    `{"id": 1, "counter": 101}`,
 			Status:      200,
 		},
-		{
-			Description: "a record projected",
-			Query:       "/rpc/rpcp_record?select=id:pgrst_scalar->id",
-			Expected:    `{"id": 1}`,
-			Status:      200,
-		},
 		// a JSON path on pgrst_scalar reads the record as JSON (Plan.hs)
 		{
 			Description: "a filter on a JSON path of pgrst_scalar",
@@ -263,5 +257,58 @@ func TestRPCParity(t *testing.T) {
 	// one case at a time: Execute stops at the first failure
 	for _, tt := range tests {
 		test.Execute(t, testConfig, []test.Test{tt})
+	}
+}
+
+// TestRPCRecordSelect checks the response of the functions that return
+// record against a table of PostgREST 16.4, run live: each select, as JSON
+// and as one object. The response is the column pgrst_scalar of each row
+// (asJsonF, asJsonSingleF: the routine is a scalar), but for one object of
+// a SETOF record, which is the whole row. A select without a column
+// pgrst_scalar fails there (400, 42703).
+func TestRPCRecordSelect(t *testing.T) {
+	createRPCParityFixtures(t)
+	testConfig := test.Config{
+		BaseUrl:       "http://localhost:8082/api/dbtest",
+		CommonHeaders: test.Headers{"Authorization": {adminToken}},
+	}
+	object := test.Headers{"Accept": {"application/vnd.pgrst.object+json"}}
+	row := `{"id": 1, "counter": 1}`
+	cases := []struct {
+		fn, sel      string
+		json, single string // the expected body, "" for a 400
+	}{
+		{"rpcp_record", "", row, row},
+		{"rpcp_record", "*", row, row},
+		{"rpcp_record", "pgrst_scalar", row, row},
+		{"rpcp_record", "rec:pgrst_scalar", "", ""},
+		{"rpcp_record", "pgrst_scalar:pgrst_scalar->id", "1", "1"},
+		{"rpcp_record", "pgrst_scalar->id", "", ""},
+		{"rpcp_record", "id:pgrst_scalar->id,counter:pgrst_scalar->counter", "", ""},
+		{"rpcp_setof_record", "", "[" + row + "]", `{"pgrst_scalar": ` + row + `}`},
+		{"rpcp_setof_record", "*", "[" + row + "]", `{"pgrst_scalar": ` + row + `}`},
+		{"rpcp_setof_record", "pgrst_scalar", "[" + row + "]", `{"pgrst_scalar": ` + row + `}`},
+		{"rpcp_setof_record", "rec:pgrst_scalar", "", `{"rec": ` + row + `}`},
+		{"rpcp_setof_record", "pgrst_scalar:pgrst_scalar->id", "[1]", `{"pgrst_scalar": 1}`},
+		{"rpcp_setof_record", "pgrst_scalar->id", "", `{"id": 1}`},
+		{"rpcp_setof_record", "id:pgrst_scalar->id,counter:pgrst_scalar->counter", "", row},
+	}
+	for _, c := range cases {
+		query := "/rpc/" + c.fn + "?limit=1"
+		if c.sel != "" {
+			query += "&select=" + c.sel
+		}
+		for _, single := range []bool{false, true} {
+			tt := test.Test{Description: query, Query: query, Expected: c.json, Status: 200}
+			if single {
+				tt.Description += " as an object"
+				tt.Headers = object
+				tt.Expected = c.single
+			}
+			if tt.Expected == "" {
+				tt.Status = 400
+			}
+			test.Execute(t, testConfig, []test.Test{tt})
+		}
 	}
 }
