@@ -247,6 +247,23 @@ func TestRPCParity(t *testing.T) {
 			Expected:    `{"id": 1, "counter": 101}`,
 			Status:      200,
 		},
+		// a function that returns one value counts one row, whatever it
+		// answers (PostgREST's pageCountSelectF)
+		{
+			Description:     "one value with limit=0 as an object, counted",
+			Query:           "/rpc/rpcp_sayhello?name=x&limit=0",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"count=exact"}},
+			Expected:        `null`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			Status:          200,
+		},
+		{
+			Description:     "one value with limit=0",
+			Query:           "/rpc/rpcp_sayhello?name=x&limit=0",
+			Expected:        `null`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 		// a JSON path on pgrst_scalar reads the record as JSON (Plan.hs)
 		{
 			Description: "a filter on a JSON path of pgrst_scalar",
@@ -307,6 +324,14 @@ func TestRPCRecordSelect(t *testing.T) {
 		{"rpcp_setof_record", "pgrst_scalar::text", `["(1,1)"]`, `{"pgrst_scalar": "(1,1)"}`},
 		{"rpcp_setof_record", "pgrst_scalar,missing", "", ""},
 		{"rpcp_setof_record", "pgrst_scalar,count()", "[" + row + "]", `{"pgrst_scalar": ` + row + `, "count": 1}`},
+		// the output type decides: a record converts to JSON whatever the
+		// cast, and two columns may share a name
+		{"rpcp_record", "pgrst_scalar:pgrst_scalar::record", row, row},
+		{"rpcp_setof_record", "pgrst_scalar:pgrst_scalar::record", "[" + row + "]", `{"pgrst_scalar": ` + row + `}`},
+		{"rpcp_setof_record", "rec:pgrst_scalar::record", "", `{"rec": ` + row + `}`},
+		{"rpcp_setof_record", "rec:pgrst_scalar::text,n:pgrst_scalar->id", "", `{"rec": "(1,1)", "n": 1}`},
+		{"rpcp_setof_record", "*,n:pgrst_scalar->id", "[" + row + "]", `{"pgrst_scalar": ` + row + `, "n": 1}`},
+		{"rpcp_setof_record", "a:pgrst_scalar->id,a:pgrst_scalar->counter", "", `{"a": 1}`},
 	}
 	for _, c := range cases {
 		query := "/rpc/" + c.fn + "?limit=1"
