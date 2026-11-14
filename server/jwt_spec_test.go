@@ -186,13 +186,13 @@ func TestAuthSpecJWT(t *testing.T) {
 		//     { matchStatus = 401 , matchHeaders = [ "WWW-Authenticate" <:> "Bearer error=\"invalid_token\", error_description=\"JWT expired\"" ] }
 		{Description: "fails with an expired token", Query: "/authors_only",
 			Headers:  authHeader("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE0NDY2NzgxNDksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.f8__E6VQwYcDqwHmr9PG03uaZn8Zh1b0vbJ9DYS0AdM"),
-			Expected: `{"code":"PGRST303","details":null,"hint":null,"message":"JWT expired"}`, Status: 401},
+			Expected: `{"code":"PGRST303","details":null,"hint":null,"message":"JWT expired"}`, Status: 401, ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer error=\"invalid_token\", error_description=\"JWT expired\""}},
 		// it "hides tables from users with invalid JWT" $ do
 		//   let auth = authHeaderJWT "ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"
 		//   `shouldRespondWith` [json| {"message":"Expected 3 parts in JWT; got 2","code":"PGRST301","hint":null,"details":null} |]
 		{Description: "hides tables from users with invalid JWT", Query: "/authors_only",
 			Headers:  authHeader("ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"),
-			Expected: `{"code":"PGRST301","details":null,"hint":null,"message":"Expected 3 parts in JWT; got 2"}`, Status: 401},
+			Expected: `{"code":"PGRST301","details":null,"hint":null,"message":"Expected 3 parts in JWT; got 2"}`, Status: 401, ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer error=\"invalid_token\", error_description=\"Expected 3 parts in JWT; got 2\""}},
 		// it "fails when the exp claim is not a number" $ do
 		//   ... `shouldRespondWith` [json|{"code":"PGRST303","details":null,"hint":null,"message":"The JWT 'exp' claim must be a number"}|]
 		{Description: "fails when the exp claim is not a number", Query: "/authors_only",

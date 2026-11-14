@@ -36,7 +36,7 @@ func TestPostgREST_Auth(t *testing.T) {
 			Method:          "GET",
 			Query:           "/authors_only",
 			Expected:        `{"code":"42501","details":null,"hint":null,"message":"permission denied for table authors_only"}`,
-			ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
+			ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer", "Content-Length": "96"},
 			Status:          401,
 		},
 		// it "denies access to tables that postgrest_test_author does not own" $
@@ -56,7 +56,7 @@ func TestPostgREST_Auth(t *testing.T) {
 			Query:           "/private_table",
 			Headers:         test.Headers{"Authorization": {authorToken}},
 			Expected:        `{"code":"42501","details":null,"hint":null,"message":"permission denied for table private_table"}`,
-			ExpectedHeaders: map[string]string{"WWW-Authenticate": ""},
+			ExpectedHeaders: map[string]string{"WWW-Authenticate": "", "Content-Length": "97"},
 			Status:          403,
 		},
 		// it "denies execution on functions that anonymous does not own" $
@@ -76,13 +76,14 @@ func TestPostgREST_Auth(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "allows execution on a function that postgrest_test_author owns",
-			Method:      "POST",
-			Query:       "/rpc/privileged_hello",
-			Body:        `{"name": "jdoe"}`,
-			Headers:     test.Headers{"Authorization": {authorToken}},
-			Expected:    `"Privileged hello to jdoe"`,
-			Status:      200,
+			Description:     "allows execution on a function that postgrest_test_author owns",
+			Method:          "POST",
+			Query:           "/rpc/privileged_hello",
+			Body:            `{"name": "jdoe"}`,
+			Headers:         test.Headers{"Authorization": {authorToken}},
+			Expected:        `"Privileged hello to jdoe"`,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 	}
 
@@ -116,16 +117,15 @@ func TestPostgREST_AuthRest(t *testing.T) {
 		//       { matchStatus = 200
 		//       , matchHeaders = [matchContentTypeSingular]
 		//       }
+		// @@ not asserted, PostgREST 16.4: Content-Type "application/vnd.pgrst.object+json; charset=utf-8" (smoothdb sends no charset); card 32503 (media types)
 		{
-			Description:     "returns jwt functions as jwt tokens",
-			Method:          "POST",
-			Query:           "/rpc/login",
-			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:            `{ "id": "jdoe", "pass": "1234" }`,
-			Expected:        `{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xuYW1lIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.KO-0PGp_rU-utcDBP6qwdd-Th2Fk-ICVt01I7QtTDWs"}`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/vnd.pgrst.object+json; charset=utf-8"},
-			Status:          200,
-			Skip:            "PostgREST 16.4: Content-Type application/vnd.pgrst.object+json; charset=utf-8, smoothdb leaves out the charset; no card",
+			Description: "returns jwt functions as jwt tokens",
+			Method:      "POST",
+			Query:       "/rpc/login",
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:        `{ "id": "jdoe", "pass": "1234" }`,
+			Expected:    `{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xuYW1lIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.KO-0PGp_rU-utcDBP6qwdd-Th2Fk-ICVt01I7QtTDWs"}`,
+			Status:      200,
 		},
 		// it "sql functions can encode custom and standard claims" $
 		//   request methodPost "/rpc/jwt_test" [single] "{}"
@@ -133,16 +133,15 @@ func TestPostgREST_AuthRest(t *testing.T) {
 		//       { matchStatus = 200
 		//       , matchHeaders = [matchContentTypeSingular]
 		//       }
+		// @@ not asserted, PostgREST 16.4: Content-Type "application/vnd.pgrst.object+json; charset=utf-8" (smoothdb sends no charset); card 32503 (media types)
 		{
-			Description:     "sql functions can encode custom and standard claims",
-			Method:          "POST",
-			Query:           "/rpc/jwt_test",
-			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:            `{}`,
-			Expected:        `{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqb2UiLCJzdWIiOiJmdW4iLCJhdWQiOiJldmVyeW9uZSIsImV4cCI6MTMwMDgxOTM4MCwibmJmIjoxMzAwODE5MzgwLCJpYXQiOjEzMDA4MTkzODAsImp0aSI6ImZvbyIsInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdCIsImh0dHA6Ly9wb3N0Z3Jlc3QuY29tL2ZvbyI6dHJ1ZX0.G2REtPnOQMUrVRDA9OnkPJTd8R0tf4wdYOlauh1E2Ek"}`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/vnd.pgrst.object+json; charset=utf-8"},
-			Status:          200,
-			Skip:            "PostgREST 16.4: Content-Type application/vnd.pgrst.object+json; charset=utf-8, smoothdb leaves out the charset; no card",
+			Description: "sql functions can encode custom and standard claims",
+			Method:      "POST",
+			Query:       "/rpc/jwt_test",
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:        `{}`,
+			Expected:    `{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqb2UiLCJzdWIiOiJmdW4iLCJhdWQiOiJldmVyeW9uZSIsImV4cCI6MTMwMDgxOTM4MCwibmJmIjoxMzAwODE5MzgwLCJpYXQiOjEzMDA4MTkzODAsImp0aSI6ImZvbyIsInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdCIsImh0dHA6Ly9wb3N0Z3Jlc3QuY29tL2ZvbyI6dHJ1ZX0.G2REtPnOQMUrVRDA9OnkPJTd8R0tf4wdYOlauh1E2Ek"}`,
+			Status:      200,
 		},
 		// it "sql functions can read custom and standard claims variables" $ do
 		//   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmdW4iLCJqdGkiOiJmb28iLCJuYmYiOjEzMDA4MTkzODAsImV4cCI6OTk5OTk5OTk5OSwiaHR0cDovL3Bvc3RncmVzdC5jb20vZm9vIjp0cnVlLCJpc3MiOiJqb2UiLCJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWF0IjoxMzAwODE5MzgwfQ.V5fEpXfpb7feqwVqlcDleFdKu86bdwU2cBRT4fcMhXg"

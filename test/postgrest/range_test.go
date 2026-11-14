@@ -210,12 +210,17 @@ func TestPostgREST_Range(t *testing.T) {
 		//               }|]
 		//             { matchStatus = 416 }
 		{
-			Description:     "fails with 416 for offside range",
-			Method:          "GET",
-			Query:           "/rpc/getitemrange?min=2&max=2",
-			Body:            ``,
-			Headers:         test.Headers{"Range": []string{"1-0"}},
-			Expected:        ``,
+			Description: "fails with 416 for offside range",
+			Method:      "GET",
+			Query:       "/rpc/getitemrange?min=2&max=2",
+			Body:        ``,
+			Headers:     test.Headers{"Range": []string{"1-0"}},
+			Expected: `{
+                "message":"Requested range not satisfiable",
+                "code":"PGRST103",
+                "details":"The lower boundary must be lower than or equal to the upper boundary in the Range header.",
+                "hint":null
+              }`,
 			ExpectedHeaders: nil,
 			Status:          416,
 		},
@@ -493,7 +498,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Query:           "/items?offset=0&id=eq.0",
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
-			Expected:        ``,
+			Expected:        `[]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
 			Status:          200,
 		},
@@ -903,12 +908,17 @@ func TestPostgREST_Range(t *testing.T) {
 		//               }|]
 		//             { matchStatus = 416 }
 		{
-			Description:     "fails with 416 for offside range",
-			Method:          "GET",
-			Query:           "/items",
-			Body:            ``,
-			Headers:         test.Headers{"Range": []string{"1-0"}},
-			Expected:        ``,
+			Description: "fails with 416 for offside range",
+			Method:      "GET",
+			Query:       "/items",
+			Body:        ``,
+			Headers:     test.Headers{"Range": []string{"1-0"}},
+			Expected: `{
+                "message":"Requested range not satisfiable",
+                "code":"PGRST103",
+                "details":"The lower boundary must be lower than or equal to the upper boundary in the Range header.",
+                "hint":null
+              }`,
 			ExpectedHeaders: nil,
 			Status:          416,
 		},

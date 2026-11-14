@@ -47,13 +47,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           { matchHeaders = [matchContentTypeSingular]
 		//           }
 		{
-			Description: "with GET request will select an existing object, Accept without the +json suffix",
-			Method:      "GET",
-			Query:       "/items?id=eq.5",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object"}},
-			Expected:    `{"id":5}`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: Accept application/vnd.pgrst.object (without +json) selects the singular object, smoothdb answers 406; card 32503 (media types)",
+			Description:     "with GET request will select an existing object, Accept without the +json suffix",
+			Method:          "GET",
+			Query:           "/items?id=eq.5",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object"}},
+			Expected:        `{"id":5}`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: Accept application/vnd.pgrst.object (without +json) selects the singular object, smoothdb answers 406; card 32503 (media types)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/vnd.pgrst.object+json; charset=utf-8"},
 		},
 		//     it "can combine multiple prefer values" $
 		//       request methodGet "/items?id=eq.5" [singular, ("Prefer", "count=none")] ""
@@ -137,12 +138,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when updating rows raises an error for multiple rows",
-			Method:      "PATCH",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
-			Body:        `{ "address": "zzz" }`,
-			Status:      406,
+			Description:     "when updating rows raises an error for multiple rows",
+			Method:          "PATCH",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
+			Body:            `{ "address": "zzz" }`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 4 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should not be updated, either
 		//       get "/addresses?id=eq.1"
@@ -165,13 +168,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when updating rows raises an error for multiple rows with return=rep",
-			Method:      "PATCH",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
-			Body:        `{ "address": "zzz" }`,
-			Expected:    `{"details":"The result contains 4 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
-			Status:      406,
+			Description:     "when updating rows raises an error for multiple rows with return=rep",
+			Method:          "PATCH",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
+			Body:            `{ "address": "zzz" }`,
+			Expected:        `{"details":"The result contains 4 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			Status:          406,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should not be updated, either
 		//       get "/addresses?id=eq.1"
@@ -194,12 +198,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when updating rows raises an error for zero rows",
-			Method:      "PATCH",
-			Query:       "/items?id=gt.0&id=lt.0",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:        `{"id":1}`,
-			Status:      406,
+			Description:     "when updating rows raises an error for zero rows",
+			Method:          "PATCH",
+			Query:           "/items?id=gt.0&id=lt.0",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:            `{"id":1}`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//     it "raises an error for zero rows with return=rep" $
 		//       request
@@ -212,13 +218,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when updating rows raises an error for zero rows with return=rep",
-			Method:      "PATCH",
-			Query:       "/items?id=gt.0&id=lt.0",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
-			Body:        `{"id":1}`,
-			Expected:    `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
-			Status:      406,
+			Description:     "when updating rows raises an error for zero rows with return=rep",
+			Method:          "PATCH",
+			Query:           "/items?id=gt.0&id=lt.0",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
+			Body:            `{"id":1}`,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			Status:          406,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//
 		//   context "when creating rows" $ do
@@ -277,12 +284,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when creating rows raises an error when attempting to create multiple entities",
-			Method:      "POST",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
-			Body:        `[ { "id": 200, "address": "xxx" }, { "id": 201, "address": "yyy" } ]`,
-			Status:      406,
+			Description:     "when creating rows raises an error when attempting to create multiple entities",
+			Method:          "POST",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
+			Body:            `[ { "id": 200, "address": "xxx" }, { "id": 201, "address": "yyy" } ]`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should not exist, either
 		//       get "/addresses?id=eq.200"
@@ -305,13 +314,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when creating rows raises an error when attempting to create multiple entities with return=rep",
-			Method:      "POST",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
-			Body:        `[ { "id": 202, "address": "xxx" }, { "id": 203, "address": "yyy" } ]`,
-			Expected:    `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
-			Status:      406,
+			Description:     "when creating rows raises an error when attempting to create multiple entities with return=rep",
+			Method:          "POST",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
+			Body:            `[ { "id": 202, "address": "xxx" }, { "id": 203, "address": "yyy" } ]`,
+			Expected:        `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			Status:          406,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should not exist, either
 		//       get "/addresses?id=eq.202"
@@ -334,12 +344,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when creating rows raises an error regardless of return=minimal",
-			Method:      "POST",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=minimal"}},
-			Body:        `[ { "id": 204, "address": "xxx" }, { "id": 205, "address": "yyy" } ]`,
-			Status:      406,
+			Description:     "when creating rows raises an error regardless of return=minimal",
+			Method:          "POST",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=minimal"}},
+			Body:            `[ { "id": 204, "address": "xxx" }, { "id": 205, "address": "yyy" } ]`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should not exist, either
 		//       get "/addresses?id=eq.204"
@@ -362,12 +374,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when creating rows raises an error when creating zero entities",
-			Method:      "POST",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:        `[ ]`,
-			Status:      406,
+			Description:     "when creating rows raises an error when creating zero entities",
+			Method:          "POST",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:            `[ ]`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//     it "raises an error when creating zero entities with return=rep" $
 		//       request
@@ -380,12 +394,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when creating rows raises an error when creating zero entities with return=rep",
-			Method:      "POST",
-			Query:       "/addresses",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
-			Body:        `[ ]`,
-			Status:      406,
+			Description:     "when creating rows raises an error when creating zero entities with return=rep",
+			Method:          "POST",
+			Query:           "/addresses",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
+			Body:            `[ ]`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//
 		//   context "when deleting rows" $ do
@@ -432,11 +448,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when deleting rows raises an error when attempting to delete multiple entities",
-			Method:      "DELETE",
-			Query:       "/items?id=gt.0&id=lt.6",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
-			Status:      406,
+			Description:     "when deleting rows raises an error when attempting to delete multiple entities",
+			Method:          "DELETE",
+			Query:           "/items?id=gt.0&id=lt.6",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
+			Status:          406,
+			Expected:        `{"details":"The result contains 5 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should still exist
 		//       get "/items?id=gt.0&id=lt.6&order=id"
@@ -463,12 +481,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when deleting rows raises an error when attempting to delete multiple entities with return=rep",
-			Method:      "DELETE",
-			Query:       "/items?id=gt.5&id=lt.11",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
-			Expected:    `{"details":"The result contains 5 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
-			Status:      406,
+			Description:     "when deleting rows raises an error when attempting to delete multiple entities with return=rep",
+			Method:          "DELETE",
+			Query:           "/items?id=gt.5&id=lt.11",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit", "return=representation"}},
+			Expected:        `{"details":"The result contains 5 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			Status:          406,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- the rows should still exist
 		//       get "/items?id=gt.5&id=lt.11"
@@ -495,11 +514,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when deleting rows raises an error when deleting zero entities",
-			Method:      "DELETE",
-			Query:       "/items?id=lt.0",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Status:      406,
+			Description:     "when deleting rows raises an error when deleting zero entities",
+			Method:          "DELETE",
+			Query:           "/items?id=lt.0",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Status:          406,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//     it "raises an error when deleting zero entities with return=rep" $
 		//       request
@@ -512,12 +533,13 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when deleting rows raises an error when deleting zero entities with return=rep",
-			Method:      "DELETE",
-			Query:       "/items?id=lt.0",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
-			Expected:    `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
-			Status:      406,
+			Description:     "when deleting rows raises an error when deleting zero entities with return=rep",
+			Method:          "DELETE",
+			Query:           "/items?id=lt.0",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"return=representation"}},
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			Status:          406,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//
 		//   context "when calling a stored proc" $ do
@@ -532,12 +554,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when calling a stored proc fails for zero rows",
-			Method:      "POST",
-			Query:       "/rpc/getproject",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:        `{ "id": 9999999}`,
-			Status:      406,
+			Description:     "when calling a stored proc fails for zero rows",
+			Method:          "POST",
+			Query:           "/rpc/getproject",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:            `{ "id": 9999999}`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 0 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//     -- this one may be controversial, should vnd.pgrst.object include
 		//     -- the likes of 2 and "hello?"
@@ -565,6 +589,7 @@ func TestPostgREST_Singular(t *testing.T) {
 		//         `shouldRespondWith` [json|{"id":1,"name":"Windows 7","client_id":1}|]
 		//           { matchHeaders = [matchContentTypeSingular]
 		//           }
+		// @@ not asserted, PostgREST 16.4: Content-Type "application/vnd.pgrst.object+json; charset=utf-8" (smoothdb sends no charset); card 32503 (media types)
 		{
 			Description: "when calling a stored proc returns a single object for json proc",
 			Method:      "POST",
@@ -585,12 +610,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when calling a stored proc fails for multiple rows",
-			Method:      "POST",
-			Query:       "/rpc/getallprojects",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
-			Body:        `{}`,
-			Status:      406,
+			Description:     "when calling a stored proc fails for multiple rows",
+			Method:          "POST",
+			Query:           "/rpc/getallprojects",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Body:            `{}`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 5 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//     it "fails for multiple rows with rolled back changes" $ do
 		//       post
@@ -615,12 +642,14 @@ func TestPostgREST_Singular(t *testing.T) {
 		//           , matchHeaders = [matchContentTypeJson]
 		//           }
 		{
-			Description: "when calling a stored proc fails for multiple rows with rolled back changes",
-			Method:      "POST",
-			Query:       "/rpc/setprojects",
-			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
-			Body:        `{"id_l": 1, "id_h": 2, "name": "changed"}`,
-			Status:      406,
+			Description:     "when calling a stored proc fails for multiple rows with rolled back changes",
+			Method:          "POST",
+			Query:           "/rpc/setprojects",
+			Headers:         test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
+			Body:            `{"id_l": 1, "id_h": 2, "name": "changed"}`,
+			Status:          406,
+			Expected:        `{"details":"The result contains 2 rows","message":"Cannot coerce the result to a single JSON object","code":"PGRST116","hint":null}`,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//       -- should rollback function
 		//       post

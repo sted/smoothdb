@@ -367,11 +367,14 @@ func TestPostgREST_Insert(t *testing.T) {
 		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the
 		// reset prepares the Location of the next request.
 		{
-			Description: "into a table with auto-incrementing pk: reset the sequence",
-			Method:      "POST",
-			Query:       "/rpc/reset_sequence",
-			Body:        `{"name": "auto_incrementing_pk_id_seq", "value": 2}`,
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
+			Description:     "into a table with auto-incrementing pk: reset the sequence",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "auto_incrementing_pk_id_seq", "value": 2}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			Status:          204,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 		},
 		//           request
 		//             methodPost
@@ -561,7 +564,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:           "/simple_pk",
 			Body:            `}{ x = 2`,
 			Headers:         nil,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "80"},
 			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},

@@ -263,7 +263,7 @@ func TestPostgREST_Delete(t *testing.T) {
 			Description:     "succeeds deleting the row when return=representation and selecting only the privileged columns",
 			Method:          "DELETE",
 			Query:           "/app_users?id=eq.1&select=id,email",
-			Body:            ``,
+			Body:            `{ "password": "passxyz" }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ { "id": 1, "email": "test@123.com" } ]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},

@@ -115,6 +115,7 @@ func TestPostgREST_Cors(t *testing.T) {
 			},
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "*"},
+			Status:          200,
 		},
 		//     request
 		//       methodOptions
@@ -132,6 +133,7 @@ func TestPostgREST_Cors(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "*"},
 			Skip:            corsNoOrigin,
+			Status:          200,
 		},
 		//     request
 		//       methodOptions
@@ -149,6 +151,7 @@ func TestPostgREST_Cors(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "*"},
 			Skip:            corsNoOrigin,
+			Status:          200,
 		},
 	}
 	withVariant(t, map[string]any{"CORSAllowedOrigins": []string{"*"}}, false, func(cfg test.Config) {

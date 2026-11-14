@@ -33,7 +33,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":4,"clients":{"name":"Apple"}},
 				{"id":1,"clients":{"name":"Microsoft"}},
 				{"id":2,"clients":{"name":"Microsoft"}} ]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/projects?select=id,client:clients(name)&order=client(name).asc"
 		//     `shouldRespondWith` [json|[
@@ -54,7 +55,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"client":{"name":"Microsoft"}},
 				{"id":2,"client":{"name":"Microsoft"}},
 				{"id":5,"client":null} ]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/videogames?select=id,computed_designers(id)&order=computed_designers(id).desc"
 		//     `shouldRespondWith` [json|[
@@ -75,7 +77,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"computed_designers":{"id":1}},
 				{"id":2,"computed_designers":{"id":1}}
 				]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works on a one-to-one relationship and jsonb column" $ do
 		//   get "/trash?select=id,trash_details(id,jsonb_col)&order=trash_details(jsonb_col->key).asc"
@@ -95,7 +98,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":3,"trash_details":{"id":3,"jsonb_col":{"key": 8}}},
 				{"id":1,"trash_details":{"id":1,"jsonb_col":{"key": 10}}}
 				]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/trash?select=id,trash_details(id,jsonb_col)&order=trash_details(jsonb_col->key).desc"
 		//     `shouldRespondWith` [json|[
@@ -114,7 +118,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":3,"trash_details":{"id":3,"jsonb_col":{"key": 8}}},
 				{"id":2,"trash_details":{"id":2,"jsonb_col":{"key": 6}}}
 				]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works on an embedded resource" $ do
 		//   get "/users?select=name,tasks(id,name,projects(id,name))&tasks.order=projects(id).desc&limit=1"
@@ -142,7 +147,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id": 2, "name":"Code w7","projects":{"id":1,"name":"Windows 7"}}
 				]
 				}]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/users?select=name,tasks(id,name,projects(id,name))&tasks.order=projects(id).desc,name&limit=1"
 		//     `shouldRespondWith` [json| [{
@@ -169,7 +175,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id": 1, "name":"Design w7","projects":{"id":1,"name":"Windows 7"}}
 				]
 				}]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/users?select=name,tasks(id,name,projects(id,name))&tasks.order=projects(id).asc&limit=1"
 		//     `shouldRespondWith` [json|[{
@@ -196,7 +203,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":4,"name":"Code w10","projects":{"id":2,"name":"Windows 10"}}
 				]
 				}]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "fails when is not a to-one relationship" $ do
 		//   get "/clients?select=*,projects(*)&order=projects(id)"
@@ -210,10 +218,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "fails when is not a to-one relationship",
-			Query:       "/clients?select=*,projects(*)&order=projects(id)",
-			Expected:    `{"code":"PGRST118","details":"'clients' and 'projects' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'projects' is not possible"}`,
-			Status:      400,
+			Description:     "fails when is not a to-one relationship",
+			Query:           "/clients?select=*,projects(*)&order=projects(id)",
+			Expected:        `{"code":"PGRST118","details":"'clients' and 'projects' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'projects' is not possible"}`,
+			Status:          400,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/clients?select=*,pros:projects(*)&order=pros(id)"
 		//     `shouldRespondWith` [json|{
@@ -226,10 +235,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "fails when is not a to-one relationship",
-			Query:       "/clients?select=*,pros:projects(*)&order=pros(id)",
-			Expected:    `{"code":"PGRST118","details":"'clients' and 'pros' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'pros' is not possible"}`,
-			Status:      400,
+			Description:     "fails when is not a to-one relationship",
+			Query:           "/clients?select=*,pros:projects(*)&order=pros(id)",
+			Expected:        `{"code":"PGRST118","details":"'clients' and 'pros' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'pros' is not possible"}`,
+			Status:          400,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/designers?select=id,computed_videogames(id)&order=computed_videogames(id).desc"
 		//     `shouldRespondWith` [json|{
@@ -242,10 +252,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "fails when is not a to-one relationship",
-			Query:       "/designers?select=id,computed_videogames(id)&order=computed_videogames(id).desc",
-			Expected:    `{"code":"PGRST118","details":"'designers' and 'computed_videogames' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'computed_videogames' is not possible"}`,
-			Status:      400,
+			Description:     "fails when is not a to-one relationship",
+			Query:           "/designers?select=id,computed_videogames(id)&order=computed_videogames(id).desc",
+			Expected:        `{"code":"PGRST118","details":"'designers' and 'computed_videogames' do not form a many-to-one or one-to-one relationship","hint":null,"message":"A related order on 'computed_videogames' is not possible"}`,
+			Status:          400,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "fails when the resource is not embedded" $
 		//   get "/projects?select=id,clients(name)&order=clientsx(name).nullsfirst"
@@ -259,10 +270,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "fails when the resource is not embedded",
-			Query:       "/projects?select=id,clients(name)&order=clientsx(name).nullsfirst",
-			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'clientsx' is included in the 'select' query parameter.","message":"'clientsx' is not an embedded resource in this request"}`,
-			Status:      400,
+			Description:     "fails when the resource is not embedded",
+			Query:           "/projects?select=id,clients(name)&order=clientsx(name).nullsfirst",
+			Expected:        `{"code":"PGRST108","details":null,"hint":"Verify that 'clientsx' is included in the 'select' query parameter.","message":"'clientsx' is not an embedded resource in this request"}`,
+			Status:          400,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// context "related conditions through null operator on embed" $ do
 		// it "works on a many-to-one relationship" $ do
@@ -285,8 +297,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"IOS"},
 				{"name":"OSX"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/projects?select=name,clients()&clients=is.null"
 		//     `shouldRespondWith` [json|[{"name":"Orphan"}]|]
@@ -294,11 +307,12 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "works on a many-to-one relationship",
-			Query:       "/projects?select=name,clients()&clients=is.null",
-			Expected:    `[{"name":"Orphan"}]`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Description:     "works on a many-to-one relationship",
+			Query:           "/projects?select=name,clients()&clients=is.null",
+			Expected:        `[{"name":"Orphan"}]`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/projects?select=name,computed_clients()&computed_clients=is.null"
 		//     `shouldRespondWith` [json|[{"name":"Orphan"}]|]
@@ -306,11 +320,12 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "works on a many-to-one relationship",
-			Query:       "/projects?select=name,computed_clients()&computed_clients=is.null",
-			Expected:    `[{"name":"Orphan"}]`,
-			Status:      200,
-			Skip:        "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Description:     "works on a many-to-one relationship",
+			Query:           "/projects?select=name,computed_clients()&computed_clients=is.null",
+			Expected:        `[{"name":"Orphan"}]`,
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works on a one-to-many relationship" $ do
 		//   get "/entities?select=name,child_entities()&child_entities=not.is.null"
@@ -328,8 +343,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"entity 1"},
 				{"name":"entity 2"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/entities?select=name,child_entities()&child_entities=is.null"
 		//     `shouldRespondWith` [json|[
@@ -346,8 +362,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"entity 3"},
 				{"name":null}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/entities?select=name,childs:child_entities()&childs=is.null"
 		//     `shouldRespondWith` [json|[
@@ -364,8 +381,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"entity 3"},
 				{"name":null}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works on a many-to-many relationship" $ do
 		//   get "/users?select=name,tasks()&tasks.id=eq.1&tasks=not.is.null"
@@ -383,8 +401,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"Angela Martin"},
 				{"name":"Dwight Schrute"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/users?select=name,tasks()&tasks.id=eq.1&tasks=is.null"
 		//     `shouldRespondWith` [json|[
@@ -399,8 +418,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Expected: `[
 				{"name":"Michael Scott"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works on nested embeds" $ do
 		//   get "/entities?select=name,child_entities(name,grandchild_entities())&child_entities.grandchild_entities=not.is.null&child_entities=not.is.null"
@@ -414,8 +434,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Query:       "/entities?select=name,child_entities(name,grandchild_entities())&child_entities.grandchild_entities=not.is.null&child_entities=not.is.null",
 			Expected: `[
 				{"name":"entity 1","child_entities":[{"name":"child entity 1"}, {"name":"child entity 2"}]}]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "can do an or across embeds" $
 		//   get "/client?select=*,clientinfo(),contact()&clientinfo.other=ilike.*main*&contact.name=ilike.*tabby*&or=(clientinfo.not.is.null,contact.not.is.null)"
@@ -433,8 +454,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"name":"Walmart"},
 				{"id":2,"name":"Target"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "doesn't interfere filtering when embedding using the column name" $
 		//   get "/projects?select=name,client_id,client:client_id(name)&client_id=eq.2"
@@ -452,7 +474,8 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"IOS","client_id":2,"client":{"name":"Apple"}},
 				{"name":"OSX","client_id":2,"client":{"name":"Apple"}}
 				]`,
-			Status: 200,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "doesn't interfere filtering on column names used for disambiguation" $
 		//   get "/user_friend?select=*,user1(*)&user1=eq.a02fb934-3a4d-469b-a6b6-4fcd88b973cf"
@@ -461,10 +484,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "doesn't interfere filtering on column names used for disambiguation",
-			Query:       "/user_friend?select=*,user1(*)&user1=eq.a02fb934-3a4d-469b-a6b6-4fcd88b973cf",
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "doesn't interfere filtering on column names used for disambiguation",
+			Query:           "/user_friend?select=*,user1(*)&user1=eq.a02fb934-3a4d-469b-a6b6-4fcd88b973cf",
+			Expected:        `[]`,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "doesn't interfere filtering on column names that are the same as the relation name" $
 		//   get "/tournaments?select=*,status(*)&status=eq.3"
@@ -473,10 +497,11 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		//       , matchHeaders = [matchContentTypeJson]
 		//       }
 		{
-			Description: "doesn't interfere filtering on column names that are the same as the relation name",
-			Query:       "/tournaments?select=*,status(*)&status=eq.3",
-			Expected:    `[]`,
-			Status:      200,
+			Description:     "doesn't interfere filtering on column names that are the same as the relation name",
+			Query:           "/tournaments?select=*,status(*)&status=eq.3",
+			Expected:        `[]`,
+			Status:          200,
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// -- "?table=not.is.null" does a "table IS DISTINCT FROM NULL" instead of a "table IS NOT NULL"
 		// -- https://github.com/PostgREST/postgrest/issues/2800#issuecomment-1720315818
@@ -496,8 +521,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"Test 1","table_a":{"name":"Not null 1"}},
 				{"name":"Test 2","table_a":{"name":null}}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		//   get "/table_b?select=name,table_a()&table_a=is.null"
 		//     `shouldRespondWith` [json|[
@@ -512,8 +538,9 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Expected: `[
 				{"name":"Test 3"}
 				]`,
-			Status: 200,
-			Skip:   "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			Status:          200,
+			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 		},
 		// it "works with count=exact" $ do
 		//   request
@@ -543,7 +570,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"IOS", "clients":{"name":"Apple"}},
 				{"name":"OSX", "clients":{"name":"Apple"}}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
 		},
@@ -564,7 +591,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Query:           "/projects?select=name,clients()&clients=is.null",
 			Headers:         test.Headers{"Prefer": {"count=exact"}},
 			Expected:        `[{"name":"Orphan"}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
 		},
@@ -591,7 +618,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"name":"Walmart"},
 				{"id":2,"name":"Target"}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: a null filter on an embedded resource (rel=is.null); card 32477 (embed filters)",
 		},
@@ -623,7 +650,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"IOS", "clients":{"name":"Apple"}},
 				{"name":"OSX", "clients":{"name":"Apple"}}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-3/5"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/5", "Content-Type": "application/json; charset=utf-8"},
 			Status:          206,
 			Skip:            "PostgREST 16.4: Prefer count=planned, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
@@ -644,7 +671,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Query:           "/projects?select=name,clients()&clients=is.null",
 			Headers:         test.Headers{"Prefer": {"count=planned"}},
 			Expected:        `[{"name":"Orphan"}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: Prefer count=planned, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
@@ -671,7 +698,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"name":"Walmart"},
 				{"id":2,"name":"Target"}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: Prefer count=planned, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
@@ -703,7 +730,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"name":"IOS", "clients":{"name":"Apple"}},
 				{"name":"OSX", "clients":{"name":"Apple"}}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-3/5"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/5", "Content-Type": "application/json; charset=utf-8"},
 			Status:          206,
 			Skip:            "PostgREST 16.4: Prefer count=estimated, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
@@ -724,7 +751,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 			Query:           "/projects?select=name,clients()&clients=is.null",
 			Headers:         test.Headers{"Prefer": {"count=estimated"}},
 			Expected:        `[{"name":"Orphan"}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/1", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: Prefer count=estimated, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
@@ -751,7 +778,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 				{"id":1,"name":"Walmart"},
 				{"id":2,"name":"Target"}
 				]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-1/2", "Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
 			Skip:            "PostgREST 16.4: Prefer count=estimated, here beside a null filter on an embed (card 32477); card 32483 (planned count)",
 		},
