@@ -22,6 +22,7 @@ func TableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request
 func SchemaTableListHandler(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 	tables, err := database.GetSchemaTables(c)
 	if err == nil {
+		setContentProfile(w, database.GetQueryOptions(c))
 		return heligo.WriteJSON(w, http.StatusOK, tables)
 	} else {
 		return WriteError(w, err)

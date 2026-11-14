@@ -180,6 +180,7 @@ func writeIfZeroRecordsToInsert(w http.ResponseWriter, records []database.Record
 	if len(records) == 0 {
 		if options.ReturnRepresentation {
 			status = http.StatusCreated
+			setContentProfile(w, options)
 			_, err = writeZeroRecords(w, options.ContentType, status)
 		} else {
 			status = http.StatusNoContent
@@ -203,6 +204,7 @@ func writeIfZeroRecordsToUpdate(w http.ResponseWriter, records []database.Record
 	if len(records) == 0 || len(records[0]) == 0 {
 		if options.ReturnRepresentation {
 			status = http.StatusOK
+			setContentProfile(w, options)
 			_, err = writeZeroRecords(w, options.ContentType, status)
 		} else {
 			status = http.StatusNoContent
@@ -464,6 +466,7 @@ func SetReadResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo
 func WriteRangeNotSatisfiable(ctx context.Context, w http.ResponseWriter) (int, error) {
 	options := database.GetQueryOptions(ctx)
 	status := http.StatusRequestedRangeNotSatisfiable
+	setContentProfile(w, options)
 	return heligo.WriteJSON(w, status, SmoothError{
 		Subsystem: "network",
 		Message:   "Requested range not satisfiable",
@@ -471,6 +474,14 @@ func WriteRangeNotSatisfiable(ctx context.Context, w http.ResponseWriter) (int, 
 		Details: fmt.Sprintf("An offset of %d was requested, but there are only %d rows.",
 			max(options.RangeMin, 0), options.Total),
 	})
+}
+
+// setContentProfile names the negotiated schema of a response with a body,
+// as PostgREST does (Response.hs, contentTypeHeaders).
+func setContentProfile(w http.ResponseWriter, options *database.QueryOptions) {
+	if options.SchemaNegotiated {
+		w.Header().Set("Content-Profile", options.Schema)
+	}
 }
 
 // WriteContent writes the response and its content type
@@ -481,9 +492,7 @@ func WriteContent(ctx context.Context, w http.ResponseWriter, status int, conten
 		ct += "; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", ct)
-	if sc.QueryOptions.SchemaNegotiated {
-		w.Header().Set("Content-Profile", sc.QueryOptions.Schema)
-	}
+	setContentProfile(w, &sc.QueryOptions)
 	w.WriteHeader(status)
 	_, err := w.Write(content)
 	return status, err
