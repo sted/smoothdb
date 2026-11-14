@@ -18,7 +18,7 @@ const maxTablesForFuzzySearch = 500
 // is the undefined_table error (42P01) of the relation that the request
 // names, and err otherwise. smoothdb runs the request even when the cache
 // does not hold the relation, because the relation can be newer than the
-// cache.
+// cache. A decision of the user (2026-11-14): PGRST205 comes after PostgreSQL fails.
 func TableNotFound(ctx context.Context, table string, err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42P01" {

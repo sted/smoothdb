@@ -2184,6 +2184,9 @@ const totalSetting = "smoothdb.total"
 // embeds (the arguments of a function, the root filters).
 func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, innerConds []string, count *binder, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	options.totalQuery, options.totalValues, options.totalPrelude = "", nil, ""
+	if err := pageOverflow(parts, options); err != nil {
+		return "", nil, err
+	}
 	limit, hasLimit, offset, hasOffset := pageBounds(parts, options)
 	if !options.HasRange {
 		if parts.limit != "" {
@@ -2353,7 +2356,9 @@ func recursiveAliases(stack *BuildStack, rec *RecursiveInfo) {
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
 	selectClause, mainWhere, orderClause, joins string,
 	st *buildState, info *SchemaInfo) (string, []any, error) {
-
+	if err := pageOverflow(parts, options); err != nil {
+		return "", nil, err
+	}
 	rec := parts.recursive
 	qtable := _sq(table, schema)
 	startField := quote(rec.StartField)

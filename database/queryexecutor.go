@@ -690,9 +690,8 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 		// No function of the cache can take the call: PostgREST answers
 		// PGRST202 before it runs anything. smoothdb runs the call, because
 		// the function can be newer than the cache, and answers PGRST202
-		// only when PostgreSQL does not find the function either. A
-		// single-object call names no argument, so its error stays
-		// PostgreSQL's.
+		// only when PostgreSQL does not find the function either. A decision
+		// of the user (2026-11-14): PGRST202 comes after PostgreSQL fails.
 		if f == nil && !options.ParamsAsSingleObject && isUndefinedFunction(err, fname) {
 			if noRpc := info.noRpc(fname, keys, !readonly, options.InputContentType); noRpc != nil {
 				return nil, 0, noRpc

@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"math/big"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -116,6 +116,8 @@ type QueryParts struct {
 	nodeCount           int // how many filter nodes the trees have (see WhereConditionNode.id)
 	// the primary key values of a PUT, from its filters (see putConditions)
 	putConditions []putCondition
+	// a LIMIT or an OFFSET beyond 64 bits, see pageOverflow
+	limitHuge, offsetHuge string
 }
 
 type QueryOptions struct {
@@ -201,95 +203,191 @@ type PostgRestParser struct {
 // Real queries never approach this.
 const maxFilterDepth = 100
 
-// readInteger reads s as a base-10 integer of any size, as Haskell's
-// readMaybe reads an Integer: an optional minus sign and digits. It
-// returns nil for anything else.
-func readInteger(s string) *big.Int {
-	digits := strings.TrimPrefix(s, "-")
+// pageInt is a limit or an offset as Haskell's readMaybe reads an Integer.
+// A value within 64 bits is v; a value beyond is only its sign (inf) and
+// its digits, because the sign and the size decide the answer and parsing
+// a long number costs time.
+type pageInt struct {
+	set    bool   // the value is an integer
+	inf    int    // 0 within 64 bits, +1 or -1 beyond
+	v      int64  // the value within 64 bits
+	digits string // without sign and leading zeros: the text of v when v >= 0, the magnitude beyond 64 bits
+}
+
+// readPageInt reads s as readMaybe reads an Integer: spaces around, an
+// optional minus sign and digits. It allocates nothing.
+func readPageInt(s string) pageInt {
+	s = strings.TrimSpace(s)
+	digits, neg := strings.CutPrefix(s, "-")
 	if digits == "" {
-		return nil
+		return pageInt{}
 	}
 	for i := 0; i < len(digits); i++ {
 		if digits[i] < '0' || digits[i] > '9' {
-			return nil
+			return pageInt{}
 		}
 	}
-	n, _ := new(big.Int).SetString(s, 10)
-	return n
-}
-
-// lastNonEmpty returns the last non-empty value of a parameter, as
-// PostgREST keeps it (QueryParams.hs, nonemptyParams and a map).
-func lastNonEmpty(values []string) (string, bool) {
-	for i := len(values) - 1; i >= 0; i-- {
-		if values[i] != "" {
-			return values[i], true
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		return pageInt{set: true, digits: "0"}
+	}
+	if len(digits) <= 19 { // below 10^19: it fits a uint64
+		var u uint64
+		for i := 0; i < len(digits); i++ {
+			u = u*10 + uint64(digits[i]-'0')
+		}
+		switch {
+		case !neg && u <= math.MaxInt64:
+			return pageInt{set: true, v: int64(u), digits: digits}
+		case neg && u <= 1<<63:
+			return pageInt{set: true, v: int64(-u)}
 		}
 	}
-	return "", false
+	sign := 1
+	if neg {
+		sign = -1
+	}
+	return pageInt{set: true, inf: sign, digits: digits}
 }
 
-// pageRange removes limit and offset from filters and returns the LIMIT and
-// OFFSET of the request, "" for none, as PostgREST's getRanges computes
-// them (QueryParams.hs, ApiRequest.hs, RangeQuery.hs). The two parameters
-// make one range, from the offset for limit rows, intersected with the rows
-// from 0. A value that is not an integer counts as absent. An empty range
-// is 416 PGRST103, except the range that ends at row -1, which is limit 0.
-// A value beyond 64 bits gets the 22003 error that PostgreSQL answers.
-func pageRange(filters Filters) (limit, offset string, err error) {
-	limitValue, hasLimit := lastNonEmpty(filters["limit"])
-	offsetValue, hasOffset := lastNonEmpty(filters["offset"])
+// sign returns -1, 0 or +1.
+func (n pageInt) sign() int {
+	switch {
+	case n.inf != 0:
+		return n.inf
+	case n.v < 0:
+		return -1
+	case n.v > 0:
+		return 1
+	}
+	return 0
+}
+
+// pageRange removes limit and offset from filters and returns them as
+// pageRangeOf does.
+func pageRange(filters Filters) (limit, offset, limitHuge, offsetHuge string, err error) {
+	limits, offsets := filters["limit"], filters["offset"]
 	delete(filters, "limit")
 	delete(filters, "offset")
-	if !hasLimit && !hasOffset {
-		return "", "", nil
+	return pageRangeOf(limits, offsets)
+}
+
+// pageRangeOf returns the LIMIT and the OFFSET of the request, "" for none,
+// as PostgREST's getRanges computes them (QueryParams.hs, ApiRequest.hs,
+// RangeQuery.hs). The last occurrence of each parameter counts. The two
+// make one range, from the offset for limit rows, intersected with the
+// rows from 0. A value that is not an integer, or an empty one, counts as
+// absent: with an offset, a limit of no integer has length 0. An empty range
+// is 416 PGRST103, except the range that ends at row -1, which is limit 0.
+// A LIMIT or an OFFSET beyond 64 bits comes back in limitHuge or
+// offsetHuge: the Range header or maxRows can still replace it, see
+// pageOverflow. It allocates nothing when the values are within 64 bits
+// and the LIMIT and the OFFSET are the values given.
+func pageRangeOf(limits, offsets []string) (limit, offset, limitHuge, offsetHuge string, err error) {
+	hasLimit, hasOffset := len(limits) > 0, len(offsets) > 0
+	var l, o pageInt
+	if hasLimit {
+		l = readPageInt(limits[len(limits)-1])
 	}
-	l, o := readInteger(limitValue), readInteger(offsetValue)
-	zero, one := big.NewInt(0), big.NewInt(1)
-	lower := zero
-	var upper *big.Int // nil: no upper bound
+	if hasOffset {
+		o = readPageInt(offsets[len(offsets)-1])
+	}
 	switch {
-	case hasLimit && hasOffset:
-		// the length of the limit range is l; with no l it has none, so 0
-		if o != nil {
-			lower = o
+	case !hasOffset:
+		// [0, l-1]
+		if !l.set {
+			return
 		}
-		length := zero
-		if l != nil {
-			length = l
+		switch l.sign() {
+		case 0:
+			return "0", "", "", "", nil
+		case -1:
+			return "", "", "", "", negativeLimit
 		}
-		upper = new(big.Int).Sub(new(big.Int).Add(lower, length), one)
-	case hasLimit:
-		if l != nil {
-			upper = new(big.Int).Sub(l, one)
+		if l.inf != 0 {
+			return "", "", l.digits, "", nil
+		}
+		return l.digits, "", "", "", nil
+	case !hasLimit:
+		// [o, infinity): a negative offset is cut to 0
+		if !o.set || o.sign() <= 0 {
+			return
+		}
+		if o.inf != 0 {
+			return "", "", "", o.digits, nil
+		}
+		return "", o.digits, "", "", nil
+	}
+	// [o, o+l-1], with 0 for a value that is not an integer
+	if o.sign() >= 0 {
+		switch {
+		case l.sign() == 0 && o.sign() == 0:
+			return "0", "", "", "", nil
+		case l.sign() <= 0:
+			return "", "", "", "", negativeLimit
+		}
+		if l.inf != 0 {
+			limitHuge = l.digits
+		} else {
+			limit = l.digits
+		}
+		if o.inf != 0 {
+			offsetHuge = o.digits
+		} else if o.v > 0 {
+			offset = o.digits
+		}
+		return
+	}
+	// a negative offset: the range is [0, o+l-1], so the limit is o+l
+	if l.sign() <= 0 {
+		return "", "", "", "", negativeLimit
+	}
+	sum := 0 // the sign of o+l
+	switch {
+	case o.inf == 0 && l.inf == 0:
+		// o < 0 < l: the sum cannot overflow
+		if s := o.v + l.v; s > 0 {
+			return strconv.FormatInt(s, 10), "", "", "", nil
+		} else if s < 0 {
+			sum = -1
+		}
+	case o.inf == 0:
+		sum = 1 // l beyond 64 bits, o within
+	case l.inf == 0:
+		sum = -1
+	case len(l.digits) != len(o.digits):
+		// both beyond 64 bits: the longer magnitude decides
+		sum = -1
+		if len(l.digits) > len(o.digits) {
+			sum = 1
 		}
 	default:
-		if o != nil {
-			lower = o
-		}
+		sum = strings.Compare(l.digits, o.digits)
 	}
-	if upper != nil && upper.Cmp(big.NewInt(-1)) == 0 {
-		return "0", "", nil
+	switch sum {
+	case 0:
+		return "0", "", "", "", nil // the range ends at row -1
+	case -1:
+		return "", "", "", "", negativeLimit
 	}
-	if lower.Sign() < 0 {
-		lower = zero
+	// o+l beyond 64 bits; the digits of l stand for it in the 22003 error
+	return "", "", l.digits, "", nil
+}
+
+// pageOverflow returns PostgreSQL's 22003 for a LIMIT or an OFFSET beyond
+// 64 bits that the request keeps. A Range header replaces both (smoothdb
+// does not intersect it with them), and maxRows caps the LIMIT.
+func pageOverflow(parts *QueryParts, options *QueryOptions) error {
+	if options.HasRange {
+		return nil
 	}
-	if upper != nil && upper.Cmp(lower) < 0 {
-		return "", "", negativeLimit
+	if parts.limitHuge != "" && maxRows() <= 0 {
+		return bigintOutOfRange(parts.limitHuge)
 	}
-	if upper != nil {
-		limit = new(big.Int).Add(new(big.Int).Sub(upper, lower), one).String()
-		if !isNonNegativeInt(limit) {
-			return "", "", bigintOutOfRange(limit)
-		}
+	if parts.offsetHuge != "" {
+		return bigintOutOfRange(parts.offsetHuge)
 	}
-	if lower.Sign() > 0 {
-		offset = lower.String()
-		if !isNonNegativeInt(offset) {
-			return "", "", bigintOutOfRange(offset)
-		}
-	}
-	return limit, offset, nil
+	return nil
 }
 
 // bigintOutOfRange is the error PostgreSQL answers to a LIMIT or an OFFSET
@@ -323,14 +421,15 @@ type CodedParseError struct {
 
 func (e CodedParseError) Error() string { return e.Msg }
 
-// Body returns the code, the message and the details of the error body. A
-// parseFailure has PostgREST's message shape: its code is PGRST100 (QPError)
-// and what went wrong is in the details. Another parse error has no code.
+// Body returns the code, the message and the details of the error body.
+// Every parse error of the query string is PGRST100 (QPError), the ones
+// that only smoothdb has too. A parseFailure has PostgREST's message shape,
+// with what went wrong in the details; another keeps its own message.
 func (e *ParseError) Body() (code, message, details string) {
 	if e.message != "" {
 		return "PGRST100", e.message, e.details
 	}
-	return "", e.msg, ""
+	return "PGRST100", e.msg, ""
 }
 
 // parseFailure is a parse error in PostgREST's message shape (PGRST100):
@@ -1802,7 +1901,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 
 	// LIMIT and OFFSET
 	// limit=100&offset=50
-	if parts.limit, parts.offset, err = pageRange(filters); err != nil {
+	if parts.limit, parts.offset, parts.limitHuge, parts.offsetHuge, err = pageRange(filters); err != nil {
 		return nil, err
 	}
 

@@ -527,6 +527,16 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 			status, err = WriteBadRequest(w, errors.New("a PATCH body must be a single object"))
 			return
 		}
+		// With ?columns PostgREST sends a scalar body to json_to_recordset,
+		// and PostgreSQL refuses it. smoothdb builds the update from the
+		// record, so it answers the error of PostgreSQL itself.
+		if jsonBody != nil && r.URL.Query().Has("columns") {
+			if c := firstNonSpace(jsonBody); c != '[' && c != '{' {
+				status, err = WriteServerError(w, &pgconn.PgError{Severity: "ERROR", Code: "22023",
+					Message: "cannot call json_to_recordset on a scalar"})
+				return
+			}
+		}
 		// {}, [] and [{}] update nothing, but run all the same: the
 		// relation must exist, and a single object is refused (406)
 	}
