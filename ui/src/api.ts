@@ -84,7 +84,9 @@ export async function makeRequest<T = any>(endpoint: string, options: RequestOpt
 
 	const text = await response.text();
 	if (text === '') return { success: true, status: response.status, headers: response.headers };
-	if ((response.headers.get('content-type') ?? '').includes('json')) {
+	// the media type alone: a parameter can name json too (a text plan has
+	// for="application/json")
+	if ((response.headers.get('content-type') ?? '').split(';')[0].includes('json')) {
 		try {
 			return { success: true, data: parseJSON(text), status: response.status, headers: response.headers };
 		} catch (e) {

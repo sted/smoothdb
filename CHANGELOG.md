@@ -11,6 +11,7 @@
 * **RPC parameters** — VARIADIC, a single unnamed parameter that takes the whole body, an empty body that calls the function with no argument, and `fts(lang)` on GET.
 * **Record results** — functions that return `record` or `setof record` answer as PostgREST, through `pgrst_scalar`.
 * **Query plans** — `Accept: application/vnd.pgrst.plan` answers the EXPLAIN of a read, write or call, with its `for` and `options`; `Database.PlanEnabled` turns it on (off by default, on with `SMOOTHDB_DEBUG`).
+* **Explain in the Data area** — an Explain panel shows the plan of the grid's request as a tree, with the time of each node, estimate errors and hints, and the text and JSON plans.
 * **Content-Profile on responses** — a response with a body names its schema when the request selects one or more than one schema is exposed.
 
 ### Changed

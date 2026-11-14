@@ -24,6 +24,7 @@
     import RecordPanel, { type PanelTarget, type RecordRef } from "../components/RecordPanel.svelte";
     import TablesBrowser from "../components/TablesBrowser.svelte";
     import Icon from "../components/Icon.svelte";
+    import ExplainPanel from "../components/ExplainPanel.svelte";
     import { router } from "../routes";
 
     const pageSize = 50;
@@ -50,6 +51,8 @@
     let editing = $state(false);
     let focusField = $state<string | undefined>(undefined);
     let panel: RecordPanel | undefined = $state();
+    // the plan of the grid's request, beside the grid in place of the record panel
+    let explaining = $state(false);
 
     // the default order is the primary key, so that pages are stable
     let order = $derived(query.get("order") ?? (def?.primaryKey.map((k) => `${k}.asc`).join(",") || ""));
@@ -106,6 +109,7 @@
         refs = [];
         panelTarget = null;
         editing = false;
+        explaining = false;
         rows = [];
         total = null;
         if (!db || !table) return;
@@ -139,7 +143,8 @@
         await fetchRows(db, schema, table, router.query, order);
     }
 
-    async function fetchRows(db: string, schema: string, table: string, q: string, order: string) {
+    // the query string of the grid's request, from the state of the page
+    function rowsParams(q: string, order: string): URLSearchParams {
         const params = new URLSearchParams(q);
         params.delete("page");
         params.delete("order");
@@ -148,6 +153,11 @@
         if (order) params.set("order", order);
         params.set("limit", String(pageSize));
         params.set("offset", String((page - 1) * pageSize));
+        return params;
+    }
+
+    async function fetchRows(db: string, schema: string, table: string, q: string, order: string) {
+        const params = rowsParams(q, order);
         loading = true;
         const response = await makeRequest(`${tableUrl(db, table)}?${params}`, {
             headers: { "Accept-Profile": schema, Prefer: "count=exact" },
@@ -200,6 +210,7 @@
     async function show(next: PanelTarget | null, edit = false, focus?: string) {
         if (panel && !(await panel.confirmLeave())) return;
         panelTarget = next;
+        if (next) explaining = false;
         editing = edit || next?.kind === "new";
         focusField = focus;
     }
@@ -273,6 +284,20 @@
                     {#if total !== null}<span class="badge">{total.toLocaleString()} {total === 1 ? "row" : "rows"}</span>{/if}
                     {#if defLoaded && !def}<span class="badge">View · read-only</span>{/if}
                     <span class="actions">
+                        {#if defLoaded}
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                class:active={explaining}
+                                aria-pressed={explaining}
+                                title="Show how PostgreSQL runs the request of this page"
+                                onclick={async () => {
+                                    if (!explaining) await show(null);
+                                    explaining = !explaining;
+                                }}
+                            >
+                                <Icon name="pulse" size={14} /> Explain
+                            </button>
+                        {/if}
                         {#if ui.admin}
                             <a class="btn btn-sm btn-ghost" href={`/ui/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(table)}`}>
                                 <Icon name="settings-3" size={14} /> Schema
@@ -348,7 +373,9 @@
                             {/snippet}
                         </Grid>
                     </div>
-                    {#if panelTarget}
+                    {#if explaining}
+                        <ExplainPanel {db} {schema} {table} params={rowsParams(router.query, order).toString()} onClose={() => (explaining = false)} />
+                    {:else if panelTarget}
                         <RecordPanel
                             bind:this={panel}
                             {db}
@@ -464,6 +491,10 @@
         text-underline-offset: 2px;
     }
     .rollup {
+        color: var(--accent-text);
+    }
+    .btn.active {
+        background: var(--accent-soft);
         color: var(--accent-text);
     }
     .rollup:hover {
