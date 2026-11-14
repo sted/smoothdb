@@ -373,6 +373,16 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	var zero bool
 	sc := database.GetSmoothContext(c)
 	options := &sc.QueryOptions
+	// a write with an empty payload answers without the database: check its
+	// query string first, as PostgREST does
+	if r.Method == "POST" || r.Method == "PATCH" {
+		if len(records) == 0 || (r.Method == "PATCH" && len(records) == 1 && len(records[0]) == 0) {
+			if err = database.CheckQuery(c, r.Param("sourcename"), payloadFilters(r)); err != nil {
+				status, err = WriteError(w, err)
+				return
+			}
+		}
+	}
 	if r.Method == "POST" {
 		// [] as input cause no inserts
 		if zero, status, err = writeIfZeroRecordsToInsert(w, records, options); zero {

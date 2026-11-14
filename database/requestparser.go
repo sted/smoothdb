@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -321,11 +322,32 @@ func isValidCastType(s string) bool {
 	return castTypeRe.MatchString(s)
 }
 
-// checkAggregatesEnabled checks if aggregate functions are enabled in the
-// configuration. PostgREST answers PGRST123 when they are not.
-func checkAggregatesEnabled() error {
-	if dbe != nil && !dbe.config.AggregatesEnabled {
-		return &CodedParseError{Msg: "Use of aggregate functions is not allowed", Code: "PGRST123"}
+// CheckQuery parses the query string of a request on table and returns its
+// error. A write with an empty payload answers without the database, but
+// PostgREST still builds its read plan first and refuses a bad query string
+// (Plan.hs, mutateReadPlan).
+func CheckQuery(ctx context.Context, table string, filters Filters) error {
+	_, err := GetSmoothContext(ctx).RequestParser.parse(table, filters)
+	return err
+}
+
+// checkAggregatesEnabled refuses an aggregate in fields, or in the fields of
+// their embeddings, when the configuration disables aggregates. PostgREST
+// answers PGRST123. It runs after the whole query string is parsed: a parse
+// error comes first, as in PostgREST (Plan.hs, validateAggFunctions).
+func checkAggregatesEnabled(fields []SelectField) error {
+	if dbe == nil || dbe.config.AggregatesEnabled {
+		return nil
+	}
+	for _, f := range fields {
+		if f.aggregate != "" {
+			return &CodedParseError{Msg: "Use of aggregate functions is not allowed", Code: "PGRST123"}
+		}
+		if f.relation != nil {
+			if err := checkAggregatesEnabled(f.relation.fields); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -781,10 +803,6 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 
 	// Check for standalone aggregate functions like count(), sum(), etc.
 	if isValidAggregateFunction(token) && p.lookAhead() == "()" {
-		// Check if aggregates are enabled
-		if err := checkAggregatesEnabled(); err != nil {
-			return nil, err
-		}
 		// This is a standalone aggregate function without field
 		p.next() // consume the ()
 		aggregate = strings.ToUpper(token)
@@ -820,10 +838,6 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 				// Check if we have: . <function> ()
 				aggFunc := p.tokens[next]
 				if isValidAggregateFunction(aggFunc) && next+1 < len(p.tokens) && p.tokens[next+1] == "()" {
-					// Check if aggregates are enabled
-					if err := checkAggregatesEnabled(); err != nil {
-						return nil, err
-					}
 					p.next() // consume the dot
 					p.next() // consume the aggregate function
 					p.next() // consume the ()
@@ -1832,6 +1846,9 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		}
 	}
 	parts.nodeCount = p.nodes
+	if err := checkAggregatesEnabled(parts.selectFields); err != nil {
+		return nil, err
+	}
 	return parts, nil
 }
 
