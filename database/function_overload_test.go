@@ -300,3 +300,39 @@ func TestArgumentValue(t *testing.T) {
 		}
 	}
 }
+
+// TestNoRpcHintOverloads: the PGRST202 hint takes as overloads only the
+// functions that PostgREST caches (Error.hs noRpcHint). A function whose
+// only argument is unnamed and of another type is not one, so the hint
+// looks for a close function name. An empty name in proargnames is a name
+// for PostgREST, so f(integer, OUT result integer) stays an overload.
+func TestNoRpcHintOverloads(t *testing.T) {
+	functions := []Function{
+		{Name: "unnamed_int_param", Schema: "test", Kind: "f", HasUnnamed: true, Arguments: []Argument{{Type: "integer", TypeId: 23}}},
+		{Name: "unnamed_text_param", Schema: "test", Kind: "f", HasUnnamed: true, Arguments: []Argument{{Type: "text", TypeId: 25}}},
+		{Name: "empty_name", Schema: "test", Kind: "f", Arguments: []Argument{
+			{Type: "integer", TypeId: 23, Mode: 'i'}, {Name: "result", Type: "integer", TypeId: 23, Mode: 'o'}}},
+	}
+	info := &SchemaInfo{
+		cachedFunctions: cacheFunctions(functions),
+		functionHints:   hintSets(indexFunctions(functions).callable, 0),
+	}
+	tests := []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{"unnamed_int_param", []string{"x", "y"}, "Perhaps you meant to call the function test.unnamed_text_param"},
+		{"empty_name", nil, "Perhaps you meant to call the function test.empty_name()"},
+	}
+	for _, tt := range tests {
+		err := info.noRpc(_s(tt.name, "test"), tt.keys, true, "json")
+		var rerr *RequestError
+		if !errors.As(err, &rerr) {
+			t.Fatalf("%s: want a RequestError, got %v", tt.name, err)
+		}
+		if rerr.Hint != tt.want {
+			t.Errorf("%s: want hint %q, got %q", tt.name, tt.want, rerr.Hint)
+		}
+	}
+}
