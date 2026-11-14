@@ -23,7 +23,6 @@ const (
 	rollbackNoPrefApplied = "PostgREST 16.4: Preference-Applied names the tx preference it honoured; card 32479 (write headers)"
 	rollbackNoPut         = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put)"
 	rollbackDeferred      = "PostgREST 16.4: a transaction that ends in rollback checks the deferred constraints first (SET CONSTRAINTS ALL IMMEDIATE, MainTx.hs optionalRollback); no card"
-	rollbackCommitError   = "PostgREST 16.4: a deferred constraint failing at COMMIT is the response, 409 (smoothdb commits after the response is sent and only logs it); card 35458 (tx after response)"
 	rollbackEmptyBody     = "PostgREST 16.4: POST /rpc with an empty body calls the function with its defaults (smoothdb answers EOF); no card"
 )
 
@@ -526,7 +525,7 @@ func TestPostgREST_RollbackAllowed(t *testing.T) {
 	tests = append(tests, b.shouldNotPersistMutations()...)
 	tests = append(tests, b.shouldRaiseExceptions()...)
 
-	b = rbBlock{ctx: "tx-allow-override = true, Prefer tx=commit: ", prefer: preferCommit, applied: "tx=commit", deferredSkip: rollbackCommitError}
+	b = rbBlock{ctx: "tx-allow-override = true, Prefer tx=commit: ", prefer: preferCommit, applied: "tx=commit"}
 	tests = append(tests, b.shouldRespondToReads()...)
 	tests = append(tests, b.shouldPersistMutations()...)
 	b.applied = ""
@@ -568,9 +567,9 @@ func TestPostgREST_RollbackAllowed(t *testing.T) {
 func TestPostgREST_RollbackDisallowed(t *testing.T) {
 	var tests []test.Test
 	for _, b := range []rbBlock{
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, deferredSkip: rollbackCommitError},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, deferredSkip: rollbackCommitError},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, deferredSkip: rollbackCommitError},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback},
 	} {
 		tests = append(tests, b.shouldRespondToReads()...)
 		tests = append(tests, b.shouldPersistMutations()...)
