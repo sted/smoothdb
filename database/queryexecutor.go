@@ -370,8 +370,9 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	var scalar bool
 	if f != nil {
 		if f.returnsRecord() {
-			// one json value per row (see BuildExecute)
-			scalar = true
+			// one json value per row, unless the select projects the record
+			// (see BuildExecute)
+			scalar = recordValueSelect(parts)
 		} else if rettype := info.GetTypeById(f.ReturnTypeId); rettype != nil {
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}

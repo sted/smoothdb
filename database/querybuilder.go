@@ -2519,6 +2519,22 @@ func argumentValue(f *Function, key string, value any) (any, bool, string) {
 	return value, variadic, ""
 }
 
+// recordValueSelect reports whether the select of a call to a function
+// that returns record takes the record itself: no select, *, or
+// pgrst_scalar alone. Each row is then one value. Any other select is a
+// projection, whose rows are objects with their own column names.
+func recordValueSelect(parts *QueryParts) bool {
+	for _, sf := range parts.selectFields {
+		if sf.relation != nil || sf.label != "" || sf.cast != "" || sf.aggregate != "" || sf.field.jsonPath != "" {
+			return false
+		}
+		if sf.field.name != "*" && (sf.field.name != "pgrst_scalar" || len(parts.selectFields) > 1) {
+			return false
+		}
+	}
+	return true
+}
+
 // pgArrayLiteral writes values as a PostgreSQL array literal, each element
 // quoted, as PostgREST's pgBuildArrayLiteral. PostgreSQL reads it as an
 // array of the type of the parameter.
@@ -2639,7 +2655,7 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			selectClause = strings.Join(cols, ", ")
 		}
 	}
-	if isRecord && (selectClause == "*" || selectClause == "\"t\".\"pgrst_scalar\"") {
+	if isRecord && recordValueSelect(parts) {
 		// The fields of a record have no names on the wire: JSON takes
 		// them from to_json, as PostgREST's json_agg does. CSV writes the
 		// record as PostgreSQL's text, as PostgREST does.
