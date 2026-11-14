@@ -3239,6 +3239,8 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Type" <:> "text/xml; charset=utf-8"]
 		// 	  }
 
+		// The PGRST113 of these hspec blocks is older than 16.4, which answers
+		// PGRST107 (read live); the body asserted is 16.4's.
 		//   it "fails if a single column is not selected" $ do
 		// 	request methodGet "/images?select=img,name&name=eq.A.png" (acceptHdrs "application/octet-stream") ""
 		// 	  `shouldRespondWith`
@@ -3248,6 +3250,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?select=img,name&name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		// 	request methodGet "/images?select=*&name=eq.A.png"
@@ -3260,6 +3263,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?select=*&name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		// 	request methodGet "/images?name=eq.A.png"
@@ -3272,6 +3276,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		//   it "concatenates results if more than one row is returned" $

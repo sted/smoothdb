@@ -7,26 +7,27 @@ import (
 	"time"
 )
 
-// limit/offset are parameterized but their value was parsed with the error
-// discarded, so a non-integer silently became LIMIT 0 (an empty result) instead
-// of a 400. They must be rejected at parse time.
-func TestParserRejectsInvalidLimitOffset(t *testing.T) {
-	bad := []struct{ query, errSubstr string }{
-		{"?limit=abc", "limit"},
-		{"?limit=-1", "Requested range not satisfiable"}, // PostgREST: 416 PGRST103
-		{"?limit=", "limit"},
-		{"?offset=xyz", "offset"},
-		{"?offset=-5", "offset"},
-	}
-	for _, c := range bad {
-		u, _ := url.Parse(c.query)
+// limit and offset follow PostgREST 16.4 (QueryParams.hs, readMaybe): a
+// value that is not an integer is ignored, a negative offset is a no-op, and
+// a negative limit, of any size, is 416 PGRST103.
+func TestParserLimitOffsetFollowPostgREST(t *testing.T) {
+	for _, q := range []string{"?limit=-1", "?limit=-99999999999999999999"} {
+		u, _ := url.Parse(q)
 		_, err := PostgRestParser{}.parse("t", u.Query())
-		if err == nil {
-			t.Errorf("%s: expected a parse error, got nil", c.query)
+		if re, ok := err.(*RequestError); !ok || re.Code != "PGRST103" {
+			t.Errorf("%s: expected PGRST103, got %T %v", q, err, err)
+		}
+	}
+	ignored := []string{"?limit=abc", "?limit=", "?offset=xyz", "?offset=-5", "?offset="}
+	for _, q := range ignored {
+		u, _ := url.Parse(q)
+		parts, err := PostgRestParser{}.parse("t", u.Query())
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", q, err)
 			continue
 		}
-		if !strings.Contains(err.Error(), c.errSubstr) {
-			t.Errorf("%s: expected an error mentioning %q, got %q", c.query, c.errSubstr, err.Error())
+		if parts.limit != "" || parts.offset != "" {
+			t.Errorf("%s: want no limit and no offset, got %q and %q", q, parts.limit, parts.offset)
 		}
 	}
 	valid := []string{"?limit=10", "?offset=0", "?limit=0&offset=100"}
