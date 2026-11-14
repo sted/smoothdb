@@ -202,13 +202,6 @@ func mediaTypeError(accept []string) *RequestError {
 	}
 }
 
-// aggregatesNotAllowed is PostgREST's AggregatesNotAllowed (PGRST123).
-var aggregatesNotAllowed = &RequestError{
-	Status:  http.StatusBadRequest,
-	Code:    "PGRST123",
-	Message: "Use of aggregate functions is not allowed",
-}
-
 // func ErrorToHTTPStatus(err error) (int, any) {
 // 	if _, ok := err.(*pgconn.PgError); ok {
 // 		dberr := err.(*pgconn.PgError)

@@ -348,6 +348,22 @@ func recordsJSON(records []database.Record) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// writeBodyError writes an error of the reading of a body: PGRST102 for a
+// body that is not valid, 400 or 413 for the others (see WriteBadRequest).
+func writeBodyError(w http.ResponseWriter, err error) (int, error) {
+	if rerr, ok := err.(*database.RequestError); ok {
+		return writeRequestError(w, rerr)
+	}
+	return WriteBadRequest(w, err)
+}
+
+// writeUnacceptableBody writes PostgREST's answer to a body that it has no
+// reader for: an invalid body (PGRST102) that names the media type in full
+// (Payload.hs, getPayload), not 415.
+func writeUnacceptableBody(w http.ResponseWriter, r heligo.Request) (int, error) {
+	return writeRequestError(w, database.InvalidBody("Content-Type not acceptable: "+r.Header.Get("Content-Type")))
+}
+
 // jsonBodyError is PostgREST's InvalidBody (PGRST102) for a JSON body that
 // does not decode to records: a body that is not JSON, or JSON that is not
 // an object or an array of objects (Payload.hs, getPayload).
@@ -500,18 +516,13 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	if ctype == "" {
 		// PostgREST answers a body it has no reader for as an invalid body,
 		// with the media type in full (Payload.hs, getPayload), not with 415
-		header := r.Header.Get("Content-Type")
-		status, err = writeRequestError(w, database.InvalidBody("Content-Type not acceptable: "+header))
+		status, err = writeUnacceptableBody(w, r)
 		return
 	} else {
 		// read input records
 		records, jsonBody, err = readInputRecords(r, ctype)
 		if err != nil {
-			if rerr, ok := err.(*database.RequestError); ok {
-				status, err = writeRequestError(w, rerr)
-			} else {
-				status, err = WriteBadRequest(w, err)
-			}
+			status, err = writeBodyError(w, err)
 			return
 		}
 	}

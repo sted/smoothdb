@@ -640,8 +640,7 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 		case f == nil:
 			// a text, xml or bytea body fills only a single unnamed
 			// parameter of its type (PGRST202)
-			return nil, 0, &FunctionNotFoundError{"Could not find the function " + _s(function, options.Schema) +
-				" with a single unnamed " + rawType + " parameter in the schema cache"}
+			return nil, 0, info.noRpc(fname, keys, true, rawType)
 		default:
 			// a function whose parameters all have a default: called without
 			// arguments, as PostgREST does
@@ -693,9 +692,7 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 		// only when PostgreSQL does not find the function either. A decision
 		// of the user (2026-11-14): PGRST202 comes after PostgreSQL fails.
 		if f == nil && !options.ParamsAsSingleObject && isUndefinedFunction(err, fname) {
-			if noRpc := info.noRpc(fname, keys, !readonly, options.InputContentType); noRpc != nil {
-				return nil, 0, noRpc
-			}
+			return nil, 0, info.noRpc(fname, keys, !readonly, rawType)
 		}
 		return nil, 0, err
 	}

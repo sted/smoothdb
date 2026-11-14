@@ -84,7 +84,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		}
 		data, count, err := database.UpsertRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
 		if err != nil {
-			return WriteError(w, err)
+			return WriteError(w, database.TableNotFound(c, sourcename, err))
 		}
 		SetResponseHeaders(c, w, r, count)
 		if data == nil {
@@ -161,7 +161,6 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil || status != 0 {
 			return status, err
 		}
-		database.GetQueryOptions(c).InputContentType = getContentType(r)
 		data, count, err := database.CallFunction(c, fname, record, raw, payloadFilters(r))
 		if err == nil {
 			data, err = database.JQTransformResponse(c, data)
@@ -221,7 +220,7 @@ func readCallRequest(w http.ResponseWriter, r heligo.Request) (database.Record, 
 	if header := r.Header.Get("Content-Type"); header != "" {
 		var err error
 		if ctype, _, err = mime.ParseMediaType(header); err != nil {
-			status, err := heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
+			status, err := writeUnacceptableBody(w, r)
 			return nil, nil, status, err
 		}
 	}
@@ -245,7 +244,7 @@ func readCallRequest(w http.ResponseWriter, r heligo.Request) (database.Record, 
 		}
 		records, err := decodeJSONRecords(body)
 		if err != nil {
-			status, err := WriteBadRequest(w, err)
+			status, err := writeBodyError(w, err)
 			return nil, nil, status, err
 		}
 		if len(records) == 0 {
@@ -254,12 +253,12 @@ func readCallRequest(w http.ResponseWriter, r heligo.Request) (database.Record, 
 		return records[0], raw, 0, nil
 	}
 	if getContentType(r) == "" {
-		status, err := heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
+		status, err := writeUnacceptableBody(w, r)
 		return nil, nil, status, err
 	}
 	records, _, err := readInputRecords(r, ctype)
 	if err != nil {
-		status, err := WriteBadRequest(w, err)
+		status, err := writeBodyError(w, err)
 		return nil, nil, status, err
 	}
 	if len(records) == 0 {

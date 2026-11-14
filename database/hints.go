@@ -81,13 +81,9 @@ func indexTables(tables map[string]Table) map[string][]string {
 	return names
 }
 
-// functionIndex lists the functions of the database by name, for the
-// PGRST202 error of a call that no function can take (see noRpc).
+// functionIndex lists the functions of the database by name, for the hint
+// of the PGRST202 error of a call that no function can take (see noRpc).
 type functionIndex struct {
-	// unnamed holds every qualified name of the database; it is true when an
-	// overload has an unnamed input argument. smoothdb leaves a call to such
-	// a name to PostgreSQL (card 32489 rpc-params).
-	unnamed map[string]bool
 	// callable holds, per schema, the names of the functions that PostgREST
 	// keeps in its schema cache (SchemaCache.hs, funcsSqlQuery): every input
 	// argument named, or one unnamed argument of a type that a body can fill.
@@ -100,10 +96,8 @@ var singleUnnamedTypes = []string{"bytea", "json", "jsonb", "text", "xml"}
 
 // indexFunctions builds the functionIndex of the functions.
 func indexFunctions(functions []Function) functionIndex {
-	idx := functionIndex{unnamed: map[string]bool{}, callable: map[string][]string{}}
+	idx := functionIndex{callable: map[string][]string{}}
 	for _, f := range functions {
-		name := _s(f.Name, f.Schema)
-		idx.unnamed[name] = idx.unnamed[name] // the name exists
 		// PostgREST caches functions only, and no trigger function
 		if f.Kind != "f" || f.Returns == "trigger" {
 			continue
@@ -115,7 +109,6 @@ func indexFunctions(functions []Function) functionIndex {
 				unnamed++
 			}
 		}
-		idx.unnamed[name] = idx.unnamed[name] || unnamed > 0
 		if unnamed == 0 || (unnamed == 1 && slices.Contains(singleUnnamedTypes, inputs[0].Type)) {
 			idx.callable[f.Schema] = append(idx.callable[f.Schema], f.Name)
 		}
@@ -123,26 +116,20 @@ func indexFunctions(functions []Function) functionIndex {
 	return idx
 }
 
-// noRpc returns PostgREST's NoRpc error (PGRST202) when no function can take
-// a call of name (schema.name) with the argument names keys, and nil when
-// one can or when smoothdb leaves the call to PostgreSQL: a name with an
-// overload that has an unnamed argument. post says the call is a POST, and
-// contentType is the media type of its body.
-func (si *SchemaInfo) noRpc(name string, keys []string, post bool, contentType string) error {
-	if si == nil {
-		return nil
-	}
-	unnamed, exists := si.functions.unnamed[name]
-	if unnamed {
-		return nil
-	}
-	overloads := si.cachedFunctions[name]
-	if exists && len(overloads) == 0 {
-		return nil // a function that the cache does not hold, a procedure
+// noRpc returns PostgREST's NoRpc error (PGRST202) for a call of name
+// (schema.name) with the argument names keys that no function takes. The
+// caller decides that no function takes it, with the fallback of
+// FindFunctionFor. post says the call is a POST, and raw is the type of
+// its body as RawBody names it: "json", "text", "xml", "bytea", or "" for
+// none, a form or CSV.
+func (si *SchemaInfo) noRpc(name string, keys []string, post bool, raw string) error {
+	var overloads []Function
+	if si != nil {
+		overloads = si.cachedFunctions[name]
 	}
 	schema, proc := splitTableName(name)
 	keys = slices.Sorted(slices.Values(keys))
-	singleParam := post && (contentType == "text/plain" || contentType == "text/xml" || contentType == "application/octet-stream")
+	singleParam := post && (raw == "text" || raw == "xml" || raw == "bytea")
 
 	params := " without parameters"
 	if len(keys) > 0 {
@@ -161,13 +148,9 @@ func (si *SchemaInfo) noRpc(name string, keys []string, post bool, contentType s
 		searched = " with parameters " + strings.Join(keys, ", ")
 	}
 	switch {
-	case post && contentType == "text/plain":
-		searched = " with a single unnamed text parameter"
-	case post && contentType == "text/xml":
-		searched = " with a single unnamed xml parameter"
-	case post && contentType == "application/octet-stream":
-		searched = " with a single unnamed bytea parameter"
-	case post && contentType == "application/json":
+	case singleParam:
+		searched = " with a single unnamed " + raw + " parameter"
+	case post && raw == "json":
 		searched += " or with a single unnamed json/jsonb parameter"
 	}
 
@@ -177,7 +160,7 @@ func (si *SchemaInfo) noRpc(name string, keys []string, post bool, contentType s
 		Message: message,
 		Details: "Searched for the function " + schema + "." + proc + searched + ", but no matches were found in the schema cache.",
 	}
-	if !singleParam {
+	if !singleParam && si != nil {
 		err.Hint = si.noRpcHint(schema, proc, keys, overloads)
 	}
 	return err

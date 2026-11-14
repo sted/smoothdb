@@ -127,9 +127,6 @@ type QueryOptions struct {
 	// one schema is exposed (PostgREST ApiRequest.hs, getSchema)
 	SchemaNegotiated     bool
 	ContentType          string // json, csv
-	// InputContentType is the media type of the body of a POST to a function,
-	// set by the handler; the PGRST202 error names it
-	InputContentType     string
 	ReturnRepresentation bool
 	// Return is the return preference: "representation", "minimal",
 	// "headers-only", or "" when the request sends none
@@ -147,8 +144,8 @@ type QueryOptions struct {
 	// CountPreference is the first count preference of the request: exact,
 	// planned or estimated, honoured or not
 	CountPreference string
-	JQ                   string // jq program from the jq= query parameter
-	JQArgs               string // raw JSON object from the jq_args= query parameter
+	JQ              string // jq program from the jq= query parameter
+	JQArgs          string // raw JSON object from the jq_args= query parameter
 	// Inserted is the number of rows a merge-duplicates insert created, as
 	// opposed to the rows it updated; -1 when the executor of an insert does
 	// not count them (written by the executor, see insertedCounter)
@@ -412,15 +409,6 @@ type ParseError struct {
 
 func (e ParseError) Error() string { return e.msg }
 
-// CodedParseError is a parse error that PostgREST answers with its own error
-// code. The wrappers of ParseError leave it unchanged.
-type CodedParseError struct {
-	Msg  string
-	Code string // the PostgREST code, such as PGRST123
-}
-
-func (e CodedParseError) Error() string { return e.Msg }
-
 // Body returns the code, the message and the details of the error body.
 // Every parse error of the query string is PGRST100 (QPError), the ones
 // that only smoothdb has too. A parseFailure has PostgREST's message shape,
@@ -431,6 +419,15 @@ func (e *ParseError) Body() (code, message, details string) {
 	}
 	return "PGRST100", e.msg, ""
 }
+
+// CodedParseError is a parse error that PostgREST answers with its own error
+// code. The wrappers of ParseError leave it unchanged.
+type CodedParseError struct {
+	Msg  string
+	Code string // the PostgREST code, such as PGRST123
+}
+
+func (e CodedParseError) Error() string { return e.Msg }
 
 // parseFailure is a parse error in PostgREST's message shape (PGRST100):
 // "failed to parse <what> (<input>)", then what went wrong.

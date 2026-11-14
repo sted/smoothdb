@@ -3128,7 +3128,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body (PGRST202, PGRST203); card 32494 (error body)",
 		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/xml is specified" $
@@ -3160,7 +3159,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body (PGRST202, PGRST203); card 32494 (error body)",
 		},
 
 		//     it "will err when no function with single unnamed bytea parameter exists and application/octet-stream is specified" $
@@ -3192,7 +3190,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body (PGRST202, PGRST203); card 32494 (error body)",
 		},
 
 		//     it "should be able to resolve when a single unnamed json parameter exists and other overloaded functions are found" $ do
@@ -3378,7 +3375,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          300,
-			Skip:            "PostgREST 16.4: the PGRST error body (PGRST202, PGRST203); card 32494 (error body)",
 		},
 
 		//     it "should fail on /rpc/unnamed_xml_param when posting invalid xml" $ do
@@ -3413,7 +3409,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Length": "118", "Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST error body, with its Content-Length; card 32494 (error body)",
+			Skip:            "PostgREST 16.4: Accept text/xml for a function that returns xml (smoothdb answers PGRST107 before the call); card 32503 (media types)",
 		},
 
 		// -- https://github.com/PostgREST/postgrest/issues/1586#issuecomment-696345442
