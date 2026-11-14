@@ -745,7 +745,6 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Query:       "/rpc/returns_complex?select=val->r&val->i=gt.0.5&order=val->>i.desc",
 			Expected:    `[{"r":0.3},{"r":0.2}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: -> on a composite field of an RPC result; card 31812 (rpc composites)",
 		},
 	}
 

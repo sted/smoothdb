@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -197,5 +198,105 @@ func TestFindFunction(t *testing.T) {
 	// a nil SchemaInfo finds nothing
 	if f, err := (*SchemaInfo)(nil).FindFunction("test.overloaded", nil); f != nil || err != nil {
 		t.Errorf("nil SchemaInfo: got %v, %v", f, err)
+	}
+}
+
+// TestFindFunctionFor resolves POST calls whose body can fill a single
+// unnamed parameter, as Plan.hs findProc (RpcSpec.hs "single unnamed param").
+func TestFindFunctionFor(t *testing.T) {
+	unnamed := func(name, typ string, typeId uint32) Function {
+		return Function{Name: name, Schema: "test", HasUnnamed: true, Arguments: []Argument{{Type: typ, TypeId: typeId}}}
+	}
+	info := &SchemaInfo{cachedFunctions: cacheFunctions([]Function{
+		unnamed("over", "json", 114),
+		unnamed("over", "bytea", 17),
+		unnamed("over", "text", 25),
+		{Name: "over", Schema: "test", Arguments: []Argument{{}}},
+		{Name: "over", Schema: "test", Arguments: []Argument{{Name: "x", Type: "integer", TypeId: 23}, {Name: "y", Type: "integer", TypeId: 23}}},
+		unnamed("json_jsonb", "json", 114),
+		unnamed("json_jsonb", "jsonb", 3802),
+		unnamed("int_param", "integer", 23),
+		// two unnamed arguments: not cached
+		{Name: "two", Schema: "test", HasUnnamed: true, Arguments: []Argument{{Type: "json", TypeId: 114}, {Type: "json", TypeId: 114}}},
+	})}
+	tests := []struct {
+		name string
+		keys []string
+		raw  string
+		want string // the type of the first argument, "()" for none, "" for no function
+	}{
+		{"over", nil, "json", "()"},
+		{"over", []string{"x", "y"}, "json", "integer"},
+		{"over", []string{"A", "B"}, "json", "json"},
+		{"over", nil, "text", "text"},
+		{"over", nil, "bytea", "bytea"},
+		{"over", nil, "xml", ""},
+		{"over", []string{"A"}, "", ""},
+		{"over", nil, "", "()"},
+		{"int_param", nil, "text", ""},
+		{"int_param", []string{"x"}, "json", ""},
+		{"two", nil, "json", ""},
+	}
+	for _, tt := range tests {
+		f, err := info.FindFunctionFor(_s(tt.name, "test"), tt.keys, tt.raw)
+		if err != nil {
+			t.Errorf("%s%v %s: %v", tt.name, tt.keys, tt.raw, err)
+			continue
+		}
+		got := ""
+		if f != nil {
+			got = "()"
+			if inputs := f.inputArguments(); len(inputs) > 0 {
+				got = inputs[0].Type
+			}
+		}
+		if got != tt.want {
+			t.Errorf("%s%v %s: want %q, got %q", tt.name, tt.keys, tt.raw, tt.want, got)
+		}
+	}
+	// a json and a jsonb fallback: PGRST203
+	_, err := info.FindFunctionFor("test.json_jsonb", []string{"A"}, "json")
+	var ambiguous *AmbiguousFunctionError
+	if !errors.As(err, &ambiguous) {
+		t.Fatalf("json_jsonb: want an AmbiguousFunctionError, got %v", err)
+	}
+	want := "Could not choose the best candidate function between: test.json_jsonb( => json), test.json_jsonb( => jsonb)"
+	if ambiguous.Error() != want {
+		t.Errorf("json_jsonb:\n want %s\n got  %s", want, ambiguous.Error())
+	}
+}
+
+// TestArgumentValue checks the values and the placeholders of the
+// arguments of a call (see argumentValue).
+func TestArgumentValue(t *testing.T) {
+	f := &Function{Arguments: []Argument{
+		{Name: "j", Type: "json", TypeId: 114},
+		{Name: "n", Type: "text", TypeId: 25},
+		{Name: "v", Type: "text[]", Mode: 'v', TypeId: 1009},
+	}}
+	tests := []struct {
+		key      string
+		value    any
+		want     string
+		variadic bool
+		cast     string
+	}{
+		{"j", "<a>", `"<a>"`, false, ""},
+		{"j", QueryValues{`{"k":1}`}, `{"k":1}`, false, ""},
+		{"n", QueryValues{"a", "b"}, "b", false, ""},
+		{"v", QueryValues{`a"b`, `c\d`, "e"}, `{"a\"b","c\\d","e"}`, true, ""},
+		{"v", []any{"x"}, "[x]", true, ""},
+		{"other", QueryValues{"a", "b"}, "b", false, ""},
+		{"", &RawBody{Type: "text", Data: []byte("t")}, "t", false, "::text"},
+	}
+	for _, tt := range tests {
+		value, variadic, cast := argumentValue(f, tt.key, tt.value)
+		got := fmt.Sprint(value)
+		if b, ok := value.([]byte); ok {
+			got = string(b)
+		}
+		if got != tt.want || variadic != tt.variadic || cast != tt.cast {
+			t.Errorf("%s %v: want %s %v %q, got %s %v %q", tt.key, tt.value, tt.want, tt.variadic, tt.cast, got, variadic, cast)
+		}
 	}
 }

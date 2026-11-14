@@ -751,14 +751,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             }
 		// @@ the committed reset touches only items2_id_seq: the other suites read
 		// items2 by id=eq.1 and never insert into it
-		// @@ not asserted, PostgREST 16.4: a function RETURNS void answers 204 with no body
-		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the reset.
 		{
-			Description: "all-default columns with prefer=rep: reset the sequence",
-			Method:      "POST",
-			Query:       "/rpc/reset_sequence",
-			Body:        `{"name": "items2_id_seq", "value": 20}`,
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
+			Description:     "all-default columns with prefer=rep: reset the sequence",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "items2_id_seq", "value": 20}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         request
 		//           methodPost
@@ -792,14 +793,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 ]
 		//             }
 		// @@ the committed reset touches only items3_id_seq, used by no other case
-		// @@ not asserted, PostgREST 16.4: a function RETURNS void answers 204 with no body
-		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the reset.
 		{
-			Description: "all-default columns with prefer=rep and &select=: reset the sequence",
-			Method:      "POST",
-			Query:       "/rpc/reset_sequence",
-			Body:        `{"name": "items3_id_seq", "value": 20}`,
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
+			Description:     "all-default columns with prefer=rep and &select=: reset the sequence",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "items3_id_seq", "value": 20}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         request
 		//           methodPost
