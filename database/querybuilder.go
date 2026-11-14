@@ -2519,20 +2519,50 @@ func argumentValue(f *Function, key string, value any) (any, bool, string) {
 	return value, variadic, ""
 }
 
-// recordValueSelect reports whether the select of a call to a function
-// that returns record takes the record itself: no select, *, or
-// pgrst_scalar alone. Each row is then one value. Any other select is a
-// projection, whose rows are objects with their own column names.
-func recordValueSelect(parts *QueryParts) bool {
+// recordExtracts reports whether the response to a call of f, a function
+// that returns record, is the column pgrst_scalar of each row, as
+// PostgREST's asJsonF and asJsonSingleF for a scalar routine: a JSON
+// response, but for one object of a SETOF record, which is the whole row.
+// CSV writes the rows.
+func recordExtracts(f *Function, options *QueryOptions) bool {
+	if f == nil || !f.returnsRecord() || options.ContentType == "text/csv" {
+		return false
+	}
+	return !(options.Singular && f.ReturnIsSet)
+}
+
+// selectFieldName returns the name of the output column of a select field:
+// its label, the last key of its JSON path, or the column name.
+func selectFieldName(sf SelectField) string {
+	switch {
+	case sf.label != "":
+		return sf.label
+	case sf.field.jsonPath != "":
+		return sf.field.last
+	case sf.aggregate != "":
+		return sf.aggregate
+	case isStar(sf.field.name):
+		// the call of a record function has the column pgrst_scalar only
+		return "pgrst_scalar"
+	}
+	return sf.field.name
+}
+
+// recordSelect returns the select of a call whose response is the column
+// pgrst_scalar (see recordExtracts): the field with that name. PostgREST
+// ignores the other fields, and fails without one (42703).
+func recordSelect(parts *QueryParts, name string) (*QueryParts, error) {
+	if len(parts.selectFields) == 0 {
+		return parts, nil
+	}
 	for _, sf := range parts.selectFields {
-		if sf.relation != nil || sf.label != "" || sf.cast != "" || sf.aggregate != "" || sf.field.jsonPath != "" {
-			return false
-		}
-		if sf.field.name != "*" && (sf.field.name != "pgrst_scalar" || len(parts.selectFields) > 1) {
-			return false
+		if sf.relation == nil && selectFieldName(sf) == "pgrst_scalar" {
+			p := *parts
+			p.selectFields = []SelectField{sf}
+			return &p, nil
 		}
 	}
-	return true
+	return nil, &BuildError{"the select of the function " + name + " that returns record has no column pgrst_scalar"}
 }
 
 // pgArrayLiteral writes values as a PostgreSQL array literal, each element
@@ -2601,8 +2631,20 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	if isRecord {
 		// A record has no column list to select from (42601). As PostgREST
 		// (callPlanToQuery), call the function in a select list: each row is
-		// one value, the column pgrst_scalar.
-		from = "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
+		// one value, the column pgrst_scalar. Its fields have no names on
+		// the wire: JSON reads it through to_json, as PostgREST's json_agg,
+		// and its JSON paths need no to_jsonb. CSV writes PostgreSQL's text.
+		call := _sq(name, schema) + "(" + pairs + ")"
+		if options.ContentType != "text/csv" {
+			call = "to_json(" + call + ")"
+		}
+		from = "FROM (SELECT " + call + " \"pgrst_scalar\") t "
+		if recordExtracts(f, options) {
+			var err error
+			if parts, err = recordSelect(parts, name); err != nil {
+				return "", nil, err
+			}
+		}
 	} else if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {
@@ -2621,7 +2663,7 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 		}
 	}
 	// the JSON paths on the array and composite output columns
-	info = info.withCallColumns(f, t, s)
+	info = info.withCallColumns(f, t, s, options.ContentType == "text/csv")
 	stack.info = info
 	// the root filters bind their values before the embeds (see buildAfterSelect)
 	st := newBuildState(parts, valueList)
@@ -2653,16 +2695,6 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 		}
 		if hasComposite {
 			selectClause = strings.Join(cols, ", ")
-		}
-	}
-	if isRecord && recordValueSelect(parts) {
-		// The fields of a record have no names on the wire: JSON takes
-		// them from to_json, as PostgREST's json_agg does. CSV writes the
-		// record as PostgreSQL's text, as PostgREST does.
-		if options.ContentType == "text/csv" {
-			selectClause = "\"t\".\"pgrst_scalar\""
-		} else {
-			selectClause = "to_json(\"t\".\"pgrst_scalar\") AS \"pgrst_scalar\""
 		}
 	}
 	if err := checkFiltersApplied(parts.whereConditionsTree, false, true, &st.page); err != nil {

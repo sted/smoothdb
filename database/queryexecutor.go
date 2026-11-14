@@ -370,9 +370,9 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	var scalar bool
 	if f != nil {
 		if f.returnsRecord() {
-			// one json value per row, unless the select projects the record
-			// (see BuildExecute)
-			scalar = recordValueSelect(parts)
+			// the column pgrst_scalar of each row, or the rows (see
+			// recordExtracts)
+			scalar = recordExtracts(f, options)
 		} else if rettype := info.GetTypeById(f.ReturnTypeId); rettype != nil {
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}
@@ -385,9 +385,9 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	if options.Singular && !readonly && (f == nil || f.Volatility == "v") && gi.vars != nil && dbe.config.TransactionMode == "none" {
 		gi.vars.writeTx = true
 	}
-	// A set of scalars or records as one object keeps its column (PostgREST's
-	// asJsonSingleF): {"pgrst_scalar": 1}.
-	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet
+	// A set of scalars as one object keeps its column (PostgREST's
+	// asJsonSingleF): {"pgrst_scalar": 1}. A set of records is a row already.
+	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet && !f.returnsRecord()
 	data, n, err := runRead(ctx, exec, values, scalar, options.Singular)
 	if err != nil {
 		return nil, 0, err
