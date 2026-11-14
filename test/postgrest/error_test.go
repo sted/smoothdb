@@ -66,7 +66,6 @@ func TestPostgREST_Errors(t *testing.T) {
 			Expected:        `{"code":"PGRST125","details":null,"hint":null,"message":"Invalid path specified in request URL"}`,
 			ExpectedHeaders: map[string]string{"Proxy-Status": "PostgREST; error=PGRST125", "Content-Length": "96"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: PGRST125 for a path with more than one segment, smoothdb answers 404 with a plain body; card 32494 (error taxonomy)",
 		},
 		//   it "works with SchemaCache error" $
 		//     get "/non_existent_table"

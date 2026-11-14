@@ -4358,11 +4358,12 @@ func TestPostgREST_Query(t *testing.T) {
 		//         { matchStatus = 404
 		//         , matchHeaders = ["Content-Length" <:> "96"]
 		//         }
-		// @@ not asserted, PostgREST 16.4: the PGRST125 body and its Content-Length (smoothdb answers 404 with a plain body); card 32494 (error taxonomy)
 		{
-			Description: "return http status 404 for invalid resource path",
-			Query:       "/first/second/third?select=*",
-			Status:      404,
+			Description:     "return http status 404 for invalid resource path",
+			Query:           "/first/second/third?select=*",
+			Expected:        `{"code":"PGRST125","details":null,"hint":null,"message":"Invalid path specified in request URL"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "96"},
+			Status:          404,
 		},
 
 		// The cases below run upstream under url-use-legacy-target-names = false
