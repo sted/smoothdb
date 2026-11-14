@@ -1704,6 +1704,35 @@ func TestPostgREST_Update(t *testing.T) {
 			Expected:    `[]`,
 			Status:      200,
 		},
+		{
+			Description:     "an empty body with return=representation leaves out the root filters",
+			Method:          "PATCH",
+			Query:           "/items?no_such_column=eq.1",
+			Body:            `{}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          200,
+		},
+		{
+			Description: "an empty body with return=representation leaves out the root logic",
+			Method:      "PATCH",
+			Query:       "/items?or=(id.eq.1,no_such.eq.2)",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
+		{
+			Description:     "an empty body with return=representation ignores limit: the aggregate of no row",
+			Method:          "PATCH",
+			Query:           "/items?select=count()&limit=0",
+			Body:            `{}`,
+			Headers:         test.Headers{"Prefer": {"return=representation"}},
+			Expected:        `[{"count":0}]`,
+			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
+			Status:          200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
