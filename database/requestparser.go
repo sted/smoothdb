@@ -322,11 +322,15 @@ func isValidCastType(s string) bool {
 	return castTypeRe.MatchString(s)
 }
 
-// CheckQuery parses the query string of a request on table and returns its
-// error. A write with an empty payload answers without the database, but
-// PostgREST still builds its read plan first and refuses a bad query string
+// CheckQuery checks the schema of a request on table and parses its query
+// string, with no SQL, and returns the first error. A write with an empty
+// payload answers without the database, but PostgREST still refuses an
+// unexposed schema (ApiRequest.hs, getSchema) and then a bad query string
 // (Plan.hs, mutateReadPlan).
 func CheckQuery(ctx context.Context, table string, filters Filters) error {
+	if err := checkSchema(ctx); err != nil {
+		return err
+	}
 	_, err := GetSmoothContext(ctx).RequestParser.parse(table, filters)
 	return err
 }
