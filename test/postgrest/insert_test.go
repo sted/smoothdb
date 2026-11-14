@@ -2087,6 +2087,14 @@ func TestPostgREST_Insert(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/xml"}},
 			Status:      404,
 		},
+		{
+			Description: "an index is no relation: 404 before the media type is negotiated",
+			Method:      "POST",
+			Query:       "/items_pkey",
+			Body:        `{"id": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      404,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

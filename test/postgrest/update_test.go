@@ -1686,6 +1686,24 @@ func TestPostgREST_Update(t *testing.T) {
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Status:      400,
 		},
+		{
+			Description: "an empty body with return=representation groups an aggregate over the empty source",
+			Method:      "PATCH",
+			Query:       "/employees?select=company,salary.sum()",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
+		{
+			Description: "an empty body with return=representation reads the inferred key of a view with column privileges",
+			Method:      "PATCH",
+			Query:       "/limited_article_stars?select=article_id",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

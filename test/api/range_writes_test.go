@@ -117,6 +117,14 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Status:          200,
 		},
 		{
+			Description:     "jq PATCH with count=estimated counts the rows",
+			Method:          "PATCH",
+			Query:           jqQuery("/rangewrites", "", `{"v": .id}`, ""),
+			Headers:         test.Headers{"Prefer": {"count=estimated"}},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/4", "Preference-Applied": "count=estimated"},
+			Status:          204,
+		},
+		{
 			Description:     "GET with Range: honoured",
 			Method:          "GET",
 			Query:           "/rangewrites?order=id",

@@ -60,6 +60,12 @@ func TestPutRollsBackStatementTrigger(t *testing.T) {
 		if _, err := c.Exec(ctx, `DROP TABLE IF EXISTS putaudited, putaudit; DROP FUNCTION IF EXISTS putaudit_log()`); err != nil {
 			t.Errorf("cleanup: %v", err)
 		}
+		// the later tests see the schema without the fixtures
+		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := srv.GetDBE().ReloadDatabaseSchema(rctx, "dbtest"); err != nil {
+			t.Errorf("cleanup: cannot reload the schema cache of dbtest: %v", err)
+		}
 	})
 	_, err = conn.Exec(ctx, `
 		DROP TABLE IF EXISTS putaudit;
