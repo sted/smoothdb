@@ -31,7 +31,7 @@ export interface RequestOptions extends RequestInit {
 }
 
 // The error body of smoothdb: PostgREST errors carry code, message, details
-// and hint; the admin and auth routes carry subsystem and message.
+// and hint, on every route; a non-JSON body is shown as text.
 function describeError(status: number, statusText: string, text: string): { message: string; detail?: string } {
 	try {
 		const e = JSON.parse(text);

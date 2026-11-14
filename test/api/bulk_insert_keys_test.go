@@ -39,7 +39,7 @@ func TestBulkInsertKeys(t *testing.T) {
 		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
-	const mismatch = `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`
+	const mismatch = `{"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}`
 
 	tests := []test.Test{
 		// positive control: one key set, in a different order per object, is uniform

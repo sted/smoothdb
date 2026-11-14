@@ -63,6 +63,10 @@ var textFormatOnlyTypes = []uint32{
 	// not know that): listed so xml[] and composites with an xml field stay
 	// in text.
 	pgtype.XMLOID, pgtype.XMLArrayOID,
+	// record: the value of a function that returns record, in CSV (JSON
+	// reads it through to_json, see BuildExecute). Its binary form has no
+	// field names, and its text is what PostgREST's CSV carries.
+	pgtype.RecordOID,
 	// The builtin ranges: a range is one JSON string, range_out's text with
 	// its quoting of the bounds (only those with a bracket, a comma, a quote,
 	// a backslash or whitespace in them, a quote doubled) and PostgreSQL's

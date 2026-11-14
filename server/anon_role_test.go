@@ -81,7 +81,7 @@ func TestAnonymousWithEmptyAnonRoleIsRefused(t *testing.T) {
 			Description:     "anonymous request with an empty anon role is refused",
 			Method:          "GET",
 			Query:           "/rpc/anon_probe_whoami",
-			Expected:        `{"subsystem":"auth","message":"Anonymous access is disabled","code":"PGRST302","hint":"","details":null,"position":0}`,
+			Expected:        `{"code":"PGRST302","details":null,"hint":null,"message":"Anonymous access is disabled"}`,
 			ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
 			Status:          401,
 		},
@@ -217,7 +217,7 @@ func TestTokenWithoutRoleRunsAsAnonRole(t *testing.T) {
 				<-done
 			}()
 			base := "http://localhost:" + m.port + "/api/postgres"
-			denied := `{"subsystem":"database","message":"permission denied for table anon_probe_private","code":"42501","hint":"","details":null,"position":0}`
+			denied := `{"code":"42501","details":null,"hint":null,"message":"permission denied for table anon_probe_private"}`
 
 			test.Execute(t, bearer(base, noRoleToken), []test.Test{
 				{
@@ -284,7 +284,7 @@ func TestTokenWithoutRoleRunsAsAnonRole(t *testing.T) {
 					Description:     "a token with an empty role claim is refused",
 					Method:          "GET",
 					Query:           "/rpc/anon_probe_whoami",
-					Expected:        `{"subsystem":"database","message":"role \"\" does not exist","code":"22023","hint":"","details":null,"position":0}`,
+					Expected:        `{"code":"22023","details":null,"hint":null,"message":"role \"\" does not exist"}`,
 					ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
 					Status:          401,
 				},
@@ -352,7 +352,7 @@ func TestTokenWithoutRoleIsRefusedWithoutAnonRole(t *testing.T) {
 						Description:     "a token without a role claim is refused",
 						Method:          "GET",
 						Query:           "/rpc/anon_probe_whoami",
-						Expected:        `{"subsystem":"auth","message":"Anonymous access is disabled","code":"PGRST302","hint":"","details":null,"position":0}`,
+						Expected:        `{"code":"PGRST302","details":null,"hint":null,"message":"Anonymous access is disabled"}`,
 						ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
 						Status:          401,
 					},

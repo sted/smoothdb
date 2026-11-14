@@ -15,10 +15,8 @@ import (
 // error is a client error unless it is known to be the server's fault.
 //
 // 42501 insufficient_privilege depends on the caller, as in PostgREST: 401 for
-// an anonymous request, 403 for an authenticated one (asserted below). One
-// deliberate divergence, asserted here so it stays deliberate: the "already exists" codes of the DDL API (duplicate database,
-// schema, table, role) are 409. PostgREST has no DDL surface, so these reach
-// its catch-all 400; a Conflict is the accurate answer for /admin.
+// an anonymous request, 403 for an authenticated one (asserted below). The
+// 409 of the DDL API is asserted in TestAdminConflictsAre409.
 func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -45,11 +43,16 @@ func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 		{"infinite_recursion", "42P17", "infinite recursion detected in rules for relation", http.StatusInternalServerError},
 		{"insufficient_privilege, anonymous", "42501", "permission denied for table t", http.StatusUnauthorized},
 
-		// The DDL API's own conflicts.
-		{"duplicate_database", "42P04", `database "d" already exists`, http.StatusConflict},
-		{"duplicate_schema", "42P06", `schema "s" already exists`, http.StatusConflict},
-		{"duplicate_table", "42P07", `relation "t" already exists`, http.StatusConflict},
-		{"duplicate_object (role)", "42710", `role "r" already exists`, http.StatusConflict},
+		// Outside the DDL API, the "already exists" codes are PostgREST's 400:
+		// a function that raises them is the client's fault.
+		{"duplicate_database", "42P04", `database "d" already exists`, http.StatusBadRequest},
+		{"duplicate_schema", "42P06", `schema "s" already exists`, http.StatusBadRequest},
+		{"duplicate_table", "42P07", `relation "t" already exists`, http.StatusBadRequest},
+		{"duplicate_object (role)", "42710", `role "r" already exists`, http.StatusBadRequest},
+
+		// XX internal_error: data corruption is the server's fault
+		{"XX internal_error", "XX000", "internal error", http.StatusInternalServerError},
+		{"XX data_corrupted", "XX001", "data corrupted", http.StatusInternalServerError},
 
 		// Class prefixes PostgREST maps away from the 400 default.
 		{"08 connection_exception", "08006", "connection failure", http.StatusServiceUnavailable},
@@ -103,6 +106,19 @@ func TestPgErrorStatusMatchesPostgREST(t *testing.T) {
 				t.Errorf("%s (%s): wrote %d to the response but returned %d", tt.name, tt.code, w.Code, status)
 			}
 		})
+	}
+}
+
+// The deliberate divergence: on the DDL API (/admin) the "already exists"
+// codes are 409. PostgREST has no DDL surface; a Conflict is the accurate
+// answer there, and only there.
+func TestAdminConflictsAre409(t *testing.T) {
+	for _, code := range []string{"42P04", "42P06", "42P07", "42710"} {
+		rec := httptest.NewRecorder()
+		status, _ := WriteServerError(withAdmin(rec), &pgconn.PgError{Code: code, Message: "already exists"})
+		if status != http.StatusConflict || rec.Code != http.StatusConflict {
+			t.Errorf("%s on /admin: returned %d, wrote %d, want 409", code, status, rec.Code)
+		}
 	}
 }
 

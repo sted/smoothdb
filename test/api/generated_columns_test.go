@@ -80,8 +80,8 @@ func TestGeneratedColumns(t *testing.T) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	const insertRefused = `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`
-	const updateRefused = `{"subsystem":"database","message":"column \"b\" can only be updated to DEFAULT","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`
+	const insertRefused = `{"code":"428C9","details":"Column \"b\" is a generated column.","hint":null,"message":"cannot insert a non-DEFAULT value into column \"b\""}`
+	const updateRefused = `{"code":"428C9","details":"Column \"b\" is a generated column.","hint":null,"message":"column \"b\" can only be updated to DEFAULT"}`
 
 	tests := []test.Test{
 		// positive control: without the generated column the insert succeeds and

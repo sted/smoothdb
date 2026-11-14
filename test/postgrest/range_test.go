@@ -74,18 +74,14 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
 			Query:           "/rpc/getitemrange?offset=1&min=2&max=2",
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 1 was requested, but there are only 0 rows.","position":0}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -107,7 +103,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Query:           "/rpc/getitemrange?offset=100&min=0&max=15",
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 100 was requested, but there are only 15 rows.","position":0}`,
+			Expected:        `{"code":"PGRST103","details":"An offset of 100 was requested, but there are only 15 rows.","hint":null,"message":"Requested range not satisfiable"}`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
 			Status:          416,
 		},
@@ -239,18 +235,14 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
 			Query:           "/rpc/getitemrange?min=2&max=2",
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 1 was requested, but there are only 0 rows.","position":0}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -272,7 +264,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Query:           "/rpc/getitemrange?min=0&max=15",
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"100-199"}, "Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 100 was requested, but there are only 15 rows.","position":0}`,
+			Expected:        `{"code":"PGRST103","details":"An offset of 100 was requested, but there are only 15 rows.","hint":null,"message":"Requested range not satisfiable"}`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
 			Status:          416,
 		},
@@ -533,7 +525,6 @@ func TestPostgREST_Range(t *testing.T) {
 			Expected:        `[{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}]`,
 			ExpectedHeaders: map[string]string{"Content-Range": "0-14/*"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a negative offset is a no-op, smoothdb answers 400; no card",
 		},
 
 		//       it "succeeds and returns an empty array if limit equals 0" $
@@ -568,10 +559,9 @@ func TestPostgREST_Range(t *testing.T) {
 			Description:     "fails if limit is negative",
 			Method:          "GET",
 			Query:           "/items?select=id&limit=-1",
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"Limit should be greater than or equal to zero.","position":0}`,
+			Expected:        `{"code":"PGRST103","details":"Limit should be greater than or equal to zero.","hint":null,"message":"Requested range not satisfiable"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          416,
-			Skip:            "PostgREST 16.4: a negative limit is 416 PGRST103, smoothdb answers 400; card 32494 (error taxonomy)",
 		},
 
 		//       context "of invalid range" $ do
@@ -591,18 +581,14 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
 			Query:           "/menagerie?offset=1",
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 1 was requested, but there are only 0 rows.","position":0}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		//         it "refuses a range requesting start past last item" $
@@ -624,7 +610,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Query:           "/items?offset=100",
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 100 was requested, but there are only 15 rows.","position":0}`,
+			Expected:        `{"code":"PGRST103","details":"An offset of 100 was requested, but there are only 15 rows.","hint":null,"message":"Requested range not satisfiable"}`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
 			Status:          416,
 		},
@@ -942,18 +928,14 @@ func TestPostgREST_Range(t *testing.T) {
 		//                 , "Content-Length" <:> "144"
 		//                 ]
 		//             }
-		//
-		// The Content-Length 144 of v16.4 is the length of PostgREST's error
-		// body; smoothdb's body has another shape, card 32494 (error body), so
-		// the status, the body fields and Content-Range are asserted.
 		{
 			Description:     "refuses a range with nonzero start when there are no items",
 			Method:          "GET",
 			Query:           "/menagerie",
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"1-2"}, "Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 1 was requested, but there are only 0 rows.","position":0}`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/0"},
+			Expected:        `{"code":"PGRST103","details":"An offset of 1 was requested, but there are only 0 rows.","hint":null,"message":"Requested range not satisfiable"}`,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/0", "Content-Length": "144"},
 			Status:          416,
 		},
 		// it "refuses a range requesting start past last item" $
@@ -976,7 +958,7 @@ func TestPostgREST_Range(t *testing.T) {
 			Query:           "/items",
 			Body:            ``,
 			Headers:         test.Headers{"Range": []string{"100-199"}, "Prefer": []string{"count=exact"}},
-			Expected:        `{"subsystem":"network","message":"Requested range not satisfiable","code":"PGRST103","hint":"","details":"An offset of 100 was requested, but there are only 15 rows.","position":0}`,
+			Expected:        `{"code":"PGRST103","details":"An offset of 100 was requested, but there are only 15 rows.","hint":null,"message":"Requested range not satisfiable"}`,
 			ExpectedHeaders: map[string]string{"Content-Range": "*/15"},
 			Status:          416,
 		},

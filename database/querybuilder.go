@@ -483,7 +483,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			// relationship to the relation named, and only to that one
 			hrels := info.FindRelationshipsByHintCol(tableWithSchema, relationWithSchema, fk)
 			if len(hrels) > 1 {
-				return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+				return nil, ambiguousRelBetween(table, relation, hrels)
 			}
 			if len(hrels) == 1 {
 				rel = &hrels[0]
@@ -497,7 +497,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			}
 		}
 		if rel == nil {
-			return nil, &BuildError{"cannot find relationship for table " + table + " with table " + relation}
+			return nil, noRelBetween(table, relation, fk, tableWithSchema, info)
 		}
 	case nrels == 1:
 		// ok, found a single relationship
@@ -506,7 +506,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 		// a self relationship, we prioritize the O2M one
 		rel = &frels[1]
 	default:
-		return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+		return nil, ambiguousRelBetween(table, relation, frels)
 	}
 	return rel, nil
 }
@@ -829,16 +829,16 @@ func validateRelatedOrder(table, schema string, o OrderField, selectFields []Sel
 			case M2O, O2O:
 				// OK
 			case O2M, M2M:
-				return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+				return "", relatedOrderNotToOne(parentTable, o.relation)
 			case Computed:
 				if rel.ReturnIsSet {
-					return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+					return "", relatedOrderNotToOne(parentTable, o.relation)
 				}
 			}
 			return sfLabel, nil
 		}
 	}
-	return "", &BuildError{"'" + o.relation + "' is not an embedded resource in this request"}
+	return "", notEmbedded(o.relation)
 }
 
 // appendNull appends a NULL operand: a NULL parameter.
@@ -924,7 +924,7 @@ func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool, b 
 	}
 	if onEmbed {
 		if fs := b.filter(node); fs.level == 0 && fs.matched < len(node.field.relPath) {
-			return &BuildError{"'" + node.field.relPath[fs.matched] + "' is not an embedded resource in this request"}
+			return notEmbedded(node.field.relPath[fs.matched])
 		}
 	}
 	if container {
@@ -1247,8 +1247,169 @@ func onConflictClause(table, schema string, fields []string,
 			f = quote(f)
 			s += f + " = EXCLUDED." + f
 		}
+		// a conflict takes back the row the counter added
+		s += " WHERE " + insertedCounter(false)
 	}
 	return s
+}
+
+// insertedSetting is the transaction-local setting that counts the rows a
+// merge-duplicates insert creates.
+const insertedSetting = "smoothdb.inserted"
+
+// insertedQuery answers the count of insertedSetting, after the insert in
+// the same transaction.
+const insertedQuery = "SELECT coalesce(nullif(current_setting('" + insertedSetting + "', true), '')::int, 0)"
+
+// insertedCounter is a condition that is always true and that counts rows
+// in insertedSetting, as PostgREST does (SqlFragment.hs,
+// addConfigPgrstInserted). The WHERE of the insert adds one for each
+// proposed row. The WHERE of DO UPDATE takes one back for each conflict.
+// The count tells a merge that created rows (201) from one that only
+// updated rows (200), and needs no SELECT privilege on the table.
+func insertedCounter(add bool) string {
+	op, never := "+", "0"
+	if !add {
+		op, never = "-", "-1"
+	}
+	return "set_config('" + insertedSetting + "', (coalesce(nullif(current_setting('" + insertedSetting +
+		"', true), '')::int, 0) " + op + " 1)::text, true) <> '" + never + "'"
+}
+
+// resolveEmbeds finds the relationship of every embed of fields, at every
+// level, from the schema cache: a write refuses an unknown embed before it
+// runs, whatever its return preference, as PostgREST plans the read of
+// every write (Plan.hs). It answers the columns of table that the embeds of
+// the first level join on, and computed when one of them is a computed
+// relationship.
+func resolveEmbeds(table, schema string, fields []SelectField, info *SchemaInfo) (keys []string, computed bool, err error) {
+	for _, f := range fields {
+		if f.relation == nil {
+			continue
+		}
+		parent := table
+		if f.relation.parent != "" {
+			parent = f.relation.parent
+		}
+		frel, err := findRelationship(parent, f.relation.name, f.relation.fk, schema, info)
+		if err != nil {
+			return nil, false, err
+		}
+		if frel.Type == Computed {
+			computed = true
+		} else {
+			keys = append(keys, frel.Columns...)
+		}
+		_, related := splitTableName(frel.RelatedTable)
+		if _, _, err := resolveEmbeds(related, schema, f.relation.fields, info); err != nil {
+			return nil, false, err
+		}
+	}
+	return keys, computed, nil
+}
+
+// embedFilters answers a copy of the root of a filter tree with only the
+// conditions on embedded resources: those whose field names a relation
+// path. nil when there is none.
+func embedFilters(root *WhereConditionNode) *WhereConditionNode {
+	if root == nil {
+		return nil
+	}
+	kept := *root
+	kept.children = nil
+	for _, n := range root.children {
+		if len(n.field.relPath) > 0 {
+			kept.children = append(kept.children, n)
+		}
+	}
+	if len(kept.children) == 0 {
+		return nil
+	}
+	return &kept
+}
+
+// inferReturning answers the columns that a write returns when the request
+// asks for rows or headers, as PostgREST infers them from the select
+// (Plan.hs, inferColsEmbedNeeds): every column for the default select, a
+// star or a computed relationship; else the selected columns, the columns
+// of the embed joins and the key of the relation, in alphabetical order. So
+// the select needs the same columns and privileges as in PostgREST. The
+// names are qualified with the relation.
+func inferReturning(table, schema string, parts *QueryParts, info *SchemaInfo) (cols string, star bool, err error) {
+	keys, computed, err := resolveEmbeds(table, schema, parts.selectFields, info)
+	if err != nil {
+		return "", false, err
+	}
+	star = len(parts.selectFields) == 0 || computed
+	for _, f := range parts.selectFields {
+		if f.relation == nil && isStar(f.field.name) {
+			star = true
+		}
+	}
+	if star {
+		return "*", true, nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	for _, f := range parts.selectFields {
+		if f.relation == nil {
+			add(f.field.name)
+		}
+	}
+	for _, k := range keys {
+		add(k)
+	}
+	if info != nil {
+		for _, k := range info.GetKeyColumns(_s(table, schema)) {
+			add(k)
+		}
+	}
+	sort.Strings(names)
+	// qualified, so that a computed column (a function of the row type)
+	// reads as a call, as in PostgREST (pgFmtColumn)
+	for i, c := range names {
+		names[i] = _sq(table, schema) + "." + quote(c)
+	}
+	return strings.Join(names, ", "), false, nil
+}
+
+// headersOnly makes the write query of a request with return=headers-only
+// return the inferred columns (see inferReturning), and wraps it.
+func headersOnly(query, table, schema string, parts *QueryParts, info *SchemaInfo, st *buildState, withLocation bool) (string, error) {
+	cols, star, err := inferReturning(table, schema, parts, info)
+	if err != nil {
+		return "", err
+	}
+	return wrapHeadersOnly(query+" RETURNING "+cols, star, table, schema, info, st, withLocation), nil
+}
+
+// wrapHeadersOnly reads source, a write that returns rows, in a statement
+// that answers one row: the number of rows and, when withLocation and the
+// write is one row, the "key=eq.value" items of the Location header, read
+// from row_to_json as PostgREST does (SqlFragment.hs, locationF).
+func wrapHeadersOnly(source string, star bool, table, schema string, info *SchemaInfo, st *buildState, withLocation bool) string {
+	var keys []string
+	if info != nil {
+		keys = info.GetKeyColumns(_s(table, schema))
+	}
+	location := "NULL::text[]"
+	if withLocation && len(keys) > 0 {
+		// row_to_json keeps the order of the returned columns: the table's
+		// for a star, alphabetical otherwise, as PostgREST's set of columns
+		order := ""
+		if !star {
+			order = " ORDER BY j.key COLLATE \"C\""
+		}
+		location = st.page.bind("CASE WHEN pg_catalog.count(*) = 1 THEN (SELECT array_agg(j.key || '=' || coalesce('eq.' || j.value, 'is.null')"+order+
+			") FROM (SELECT row_to_json(_) AS r FROM _source AS _ LIMIT 1) d CROSS JOIN json_each_text(d.r) AS j WHERE j.key = ANY(", keys) + ")) END"
+	}
+	return "WITH _source AS (" + source + ") SELECT pg_catalog.count(*), " + location + " FROM _source"
 }
 
 // orderedRecordKeys returns record's keys in a deterministic order for use
@@ -1260,6 +1421,10 @@ func onConflictClause(table, schema string, fields []string,
 func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Function) []string {
 	included := func(key string) bool {
 		if len(columnFields) == 0 {
+			return true
+		}
+		// the body of a single unnamed parameter is no column
+		if _, raw := record[key].(*RawBody); raw && key == "" {
 			return true
 		}
 		_, ok := columnFields[key]
@@ -1326,7 +1491,7 @@ func checkColumns(table, schema string, parts *QueryParts, info *SchemaInfo) err
 	sort.Strings(cols)
 	for _, c := range cols {
 		if info.GetColumnType(_s(table, schema), c) == nil {
-			return &BuildError{"Could not find the '" + c + "' column of '" + table + "' in the schema cache"}
+			return columnNotFound(table, c)
 		}
 	}
 	return nil
@@ -1751,7 +1916,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		// a null element is not an object, even beside an empty one
 		for i := range records {
 			if records[i] == nil || !sameKeys(records[0], records[i]) {
-				return "", nil, &BuildError{"All object keys must match"}
+				return "", nil, invalidBody("All object keys must match")
 			}
 		}
 		fieldList = lo.Keys(records[0])
@@ -1790,7 +1955,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		if typed {
 			ct := info.GetColumnType(ftable, f)
 			if ct == nil {
-				return "", nil, &BuildError{"Could not find the '" + f + "' column of '" + table + "' in the schema cache"}
+				return "", nil, columnNotFound(table, f)
 			}
 			defs += quote(f) + " " + ct.DataType
 			kinds[i] = goValueKind(ct)
@@ -1813,6 +1978,14 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 	default:
 		insert += " (" + fields + ") SELECT " + sourceFields + " FROM json_populate_recordset(NULL::" + _sq(table, schema) + ", $1::json) AS _"
 	}
+	if options.MergeDuplicates {
+		// count the rows the insert proposes (see insertedCounter)
+		insert += " WHERE " + insertedCounter(true)
+		// a PUT takes the rows of the body with the key of its URL
+		for _, c := range parts.putConditions {
+			insert = st.page.bind(insert+" AND _."+quote(c.column)+" = ", c.value)
+		}
+	}
 	// ON CONFLICT only for a resolution, as PostgREST (Plan.hs, mutatePlan):
 	// on_conflict alone is a plain insert, and a conflict its 409
 	if options.MergeDuplicates || options.IgnoreDuplicates {
@@ -1829,6 +2002,11 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		insert += ret
 		if sel != "" {
 			insert = "WITH _source AS (" + insert + ") " + sel
+		}
+	} else if options.Return == "headers-only" {
+		// a PUT answers no Location (Response.hs, MutationSingleUpsert)
+		if insert, err = headersOnly(insert, table, schema, parts, info, st, parts.putConditions == nil); err != nil {
+			return "", nil, err
 		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
@@ -1866,7 +2044,50 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		// SET is a syntax error, so PostgREST selects nothing from the table
 		// instead (mutatePlanToQuery, null uCols) and the table name still
 		// reaches PostgreSQL, so a missing one answers 42P01.
-		return "SELECT * FROM " + _sq(table, schema) + " WHERE false", nil, nil
+		// The columns follow the return preference: none for return=minimal,
+		// the inferred ones for headers-only (see inferReturning), the read
+		// of the representation over the empty source otherwise. The filters
+		// of the embeds are checked as on any update.
+		from := " FROM " + _sq(table, schema) + " WHERE false"
+		st := newBuildState(parts, nil)
+		switch {
+		case options.ReturnRepresentation:
+			// The read of the representation, grouping and embeds
+			// included, over no row. The guard reads the inferred columns,
+			// so the request needs their privileges, as the source of
+			// PostgREST does (QueryBuilder.hs, emptyBodyReturnedColumns).
+			cols, star, err := inferReturning(table, schema, parts, info)
+			if err != nil {
+				return "", nil, err
+			}
+			if star {
+				cols = _sq(table, schema) + ".*"
+			}
+			read := *options
+			read.Count = ""
+			// The read keeps the filters of the embeds. It leaves out the
+			// root filters and the root logic, which select the rows of
+			// the update, and limit and offset, which a mutation ignores
+			// (Plan.hs).
+			readParts := *parts
+			readParts.limit, readParts.offset = "", ""
+			readParts.limitHuge, readParts.offsetHuge = "", ""
+			readParts.whereConditionsTree = embedFilters(parts.whereConditionsTree)
+			return buildSelect(table, &readParts, &read, info, "false AND ROW("+cols+") IS NOT NULL")
+		case options.Return == "headers-only":
+			cols, star, err := inferReturning(table, schema, parts, info)
+			if err != nil {
+				return "", nil, err
+			}
+			update = wrapHeadersOnly("SELECT "+cols+from, star, table, schema, info, nil, false)
+		default:
+			update = "SELECT NULL" + from
+		}
+		// the root filters take no part in the empty source
+		if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
+			return "", nil, err
+		}
+		return update, st.page.values, nil
 	}
 	st := newBuildState(parts, valueList)
 	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
@@ -1882,6 +2103,10 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		update += ret
 		if sel != "" {
 			update = "WITH _source AS (" + update + ") " + sel
+		}
+	} else if options.Return == "headers-only" {
+		if update, err = headersOnly(update, table, schema, parts, info, st, false); err != nil {
+			return "", nil, err
 		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {
@@ -1912,6 +2137,10 @@ func (CommonBuilder) BuildDelete(table string, parts *QueryParts, options *Query
 		delete += ret
 		if sel != "" {
 			delete = "WITH _source AS (" + delete + ") " + sel
+		}
+	} else if options.Return == "headers-only" {
+		if delete, err = headersOnly(delete, table, schema, parts, info, st, false); err != nil {
+			return "", nil, err
 		}
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, false); err != nil {
@@ -1956,6 +2185,9 @@ const totalSetting = "smoothdb.total"
 // embeds (the arguments of a function, the root filters).
 func buildAfterSelect(query, from string, once bool, joins, whereClause, groupByClause, orderClause string, valueList []any, innerConds []string, count *binder, parts *QueryParts, options *QueryOptions) (string, []any, error) {
 	options.totalQuery, options.totalValues, options.totalPrelude = "", nil, ""
+	if err := pageOverflow(parts, options); err != nil {
+		return "", nil, err
+	}
 	limit, hasLimit, offset, hasOffset := pageBounds(parts, options)
 	if !options.HasRange {
 		if parts.limit != "" {
@@ -2125,7 +2357,9 @@ func recursiveAliases(stack *BuildStack, rec *RecursiveInfo) {
 func buildRecursiveSelect(table, schema string, parts *QueryParts, options *QueryOptions,
 	selectClause, mainWhere, orderClause, joins string,
 	st *buildState, info *SchemaInfo) (string, []any, error) {
-
+	if err := pageOverflow(parts, options); err != nil {
+		return "", nil, err
+	}
 	rec := parts.recursive
 	qtable := _sq(table, schema)
 	startField := quote(rec.StartField)
@@ -2146,13 +2380,13 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// Determine effective max depth.
 	// MaxRecursiveDepth == 0 means recursive queries are disabled.
 	if dbe != nil && dbe.config.MaxRecursiveDepth == 0 {
-		return "", nil, &ParseError{"recursive queries are disabled"}
+		return "", nil, &ParseError{msg: "recursive queries are disabled"}
 	}
 
 	// Embedding (LEFT JOIN LATERAL) composes with single-table recursion only.
 	// Via-mode embedding would fight the min-depth dedup, so reject it cleanly.
 	if joins != "" && rec.ViaTable != "" {
-		return "", nil, &ParseError{"embedding is not supported with via() recursion"}
+		return "", nil, &ParseError{msg: "embedding is not supported with via() recursion"}
 	}
 
 	// __depth and __path are selectable (and orderable) pseudo-columns. Single-table
@@ -2447,6 +2681,161 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	return q.String(), b.values, nil
 }
 
+// OIDs of the json types
+const (
+	jsonOID  = 114
+	jsonbOID = 3802
+)
+
+// argumentValue returns the value that the argument key of a call to f
+// (nil when unknown) binds, whether the argument is VARIADIC, and the
+// cast of its placeholder, as PostgREST's callPlanToQuery:
+//   - QueryValues fill a VARIADIC parameter as an array; any other
+//     parameter takes the last of them.
+//   - A JSON string for a json or jsonb parameter stays a JSON string. The
+//     driver sends a Go string to a json parameter as JSON text.
+//   - The body for a single unnamed parameter (a *RawBody) takes the type
+//     of the parameter, so that PostgreSQL can choose the overload. With
+//     no function found, it takes the type of the body: the call fails
+//     there (42883, 404), as in PostgREST, and does not reach a function
+//     of another type.
+func argumentValue(f *Function, key string, value any) (any, bool, string) {
+	if raw, ok := value.(*RawBody); ok {
+		typ := raw.Type
+		if f != nil {
+			if u := f.singleUnnamed(); u != nil {
+				typ = u.Type
+			}
+		}
+		switch typ {
+		case "text", "xml":
+			return string(raw.Data), false, "::" + typ
+		}
+		return raw.Data, false, "::" + typ
+	}
+	var arg *Argument
+	if f != nil {
+		for i := range f.Arguments {
+			a := &f.Arguments[i]
+			if a.Name == key && a.TypeId != 0 && a.Mode != 'o' && a.Mode != 't' {
+				arg = a
+				break
+			}
+		}
+	}
+	if arg == nil {
+		if vv, ok := value.(QueryValues); ok {
+			return vv[len(vv)-1], false, ""
+		}
+		return value, false, ""
+	}
+	variadic := arg.Mode == 'v'
+	switch v := value.(type) {
+	case QueryValues:
+		if variadic {
+			return pgArrayLiteral(v), true, ""
+		}
+		return v[len(v)-1], false, ""
+	case string:
+		if arg.TypeId == jsonOID || arg.TypeId == jsonbOID {
+			var buf bytes.Buffer
+			enc := json.NewEncoder(&buf)
+			enc.SetEscapeHTML(false)
+			if enc.Encode(v) == nil {
+				return bytes.TrimRight(buf.Bytes(), "\n"), variadic, ""
+			}
+		}
+	}
+	return value, variadic, ""
+}
+
+// recordExtracts reports whether the response to a call of f, a function
+// that returns record, is the column pgrst_scalar of each row, as
+// PostgREST's asJsonF and asJsonSingleF for a scalar routine: a JSON
+// response, but for one object of a SETOF record, which is the whole row.
+// CSV writes the rows.
+func recordExtracts(f *Function, options *QueryOptions) bool {
+	if f == nil || !f.returnsRecord() || options.ContentType == "text/csv" {
+		return false
+	}
+	return !(options.Singular && f.ReturnIsSet)
+}
+
+// selectFieldName returns the name of the output column of a select field:
+// its label, the last key of its JSON path, or the column name.
+func selectFieldName(sf SelectField) string {
+	switch {
+	case sf.label != "":
+		return sf.label
+	case sf.field.jsonPath != "":
+		return sf.field.last
+	case sf.aggregate != "":
+		return sf.aggregate
+	case isStar(sf.field.name):
+		// the call of a record function has the column pgrst_scalar only
+		return "pgrst_scalar"
+	}
+	return sf.field.name
+}
+
+// recordOutput prepares the call of a function that returns record (see
+// BuildExecute) for a JSON response. The call keeps the record as a
+// record, with the whole projection, so that filters, order, casts and
+// unknown columns act as in PostgreSQL. An outer select converts each
+// output column with to_json: a record, whatever its cast, becomes an
+// object, as in PostgREST's json_agg (its fields have no names on the
+// wire), and any other value the same JSON. It returns the select of the
+// call and the outer select list.
+//   - When the response is the column pgrst_scalar (see recordExtracts),
+//     the outer select takes that column. PostgreSQL fails without it
+//     (42703).
+//   - Otherwise (one object of a SETOF record) it takes every column. The
+//     call names them by position, so that two columns can share a name.
+func recordOutput(f *Function, parts *QueryParts, options *QueryOptions) (*QueryParts, string) {
+	scalar := "to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\""
+	if recordExtracts(f, options) || len(parts.selectFields) == 0 {
+		return parts, scalar
+	}
+	p := *parts
+	p.selectFields = make([]SelectField, len(parts.selectFields))
+	cols := make([]string, len(parts.selectFields))
+	for i, sf := range parts.selectFields {
+		if sf.relation == nil && sf.label == "" && sf.aggregate == "" && sf.field.jsonPath == "" && isStar(sf.field.name) {
+			// the call has the column pgrst_scalar only
+			cols[i] = scalar
+		} else {
+			name := quote(selectFieldName(sf))
+			sf.label = "_c" + strconv.Itoa(i)
+			cols[i] = "to_json(\"_t\"." + quote(sf.label) + ") AS " + name
+		}
+		p.selectFields[i] = sf
+	}
+	return &p, strings.Join(cols, ", ")
+}
+
+// pgArrayLiteral writes values as a PostgreSQL array literal, each element
+// quoted, as PostgREST's pgBuildArrayLiteral. PostgreSQL reads it as an
+// array of the type of the parameter.
+func pgArrayLiteral(values []string) string {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, v := range values {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('"')
+		for _, c := range strings.ReplaceAll(v, "\x00", "") {
+			if c == '"' || c == '\\' {
+				b.WriteByte('\\')
+			}
+			b.WriteRune(c)
+		}
+		b.WriteByte('"')
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
 func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 	if parts.recursive != nil {
@@ -2470,18 +2859,33 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			pairs += ", "
 		}
 		i++
-		if key != "" { // unnamed parameter @@ to be continued
+		value, variadic, cast := argumentValue(f, key, record[key])
+		if variadic {
+			pairs += "VARIADIC "
+		}
+		if key != "" {
 			pairs += quote(key)
 			pairs += " := "
 		}
-		pairs += "$" + strconv.Itoa(i)
-		valueList = append(valueList, record[key])
+		pairs += "$" + strconv.Itoa(i) + cast
+		valueList = append(valueList, value)
 	}
 
 	// Extract the return type and discover if it is a table.
 	// In that case, we will use its name and schema to compose the select clause
 	var t, s string
-	if f != nil {
+	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
+	isRecord := f != nil && f.returnsRecord()
+	var recordCols string // the outer select of a record call (see recordOutput)
+	if isRecord {
+		// A record has no column list to select from (42601). As PostgREST
+		// (callPlanToQuery), call the function in a select list: each row is
+		// one value, the column pgrst_scalar (see recordOutput).
+		from = "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
+		if options.ContentType != "text/csv" {
+			parts, recordCols = recordOutput(f, parts, options)
+		}
+	} else if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {
 			// the cache knows the function but not its return type: a schema
@@ -2498,6 +2902,9 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			s = rettype.Schema
 		}
 	}
+	// the JSON paths on the array and composite output columns
+	info = info.withCallColumns(f, t, s)
+	stack.info = info
 	// the root filters bind their values before the embeds (see buildAfterSelect)
 	st := newBuildState(parts, valueList)
 	stack.st = st
@@ -2540,9 +2947,12 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	// an aggregate beside plain columns groups by them, as on a table
 	groupByClause := groupByClauseAs("t", "", t, s, parts, info)
 	query = "SELECT " + selectClause
-	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
-	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
+	query, valueList, err = buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
+	if err == nil && recordCols != "" {
+		query = "SELECT " + recordCols + " FROM (" + query + ") \"_t\""
+	}
+	return query, valueList, err
 }
 
 type DirectQueryBuilder struct {
@@ -2550,6 +2960,12 @@ type DirectQueryBuilder struct {
 }
 
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
+	return buildSelect(table, parts, options, info, "")
+}
+
+// buildSelect is BuildSelect. A guard, when given, is a condition that the
+// WHERE of the root level puts before its filters.
+func buildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo, guard string) (string, []any, error) {
 	st := newBuildState(parts, nil)
 	stack := BuildStack{info: info, maxRows: maxRows(), st: st}
 	schema := options.Schema
@@ -2559,6 +2975,13 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	// the root filters bind their values before the embeds, so that the total
 	// of a ranged count shares them (see buildAfterSelect)
 	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
+	if guard != "" {
+		if whereClause != "" {
+			whereClause = guard + " AND (" + whereClause + ")"
+		} else {
+			whereClause = guard
+		}
+	}
 	if parts.recursive == nil {
 		st.startCount(parts, options, false)
 		stack.countChain = st.countMode != countNone
@@ -2578,7 +3001,7 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 
 	if parts.recursive != nil {
 		if groupByClause != "" {
-			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
+			return "", nil, &ParseError{msg: "aggregate functions cannot be used with recursive queries"}
 		}
 		return buildRecursiveSelect(table, schema, parts, options,
 			selectClause, whereClause, orderClause, joins, st, info)

@@ -155,14 +155,14 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Description: "fails when a double arrow ->> is followed with a single arrow -> (integer index)",
 			Query:       "/json_arr?select=data->>c->1",
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"operator does not exist: text -> integer","code":"42883","hint":"No operator matches the given name and argument types. You might need to add explicit type casts.","details":"","position":0}`,
+			Expected:    `{"code":"42883","details":null,"hint":"No operator matches the given name and argument types. You might need to add explicit type casts.","message":"operator does not exist: text -> integer"}`,
 			Status:      404,
 		},
 		{
 			Description: "fails when a double arrow ->> is followed with a single arrow -> (key)",
 			Query:       "/json_arr?select=data->>c->b",
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"operator does not exist: text -> unknown","code":"42883","hint":"No operator matches the given name and argument types. You might need to add explicit type casts.","details":"","position":0}`,
+			Expected:    `{"code":"42883","details":null,"hint":"No operator matches the given name and argument types. You might need to add explicit type casts.","message":"operator does not exist: text -> unknown"}`,
 			Status:      404,
 		},
 
@@ -745,7 +745,6 @@ func TestPostgREST_JSON_Op(t *testing.T) {
 			Query:       "/rpc/returns_complex?select=val->r&val->i=gt.0.5&order=val->>i.desc",
 			Expected:    `[{"r":0.3},{"r":0.2}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: -> on a composite field of an RPC result; card 31812 (rpc composites)",
 		},
 	}
 

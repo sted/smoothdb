@@ -11,19 +11,15 @@ import (
 // mirror them, quoting the hspec they port. The suite runs with
 // TransactionMode rollback-allow-override, PostgREST's baseCfg
 // (tx-rollback-all = true, tx-allow-override = true): the "allowed" block
-// runs, the other two need a TransactionMode TestMain does not set.
+// runs on the suite server. The other two run on a variant server (see
+// withVariant) with TransactionMode commit and rollback.
 //
-// PostgREST answers Preference-Applied: tx=... when it honours a Prefer tx;
-// smoothdb sends no Preference-Applied. A case asserting it runs without that
-// header, and a skipped twin (same request, " (Preference-Applied)" in the
-// description) counts the missing header.
+// PostgREST answers Preference-Applied: tx=... when it honours a Prefer tx,
+// and smoothdb does too: a case asserts the header with the rest of its
+// answer (see withApplied).
 
 const (
-	rollbackNoPrefApplied = "PostgREST 16.4: Preference-Applied names the tx preference it honoured; card 32479 (write headers)"
-	rollbackNoPut         = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put)"
-	rollbackDeferred      = "PostgREST 16.4: a transaction that ends in rollback checks the deferred constraints first (SET CONSTRAINTS ALL IMMEDIATE, MainTx.hs optionalRollback); no card"
-	rollbackCommitError   = "PostgREST 16.4: a deferred constraint failing at COMMIT is the response, 409 (smoothdb commits after the response is sent and only logs it); card 35458 (tx after response)"
-	rollbackEmptyBody     = "PostgREST 16.4: POST /rpc with an empty body calls the function with its defaults (smoothdb answers EOF); no card"
+	rollbackDeferred = "PostgREST 16.4: a transaction that ends in rollback checks the deferred constraints first (SET CONSTRAINTS ALL IMMEDIATE, MainTx.hs optionalRollback); no card"
 )
 
 // -- two helpers functions to make sure that each test can setup and cleanup properly
@@ -132,21 +128,20 @@ func (b rbBlock) skipOr(reason string) string {
 	return reason
 }
 
-// withApplied returns the case and, when PostgREST would report the tx
-// preference applied, its skipped twin asserting Preference-Applied: appliedValue
-// is the whole header PostgREST sends (a mutation lists return= too).
+// withApplied returns the case, which asserts Preference-Applied when
+// PostgREST would report the tx preference applied: appliedValue is the
+// whole header PostgREST sends (a mutation lists return= too). The request
+// runs once: it is not idempotent.
 func (b rbBlock) withApplied(tc test.Test, appliedValue string) []test.Test {
 	tc.Skip = b.skipOr(tc.Skip)
-	if b.applied == "" {
-		return []test.Test{tc}
+	if b.applied != "" {
+		headers := map[string]string{"Preference-Applied": appliedValue}
+		for k, v := range tc.ExpectedHeaders {
+			headers[k] = v
+		}
+		tc.ExpectedHeaders = headers
 	}
-	twin := tc
-	twin.Description += " (Preference-Applied)"
-	twin.ExpectedHeaders = map[string]string{"Preference-Applied": appliedValue}
-	if twin.Skip == "" {
-		twin.Skip = rollbackNoPrefApplied
-	}
-	return []test.Test{tc, twin}
+	return []test.Test{tc}
 }
 
 // shouldRespondToReads reqHeaders respHeaders = do
@@ -228,7 +223,7 @@ func (b rbBlock) shouldRespondToReads() []test.Test {
 // Exceptions are always without preference applied (the spec passes
 // withoutPreferenceApplied in every block), so these have no twin.
 func (b rbBlock) shouldRaiseExceptions() []test.Test {
-	const conflict = `{"subsystem":"database","message":"duplicate key value violates unique constraint \"deferrable_unique_constraint_col_key\"","code":"23505","hint":"","details":"Key (col)=(1) already exists.","position":0}`
+	const conflict = `{"code":"23505","details":"Key (col)=(1) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"deferrable_unique_constraint_col_key\""}`
 	return []test.Test{
 		//   it "raises immediate constraints" $ do
 		//     request
@@ -252,7 +247,7 @@ func (b rbBlock) shouldRaiseExceptions() []test.Test {
 			Headers:     test.Headers{"Prefer": b.prefer},
 			Expected:    conflict,
 			Status:      409,
-			Skip:        b.skipOr(rollbackEmptyBody),
+			Skip:        b.skip,
 		},
 		//   it "raises deferred constraints" $ do
 		//     request
@@ -329,7 +324,6 @@ func (b rbBlock) shouldPersistMutations() []test.Test {
 	tests = append(tests, b.withApplied(test.Test{
 		Description: ctx + "put",
 		Method:      "PUT",
-		Skip:        rollbackNoPut,
 		Query:       "/items?id=eq.0",
 		Headers:     test.Headers{"Prefer": b.prefer},
 		Body:        `{"id":0}`,
@@ -337,8 +331,8 @@ func (b rbBlock) shouldPersistMutations() []test.Test {
 		Status:      201,
 	}, mutation)...)
 	tests = append(tests,
-		rbGet(ctx, "/items?id=eq.0", `[{"id":0}]`, b.skipOr(rollbackNoPut)),
-		rbDeleteItems(ctx, b.skipOr(rollbackNoPut)))
+		rbGet(ctx, "/items?id=eq.0", `[{"id":0}]`, b.skip),
+		rbDeleteItems(ctx, b.skip))
 	//   it "does persist patch" $ do
 	//     postItem
 	//     request
@@ -438,14 +432,13 @@ func (b rbBlock) shouldNotPersistMutations() []test.Test {
 	tests = append(tests, b.withApplied(test.Test{
 		Description: ctx + "put",
 		Method:      "PUT",
-		Skip:        rollbackNoPut,
 		Query:       "/items?id=eq.0",
 		Headers:     test.Headers{"Prefer": b.prefer},
 		Body:        `{"id":0}`,
 		Expected:    `[{"id":0}]`,
 		Status:      201,
 	}, mutation)...)
-	tests = append(tests, rbGet(ctx, "/items?id=eq.0", `[]`, b.skipOr(rollbackNoPut)))
+	tests = append(tests, rbGet(ctx, "/items?id=eq.0", `[]`, b.skip))
 	//   it "does not persist patch" $ do
 	//     request
 	//       methodPatch
@@ -525,7 +518,7 @@ func TestPostgREST_RollbackAllowed(t *testing.T) {
 	tests = append(tests, b.shouldNotPersistMutations()...)
 	tests = append(tests, b.shouldRaiseExceptions()...)
 
-	b = rbBlock{ctx: "tx-allow-override = true, Prefer tx=commit: ", prefer: preferCommit, applied: "tx=commit", deferredSkip: rollbackCommitError}
+	b = rbBlock{ctx: "tx-allow-override = true, Prefer tx=commit: ", prefer: preferCommit, applied: "tx=commit"}
 	tests = append(tests, b.shouldRespondToReads()...)
 	tests = append(tests, b.shouldPersistMutations()...)
 	b.applied = ""
@@ -565,18 +558,20 @@ func TestPostgREST_RollbackAllowed(t *testing.T) {
 //	    preferRollback `shouldPersistMutations` withoutPreferenceApplied
 //	    preferRollback `shouldRaiseExceptions` withoutPreferenceApplied
 func TestPostgREST_RollbackDisallowed(t *testing.T) {
-	const skip = "needs configuration Database.TransactionMode commit (PostgREST tx-rollback-all = false, tx-allow-override = false); TestMain sets rollback-allow-override"
 	var tests []test.Test
 	for _, b := range []rbBlock{
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, skip: skip},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, skip: skip},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, skip: skip},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback},
 	} {
 		tests = append(tests, b.shouldRespondToReads()...)
 		tests = append(tests, b.shouldPersistMutations()...)
 		tests = append(tests, b.shouldRaiseExceptions()...)
 	}
-	test.Execute(t, testConfig, tests)
+	// the cases commit their writes: they run on a copy of pgrest
+	withVariant(t, map[string]any{"Database.TransactionMode": "commit"}, true, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }
 
 // forced :: SpecWithConfig
@@ -604,16 +599,18 @@ func TestPostgREST_RollbackDisallowed(t *testing.T) {
 //	    preferRollback `shouldNotPersistMutations` withoutPreferenceApplied
 //	    preferRollback `shouldRaiseExceptions` withoutPreferenceApplied
 func TestPostgREST_RollbackForced(t *testing.T) {
-	const skip = "needs configuration Database.TransactionMode rollback (PostgREST tx-rollback-all = true, tx-allow-override = false); TestMain sets rollback-allow-override"
 	var tests []test.Test
 	for _, b := range []rbBlock{
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, skip: skip},
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, skip: skip},
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, skip: skip},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, deferredSkip: rollbackDeferred},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, deferredSkip: rollbackDeferred},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, deferredSkip: rollbackDeferred},
 	} {
 		tests = append(tests, b.shouldRespondToReads()...)
 		tests = append(tests, b.shouldNotPersistMutations()...)
 		tests = append(tests, b.shouldRaiseExceptions()...)
 	}
-	test.Execute(t, testConfig, tests)
+	// every transaction rolls back: the cases can run on pgrest
+	withVariant(t, map[string]any{"Database.TransactionMode": "rollback"}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }

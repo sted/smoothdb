@@ -59,7 +59,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "filters columns in result using &select",
 			Method:      "POST",
@@ -71,7 +70,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				 	}]`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"integer":14,"varchar":"testing!"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "37"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Length": "37", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//       it "ignores &select when return not set or using return=minimal" $ do
@@ -118,7 +117,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description: "ignores &select when return not set or using return=minimal",
 			Method:      "POST",
@@ -130,7 +128,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				 	}]`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Preference-Applied": "return=minimal"},
 			Status:          201,
 		},
 		//     context "non uniform json array" $ do
@@ -142,7 +140,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("All object keys must match"); card 32494 (error body)
 		{
 			Description:     "rejects json array that isn't exclusivily composed of objects",
 			Method:          "POST",
@@ -150,6 +147,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `[{"id": 100, "body": "xxxxx"}, 123, "xxxx", {"id": 111, "body": "xxxx"}]`,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"All object keys must match","code":"PGRST102","hint":null,"details":null}`,
 			Status:          400,
 		},
 		//       it "rejects json array that has objects with different keys" $
@@ -160,15 +158,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body (code, null hint); card 32494 (error body).
-		// The message is PostgREST's; the body asserted is smoothdb's shape.
 		{
 			Description:     "rejects json array that has objects with different keys",
 			Method:          "POST",
 			Query:           "/articles",
 			Body:            `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
 			Headers:         nil,
-			Expected:        `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`,
+			Expected:        `{"message":"All object keys must match","code":"PGRST102","hint":null,"details":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -188,7 +184,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation, count=exact"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "requesting full representation includes related data after insert",
 			Method:          "POST",
@@ -196,7 +191,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":6,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
 			Expected:        `[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/1"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/1", "Preference-Applied": "return=representation, count=exact"},
 			Status:          201,
 		},
 		//       it "can rename and cast the selected columns" $
@@ -214,7 +209,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can rename and cast the selected columns",
 			Method:          "POST",
@@ -222,7 +216,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":7,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"pId":"7","pName":"New Project","cId":"2"}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//       it "should not throw and return location header when selecting without PK" $
@@ -240,7 +234,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "should not throw and return location header when selecting without PK",
 			Method:          "POST",
@@ -248,7 +241,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"id":10,"name":"New Project","client_id":2}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{"name":"New Project","client_id":2}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Location": "", "Content-Range": "*/*", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//     context "requesting headers only representation" $ do
@@ -277,7 +270,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/projects?id=eq.11", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       it "should not throw and return location header for partitioned tables when selecting without PK" $
 		//         request
@@ -304,7 +296,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/car_models?name=eq.Enzo&year=eq.2021", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//     context "requesting no representation" $
 		//       it "should not throw and return no location header when selecting without PK" $
@@ -372,17 +363,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                   , matchHeaderAbsent hContentLength
 		//                   ]
 		//               }
-		// @@ the reset only prepares the Location of the next request: skipped with it
+		// @@ not asserted, PostgREST 16.4: a function RETURNS void answers 204 with no body
+		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the
+		// reset prepares the Location of the next request.
 		{
-			Description:     "into a table with auto-incrementing pk: reset the sequence",
-			Method:          "POST",
-			Query:           "/rpc/reset_sequence",
-			Body:            `{"name": "auto_incrementing_pk_id_seq", "value": 2}`,
-			Headers:         test.Headers{"Prefer": {"tx=commit"}},
-			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
-			Status:          204,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
+			Description: "into a table with auto-incrementing pk: reset the sequence",
+			Method:      "POST",
+			Query:       "/rpc/reset_sequence",
+			Body:        `{"name": "auto_incrementing_pk_id_seq", "value": 2}`,
+			Headers:     test.Headers{"Prefer": {"tx=commit"}},
 		},
 		//           request
 		//             methodPost
@@ -407,7 +396,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0", "Location": "/auto_incrementing_pk?id=eq.2", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       context "into a table with simple pk" $
 		//         it "fails with 400 and error" $
@@ -416,13 +404,12 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               { matchStatus = 400
 		//               , matchHeaders = [matchContentTypeJson]
 		//               }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description:     "into a table with simple pk fails with 400 and error",
 			Method:          "POST",
 			Query:           "/simple_pk",
 			Body:            `{ "extra":"foo"}`,
-			Expected:        `{"subsystem":"database","message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint","code":"23502","hint":"","details":"Failing row contains (null, foo).","position":0}`,
+			Expected:        `{"hint":null,"details":"Failing row contains (null, foo).","code":"23502","message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -461,7 +448,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                   , "Preference-Applied" <:> "return=representation"
 		//                   ]
 		//               }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "returns full details of inserted record if asked",
 			Method:          "POST",
@@ -469,7 +455,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{ "a":"bar", "b":"baz" }`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[{ "a":"bar", "b":"baz" }]`,
-			ExpectedHeaders: map[string]string{"Location": ""},
+			ExpectedHeaders: map[string]string{"Location": "", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//         it "returns empty array when no items inserted, and return=rep" $ do
@@ -569,7 +555,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 , "Content-Length" <:> "80"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("Empty or invalid json"); card 32494 (error body)
 		{
 			Description:     "with invalid json payload fails with 400 and error",
 			Method:          "POST",
@@ -577,6 +562,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `}{ x = 2`,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "with no payload" $
@@ -586,7 +572,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body ("Empty or invalid json"); card 32494 (error body)
 		{
 			Description:     "with no payload fails with 400 and error",
 			Method:          "POST",
@@ -594,6 +579,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            ``,
 			Headers:         nil,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Empty or invalid json","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//     context "with valid json payload" $
@@ -623,14 +609,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           `shouldRespondWith` [json|{"hint":null,"details":"Key (k)=(xyyx) already exists.","code":"23505","message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}|]
 		//             { matchStatus = 409
 		//             }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "attempting to insert a row with the same primary key",
 			Method:      "POST",
 			Query:       "/simple_pk",
 			Body:        `{ "k":"xyyx", "extra":"e1" }`,
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"duplicate key value violates unique constraint \"simple_pk_pkey\"","code":"23505","hint":"","details":"Key (k)=(xyyx) already exists.","position":0}`,
+			Expected:    `{"hint":null,"details":"Key (k)=(xyyx) already exists.","code":"23505","message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}`,
 			Status:      409,
 		},
 		//     context "attempting to insert a row with conflicting unique constraint" $
@@ -751,14 +736,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             }
 		// @@ the committed reset touches only items2_id_seq: the other suites read
 		// items2 by id=eq.1 and never insert into it
-		// @@ not asserted, PostgREST 16.4: a function RETURNS void answers 204 with no body
-		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the reset.
 		{
-			Description: "all-default columns with prefer=rep: reset the sequence",
-			Method:      "POST",
-			Query:       "/rpc/reset_sequence",
-			Body:        `{"name": "items2_id_seq", "value": 20}`,
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
+			Description:     "all-default columns with prefer=rep: reset the sequence",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "items2_id_seq", "value": 20}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         request
 		//           methodPost
@@ -792,14 +778,15 @@ func TestPostgREST_Insert(t *testing.T) {
 		//                 ]
 		//             }
 		// @@ the committed reset touches only items3_id_seq, used by no other case
-		// @@ not asserted, PostgREST 16.4: a function RETURNS void answers 204 with no body
-		// (smoothdb answers 200 ""); card 32490 (rpc details). Run for its effect: the reset.
 		{
-			Description: "all-default columns with prefer=rep and &select=: reset the sequence",
-			Method:      "POST",
-			Query:       "/rpc/reset_sequence",
-			Body:        `{"name": "items3_id_seq", "value": 20}`,
-			Headers:     test.Headers{"Prefer": {"tx=commit"}},
+			Description:     "all-default columns with prefer=rep and &select=: reset the sequence",
+			Method:          "POST",
+			Query:           "/rpc/reset_sequence",
+			Body:            `{"name": "items3_id_seq", "value": 20}`,
+			Headers:         test.Headers{"Prefer": {"tx=commit"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			Status:          204,
 		},
 		//         request
 		//           methodPost
@@ -963,14 +950,14 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST100 code and the parsec position and details; card 32494 (error body).
-		// The message prefix is PostgREST's; the body asserted is smoothdb's shape.
+		// @@ partly asserted: the code and the message prefix are PostgREST's;
+		// the parsec quotes, position and expected list are not.
 		{
 			Description: "disallows blank ?columns",
 			Method:      "POST",
 			Query:       "/articles?columns=",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"subsystem":"network","message":"failed to parse columns parameter (): unexpected end of input expecting field name","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST100","details":"unexpected end of input expecting field name","hint":null,"message":"failed to parse columns parameter ()"}`,
 			Status:      400,
 		},
 		//       it "disallows ?columns which don't exist" $
@@ -983,14 +970,12 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body (code, null hint); card 32494 (error body).
-		// The message is PostgREST's; the body asserted is smoothdb's shape.
 		{
 			Description: "disallows ?columns which don't exist",
 			Method:      "POST",
 			Query:       "/articles?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
 			Status:      400,
 		},
 		//       it "returns missing table error even if also has invalid ?columns" $
@@ -1003,12 +988,12 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 404
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST205 error body; card 32494 (error body)
 		{
 			Description: "returns missing table error even if also has invalid ?columns",
 			Method:      "POST",
 			Query:       "/garlic?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.garlic' in the schema cache"}`,
 			Status:      404,
 		},
 		// @@ added: an unknown embed in the select of the representation is
@@ -1019,7 +1004,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id,nosuch(*)",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"subsystem":"network","message":"cannot find relationship for table articles with table nosuch","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST200","details":"Searched for a foreign key relationship between 'articles' and 'nosuch' in the schema 'test', but no matches were found.","hint":null,"message":"Could not find a relationship between 'articles' and 'nosuch' in the schema cache"}`,
 			Status:      400,
 		},
 		// @@ added: a filter on a relation that is not embedded is refused on a
@@ -1031,7 +1016,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id&nosuch.id=eq.1",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"subsystem":"network","message":"'nosuch' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'nosuch' is included in the 'select' query parameter.","message":"'nosuch' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		//       it "disallows array elements that are not json objects" $
@@ -1183,7 +1168,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               }
 		// @@ missing=default is not implemented: with ?columns= a key absent from an
 		// object is inserted as NULL, which the generated column refuses all the same
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "fails with a good error message on generated always columns",
 			Method:      "POST",
@@ -1193,7 +1177,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				{"a": "val", "b": "val"}
 			]`,
 			Headers:  test.Headers{"Prefer": {"return=representation", "missing=default"}},
-			Expected: `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`,
+			Expected: `{"code":"428C9","details":"Column \"b\" is a generated column.","hint":null,"message":"cannot insert a non-DEFAULT value into column \"b\""}`,
 			Status:   400,
 		},
 		//         it "inserts a default on a DOMAIN with default" $
@@ -1331,14 +1315,12 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Location": "/simple_pk2?k=eq.%E5%9C%8D%E6%A3%8B"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		{
 			Description: "with unicode values the location header is usable by a GET",
 			Query:       "/simple_pk2?k=eq.%E5%9C%8D%E6%A3%8B",
 			Expected:    `[ { "k":"圍棋", "extra":"￥" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		{
 			Description:     "with unicode values the location header is usable by a DELETE",
@@ -1348,7 +1330,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//   describe "CSV insert" $ do
 		//     context "disparate csv types" $
@@ -1448,7 +1429,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = [matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST102 error body; card 32494 (error body)
 		{
 			Description:     "with wrong number of columns fails for too few",
 			Method:          "POST",
@@ -1456,6 +1436,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            "a,b\nfoo,bar\nbaz",
 			Headers:         test.Headers{"Content-Type": {"text/csv"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"All lines must have same number of fields","code":"PGRST102","details":null,"hint":null}`,
 			Status:          400,
 		},
 		//   describe "Row level permission" $
@@ -1548,14 +1529,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           { matchStatus = 401
 		//           , matchHeaders = []
 		//           }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "table with limited privileges fails inserting if more columns are selected",
 			Method:      "POST",
 			Query:       "/limited_article_stars?select=article_id,user_id,created_at",
 			Body:        `{"article_id": 2, "user_id": 2}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    ``,
+			Expected:    `{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}`,
 			Status:      401,
 		},
 		//     it "fails inserting if select is not specified" $
@@ -1568,13 +1548,13 @@ func TestPostgREST_Insert(t *testing.T) {
 		//           { matchStatus = 401
 		//           , matchHeaders = []
 		//           }
-		// @@ not asserted, PostgREST 16.4: the error body shape (null hint, no subsystem/position); card 32494 (error body)
 		{
 			Description: "table with limited privileges fails inserting if select is not specified",
 			Method:      "POST",
 			Query:       "/limited_article_stars",
 			Body:        `{"article_id": 3, "user_id": 1}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}`,
 			Status:      401,
 		},
 		//     it "can insert in a table with no select and return=minimal" $ do
@@ -1591,7 +1571,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//               , "Preference-Applied" <:> "return=minimal"
 		//               ]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "can insert in a table with no select and return=minimal",
 			Method:          "POST",
@@ -1599,7 +1578,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{ "v":"some value" }`,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0"},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "0", "Preference-Applied": "return=minimal"},
 			Status:          201,
 		},
 		//   describe "Inserting into VIEWs" $ do
@@ -1650,7 +1629,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/with_multiple_pks?pk1=eq.1&pk2=eq.2", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//     context "requesting header only representation" $ do
 		//       it "returns a location header with a composite PK col" $
@@ -1678,7 +1656,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/compound_pk_view?k1=eq.1&k2=eq.test", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//       it "should not throw and return location header when a PK is null" $
 		//         request
@@ -1705,7 +1682,6 @@ func TestPostgREST_Insert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Location": "/test_null_pk_competitors_sponsors?id=eq.1&sponsor_id=is.null", "Content-Range": "*/*", "Content-Length": "0", "Preference-Applied": "return=headers-only"},
 			Status:          201,
-			Skip:            "PostgREST 16.4: return=headers-only answers a Location header; card 32479 (write headers)",
 		},
 		//   describe "Data representations" $ do
 		//     context "on regular table" $ do
@@ -1821,7 +1797,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body; card 32494 (error body)
 		{
 			Description:     "data representations fail without parsing anything if a ?columns column doesn't exist",
 			Method:          "POST",
@@ -1829,6 +1804,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00+00", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos' in the schema cache"}`,
 			Status:          400,
 		},
 		//     context "on updatable view" $ do
@@ -1944,7 +1920,6 @@ func TestPostgREST_Insert(t *testing.T) {
 		//             { matchStatus = 400
 		//             , matchHeaders = ["Content-Type" <:> "application/json; charset=utf-8"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST204 error body; card 32494 (error body)
 		{
 			Description:     "data representations on an updatable view fail without parsing anything if a ?columns column doesn't exist",
 			Method:          "POST",
@@ -1952,6 +1927,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Body:            `{"due_at": "2019-01-03T11:00:00+00", "smth": "here", "label_color": "invalid", "fake_id": 13}`,
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'helicopters' column of 'datarep_todos_computed' in the schema cache"}`,
 			Status:          400,
 		},
 		// @@ added
@@ -2004,6 +1980,121 @@ func TestPostgREST_Insert(t *testing.T) {
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
 			Expected:    `[{ "a": "9", "b": "x" }, { "a": "8", "b": "x" }]`,
 			Status:      201,
+		},
+		// @@ added: the cases below are not in the spec. Each answer was read on a
+		// live PostgREST 16.4.
+		{
+			Description: "a write with an Accept that no handler serves is refused before it runs",
+			Method:      "POST",
+			Query:       "/articles",
+			Body:        `{"id": 9001, "body": "x", "owner": "x"}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      406,
+		},
+		{
+			Description:     "count=estimated on an insert counts the rows",
+			Method:          "POST",
+			Query:           "/items",
+			Body:            `{"id": 9002}`,
+			Headers:         test.Headers{"Prefer": {"return=minimal, count=estimated"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/1", "Preference-Applied": "return=minimal, count=estimated"},
+			Status:          201,
+		},
+		{
+			Description:     "the first count preference wins: count=planned, which an insert does not count",
+			Method:          "POST",
+			Query:           "/items",
+			Body:            `{"id": 9003}`,
+			Headers:         test.Headers{"Prefer": {"count=planned, count=exact"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			Status:          201,
+		},
+		{
+			Description:     "a write sends no Content-Location",
+			Method:          "POST",
+			Query:           "/items",
+			Body:            `{"id": 9004}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Location": ""},
+			Status:          201,
+		},
+		{
+			Description: "return=headers-only returns the selected columns: an unknown one is refused",
+			Method:      "POST",
+			Query:       "/projects?select=nope",
+			Body:        `{"id": 9101, "name": "x", "client_id": 1}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description:     "return=headers-only builds the Location from the columns, not from their aliases",
+			Method:          "POST",
+			Query:           "/projects?select=pId:id::text,name",
+			Body:            `{"id": 9102, "name": "x", "client_id": 1}`,
+			Headers:         test.Headers{"Prefer": {"return=headers-only"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Location": "/projects?id=eq.9102", "Content-Range": "*/*"},
+			Status:          201,
+		},
+		{
+			Description: "POST of an empty array to a function does not fail",
+			Method:      "POST",
+			Query:       "/rpc/getallprojects",
+			Body:        `[]`,
+			Status:      200,
+		},
+		{
+			Description: "return=headers-only resolves the embeds of a star select: an unknown one is refused",
+			Method:      "POST",
+			Query:       "/items?select=*,missing(*)",
+			Body:        `{"id": 9201}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description:     "return=headers-only accepts a spread of a one-to-many embed",
+			Method:          "POST",
+			Query:           "/factories?select=name,...processes(name)",
+			Body:            `{"id": 9301, "name": "f"}`,
+			Headers:         test.Headers{"Prefer": {"return=headers-only"}},
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Location": "/factories?id=eq.9301"},
+			Status:          201,
+		},
+		{
+			Description: "an unknown embed wins over an Accept that no handler serves",
+			Method:      "POST",
+			Query:       "/items?select=*,missing(*)",
+			Body:        `{"id": 9202}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      400,
+		},
+		{
+			Description: "a missing table wins over an Accept that no handler serves",
+			Method:      "POST",
+			Query:       "/no_such_table",
+			Body:        `{"id": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      404,
+		},
+		{
+			Description: "an index is no relation: 404 before the media type is negotiated",
+			Method:      "POST",
+			Query:       "/items_pkey",
+			Body:        `{"id": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      404,
+		},
+		{
+			Description: "a write with an Accept that no handler serves names the media types",
+			Method:      "POST",
+			Query:       "/items",
+			Body:        `{"id": 9999}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/xml"}`,
+			Status:      406,
 		},
 	}
 

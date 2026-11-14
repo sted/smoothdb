@@ -27,3 +27,9 @@ func UpdateRecords(ctx context.Context, table string, record Record, filters Fil
 func DeleteRecords(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
 	return Delete(ctx, table, filters)
 }
+
+// UpsertRecordsFromJSON writes the row that the primary key filters of a PUT
+// address, from the records decoded from body (see Upsert).
+func UpsertRecordsFromJSON(ctx context.Context, table string, records []Record, body []byte, filters Filters) ([]byte, int64, error) {
+	return Upsert(ctx, table, records, body, filters)
+}

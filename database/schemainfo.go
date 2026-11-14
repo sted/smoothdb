@@ -31,6 +31,11 @@ type Relationship struct {
 	JColumns        []string
 	JRelatedColumns []string
 	ForeignKey      string
+	// The two constraints of an M2M junction, as PostgREST's Junction names
+	// them: JForeignKey goes from the junction to Table, JRelatedForeignKey
+	// from the junction to RelatedTable. The error bodies use them.
+	JForeignKey        string
+	JRelatedForeignKey string
 	// Computed relationship fields
 	FunctionName   string // function name (e.g., "read_principals")
 	FunctionSchema string // function schema (e.g., "public")
@@ -52,6 +57,16 @@ type SchemaInfo struct {
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
+	functions               functionIndex         // every function by name, see noRpc
+	tableHints              map[string]*fuzzySet  // the tables and views of each schema, for the PGRST205 hint
+	functionHints           map[string]*fuzzySet  // the callable functions of each schema, for the PGRST202 hint
+	// the primary key columns of a view, inferred from its base tables
+	// (see addViewPrimaryKeys)
+	cachedViewPrimaryKeys map[string][]string
+	// callColumnTypes are the types of the output columns of a function
+	// call, by the names the call builder reads them with (see withCallColumns).
+	// Only the copy of a call sets it.
+	callColumnTypes map[string]map[string]ColumnType
 }
 
 func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
@@ -110,6 +125,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 			}
 		}
 	}
+	dbi.tableHints = hintSets(indexTables(dbi.cachedTables), maxTablesForFuzzySearch)
 	// Column types
 	colTypes, err := GetColumnTypes(ctx)
 	if err != nil {
@@ -170,6 +186,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	dbi.addViewRelationships(viewColDeps)
+	dbi.addViewPrimaryKeys(viewColDeps)
 
 	// Functions
 	functions, err := GetFunctions(ctx)
@@ -177,6 +194,8 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	dbi.cachedFunctions = cacheFunctions(functions)
+	dbi.functions = indexFunctions(functions)
+	dbi.functionHints = hintSets(dbi.functions.callable, 0)
 	// Computed relationships: detect functions with a single IN argument of table type
 	for _, f := range functions {
 		// Count IN arguments (mode 0 means default=IN, 'i' means explicit IN)
@@ -275,6 +294,9 @@ func (si *SchemaInfo) GetTable(ftable string) *Table {
 }
 
 func (si *SchemaInfo) GetColumnType(ftable string, column string) *ColumnType {
+	if ct, ok := si.callColumnTypes[ftable][column]; ok {
+		return &ct
+	}
 	t, ok := si.cachedColumnTypes[ftable]
 	if !ok {
 		return nil
@@ -324,6 +346,76 @@ func (si *SchemaInfo) GetPrimaryKey(ftable string) *Constraint {
 		return nil
 	}
 	return &c
+}
+
+// addViewPrimaryKeys infers the primary key of each view, as PostgREST does
+// (SchemaCache.hs, addViewPrimaryKeys): a base table whose primary key
+// columns all appear in the view gives them, each as the first view column
+// that comes from it. The columns are in the order of the view (deps comes
+// ordered by view and column).
+func (si *SchemaInfo) addViewPrimaryKeys(deps []ViewColDep) {
+	si.cachedViewPrimaryKeys = map[string][]string{}
+	for start := 0; start < len(deps); {
+		end := start
+		for end < len(deps) && deps[end].ViewSchema == deps[start].ViewSchema && deps[end].ViewName == deps[start].ViewName {
+			end++
+		}
+		view := deps[start:end]
+		// the first view column of each base column
+		first := map[[2]string]int{}
+		for i, d := range view {
+			key := [2]string{_s(d.BaseTable, d.BaseSchema), d.BaseColumn}
+			if _, ok := first[key]; !ok {
+				first[key] = i
+			}
+		}
+		var cols []int
+		seen := map[string]bool{}
+		for _, d := range view {
+			ftable := _s(d.BaseTable, d.BaseSchema)
+			pk, ok := si.cachedPrimaryKeys[ftable]
+			if !ok || seen[ftable] {
+				continue
+			}
+			seen[ftable] = true
+			var found []int
+			for _, c := range pk.Columns {
+				if i, ok := first[[2]string{ftable, c}]; ok {
+					found = append(found, i)
+				}
+			}
+			if len(found) == len(pk.Columns) {
+				cols = append(cols, found...)
+			}
+		}
+		if len(cols) > 0 {
+			slices.Sort(cols)
+			names := make([]string, len(cols))
+			for i, c := range cols {
+				names[i] = view[c].ViewColumn
+			}
+			si.cachedViewPrimaryKeys[_s(view[0].ViewName, view[0].ViewSchema)] = names
+		}
+		start = end
+	}
+}
+
+// hasRelation says whether the cache knows the table or view ftable.
+func (si *SchemaInfo) hasRelation(ftable string) bool {
+	if _, ok := si.cachedTables[ftable]; ok {
+		return true
+	}
+	_, ok := si.cachedColumnTypes[ftable]
+	return ok
+}
+
+// GetKeyColumns returns the primary key columns of a table, or the inferred
+// ones of a view (see addViewPrimaryKeys), nil when there are none.
+func (si *SchemaInfo) GetKeyColumns(ftable string) []string {
+	if c, ok := si.cachedPrimaryKeys[ftable]; ok {
+		return c.Columns
+	}
+	return si.cachedViewPrimaryKeys[ftable]
 }
 
 func (si *SchemaInfo) GetForeignKeys(ftable string) []ForeignKey {
@@ -438,26 +530,30 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 
 	rels := [2]Relationship{
 		{
-			Type:            M2M,
-			Table:           ftable,
-			Columns:         fkeys[0].RelatedColumns,
-			RelatedTable:    freltable,
-			RelatedColumns:  fkeys[1].RelatedColumns,
-			JunctionTable:   fjtable,
-			JColumns:        fkeys[0].Columns,
-			JRelatedColumns: fkeys[1].Columns,
-			ForeignKey:      fkeys[0].Name,
+			Type:               M2M,
+			Table:              ftable,
+			Columns:            fkeys[0].RelatedColumns,
+			RelatedTable:       freltable,
+			RelatedColumns:     fkeys[1].RelatedColumns,
+			JunctionTable:      fjtable,
+			JColumns:           fkeys[0].Columns,
+			JRelatedColumns:    fkeys[1].Columns,
+			ForeignKey:         fkeys[0].Name,
+			JForeignKey:        fkeys[0].Name,
+			JRelatedForeignKey: fkeys[1].Name,
 		},
 		{
-			Type:            M2M,
-			Table:           freltable,
-			Columns:         fkeys[1].RelatedColumns,
-			RelatedTable:    ftable,
-			RelatedColumns:  fkeys[0].RelatedColumns,
-			JunctionTable:   fjtable,
-			JColumns:        fkeys[1].Columns,
-			JRelatedColumns: fkeys[0].Columns,
-			ForeignKey:      fkeys[1].Name,
+			Type:               M2M,
+			Table:              freltable,
+			Columns:            fkeys[1].RelatedColumns,
+			RelatedTable:       ftable,
+			RelatedColumns:     fkeys[0].RelatedColumns,
+			JunctionTable:      fjtable,
+			JColumns:           fkeys[1].Columns,
+			JRelatedColumns:    fkeys[0].Columns,
+			ForeignKey:         fkeys[1].Name,
+			JForeignKey:        fkeys[1].Name,
+			JRelatedForeignKey: fkeys[0].Name,
 		},
 	}
 
@@ -697,13 +793,15 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 							Type: M2M, Table: fts, Columns: ts.cols,
 							RelatedTable: frs, RelatedColumns: rs.cols,
 							JunctionTable: fjs, JColumns: jCols, JRelatedColumns: jRelCols,
-							ForeignKey: rel.ForeignKey,
+							ForeignKey:  rel.ForeignKey,
+							JForeignKey: rel.JForeignKey, JRelatedForeignKey: rel.JRelatedForeignKey,
 						})
 						si.cachedRelationships[frs] = append(si.cachedRelationships[frs], Relationship{
 							Type: M2M, Table: frs, Columns: rs.cols,
 							RelatedTable: fts, RelatedColumns: ts.cols,
 							JunctionTable: fjs, JColumns: jRelCols, JRelatedColumns: jCols,
-							ForeignKey: rel.ForeignKey,
+							ForeignKey:  rel.ForeignKey,
+							JForeignKey: rel.JRelatedForeignKey, JRelatedForeignKey: rel.JForeignKey,
 						})
 					}
 				}
@@ -724,11 +822,13 @@ func filterRelationships(rels []Relationship, relatedTable, fk string) []Relatio
 
 // cacheFunctions groups the functions by schema-qualified name, each name
 // keeping all its overloads (PostgREST's RoutineMap), in compareOverloads
-// order. A function with an unnamed argument is left out (card 32489 rpc-params).
+// order. A function with an unnamed argument is left out, unless that
+// argument is its only input: a call can pass the body to it (see
+// FindFunctionFor).
 func cacheFunctions(functions []Function) map[string][]Function {
 	cached := map[string][]Function{}
 	for _, f := range functions {
-		if f.HasUnnamed {
+		if f.HasUnnamed && f.singleUnnamed() == nil {
 			continue
 		}
 		fname := _s(f.Name, f.Schema)
@@ -761,14 +861,37 @@ func (e AmbiguousFunctionError) Error() string { return e.msg }
 // argument. With more than one it returns an AmbiguousFunctionError naming
 // them, where PostgreSQL would pick one by its type rules or fail.
 func (si *SchemaInfo) FindFunction(name string, keys []string) (*Function, error) {
+	return si.FindFunctionFor(name, keys, "")
+}
+
+// FindFunctionFor is FindFunction for a POST whose body can fill a single
+// unnamed parameter of type raw (see RawBody; "" for none), as PostgREST's
+// findProc. A "json" body passes its keys, and falls back to an overload
+// with one unnamed json or jsonb parameter when no overload takes the keys.
+// A "text", "xml" or "bytea" body passes no key: it calls an overload
+// with one unnamed parameter of that type, or one whose parameters all have
+// a default, never one without parameters.
+func (si *SchemaInfo) FindFunctionFor(name string, keys []string, raw string) (*Function, error) {
 	if si == nil {
 		return nil, nil
 	}
-	var found []Function
+	var found, fallback []Function
 	for _, f := range si.cachedFunctions[name] {
+		if u := f.singleUnnamed(); u != nil {
+			if raw != "" && rawFills(raw, u.Type) {
+				fallback = append(fallback, f)
+			}
+			continue
+		}
+		if raw != "" && raw != "json" && len(f.inputArguments()) == 0 {
+			continue
+		}
 		if f.acceptsArguments(keys) {
 			found = append(found, f)
 		}
+	}
+	if len(found) == 0 {
+		found = fallback
 	}
 	switch len(found) {
 	case 0:
@@ -788,6 +911,35 @@ func (si *SchemaInfo) FindFunction(name string, keys []string) (*Function, error
 		"Could not choose the best candidate function between: " + strings.Join(signatures, ", "),
 		"Try renaming the parameters or the function itself in the database so function overloading can be resolved",
 	}
+}
+
+// rawFills reports whether a body of type raw (see RawBody) can fill an
+// unnamed parameter of type typ.
+func rawFills(raw, typ string) bool {
+	switch raw {
+	case "json":
+		return typ == "json" || typ == "jsonb"
+	case "text", "xml", "bytea":
+		return typ == raw
+	}
+	return false
+}
+
+// singleUnnamed returns the only input argument of f when it has no name,
+// and nil otherwise.
+func (f *Function) singleUnnamed() *Argument {
+	inputs := f.inputArguments()
+	if len(inputs) == 1 && inputs[0].Name == "" {
+		return &inputs[0]
+	}
+	return nil
+}
+
+// returnsRecord reports whether f returns record or setof record with no
+// OUT parameter to name the columns. PostgREST takes such a result as a
+// scalar: each row is one value, which serializes as a JSON object.
+func (f *Function) returnsRecord() bool {
+	return f.ReturnTypeId == recordOID && !f.HasOut
 }
 
 // inputArguments returns the arguments a call passes: IN, INOUT and VARIADIC
@@ -863,4 +1015,48 @@ func compareBool(a, b bool) int {
 	default:
 		return 1
 	}
+}
+
+// withCallColumns returns si for a call to f: a copy that knows the
+// array and composite types of the output columns, read through the
+// alias t of the call, or si itself when there are none. The columns are
+// the OUT and TABLE parameters of f, or the columns of the table
+// schema.table that f returns, or pgrst_scalar for a record (see
+// BuildExecute). A JSON path on such a column needs to_jsonb (see toJson),
+// as in PostgREST (Plan.hs resolveTypeOrUnknown).
+func (si *SchemaInfo) withCallColumns(f *Function, table, schema string) *SchemaInfo {
+	if si == nil || f == nil {
+		return si
+	}
+	var cols map[string]ColumnType
+	if f.returnsRecord() {
+		cols = map[string]ColumnType{"pgrst_scalar": {Name: "pgrst_scalar", Type: "record", IsComposite: true}}
+	} else if table != "" {
+		for _, ct := range si.cachedColumnTypes[_s(table, schema)] {
+			if ct.IsArray || ct.IsComposite {
+				cols = si.cachedColumnTypes[_s(table, schema)]
+				break
+			}
+		}
+	} else if f.HasOut {
+		for _, a := range f.Arguments {
+			if a.Mode != 'o' && a.Mode != 'b' && a.Mode != 't' {
+				continue
+			}
+			typ := si.GetTypeById(a.TypeId)
+			if typ == nil || (!typ.IsArray && !typ.IsComposite && !typ.IsTable) {
+				continue
+			}
+			if cols == nil {
+				cols = map[string]ColumnType{}
+			}
+			cols[a.Name] = ColumnType{Name: a.Name, Type: a.Type, IsArray: typ.IsArray, IsComposite: !typ.IsArray}
+		}
+	}
+	if cols == nil {
+		return si
+	}
+	c := *si
+	c.callColumnTypes = map[string]map[string]ColumnType{_s("", ""): cols, _s("t", ""): cols}
+	return &c
 }

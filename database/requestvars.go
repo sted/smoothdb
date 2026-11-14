@@ -352,6 +352,27 @@ func (gi *SmoothContext) exec(ctx context.Context, sql string, args ...any) (pgc
 	return tag, gi.end(ctx, br, b, err)
 }
 
+// execInserted runs the insert sql, without rows, and then insertedQuery
+// in the same batch, so in the same transaction: it sets
+// QueryOptions.Inserted.
+func (gi *SmoothContext) execInserted(ctx context.Context, sql string, args []any) (pgconn.CommandTag, error) {
+	b, err := gi.newBatch(ctx, sql, insertedQuery)
+	if err != nil {
+		return pgconn.CommandTag{}, err
+	}
+	b.Queue(sql, args...)
+	b.Queue(insertedQuery)
+	br, err := gi.send(ctx, b)
+	if err != nil {
+		return pgconn.CommandTag{}, err
+	}
+	tag, err := br.Exec()
+	if err == nil {
+		err = br.QueryRow().Scan(&gi.QueryOptions.Inserted)
+	}
+	return tag, gi.end(ctx, br, b, err)
+}
+
 // How the connections of a pool prepare the statements of a batch, after its
 // query exec mode: in a Sync of their own before the batch when they cache
 // prepared statements (or their descriptions), up to the capacity of the

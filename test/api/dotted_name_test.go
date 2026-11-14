@@ -18,7 +18,7 @@ func TestDottedSourceName(t *testing.T) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 
-	const body = `{"subsystem":"network","message":"invalid source name \"doc.derived.member_choices\": a table or function name cannot contain a dot; select the schema with the Accept-Profile or Content-Profile header","code":"","hint":"","details":null,"position":0}`
+	const body = `{"code":"PGRST100","details":null,"hint":null,"message":"invalid source name \"doc.derived.member_choices\": a table or function name cannot contain a dot; select the schema with the Accept-Profile or Content-Profile header"}`
 
 	tests := []test.Test{
 		{

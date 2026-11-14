@@ -29,6 +29,14 @@ func TestAdminDottedNames(t *testing.T) {
 			Status:      201,
 		},
 		{
+			// the DDL API answers 42P07 with 409, the API routes with 400
+			Description: "create it again: 409",
+			Method:      "POST",
+			Query:       "/tables",
+			Body:        `{"name": "a.b", "columns": [{"name": "id", "type": "int"}]}`,
+			Status:      409,
+		},
+		{
 			Description: "get it",
 			Method:      "GET",
 			Query:       "/tables/a.b",

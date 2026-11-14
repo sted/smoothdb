@@ -2,9 +2,13 @@ package database
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type RangeError struct {
@@ -59,6 +63,69 @@ func checkSchema(ctx context.Context) error {
 	return nil
 }
 
+// checkWritePlan ends the plan of a write, before it runs: the embeds of
+// its select must exist, whatever its return preference, and its Accept
+// header must name a media type that smoothdb serves (PGRST107). PostgREST
+// validates the plan and then negotiates the media type (Plan.hs), so the
+// errors of the plan come first.
+func checkWritePlan(ctx context.Context, table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) error {
+	if _, _, err := resolveEmbeds(table, options.Schema, parts.selectFields, info); err != nil {
+		return err
+	}
+	if options.ContentType == "unknown/unknown" {
+		if info != nil && !info.hasRelation(_s(table, options.Schema)) {
+			// PostgREST answers 404 for a relation missing from its cache
+			// before it negotiates. smoothdb writes a relation created
+			// since the cache was loaded, so on this error path alone it
+			// asks the database whether the relation exists.
+			if err := missingRelationError(ctx, table, options.Schema); err != nil {
+				return err
+			}
+		}
+		return mediaTypeError(options.accept)
+	}
+	return nil
+}
+
+// missingRelationError answers PostgreSQL's undefined_table error (42P01)
+// when the relation does not exist, nil when it does. The handler turns
+// the error into PGRST205 (see TableNotFound).
+func missingRelationError(ctx context.Context, table, schema string) error {
+	missing, err := relationMissing(ctx, _sq(table, schema))
+	if err != nil {
+		return err
+	}
+	if missing {
+		return &pgconn.PgError{Severity: "ERROR", Code: "42P01",
+			Message: "relation \"" + _s(table, schema) + "\" does not exist"}
+	}
+	return nil
+}
+
+// relationMissing says whether no table, view, materialized view or
+// foreign table has the name relation: an index or a sequence is no
+// relation of the API, as in PostgREST's schema cache.
+func relationMissing(ctx context.Context, relation string) (bool, error) {
+	conn, err := GetSmoothContext(ctx).conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	var exists bool
+	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid = to_regclass($1) AND relkind IN ('r', 'p', 'v', 'm', 'f'))", relation).Scan(&exists); err != nil {
+		return false, err
+	}
+	return !exists, nil
+}
+
+// countEstimated makes a table write count its rows with count=estimated,
+// as PostgREST does: the count of a write is exact. A read and a function
+// call keep count=estimated unhonoured (card 32483).
+func countEstimated(options *QueryOptions) {
+	if options.CountPreference == "estimated" {
+		options.Count = "estimated"
+	}
+}
+
 // ignoreRange drops the Range header of a table write (insert, update or
 // delete), as PostgREST does: the header pages reads (GET, and a function
 // call whatever its method), never a mutation. The write and its
@@ -75,7 +142,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + acceptedMediaTypes(options.accept)}
 	}
 	return runRead(ctx, query, values, false, options.Singular)
 }
@@ -87,28 +154,39 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 // query (and options.totalPrelude, if any, before it): one round trip, and
 // the page needs no row of its own to carry the total (see buildAfterSelect).
 func runRead(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
+	out, n, err := runReadRows(ctx, query, values, scalar, single)
+	if errors.Is(err, errOctetColumns) {
+		err = mediaTypeError(GetSmoothContext(ctx).QueryOptions.accept)
+	}
+	return out, n, err
+}
+
+// runReadRows is runRead without the conversion of errOctetColumns.
+func runReadRows(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
-		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
+		return nil, 0, lowerGTUpper
 	}
 	info := gi.Db.info.Load()
 	var serializer TextSerializer
-	switch options.ContentType {
-	case "text/csv":
+	switch {
+	case options.locate:
+		serializer = LocationSerializer{}
+	case options.ContentType == "text/csv":
 		serializer = &CSVSerializer{}
-	case "application/octet-stream":
+	case options.ContentType == "application/octet-stream":
 		serializer = &BinarySerializer{}
 	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
 	// the request's variables ride in front of the statements when they are
 	// still pending (see requestVars)
-	batch, err := gi.newBatch(ctx, options.totalPrelude, query, options.totalQuery)
+	batch, err := gi.newBatch(ctx, options.totalPrelude, query, options.totalQuery, options.insertedQuery)
 	if err != nil {
 		return nil, 0, err
 	}
-	if options.totalQuery == "" && batch.lead == 0 {
+	if options.totalQuery == "" && options.insertedQuery == "" && batch.lead == 0 {
 		rows, err := gi.Conn.Query(ctx, query, values...)
 		if err != nil {
 			return nil, 0, err
@@ -129,6 +207,9 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	batch.Queue(query, values...)
 	if options.totalQuery != "" {
 		batch.Queue(options.totalQuery, options.totalValues...)
+	}
+	if options.insertedQuery != "" {
+		batch.Queue(options.insertedQuery)
 	}
 	br, err := gi.send(ctx, batch)
 	if err != nil {
@@ -170,6 +251,11 @@ func readBatch(br pgx.BatchResults, options *QueryOptions, serializer TextSerial
 	} else if err := br.QueryRow().Scan(&options.Total); err != nil {
 		return nil, 0, err
 	}
+	if options.insertedQuery != "" {
+		if err := br.QueryRow().Scan(&options.Inserted); err != nil {
+			return nil, 0, err
+		}
+	}
 	return out, n, nil
 }
 
@@ -207,6 +293,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	info := gi.Db.info.Load()
 	if body == nil {
 		// Go values need the column types (see insertRows), also for a
@@ -219,15 +306,229 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	if err != nil {
 		return nil, 0, err
 	}
-	if options.ReturnRepresentation {
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
+		return nil, 0, err
+	}
+	// The resolution applies when the insert has a conflict target: the
+	// primary key or ?on_conflict= (Response.hs, responsePreferences).
+	options.ResolutionApplied = (options.MergeDuplicates || options.IgnoreDuplicates) &&
+		(len(parts.conflictFields) > 0 || (info != nil && info.GetPrimaryKey(_s(table, options.Schema)) != nil))
+	options.Inserted = -1
+	if options.MergeDuplicates {
+		options.insertedQuery = insertedQuery
+		defer func() { options.insertedQuery = "" }()
+	}
+	switch {
+	case options.ReturnRepresentation:
 		return writeRead(ctx, insert, values)
-	} else {
-		tag, err := gi.exec(ctx, insert, values...)
-		if err != nil {
+	case options.Return == "headers-only":
+		return writeHeadersOnly(ctx, insert, values)
+	default:
+		n, err := writeExec(ctx, insert, values)
+		return nil, n, err
+	}
+}
+
+// writeHeadersOnly runs the write query of a request with
+// return=headers-only (see headersOnly) and answers the Location items and
+// the number of rows written.
+func writeHeadersOnly(ctx context.Context, query string, values []any) ([]byte, int64, error) {
+	options := GetQueryOptions(ctx)
+	options.locate = true
+	defer func() { options.locate = false }()
+	if options.Singular {
+		// a refused row count rolls the write back
+		return writeRead(ctx, query, values)
+	}
+	// no rows to refuse: no transaction of the request, no COMMIT
+	return runRead(ctx, query, values, false, false)
+}
+
+// PutError is a PUT that PostgREST refuses before or after its write
+// (ApiRequest.hs, getRanges; Plan.hs, mutatePlan; MainTx.hs, failPut).
+type PutError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *PutError) Error() string { return e.Message }
+
+var (
+	errPutLimit   = &PutError{400, "PGRST114", "limit/offset querystring parameters are not allowed for PUT"}
+	errPutFilters = &PutError{405, "PGRST105", "Filters must include all and only primary key columns with 'eq' operators"}
+	errPutPayload = &PutError{400, "PGRST115", "Payload values do not match URL in primary key column(s)"}
+)
+
+// putCondition is a primary key column of a PUT and the value its filter
+// gives.
+type putCondition struct {
+	column, value string
+}
+
+// putConditions reads the primary key of a PUT from its filters: an eq
+// filter on each column of the key, and no other filter, on the relation or
+// on an embedded resource (Plan.hs, mutatePlan). ok is false when the
+// filters do not address one row, or when the relation has no key.
+func putConditions(root *WhereConditionNode, keys []string) (conds []putCondition, ok bool) {
+	if len(keys) == 0 {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	if root != nil {
+		if root.not || root.operator != "" {
+			return nil, false
+		}
+		for _, n := range root.children {
+			if n.isContainer() {
+				return nil, false
+			}
+			if len(n.field.relPath) > 0 || n.operator != "=" || n.not || n.opModifier != "" || n.field.jsonPath != "" ||
+				!slices.Contains(keys, n.field.name) || len(n.values) != 1 {
+				return nil, false
+			}
+			seen[n.field.name] = true
+			conds = append(conds, putCondition{n.field.name, n.values[0]})
+		}
+	}
+	if len(seen) != len(keys) {
+		return nil, false
+	}
+	return conds, true
+}
+
+// Upsert writes the row that the filters of a PUT address, as PostgREST
+// does (MutationSingleUpsert): an insert of the body rows with that key,
+// merged on the key. The filters must give the whole key and nothing else
+// (PGRST105, 405). limit and offset are refused (PGRST114, 400), a Range
+// header is ignored. When the body has no row with that key, nothing is
+// written (PGRST115, 400). Inserted tells a created row from an updated one.
+func Upsert(ctx context.Context, table string, records []Record, body []byte, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
+	gi := GetSmoothContext(ctx)
+	parts, err := gi.RequestParser.parse(table, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	// limit and offset are refused when they narrow the range: an offset
+	// of zero keeps it whole (ApiRequest.hs, getRanges)
+	if parts.limit != "" || parts.limitHuge != "" || parts.offsetHuge != "" {
+		return nil, 0, errPutLimit
+	}
+	if parts.offset != "" {
+		if offset, err := strconv.ParseInt(parts.offset, 10, 64); err != nil || offset != 0 {
+			return nil, 0, errPutLimit
+		}
+	}
+	options := &gi.QueryOptions
+	ignoreRange(options)
+	countEstimated(options)
+	// PostgREST ignores ?columns= on a PUT (ApiRequest/Payload.hs): every key
+	// of the body is written
+	parts.columnFields = nil
+	info := gi.Db.info.Load()
+	if body == nil {
+		if info, err = info.withColumnTypesOf(ctx, table, options.Schema); err != nil {
 			return nil, 0, err
 		}
-		return nil, tag.RowsAffected(), nil
 	}
+	var keys []string
+	if info != nil {
+		keys = info.GetKeyColumns(_s(table, options.Schema))
+	}
+	if len(keys) == 0 && info != nil && !info.hasRelation(_s(table, options.Schema)) {
+		// a relation missing from the cache: 404 comes before the key
+		// check, when the relation does not exist (see checkWritePlan)
+		if err := missingRelationError(ctx, table, options.Schema); err != nil {
+			return nil, 0, err
+		}
+	}
+	conds, ok := putConditions(parts.whereConditionsTree, keys)
+	if !ok {
+		return nil, 0, errPutFilters
+	}
+	parts.putConditions = conds
+	parts.conflictFields = map[string]struct{}{}
+	for _, k := range keys {
+		parts.conflictFields[k] = struct{}{}
+	}
+	options.MergeDuplicates, options.IgnoreDuplicates = true, false
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
+		return nil, 0, err
+	}
+	// A body without the key of the URL writes no row, but a statement
+	// trigger can still run: the write ends in a transaction of the request,
+	// rolled back on the error, as in PostgREST (MainTx.hs, failPut).
+	if gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	options.Inserted = -1
+	options.insertedQuery = insertedQuery
+	defer func() { options.insertedQuery = "" }()
+	if options.ReturnRepresentation {
+		data, n, err := writeRead(ctx, insert, values)
+		if _, single := err.(*CardinalityError); single && options.Singular {
+			// the representation of no row: the body has not the key
+			return nil, 0, errPutPayload
+		}
+		if err == nil && n != 1 {
+			err = errPutPayload
+		}
+		return data, n, err
+	}
+	// one row or none: no single object to check
+	singular := options.Singular
+	options.Singular = false
+	var n int64
+	if options.Return == "headers-only" {
+		_, n, err = writeHeadersOnly(ctx, insert, values)
+	} else {
+		n, err = writeExec(ctx, insert, values)
+	}
+	options.Singular = singular
+	if err == nil && n != 1 {
+		err = errPutPayload
+	}
+	return nil, n, err
+}
+
+// writeExec runs the write query of a request that asks for no rows back,
+// and answers the number of rows it wrote. With a single object asked
+// (vnd.pgrst.object), a write of more or less than one row fails and rolls
+// back, as in PostgREST, whatever the return preference: the write runs in
+// a transaction of the request, as in writeRead. With a merge-duplicates
+// insert, the count of the created rows follows in the same batch (see
+// insertedCounter). Otherwise it is one statement, without rows.
+func writeExec(ctx context.Context, query string, values []any) (int64, error) {
+	gi := GetSmoothContext(ctx)
+	options := &gi.QueryOptions
+	if options.Singular && gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	var n int64
+	if options.insertedQuery == "" {
+		tag, err := gi.exec(ctx, query, values...)
+		if err != nil {
+			return 0, err
+		}
+		n = tag.RowsAffected()
+	} else {
+		tag, err := gi.execInserted(ctx, query, values)
+		if err != nil {
+			return 0, err
+		}
+		n = tag.RowsAffected()
+	}
+	if options.Singular && n != 1 {
+		return 0, notSingleError(n)
+	}
+	return n, nil
 }
 
 func Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
@@ -241,19 +542,24 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info.Load())
+	countEstimated(options)
+	info := gi.Db.info.Load()
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, info)
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, update, values)
-	} else {
-		tag, err := gi.exec(ctx, update, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		return nil, tag.RowsAffected(), nil
 	}
+	if options.Return == "headers-only" {
+		_, n, err := writeHeadersOnly(ctx, update, values)
+		return nil, n, err
+	}
+	n, err := writeExec(ctx, update, values)
+	return nil, n, err
 }
 
 func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
@@ -267,29 +573,52 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
-	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info.Load())
+	countEstimated(options)
+	info := gi.Db.info.Load()
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, info)
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, delete, values)
-	} else {
-		tag, err := gi.exec(ctx, delete, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		return nil, tag.RowsAffected(), nil
 	}
+	if options.Return == "headers-only" {
+		_, n, err := writeHeadersOnly(ctx, delete, values)
+		return nil, n, err
+	}
+	n, err := writeExec(ctx, delete, values)
+	return nil, n, err
 }
 
-func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
+// FunctionNotFoundError: no function of the schema cache takes the
+// arguments of a call (404, PostgREST PGRST202)
+type FunctionNotFoundError struct {
+	msg string
+}
+
+func (e FunctionNotFoundError) Error() string { return e.msg }
+
+// OIDs of the pseudo-types a function can return
+const (
+	recordOID = 2249
+	voidOID   = 2278
+)
+
+// Execute calls the function named function. A GET (readonly) takes the
+// arguments from the query string, a POST from record, decoded from the
+// body, or from raw, the body itself (see RawBody). A function that returns
+// void answers nil data: the handler answers 204 with no body.
+func Execute(ctx context.Context, function string, record Record, raw *RawBody, filters Filters, readonly bool) ([]byte, int64, error) {
 	if err := checkSchema(ctx); err != nil {
 		return nil, 0, err
 	}
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + acceptedMediaTypes(options.accept)}
 	}
 	var params Filters
 	if readonly {
@@ -300,21 +629,42 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		return nil, 0, err
 	}
 	if readonly {
-		if len(record) != 0 {
-
-		}
-		record = make(map[string]any)
+		record = make(Record, len(params))
 		for k, vv := range params {
-			for _, v := range vv {
-				record[k] = v
-			}
+			record[k] = QueryValues(vv)
+		}
+	}
+	var rawType string
+	if raw != nil {
+		rawType = raw.Type
+		if rawType != "json" {
+			// a text, xml or bytea body is no list of arguments
+			record = nil
 		}
 	}
 	info := gi.Db.info.Load()
 	// The overload the call invokes, by the names of the arguments it passes
-	f, err := info.FindFunction(_s(function, options.Schema), orderedRecordKeys(record, parts.columnFields, nil))
+	fname := _s(function, options.Schema)
+	keys := orderedRecordKeys(record, parts.columnFields, nil)
+	f, err := info.FindFunctionFor(fname, keys, rawType)
 	if err != nil {
 		return nil, 0, err
+	}
+	if raw != nil {
+		switch {
+		case f != nil && f.singleUnnamed() != nil:
+			// the body goes whole to the single unnamed parameter
+			record = Record{"": raw}
+		case rawType == "json":
+		case f == nil:
+			// a text, xml or bytea body fills only a single unnamed
+			// parameter of its type (PGRST202)
+			return nil, 0, info.noRpc(fname, keys, true, rawType)
+		default:
+			// a function whose parameters all have a default: called without
+			// arguments, as PostgREST does
+			record = Record{}
+		}
 	}
 	// A call to a STABLE or IMMUTABLE function runs READ ONLY whatever the
 	// method, as in PostgREST (Plan.hs callReadPlan: Inv + Stable/Immutable ->
@@ -331,11 +681,78 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	}
 	var scalar bool
 	if f != nil {
-		rettype := info.GetTypeById(f.ReturnTypeId)
-		if rettype != nil {
+		if f.returnsRecord() {
+			// the column pgrst_scalar of each row, or the rows (see
+			// recordExtracts)
+			scalar = recordExtracts(f, options)
+		} else if rettype := info.GetTypeById(f.ReturnTypeId); rettype != nil {
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}
 	}
-	single := f != nil && !f.ReturnIsSet
-	return runRead(ctx, exec, values, scalar, single)
+	// vnd.pgrst.object asks for one row: zero or many fail with 406, as in
+	// PostgREST (PGRST116). Only it checks the number of rows (MainTx.hs).
+	// A VOLATILE call can write before the check: with TransactionMode
+	// "none" it runs in a transaction of its own, which a 406 rolls back
+	// (see writeRead). A GET runs READ ONLY and writes nothing.
+	if options.Singular && !readonly && (f == nil || f.Volatility == "v") && gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	// A set of scalars as one object keeps its column (PostgREST's
+	// asJsonSingleF): {"pgrst_scalar": 1}. A set of records is a row already.
+	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet && !f.returnsRecord()
+	// A function that returns one value counts one row whatever it answers
+	// (PostgREST's pageCountSelectF): vnd.pgrst.object never refuses it.
+	oneValue := f != nil && !f.ReturnIsSet
+	data, n, err := runRead(ctx, exec, values, scalar, options.Singular && !oneValue)
+	if err != nil {
+		// No function of the cache can take the call: PostgREST answers
+		// PGRST202 before it runs anything. smoothdb runs the call, because
+		// the function can be newer than the cache, and answers PGRST202
+		// only when PostgreSQL does not find the function either. A decision
+		// of the user (2026-11-14): PGRST202 comes after PostgreSQL fails.
+		if f == nil && !options.ParamsAsSingleObject && isUndefinedFunction(err, fname) {
+			return nil, 0, info.noRpc(fname, keys, !readonly, rawType)
+		}
+		return nil, 0, err
+	}
+	if f != nil && f.ReturnTypeId == voidOID && !f.ReturnIsSet {
+		return nil, n, nil
+	}
+	// the JSON serializer writes every content type but CSV and binary (see runRead)
+	isJSON := options.ContentType != "text/csv" && options.ContentType != "application/octet-stream"
+	switch {
+	case setOfScalarObject && isJSON:
+		data = append(append([]byte(`{"pgrst_scalar":`), data...), '}')
+	case oneValue && isJSON:
+		// a function that returns one value answers that value, not an
+		// array, and null for no row (a limit of 0)
+		if n == 0 {
+			data = []byte("null")
+		} else if len(data) >= 2 {
+			data = data[1 : len(data)-1]
+		}
+	}
+	if oneValue && options.ContentType != "application/octet-stream" {
+		// the page has one row, for Content-Range, also when the body is
+		// null. With no separate count the total is that count, as in
+		// PostgREST (countF); otherwise it stays the count of the rows.
+		n = 1
+		if options.Count != "" && options.totalQuery == "" {
+			options.Total = 1
+		}
+	}
+	if data == nil {
+		// an empty value (an empty bytea) is content: nil means void
+		data = []byte{}
+	}
+	return data, n, nil
+}
+
+// isUndefinedFunction reports whether err is the undefined_function error
+// (42883) of a call to the function fname (schema.name), and not of a call
+// that the function makes or of an operator.
+func isUndefinedFunction(err error, fname string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42883" &&
+		strings.HasPrefix(pgErr.Message, "function "+fname+"(")
 }

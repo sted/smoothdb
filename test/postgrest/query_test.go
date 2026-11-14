@@ -1376,7 +1376,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
 			Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'non_existent_projects' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'non_existent_projects' is included in the 'select' query parameter.","message":"'non_existent_projects' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		// 	get "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*" `shouldRespondWith`
@@ -1401,14 +1401,14 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource is aliased and the filter names the table",
 			Query:       "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'amiga_projectsss' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'amiga_projectsss' is included in the 'select' query parameter.","message":"'amiga_projectsss' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		{
 			Description: "errs when a nested embedded resource doesn't exist and a filter is applied to it",
 			Query:       "/clients?select=id,projects(id,tasks(id,name))&projects.tasks2.name=like.Design*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'tasks2' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST108","details":null,"hint":"Verify that 'tasks2' is included in the 'select' query parameter.","message":"'tasks2' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 
@@ -1540,7 +1540,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "fails on bad casting (wrong cast type)",
 			Query:       "/complex_items?select=id::fakecolumntype",
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"type \"fakecolumntype\" does not exist","code":"42704","hint":"","details":"","position":0}`,
+			Expected:    `{"code":"42704","details":null,"hint":null,"message":"type \"fakecolumntype\" does not exist"}`,
 			Status:      400,
 		},
 
@@ -3239,6 +3239,8 @@ func TestPostgREST_Query(t *testing.T) {
 		// 	  , matchHeaders = ["Content-Type" <:> "text/xml; charset=utf-8"]
 		// 	  }
 
+		// The PGRST113 of these hspec blocks is older than 16.4, which answers
+		// PGRST107 (read live); the body asserted is 16.4's.
 		//   it "fails if a single column is not selected" $ do
 		// 	request methodGet "/images?select=img,name&name=eq.A.png" (acceptHdrs "application/octet-stream") ""
 		// 	  `shouldRespondWith`
@@ -3248,6 +3250,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?select=img,name&name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		// 	request methodGet "/images?select=*&name=eq.A.png"
@@ -3260,6 +3263,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?select=*&name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		// 	request methodGet "/images?name=eq.A.png"
@@ -3272,6 +3276,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "binary output: fails if a single column is not selected",
 			Query:       "/images?name=eq.A.png",
 			Headers:     test.Headers{"Accept": []string{"application/octet-stream"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/octet-stream"}`,
 			Status:      406,
 		},
 		//   it "concatenates results if more than one row is returned" $
@@ -3622,17 +3627,8 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"site":"github.com","link":{"url":"http://postgrest.org/en/v6.0/api.html"}},{"site":"hub.docker.com","link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}]`,
 			Status:      200,
 		},
-		// it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
-		//   r <- get "/items"
-		//   liftIO $ do
-		//     let respHeaders = simpleHeaders r
-		//     respHeaders `shouldSatisfy` noProfileHeader
-		{
-			Description:     "shouldn't produce a Content-Profile header since only a single schema is exposed",
-			Query:           "/items",
-			ExpectedHeaders: map[string]string{"Content-Profile": ""},
-			Status:          200,
-		},
+		// "shouldn't produce a Content-Profile header since only a single
+		// schema is exposed": see TestPostgREST_QuerySingleSchema
 
 		// 	context "empty embed" $ do
 		//     it "works on a many-to-one relationship" $ do
@@ -4136,4 +4132,28 @@ func TestPostgREST_Query(t *testing.T) {
 	}
 
 	test.Execute(t, testConfig, tests)
+}
+
+// TestPostgREST_QuerySingleSchema ports a case of QuerySpec.hs that needs
+// one exposed schema and a request without a profile header. The suite
+// server exposes two schemas, and its requests name one, so the case runs
+// on a variant server.
+func TestPostgREST_QuerySingleSchema(t *testing.T) {
+	tests := []test.Test{
+		// it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
+		//   r <- get "/items"
+		//   liftIO $ do
+		//     let respHeaders = simpleHeaders r
+		//     respHeaders `shouldSatisfy` noProfileHeader
+		{
+			Description:     "shouldn't produce a Content-Profile header since only a single schema is exposed",
+			Query:           "/items",
+			ExpectedHeaders: map[string]string{"Content-Profile": ""},
+			Status:          200,
+		},
+	}
+	withVariant(t, map[string]any{"Database.ExposedSchemas": []string{"test"}}, false, func(cfg test.Config) {
+		cfg.CommonHeaders = test.Headers{"Authorization": testConfig.CommonHeaders["Authorization"]}
+		test.Execute(t, cfg, tests)
+	})
 }

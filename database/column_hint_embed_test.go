@@ -73,14 +73,14 @@ func TestColumnHintEmbed(t *testing.T) {
 	// a column hint naming no relationship of the relation named is not found,
 	// even if another relation carries the column
 	if _, err := buildColumnHint(t, "document_full", "?select=id,nosuch!target_id(id)"); err == nil ||
-		!strings.Contains(err.Error(), "cannot find relationship") {
+		!strings.Contains(err.Error(), "Could not find a relationship") {
 		t.Errorf("nosuch!target_id: want a not-found error, got %v", err)
 	}
 
 	// two relationships to the relation named carry the hinted column: the
 	// embed is ambiguous, as without a hint
 	_, err := buildColumnHint(t, "t", "?select=c,r!c(id)")
-	if err == nil || !strings.Contains(err.Error(), "more than one possible relationship") {
+	if err == nil || !strings.Contains(err.Error(), "more than one relationship was found") {
 		t.Errorf("r!c: want an ambiguity error, got %v", err)
 	}
 	// the constraint name settles it

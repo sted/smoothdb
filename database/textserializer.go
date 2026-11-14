@@ -32,6 +32,16 @@ type SerializeError struct {
 
 func (e SerializeError) Error() string { return e.msg }
 
+// CardinalityError: a single object was requested (vnd.pgrst.object) and
+// the result has Rows rows, not one (406, PostgREST PGRST116).
+type CardinalityError struct {
+	Rows int64
+}
+
+func (e CardinalityError) Error() string {
+	return "Cannot coerce the result to a single JSON object"
+}
+
 // appendString is adapted from the standard library
 
 var hexDigits = "0123456789abcdef"
@@ -733,7 +743,7 @@ func (j *JSONSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, info
 	if single {
 		// verify that we have at least one and one only row
 		if count != 1 {
-			return nil, 0, &SerializeError{}
+			return nil, 0, &CardinalityError{Rows: count}
 		}
 	}
 	return []byte(j.String()), count, nil
@@ -854,7 +864,7 @@ func (csv *CSVSerializer) Serialize(rows pgx.Rows, scalar bool, single bool, inf
 	if single {
 		// verify that we have at least one and one only row
 		if count != 1 {
-			return nil, 0, &SerializeError{}
+			return nil, 0, &CardinalityError{Rows: count}
 		}
 	}
 	return []byte(csv.String()), count, nil
@@ -919,7 +929,9 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	if len(fds) != 1 {
-		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
+		// PostgREST 16.4 refuses the media type at negotiation (PGRST107);
+		// runRead adds the Accept alternatives
+		return nil, 0, errOctetColumns
 	}
 	for rows.Next() {
 		raw := rows.RawValues()[0]

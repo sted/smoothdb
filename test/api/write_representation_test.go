@@ -120,6 +120,32 @@ func TestWriteRepresentationRollsBack(t *testing.T) {
 			},
 			Status: 406,
 		}, unchanged}},
+		// it "raises an error regardless of return=minimal" (SingularSpec.hs)
+		{"bulk post as an object without a representation", []test.Test{{
+			Description: "bulk POST of two rows as an object, return=minimal: refused",
+			Method:      "POST",
+			Query:       "/wrep",
+			Body:        `[{"id": 3, "counter": 3}, {"id": 4, "counter": 4}]`,
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Status:      406,
+		}, unchanged}},
+		{"patch two rows as an object without a representation", []test.Test{{
+			Description: "PATCH of two rows as an object, return=minimal: refused",
+			Method:      "PATCH",
+			Query:       "/wrep",
+			Body:        `{"counter": -1}`,
+			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
+			Status:      406,
+		}, unchanged}},
+		// PostgREST negotiates the media type before the write (PGRST107)
+		{"write with an Accept that no handler serves", []test.Test{{
+			Description: "POST with Accept application/xml: refused before it runs",
+			Method:      "POST",
+			Query:       "/wrep",
+			Body:        `{"id": 7, "counter": 7}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      406,
+		}, unchanged}},
 		{"writes that succeed persist", []test.Test{
 			{
 				Description: "PATCH of one row as an object: the object",

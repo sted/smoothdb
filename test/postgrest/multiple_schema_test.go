@@ -8,18 +8,15 @@ import (
 
 // Ported from test/spec/Feature/Query/MultipleSchemaSpec.hs, which runs with
 // db-schemas = v1, v2, SPECIAL "@/\#~_- (v1 the default). The schemas and
-// their tables are in the fixtures, but TestMain exposes only test and تست,
-// so every case here needs a configuration the suite lacks. The two cases on
-// an unknown schema, and the OpenAPI one, do not depend on which schemas are
-// exposed: they are ported in schema_profile_test.go against the suite's own.
+// their tables are in the fixtures; the cases run on a variant server (see
+// withVariant) that exposes them. The two cases on an unknown schema, and the
+// OpenAPI one, do not depend on which schemas are exposed: they are ported in
+// schema_profile_test.go against the suite's own.
 func TestPostgREST_MultipleSchema(t *testing.T) {
 
 	const (
-		msConfig  = "needs configuration Database.ExposedSchemas v1, v2, SPECIAL \"@/\\#~_- (TestMain exposes test, تست)"
-		msProfile = msConfig + "; and PostgREST 16.4: the response names its schema in a Content-Profile header; no card"
-		msMedia   = "PostgREST 16.4: a media type handler (a domain named after the type) answers text/plain and custom types; card 32503 (media types); and " + msConfig
-		msPut     = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put); and " + msConfig
-		msOpenAPI = "PostgREST 16.4: the root endpoint serves the OpenAPI description of the selected schema; card 32493 (openapi); and " + msConfig
+		msMedia   = "PostgREST 16.4: a media type handler (a domain named after the type) answers text/plain and custom types; card 32503 (media types)"
+		msOpenAPI = "PostgREST 16.4: the root endpoint serves the OpenAPI description of the selected schema; card 32493 (openapi)"
 	)
 
 	tests := []test.Test{
@@ -42,7 +39,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":1,"name":"parent v1-1"},{"id":2,"name":"parent v1-2"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v1"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in reading table from default schema v1 after explicitly passing it in the header" $
 		//           request methodGet "/parents" [("Accept-Profile", "v1")] ""
@@ -60,7 +56,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":1,"name":"parent v1-1"},{"id":2,"name":"parent v1-2"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v1"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in reading table from schema v2" $
 		//           request methodGet "/parents" [("Accept-Profile", "v2")] ""
@@ -78,7 +73,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":3,"name":"parent v2-3"},{"id":4,"name":"parent v2-4"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in reading another_table from schema v2" $
 		//           request methodGet "/another_table" [("Accept-Profile", "v2")] ""
@@ -96,7 +90,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":5,"another_value":"value 5"},{"id":6,"another_value":"value 6"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "doesn't find another_table in schema v1" $
 		//           request
@@ -108,13 +101,12 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 		//               { matchStatus = 404
 		//               , matchHeaders = []
 		//               }
-		// the PGRST205 body is PostgREST's error shape (card 32494): status only
 		{
 			Description: "doesn't find another_table in schema v1",
 			Query:       "/another_table",
 			Headers:     test.Headers{"Accept-Profile": {"v1"}},
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'v1.another_table' in the schema cache"}`,
 			Status:      404,
-			Skip:        msConfig,
 		},
 		//         it "succeeds in reading a table from a schema with uppercase and special characters in its name" $
 		//           request methodGet "/names?select=id,name" [("Accept-Profile", "SPECIAL \"@/\\#~_-")] ""
@@ -133,7 +125,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 1, "name":"John"},{"id": 2, "name":"Mary"},{"id": 3, "name":"José"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "SPECIAL \"@/\\#~_-"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in embedding with FK when the schema name has special characters" $
 		//           request methodGet "/names?select=name,languages(name)&id=in.(1,3)" [("Accept-Profile", "SPECIAL \"@/\\#~_-")] ""
@@ -151,7 +142,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"name": "John", "languages": {"name": "English"}},{"name": "José", "languages": {"name": "Spanish"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "SPECIAL \"@/\\#~_-"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in embedding with computed relationships when the schema name has special characters" $
 		//           request methodGet "/names?select=name,computed_languages(name)&id=in.(1,3)" [("Accept-Profile", "SPECIAL \"@/\\#~_-")] ""
@@ -169,7 +159,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"name": "John", "computed_languages": {"name": "English"}},{"name": "José", "computed_languages": {"name": "Spanish"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "SPECIAL \"@/\\#~_-"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//       context "Inserting tables on different schemas" $ do
 		//         it "succeeds inserting on default schema and returning it" $
@@ -191,7 +180,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 0, "name": "child v1-1", "parent_id": 1}]`,
 			ExpectedHeaders: map[string]string{"Content-Profile": "v1"},
 			Status:          201,
-			Skip:            msProfile,
 		},
 		//         it "succeeds inserting on the v1 schema and returning its parent" $
 		//           request
@@ -212,7 +200,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 0, "parent": {"id": 2, "name": "parent v1-2"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Profile": "v1"},
 			Status:          201,
-			Skip:            msProfile,
 		},
 		//         it "succeeds inserting on the v2 schema and returning its parent" $
 		//           request
@@ -233,7 +220,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 0, "parent": {"id": 3, "name": "parent v2-3"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Profile": "v2"},
 			Status:          201,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in calling handler with a domain on another schema" $
 		//           request methodGet "/another_table" [("Accept-Profile", "v2"), (hAccept, "text/plain")] ""
@@ -278,7 +264,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":1,"name":"parent v1-1"}, {"id":2,"name":"parent v1-2"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v1"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in calling the v1 schema proc and embedding" $
 		//           request methodGet "/rpc/get_parents_below?id=6&select=id,name,children(id,name)" [("Accept-Profile", "v1")] ""
@@ -295,7 +280,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":1,"name":"parent v1-1","children":[{"id":1,"name":"child v1-1"}]},{"id":2,"name":"parent v1-2","children":[{"id":2,"name":"child v1-2"}]}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v1"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in calling the v2 schema proc and embedding" $
 		//           request methodGet "/rpc/get_parents_below?id=6&select=id,name,children(id,name)" [("Accept-Profile", "v2")] ""
@@ -312,7 +296,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":3,"name":"parent v2-3","children":[{"id":1,"name":"child v2-3"}]},{"id":4,"name":"parent v2-4","children":[]}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in calling the v2 schema proc with POST by using Content-Profile" $
 		//           request
@@ -335,7 +318,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id":3,"name":"parent v2-3"},{"id":4,"name":"parent v2-4"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in calling handler with a domain on another schema" $
 		//           request methodGet "/rpc/get_plain_text" [("Accept-Profile", "v2"), (hAccept, "text/plain")] ""
@@ -387,7 +369,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"name":"child v1-1 updated", "parent": {"name": "parent v1-1"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v1"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds in patching on the v2 schema and returning its parent" $
 		//           request
@@ -408,7 +389,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"name":"child v2-1 updated", "parent": {"name": "parent v2-3"}}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds on deleting on the v2 schema" $ do
 		//           request
@@ -427,7 +407,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 1, "name": "child v2-3", "parent_id": 3}]`,
 			ExpectedHeaders: map[string]string{"Content-Profile": "v2"},
 			Status:          200,
-			Skip:            msProfile,
 		},
 		//         it "succeeds on PUT on the v2 schema" $
 		//           request
@@ -448,7 +427,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 111, "name": "child v2-111", "parent_id": null}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          201,
-			Skip:            msPut,
 		},
 		//       context "OpenAPI output" $ do
 		//         it "succeeds in reading table definition from default schema v1 if no schema is selected via header" $ do
@@ -618,5 +596,12 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 		},
 	}
 
-	test.Execute(t, testConfig, tests)
+	// The schemas of the spec are exposed only on a variant server. Its
+	// requests name a schema only where the spec does.
+	withVariant(t, map[string]any{
+		"Database.ExposedSchemas": []string{"v1", "v2", "SPECIAL \"@/\\#~_-"},
+	}, false, func(cfg test.Config) {
+		cfg.CommonHeaders = test.Headers{"Authorization": testConfig.CommonHeaders["Authorization"]}
+		test.Execute(t, cfg, tests)
+	})
 }

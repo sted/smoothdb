@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -23,9 +24,9 @@ import (
 // insufficient_privilege depends on the caller, as in PostgREST: 401 for an
 // anonymous request, which may succeed with a token, 403 for an authenticated
 // one, which will not. One group of entries deliberately differs from
-// PostgREST, asserted in TestPgErrorStatusMatchesPostgREST: the "already
-// exists" codes of the DDL API are 409.
-func pgErrorStatus(dberr *pgconn.PgError, authenticated bool) int {
+// PostgREST, asserted in TestAdminConflictsAre409: on the admin routes the
+// "already exists" codes of the DDL API are 409.
+func pgErrorStatus(dberr *pgconn.PgError, authenticated, admin bool) int {
 	code, message := dberr.Code, dberr.Message
 
 	// Exact codes first: every one of them sits in a class mapped differently below.
@@ -37,7 +38,10 @@ func pgErrorStatus(dberr *pgconn.PgError, authenticated bool) int {
 		"42P06", // duplicate_schema
 		"42P07", // duplicate_table
 		"42710": // duplicate_object, a role
-		return http.StatusConflict
+		if admin {
+			return http.StatusConflict
+		}
+		return http.StatusBadRequest
 	case "25006": // read_only_sql_transaction
 		return http.StatusMethodNotAllowed
 	case "21000": // cardinality_violation
@@ -103,7 +107,8 @@ func pgErrorStatus(dberr *pgconn.PgError, authenticated bool) int {
 			"58", // system_error
 			"F0", // config_file_error
 			"HV", // fdw_error
-			"P0": // plpgsql_error
+			"P0", // plpgsql_error
+			"XX": // internal_error
 			return http.StatusInternalServerError
 		}
 	}
@@ -111,10 +116,43 @@ func pgErrorStatus(dberr *pgconn.PgError, authenticated bool) int {
 	return http.StatusBadRequest
 }
 
+// adminWriter marks the response of an admin route (see withAdmin).
+type adminWriter struct {
+	http.ResponseWriter
+}
+
+func (w adminWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// withAdmin marks w as the response of an admin route, where the "already
+// exists" codes are 409.
+func withAdmin(w http.ResponseWriter) http.ResponseWriter { return adminWriter{w} }
+
+// isAdmin reports whether w was marked by withAdmin, here or below the
+// writers that wrap it.
+func isAdmin(w http.ResponseWriter) bool {
+	for {
+		switch rw := w.(type) {
+		case adminWriter:
+			return true
+		case interface{ Unwrap() http.ResponseWriter }:
+			w = rw.Unwrap()
+		default:
+			return false
+		}
+	}
+}
+
+// adminRoutes is the middleware that marks the responses of the admin routes.
+func adminRoutes(next heligo.Handler) heligo.Handler {
+	return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return next(c, withAdmin(w), r)
+	}
+}
+
 // writeDatabaseError writes a database error with the status PostgREST reports
 // it with. A 401 carries the bare challenge, as PostgREST's PgError headers do.
 func writeDatabaseError(w http.ResponseWriter, dberr *pgconn.PgError, authenticated bool) (int, error) {
-	status := pgErrorStatus(dberr, authenticated)
+	status := pgErrorStatus(dberr, authenticated, isAdmin(w))
 	switch status {
 	case http.StatusMethodNotAllowed:
 		// 25006 read_only_sql_transaction: a write reached by a GET/HEAD, or
@@ -125,16 +163,12 @@ func writeDatabaseError(w http.ResponseWriter, dberr *pgconn.PgError, authentica
 	case http.StatusUnauthorized:
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	}
-	smoothErr := SmoothError{
-		Subsystem: "database",
-		Message:   dberr.Message,
-		Code:      dberr.Code,
-	}
+	smoothErr := SmoothError{Message: dberr.Message, Code: dberr.Code}
 	if verboseErrors {
 		smoothErr.Hint = dberr.Hint
 		smoothErr.Details = dberr.Detail
 	}
-	heligo.WriteJSON(w, status, smoothErr)
+	writeErrorBody(w, status, smoothErr)
 	return status, dberr
 }
 
@@ -149,11 +183,7 @@ func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, 
 	if aerr.Challenge != "" {
 		w.Header().Set("WWW-Authenticate", aerr.Challenge)
 	}
-	subsystem := "database" // an unknown database, a pool with no connection
-	if aerr.Status == http.StatusUnauthorized || aerr.Status == http.StatusForbidden {
-		subsystem = "auth"
-	}
-	smoothErr := SmoothError{Subsystem: subsystem, Message: aerr.Message, Code: aerr.Code}
+	smoothErr := SmoothError{Message: aerr.Message, Code: aerr.Code}
 	if verboseErrors {
 		if aerr.Details != "" {
 			smoothErr.Details = aerr.Details
@@ -161,6 +191,6 @@ func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, 
 			smoothErr.Details = aerr.Err.Error()
 		}
 	}
-	heligo.WriteJSON(w, aerr.Status, smoothErr)
+	writeErrorBody(w, aerr.Status, smoothErr)
 	return aerr.Status, err
 }

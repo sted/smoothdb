@@ -713,10 +713,10 @@ func TestFilterValueErrors(t *testing.T) {
 		errMsg string
 	}{
 		{"?or=(x.eq.a,b)", "failed to parse logic tree ((x.eq.a,b)): '=' expected"},
-		{"?x=eq", "'.' expected"},
-		{"?x=in", "'.' expected"},
-		{"?x=is.null.x", "IS operator requires null, not_null, true, false or unknown"},
-		{"?x=in.(a", "')' expected"},
+		{"?x=eq", "failed to parse filter (eq): '.' expected"},
+		{"?x=in", "failed to parse filter (in): '.' expected"},
+		{"?x=is.null.x", "failed to parse filter (is.null.x): IS operator requires null, not_null, true, false or unknown"},
+		{"?x=in.(a", "failed to parse filter (in.(a): ')' expected"},
 	}
 
 	for i, test := range errorTests {
@@ -793,8 +793,8 @@ func TestNotEmbeddedFilterErrors(t *testing.T) {
 			t.Errorf("%d. Expected error for %q, got nil", i, test.query)
 			continue
 		}
-		if _, ok := err.(*BuildError); !ok {
-			t.Errorf("%d. Expected a BuildError for %q, got %T", i, test.query, err)
+		if re, ok := err.(*RequestError); !ok || re.Code != "PGRST108" {
+			t.Errorf("%d. Expected a PGRST108 RequestError for %q, got %T", i, test.query, err)
 		}
 		if err.Error() != test.errMsg {
 			t.Errorf("%d. Expected error %q, got %q", i, test.errMsg, err.Error())
@@ -805,7 +805,8 @@ func TestNotEmbeddedFilterErrors(t *testing.T) {
 // TestBuildUpdateEmptySet: when ?columns= leaves no key of the body to set,
 // the statement is a no-op select, as PostgREST builds it (an UPDATE with an
 // empty SET is a syntax error); the table name still reaches PostgreSQL, so a
-// missing table answers 42P01 (404) rather than 42601.
+// missing table answers 42P01 (404) rather than 42601. With return=minimal it
+// selects no column (QueryBuilder.hs, emptyBodyReturnedColumns).
 func TestBuildUpdateEmptySet(t *testing.T) {
 	u, _ := url.Parse("?columns=body&id=eq.1")
 	parts, err := PostgRestParser{}.parse("table", u.Query())
@@ -816,7 +817,7 @@ func TestBuildUpdateEmptySet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `SELECT * FROM "table" WHERE false`; query != want {
+	if want := `SELECT NULL FROM "table" WHERE false`; query != want {
 		t.Errorf("expected %q, got %q", want, query)
 	}
 	if len(values) != 0 {
@@ -1095,8 +1096,8 @@ func TestBuildInsertKeys(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error %q, got nil (SQL: %s)", test.wantErr, q)
 				}
-				if _, ok := err.(*BuildError); !ok || err.Error() != test.wantErr {
-					t.Fatalf("expected *BuildError %q, got %T %q", test.wantErr, err, err.Error())
+				if re, ok := err.(*RequestError); !ok || re.Code != "PGRST102" || err.Error() != test.wantErr {
+					t.Fatalf("expected a PGRST102 RequestError %q, got %T %q", test.wantErr, err, err.Error())
 				}
 				return
 			}
@@ -1178,7 +1179,7 @@ func TestBuildInsertTyped(t *testing.T) {
 			name:     "upsert",
 			records:  []Record{{"id": 1, "body": "x"}},
 			options:  QueryOptions{MergeDuplicates: true},
-			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer) ON CONFLICT ("id") DO UPDATE SET "body" = EXCLUDED."body", "id" = EXCLUDED."id"`,
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer) WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) + 1)::text, true) <> '0' ON CONFLICT ("id") DO UPDATE SET "body" = EXCLUDED."body", "id" = EXCLUDED."id" WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) - 1)::text, true) <> '-1'`,
 			wantRows: `[{"body":"x","id":1}]`,
 		},
 		{
@@ -1250,7 +1251,7 @@ func TestBuildInsertTyped(t *testing.T) {
 			name:     "a merge of empty objects does nothing on conflict",
 			records:  []Record{{}},
 			options:  QueryOptions{MergeDuplicates: true},
-			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _ ON CONFLICT ("id") DO NOTHING`,
+			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _ WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) + 1)::text, true) <> '0' ON CONFLICT ("id") DO NOTHING`,
 			wantRows: `[{}]`,
 		},
 	}

@@ -15,8 +15,8 @@ func InitAdminRouter(apiHelper Helper) {
 	router := apiHelper.GetRouter()
 
 	adminURL := apiHelper.BaseAdminURL()
-	admin_db := router.Group(adminURL, apiHelper.MiddlewareStd())
-	admin_dbe := router.Group(adminURL, apiHelper.MiddlewareDBE())
+	admin_db := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareStd())
+	admin_dbe := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareDBE())
 	// ROLES
 
 	roles := admin_db.Group("/roles")

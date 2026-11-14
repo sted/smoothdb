@@ -210,7 +210,7 @@ func TestFilterValues(t *testing.T) {
 		{
 			Description: "operator without the delimiter",
 			Query:       "/filter_values?name=eq&select=id",
-			Expected:    `{"subsystem":"network","message":"'.' expected","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST100","details":"'.' expected","hint":null,"message":"failed to parse filter (eq)"}`,
 			Status:      400,
 		},
 	}

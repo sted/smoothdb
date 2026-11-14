@@ -70,6 +70,7 @@ type Function struct {
 	Strict       bool       `json:"strict"`            // proisstrict: RETURNS NULL ON NULL INPUT
 	Security     string     `json:"security"`          // prosecdef: "invoker" or "definer"
 	Replace      bool       `json:"replace,omitempty"` // input only: CREATE OR REPLACE
+	Kind         string     `json:"-"`                 // prokind: f function, p procedure, a aggregate, w window
 }
 
 const functionsQuery = `
@@ -89,7 +90,8 @@ const functionsQuery = `
 		p.provolatile::text volatility,
 		p.pronargdefaults argdefaults,
 		p.proisstrict strict,
-		CASE WHEN p.prosecdef THEN 'definer' ELSE 'invoker' END security
+		CASE WHEN p.prosecdef THEN 'definer' ELSE 'invoker' END security,
+		p.prokind::text kind
 	FROM pg_proc p
 	JOIN pg_namespace n ON n.oid = p.pronamespace
 	LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -153,7 +155,8 @@ func readFunctions(ctx context.Context, query string) ([]Function, error) {
 			&f.Volatility,
 			&f.ArgDefaults,
 			&f.Strict,
-			&f.Security)
+			&f.Security,
+			&f.Kind)
 		if err != nil {
 			return nil, err
 		}
@@ -299,5 +302,27 @@ func DeleteFunctionSignature(ctx context.Context, name string, types []string) e
 }
 
 func ExecFunction(ctx context.Context, fname string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
-	return Execute(ctx, fname, record, filters, readonly)
+	return Execute(ctx, fname, record, nil, filters, readonly)
+}
+
+// RawBody is the body of a POST /rpc call that can go whole to a function
+// with a single unnamed parameter (PostgREST's RawPay and its JSON
+// fallback). Type is the parameter type the body can fill: "json" (also
+// jsonb), "text", "xml" or "bytea".
+type RawBody struct {
+	Type string
+	Data []byte
+}
+
+// QueryValues are the values of one argument that come from the query
+// string or from a form: text, and repeated when the key is repeated. A
+// VARIADIC parameter takes all of them as an array; any other parameter
+// takes the last one, as in PostgREST (CallPlan.hs toRpcParams).
+type QueryValues []string
+
+// CallFunction calls the function fname with the arguments of a POST body:
+// record, decoded from it, and raw, the body itself (nil when the content
+// type cannot fill a single unnamed parameter).
+func CallFunction(ctx context.Context, fname string, record Record, raw *RawBody, filters Filters) ([]byte, int64, error) {
+	return Execute(ctx, fname, record, raw, filters, false)
 }

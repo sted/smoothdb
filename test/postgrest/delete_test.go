@@ -45,7 +45,6 @@ func TestPostgREST_Delete(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation, count=exact"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "returns the deleted item and count if requested",
 			Method:          "DELETE",
@@ -53,7 +52,7 @@ func TestPostgREST_Delete(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": {"return=representation", "count=exact"}},
 			Expected:        `[{"id":2}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/1", "Content-Length": "10"},
+			ExpectedHeaders: map[string]string{"Content-Range": "*/1", "Content-Length": "10", "Preference-Applied": "return=representation, count=exact"},
 			Status:          200,
 		},
 		//       it "ignores ?select= when return not set or return=minimal" $ do
@@ -94,7 +93,6 @@ func TestPostgREST_Delete(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "ignores ?select= when return not set or return=minimal",
 			Method:          "DELETE",
@@ -102,7 +100,7 @@ func TestPostgREST_Delete(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Content-Range": "*/*", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//       it "returns the deleted item and shapes the response" $
@@ -229,14 +227,13 @@ func TestPostgREST_Delete(t *testing.T) {
 		//             { matchStatus = 404
 		//             , matchHeaders = []
 		//             }
-		// @@ not asserted, PostgREST 16.4: the PGRST205 body (smoothdb answers 42P01); card 32494 (error body)
 		{
 			Description: "totally unknown route fails with 404",
 			Method:      "DELETE",
 			Query:       "/foozle?id=eq.101",
 			Body:        ``,
 			Headers:     nil,
-			Expected:    ``,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.foozle' in the schema cache"}`,
 			Status:      404,
 		},
 		//     context "table with limited privileges" $ do
@@ -286,7 +283,6 @@ func TestPostgREST_Delete(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=minimal"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "succeeds deleting the row with no explicit select when using return=minimal",
 			Method:          "DELETE",
@@ -294,7 +290,7 @@ func TestPostgREST_Delete(t *testing.T) {
 			Body:            ``,
 			Headers:         test.Headers{"Prefer": {"return=minimal"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
+			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": "", "Preference-Applied": "return=minimal"},
 			Status:          204,
 		},
 		//       it "suceeds deleting the row with no explicit select by default" $
@@ -347,14 +343,13 @@ func TestPostgREST_Delete(t *testing.T) {
 		//             { matchStatus = 200
 		//             , matchHeaders = [matchContentTypeJson, "Preference-Applied" <:> "return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with ordering works with request method DELETE and embedded resource",
 			Method:          "DELETE",
 			Query:           "/artists?id=lt.3&select=id,name,albums(title)&order=id.desc",
 			Headers:         test.Headers{"Prefer": {"return=representation"}},
 			Expected:        `[ {"id":2,"name":"black country, new road","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster","albums":[{"title": "stratosphere"},{"title": "contemporary movement"}]}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          200,
 		},
 		// @@ added: an embedded order applies to the embed of the representation

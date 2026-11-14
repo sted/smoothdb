@@ -30,7 +30,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on pk conflict",
 			Method:          "POST",
@@ -38,7 +37,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "name": "Javascript", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
 			Expected:        `[{ "name": "Javascript", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "UPDATEs rows on pk conflict" $
@@ -68,7 +67,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[{ "name": "Python", "rank": 6 }, { "name": "Java", "rank": 2 }, { "name": "C", "rank": 1 }]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
 		},
 		//       it "INSERTs and UPDATEs row on composite pk conflict" $
 		//         request
@@ -124,7 +122,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on composite pk conflict for partitioned tables",
 			Method:          "POST",
@@ -132,7 +129,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "name": "Murcielago", "year": 2001, "car_brand_name": null}, { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }]`,
 			Expected:        `[{ "name": "Murcielago", "year": 2001, "car_brand_name": null}, { "name": "Roma", "year": 2021, "car_brand_name": "Ferrari" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds when the payload has no elements" $
@@ -154,7 +151,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
 		},
 		//       it "INSERTs and UPDATEs rows on single unique key conflict" $
 		//         request
@@ -172,7 +168,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on single unique key conflict",
 			Method:          "POST",
@@ -180,7 +175,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }]`,
 			Expected:        `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows on compound unique keys conflict" $
@@ -199,7 +194,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
 			Method:          "POST",
@@ -207,7 +201,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }]`,
 			Expected:        `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		// @@added - with quotes
@@ -314,7 +308,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , matchContentTypeJson
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates succeeds if the table has only PK cols and no other cols",
 			Method:          "POST",
@@ -322,7 +315,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
 			Expected:        `[ { "id": 1 }, { "id": 2 }, { "id": 4} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=merge-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK" $
@@ -338,7 +331,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , "Preference-Applied" <:> "return=representation"
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST merge-duplicates succeeds and ignores the Prefer: resolution header(no Preference-Applied present) if the table has no PK",
 			Method:          "POST",
@@ -346,7 +338,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
 			Body:            `[ { "a": "1", "b": "0" } ]`,
 			Expected:        `[ { "a": "1", "b": "0" } ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "return=representation"},
 			Status:          201,
 		},
 		//
@@ -366,7 +358,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates INSERTs and ignores rows on pk conflict",
 			Method:          "POST",
@@ -374,7 +365,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[{ "name": "PHP", "rank": 9 }, { "name": "Python", "rank": 10 }]`,
 			Expected:        `[{ "name": "PHP", "rank": 9 }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and ignores rows on composite pk conflict" $
@@ -429,7 +420,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation", matchContentTypeJson]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates INSERTs and ignores rows on composite pk conflict for partitioned tables",
 			Method:          "POST",
@@ -437,7 +427,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[{ "name": "Murcielago", "year": 2001, "car_brand_name": "Ferrari" }, { "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }]`,
 			Expected:        `[{ "name": "Huracán", "year": 2021, "car_brand_name": "Lamborghini" }]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "INSERTs and ignores rows on single unique key conflict" $
@@ -457,15 +447,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with POST ignore-duplicates INSERTs and ignores rows on single unique key conflict",
-			Method:      "POST",
-			Query:       "/single_unique?on_conflict=unique_key",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
-			Expected:    `[{ "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
-			Status:      201,
+			Description:     "with POST ignore-duplicates INSERTs and ignores rows on single unique key conflict",
+			Method:          "POST",
+			Query:           "/single_unique?on_conflict=unique_key",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "unique_key": 1, "value": "B" }, { "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
+			Expected:        `[{ "unique_key": 2, "value": "C" }, { "unique_key": 3, "value": "D" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows on compound unique keys conflict" $
 		//         request
@@ -484,15 +474,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//             { matchStatus = 201
 		//             , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with POST ignore-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
-			Method:      "POST",
-			Query:       "/compound_unique?on_conflict=key1,key2",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
-			Expected:    `[{ "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
-			Status:      201,
+			Description:     "with POST ignore-duplicates INSERTs and UPDATEs rows on compound unique keys conflict",
+			Method:          "POST",
+			Query:           "/compound_unique?on_conflict=key1,key2",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "key1": 1, "key2": 1, "value": "B" }, { "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
+			Expected:        `[{ "key1": 1, "key2": 2, "value": "C" }, { "key1": 1, "key2": 3, "value": "D" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//       it "INSERTs and UPDATEs rows with SERIAL surrogate primary keys using Prefer: missing=default" $
 		//         request
@@ -585,7 +575,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//                 , matchContentTypeJson
 		//                 ]
 		//             }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
 			Description:     "with POST ignore-duplicates succeeds if the table has only PK cols and no other cols",
 			Method:          "POST",
@@ -593,7 +582,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
 			Body:            `[ { "id": 1 }, { "id": 2 }, { "id": 3} ]`,
 			Expected:        `[ { "id": 3} ]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Preference-Applied": "resolution=ignore-duplicates, return=representation"},
 			Status:          201,
 		},
 		//       it "succeeds if not a single resource is created" $ do
@@ -659,10 +648,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.Javascript&limit=1",
 			Body:            `[ { "name": "Javascript", "rank": 1 } ]`,
-			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses limit and offset (400, PGRST114); card 32478 (PUT upsert)",
 		},
 		//       it "fails if offset is specified" $
 		//         put
@@ -677,10 +665,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.Javascript&offset=1",
 			Body:            `[ { "name": "Javascript", "rank": 1 } ]`,
-			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses limit and offset (400, PGRST114); card 32478 (PUT upsert)",
 		},
 		//       it "rejects every other filter than pk cols eq's" $ do
 		//         put
@@ -695,10 +682,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?rank=eq.19",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//         put
 		//           "/tiobe_pls?id=not.eq.Java"
@@ -712,10 +698,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?id=not.eq.Java",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//         put
 		//           "/tiobe_pls?id=in.(Go)"
@@ -729,10 +714,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?id=in.(Go)",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//         put
 		//           "/tiobe_pls?and=(id.eq.Go)"
@@ -746,10 +730,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?and=(id.eq.Go)",
 			Body:            `[ { "name": "Go", "rank": 19 } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//       it "fails if not all composite key cols are specified as eq filters" $ do
 		//         put
@@ -764,10 +747,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/employees?first_name=eq.Susan",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//         put
 		//           "/employees?last_name=eq.Heidt"
@@ -781,10 +763,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/employees?last_name=eq.Heidt",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//     it "fails if the uri primary key doesn't match the payload primary key" $ do
 		//       put "/tiobe_pls?name=eq.MATLAB" [json| [ { "name": "Perl", "rank": 17 } ]|]
@@ -797,10 +778,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/tiobe_pls?name=eq.MATLAB",
 			Body:            `[ { "name": "Perl", "rank": 17 } ]`,
-			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses a payload whose primary key differs from the URL (400, PGRST115); card 32478 (PUT upsert)",
 		},
 		//       put
 		//         "/employees?first_name=eq.Wendy&last_name=eq.Anderson"
@@ -814,10 +794,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/employees?first_name=eq.Wendy&last_name=eq.Anderson",
 			Body:            `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
-			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses a payload whose primary key differs from the URL (400, PGRST115); card 32478 (PUT upsert)",
 		},
 		//     it "fails if the table has no PK" $
 		//       put "/no_pk?a=eq.one&b=eq.two" [json| [ { "a": "one", "b": "two" } ]|]
@@ -830,10 +809,9 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Method:          "PUT",
 			Query:           "/no_pk?a=eq.one&b=eq.two",
 			Body:            `[ { "a": "one", "b": "two" } ]`,
-			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
 		},
 		//     context "Inserting row" $ do
 		//       it "succeeds on table with single pk col" $ do
@@ -863,7 +841,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Go", "rank": 19 } ]`,
 			Expected:    `[ { "name": "Go", "rank": 19 } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//
 		//       it "succeeds on table with composite pk" $ do
@@ -893,7 +870,17 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
 			Expected:    `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "$48,000.00", "company": "GEX", "occupation": "Railroad engineer" } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
+			Skip:        "PostgREST 16.4: a money column is serialized as its text (\"$48,000.00\"), smoothdb answers a number; no card",
+		},
+		// @@ added: the same PUT, its money column left out of the representation (see the skip above)
+		{
+			Description: "with PUT inserting row succeeds on table with composite pk, salary not selected",
+			Method:      "PUT",
+			Query:       "/employees?first_name=eq.Susan&last_name=eq.Heidt&select=first_name,last_name,company,occupation",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Body:        `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
+			Expected:    `[ { "first_name": "Susan", "last_name": "Heidt", "company": "GEX", "occupation": "Railroad engineer" } ]`,
+			Status:      201,
 		},
 		//
 		//       it "succeeds on a partitioned table with composite pk" $ do
@@ -923,7 +910,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Supra", "year": 2021 } ]`,
 			Expected:    `[ { "name": "Supra", "year": 2021, "car_brand_name": null } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//
 		//       it "succeeds if the table has only PK cols and no other cols" $ do
@@ -953,7 +939,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "id": 10 } ]`,
 			Expected:    `[ { "id": 10 } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//     context "Updating row" $ do
 		//       it "succeeds on table with single pk col" $ do
@@ -981,7 +966,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 13 } ]`,
 			Expected:    `[ { "name": "Java", "rank": 13 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds if the payload has more than one row, but it only puts the first element" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1010,7 +994,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 19 }, { "name": "Swift", "rank": 12 } ]`,
 			Expected:    `{ "name": "Java", "rank": 19 }`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT of a payload with more rows writes only its first element, as a vnd.pgrst.object; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds on table with composite pk" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1038,7 +1021,17 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "60000", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
 			Expected:    `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "$60,000.00", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
+			Skip:        "PostgREST 16.4: a money column is serialized as its text (\"$60,000.00\"), smoothdb answers a number; no card",
+		},
+		// @@ added: the same PUT, its money column left out of the representation (see the skip above)
+		{
+			Description: "with PUT updating row succeeds on table with composite pk, salary not selected",
+			Method:      "PUT",
+			Query:       "/employees?first_name=eq.Frances M.&last_name=eq.Roe&select=first_name,last_name,company,occupation",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Body:        `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "60000", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
+			Expected:    `[ { "first_name": "Frances M.", "last_name": "Roe", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
+			Status:      200,
 		},
 		//       it "succeeds on a partitioned table with composite pk" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1065,7 +1058,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "DeLorean", "year": 1981, "car_brand_name": null } ]`,
 			Expected:    `[ { "name": "DeLorean", "year": 1981, "car_brand_name": null } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds if the table has only PK cols and no other cols" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1092,7 +1084,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "id": 1 } ]`,
 			Expected:    `[ { "id": 1 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "ignores the Range header" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1119,7 +1110,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 5 } ]`,
 			Expected:    `[ { "name": "Java", "rank": 5 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT ignores the Range header; card 32478 (PUT upsert)",
 		},
 		//
 		//     -- TODO: move this to SingularSpec?
@@ -1141,7 +1131,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Ruby", "rank": 11 } ]`,
 			Expected:    `{ "name": "Ruby", "rank": 11 }`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key, as a vnd.pgrst.object; card 32478 (PUT upsert)",
 		},
 		//
 		//   context "with a camel case pk column" $ do
@@ -1161,15 +1150,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 201
 		//           , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates, return=representation"]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with a camel case pk column works with POST and merge-duplicates",
-			Method:      "POST",
-			Query:       "/UnitTest",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
-			Body:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Expected:    `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Status:      201,
+			Description:     "with a camel case pk column works with POST and merge-duplicates",
+			Method:          "POST",
+			Query:           "/UnitTest",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
+			Body:            `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			Expected:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=merge-duplicates, return=representation"},
+			Status:          201,
 		},
 		//     it "works with POST and ignore-duplicates headers" $ do
 		//       request
@@ -1186,15 +1175,15 @@ func TestPostgREST_Upsert(t *testing.T) {
 		//           { matchStatus = 201
 		//           , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates, return=representation"]
 		//           }
-		// @@ not asserted, PostgREST 16.4: Preference-Applied; card 32479 (write headers)
 		{
-			Description: "with a camel case pk column works with POST and ignore-duplicates headers",
-			Method:      "POST",
-			Query:       "/UnitTest",
-			Headers:     test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
-			Body:        `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Expected:    `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
-			Status:      201,
+			Description:     "with a camel case pk column works with POST and ignore-duplicates headers",
+			Method:          "POST",
+			Query:           "/UnitTest",
+			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=ignore-duplicates"}},
+			Body:            `[{ "idUnitTest": 1, "nameUnitTest": "name of unittest 1" }, { "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			Expected:        `[{ "idUnitTest": 2, "nameUnitTest": "name of unittest 2" }]`,
+			ExpectedHeaders: map[string]string{"Preference-Applied": "resolution=ignore-duplicates, return=representation"},
+			Status:          201,
 		},
 		//     it "works with PUT" $ do
 		//       put
@@ -1212,7 +1201,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//       get "/UnitTest?idUnitTest=eq.1"
 		//         `shouldRespondWith` [json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]
@@ -1222,7 +1210,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Query:       "/UnitTest?idUnitTest=eq.1",
 			Expected:    `[ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//     it "works with request method PUT and return=minimal" $ do
 		//       request
@@ -1246,7 +1233,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//       get "/UnitTest?idUnitTest=eq.1"
 		//         `shouldRespondWith` [json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]
@@ -1256,7 +1242,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Query:       "/UnitTest?idUnitTest=eq.1",
 			Expected:    `[ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//
 		//   context "with ordering" $ do
@@ -1281,7 +1266,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[ { "id": 0, "name": "tardis-upserted", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: PUT upserts the row addressed by its primary key, its representation ordered; card 32478 (PUT upsert)",
 		},
 		//     it "works with batch upserts and embedded resource" $
 		//       request
@@ -1303,17 +1287,81 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: a merge-duplicates upsert that inserted no row answers 200, smoothdb 201; card 32945 (upsert status)",
 		},
-		// @@ added: the same request, its ordering asserted without the status (see the skip above)
+		// @@ added: the cases below are not in the spec. Each answer was read on a
+		// live PostgREST 16.4.
 		{
-			Description:     "with ordering works with batch upserts and embedded resource, status not asserted",
-			Method:          "POST",
-			Query:           "/artists?select=id,name,albums(title)&order=id.desc",
-			Headers:         test.Headers{"Prefer": {"return=representation", "resolution=merge-duplicates"}},
-			Body:            `[{ "id": 1, "name": "duster-updated" }, { "id": 2, "name": "bcnr-updated" }]`,
-			Expected:        `[{"id":2,"name":"bcnr-updated","albums":[{"title": "ants from up above"}]}, {"id":1,"name":"duster-updated","albums":[{"title": "stratosphere"}, {"title": "contemporary movement"}]}]`,
-			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
+			Description: "PUT ignores ?columns=: every key of the body is written",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?name=eq.Java&columns=name",
+			Body:        `{"name": "Java", "rank": 77}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[{"name": "Java", "rank": 77}]`,
+			Status:      200,
+		},
+		{
+			Description: "PUT refuses a filter on an embedded resource",
+			Method:      "PUT",
+			Query:       "/projects?id=eq.1&select=*,clients(*)&clients.id=eq.999",
+			Body:        `{"id": 1, "name": "x", "client_id": 1}`,
+			Status:      405,
+		},
+		{
+			Description:     "PUT accepts offset=0, the whole range",
+			Method:          "PUT",
+			Query:           "/tiobe_pls?name=eq.Java&offset=0",
+			Body:            `{"name": "Java", "rank": 77}`,
+			ExpectedEmpty:   true,
+			ExpectedHeaders: map[string]string{"Content-Range": "", "Content-Location": ""},
+			Status:          204,
+		},
+		{
+			Description: "PUT with return=headers-only returns the selected columns: an unknown one is refused",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?name=eq.Java&select=nope",
+			Body:        `{"name": "Java", "rank": 1}`,
+			Headers:     test.Headers{"Prefer": {"return=headers-only"}},
+			Status:      400,
+		},
+		{
+			Description: "PUT refuses its filters before it negotiates the media type",
+			Method:      "PUT",
+			Query:       "/tiobe_pls?rank=eq.1",
+			Body:        `{"name": "Java", "rank": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      405,
+		},
+		{
+			Description:   "PUT accepts offset=00, the whole range",
+			Method:        "PUT",
+			Query:         "/tiobe_pls?name=eq.Java&offset=00",
+			Body:          `{"name": "Java", "rank": 1}`,
+			ExpectedEmpty: true,
+			Status:        204,
+		},
+		{
+			Description: "PUT refuses an offset beyond 64 bits",
+			Method:      "PUT",
+			Query:       "/items?id=eq.1&offset=9223372036854775808",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST114","details":null,"hint":null,"message":"limit/offset querystring parameters are not allowed for PUT"}`,
+			Status:      400,
+		},
+		{
+			Description: "PUT refuses a limit beyond 64 bits",
+			Method:      "PUT",
+			Query:       "/items?id=eq.1&limit=9223372036854775808",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST114","details":null,"hint":null,"message":"limit/offset querystring parameters are not allowed for PUT"}`,
+			Status:      400,
+		},
+		{
+			Description: "PUT on a missing table answers 404",
+			Method:      "PUT",
+			Query:       "/no_such_table?id=eq.1",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.no_such_table' in the schema cache"}`,
+			Status:      404,
 		},
 	}
 
