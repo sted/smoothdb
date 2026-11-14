@@ -725,7 +725,6 @@ func TestPostgREST_AndOrParams(t *testing.T) {
 			Headers:         nil,
 			Status:          200,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
-			Skip:            "PostgREST 16.4: whitespace between a logic operator and its parenthesis (and ( ... )), smoothdb answers PGRST100 \"'=' expected\"; no card",
 		},
 		//   context "multiple and/or conditions" $ do
 		// 	it "cannot have zero conditions" $

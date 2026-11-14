@@ -1352,6 +1352,16 @@ func isBooleanOpStrict(op string) bool {
 	return op == "and" || op == "or" || op == "not"
 }
 
+// logicOpToken returns tok without its trailing spaces when the rest is "and"
+// or "or". The scanner drops the spaces after a separator only, and PostgREST
+// accepts spaces between a logic operator and its parenthesis: "and (a.eq.1)".
+func logicOpToken(tok string) string {
+	if t := strings.TrimRight(tok, " "); t == "and" || t == "or" {
+		return t
+	}
+	return tok
+}
+
 // hasBooleanOp returns true if op ends with "and", "or"
 func hasBooleanOp(op string) bool {
 	return op == "and" || op == "or" || strings.HasSuffix(op, ".and") || strings.HasSuffix(op, ".or")
@@ -1588,6 +1598,7 @@ func (p *PostgRestParser) booleanOp(table string, node *WhereConditionNode) (err
 		}
 		token = p.next()
 	}
+	token = logicOpToken(token)
 	if token != "and" && token != "or" {
 		return &ParseError{msg: "boolean operator expected"}
 	}
@@ -1629,7 +1640,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		var boolOpTable []string
 		for { // see if we have "embedded resources" (eg table.or etc)
 			token = p.lookAhead()
-			if isBooleanOpStrict(token) {
+			if isBooleanOpStrict(logicOpToken(token)) {
 				break
 			}
 			boolOpTable = append(boolOpTable, p.next())
@@ -1648,7 +1659,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			return err
 		}
 
-	} else if isBooleanOpStrict(token) {
+	} else if isBooleanOpStrict(logicOpToken(token)) {
 		// a nested and/or belongs to the embed of its parent, as a leaf does:
 		// without the path, x.and=(and(...)) left the inner filters to no level
 		node.field.tablename = mainTable
