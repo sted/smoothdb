@@ -552,7 +552,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
 			Body:        `{ "id": 9999999}`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on an RPC returns one object, and refuses zero or many rows (406, PGRST116); card 32490 (rpc details)",
 		},
 		//     -- this one may be controversial, should vnd.pgrst.object include
 		//     -- the likes of 2 and "hello?"
@@ -588,7 +587,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Body:        `{ "id": 1}`,
 			Expected:    `{"id":1,"name":"Windows 7","client_id":1}`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on an RPC returns one object, and refuses zero or many rows (406, PGRST116); card 32490 (rpc details)",
 		},
 		//     it "fails for multiple rows" $
 		//       request
@@ -607,7 +605,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}},
 			Body:        `{}`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on an RPC returns one object, and refuses zero or many rows (406, PGRST116); card 32490 (rpc details)",
 		},
 		//     it "fails for multiple rows with rolled back changes" $ do
 		//       post
@@ -638,7 +635,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/vnd.pgrst.object+json"}, "Prefer": {"tx=commit"}},
 			Body:        `{"id_l": 1, "id_h": 2, "name": "changed"}`,
 			Status:      406,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on an RPC returns one object, and refuses zero or many rows (406, PGRST116); card 32490 (rpc details)",
 		},
 		//       -- should rollback function
 		//       post
@@ -652,7 +648,6 @@ func TestPostgREST_Singular(t *testing.T) {
 			Body:        `{"id": 1}`,
 			Expected:    `[{"id":1,"name":"Windows 7"}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: vnd.pgrst.object on an RPC returns one object, and refuses zero or many rows (406, PGRST116); card 32490 (rpc details)",
 		},
 	}
 

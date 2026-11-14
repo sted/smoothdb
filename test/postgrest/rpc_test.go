@@ -1179,7 +1179,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: RETURNS void answers 204 with no Content-Type; card 32490 (rpc details)",
 		},
 		//   it "returns null for an integer with null value" $
 		//     post "/rpc/ret_null"
@@ -1206,7 +1205,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Query:       "/rpc/returns_record",
 			Expected:    `{"id":1,"name":"Windows 7","client_id":1}`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: functions returning record or setof record, called with an empty body; no card",
 		},
 		//     post
 		//       "/rpc/returns_record_params"
@@ -1219,7 +1217,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{"id":1, "name": "Windows%"}`,
 			Expected:    `{"id":1,"name":"Windows 7","client_id":1}`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: functions returning record or setof record; no card",
 		},
 		//   it "returns a setof record type" $ do
 		//     post
@@ -1232,7 +1229,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Query:       "/rpc/returns_setof_record",
 			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: functions returning record or setof record, called with an empty body; no card",
 		},
 		//     post
 		//       "/rpc/returns_setof_record_params"
@@ -1245,7 +1241,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{"id":1,"name":"Windows%"}`,
 			Expected:    `[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: functions returning record or setof record; no card",
 		},
 		//   context "different types when overloaded" $ do
 		//     it "returns composite type" $
@@ -1446,7 +1441,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{ "arg": "{ \"key\": 3 }" }`,
 			Expected:    `"string"`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a JSON string passed to a json parameter stays a string (smoothdb answers \"object\"); no card",
 		},
 		// context "improper input" $ do
 		//   it "rejects unknown content type even if payload is good" $ do
@@ -1567,7 +1561,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": "", "Content-Length": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: RETURNS void answers 204 with no Content-Type; card 32490 (rpc details)",
 		},
 		//   -- now the test
 		//   post "/rpc/callcounter"
@@ -1581,7 +1574,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{}`,
 			Expected:    `1`,
 			Status:      200,
-			Skip:        "depends on the reset_sequence call above, skipped (RETURNS void); card 32490 (rpc details)",
 		},
 		//   post "/rpc/callcounter"
 		//       [json|{}|]
@@ -1594,7 +1586,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{}`,
 			Expected:    `2`,
 			Status:      200,
-			Skip:        "depends on the reset_sequence call above, skipped (RETURNS void); card 32490 (rpc details)",
 		},
 
 		// context "a proc that receives no parameters" $ do
@@ -1609,7 +1600,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `"Return value of no parameters procedure."`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: an empty POST body calls the function with no arguments; no card",
 		},
 		//   it "interprets empty string as a function with no args on a get request" $
 		//     get "/rpc/noparamsproc" `shouldRespondWith`
@@ -1744,7 +1734,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{ "v": ["hi", "hello", "there"] }`,
 			Expected:    `["hi", "hello", "there"]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 
 		//     context "works with GET and repeated params" $ do
@@ -1770,7 +1759,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Query:       "/rpc/variadic_param?v=hi",
 			Expected:    `["hi"]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 		//       it "n>1" $
 		//         get "/rpc/variadic_param?v=hi&v=there"
@@ -1782,7 +1770,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Query:       "/rpc/variadic_param?v=hi&v=there",
 			Expected:    `["hi", "there"]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 
 		//     context "works with POST and repeated params from html form" $ do
@@ -1814,7 +1801,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
 			Expected:    `["hi"]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 		//       it "n>1" $
 		//         request methodPost "/rpc/variadic_param"
@@ -1830,7 +1816,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Headers:     test.Headers{"Content-Type": []string{"application/x-www-form-urlencoded"}},
 			Expected:    `["hi", "there"]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 
 		// it "returns last value for repeated params without VARIADIC" $
@@ -1855,7 +1840,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Query:       "/rpc/sayhello_variadic?name=ignored&name=world&v=unused",
 			Expected:    `"Hello, world"`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: VARIADIC arguments from a JSON array, repeated parameters or form fields; card 32489 (rpc params)",
 		},
 
 		// it "can handle procs with args that have a DEFAULT value" $ do
@@ -2550,7 +2534,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
 		},
 		//     get "/rpc/get_tsearch?text_search_vector=plfts.impossible" `shouldRespondWith`
 		//       [json|[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]|]
@@ -2603,7 +2586,6 @@ func TestPostgREST_RPC(t *testing.T) {
 				{"text_search":"C'est un peu amusant de faire l'impossible"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
 		},
 		//     get "/rpc/get_tsearch_to_tsvector?select=text_search&text_search=plfts.impossible"
 		//       `shouldRespondWith` [json|[
@@ -2706,7 +2688,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `[{"text_search_vector":"'fun':5 'imposs':9 'kind':3"}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: fts(lang) and phfts(lang) on GET /rpc are filters, not arguments; card 32490 (rpc details)",
 		},
 
 		// it "should work with an argument of custom type in public schema" $
@@ -3004,7 +2985,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{"A": 1, "B": 2, "C": 3}`,
 			Expected:    `{"A": 1, "B": 2, "C": 3}`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
 		},
 
 		//     it "rejects json body when single param has a name" $
@@ -3277,7 +3257,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Headers:     test.Headers{"Content-Type": {"application/json"}},
 			Expected:    `{"A": 1, "B": 2, "C": 3}`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
 		},
 		//       request
 		//         methodPost
@@ -3314,7 +3293,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:       imageBase64,
 			ExpectedBase64: true,
 			Status:         200,
-			Skip:           "PostgREST 16.4: a single unnamed json, jsonb, text, xml or bytea parameter takes the raw body; card 32489 (rpc params)",
 		},
 
 		//     it "should call the function with no parameters and not fallback to the single unnamed parameter function when using GET with Content-Type headers" $ do
