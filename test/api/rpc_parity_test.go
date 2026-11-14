@@ -191,7 +191,7 @@ func TestRPCParity(t *testing.T) {
 			Description: "a record function as CSV",
 			Query:       "/rpc/rpcp_setof_record",
 			Headers:     test.Headers{"Accept": {"text/csv"}},
-			Expected:    "pgrst_scalar\n\"(1,101)\"\n\"(2,2)\"\n",
+			Expected:    "pgrst_scalar\n\"(1,101)\"\n\"(2,2)\"",
 			Status:      200,
 		},
 		// A JSON path on a composite column of a function that returns a table
