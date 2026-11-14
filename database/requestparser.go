@@ -376,12 +376,14 @@ func (p PostgRestParser) filterParameters(filters Filters) Filters {
 		if !isReservedParameter(k) {
 			var toRemove []int
 			for i, v := range vv {
-				prefix, _, _ := strings.Cut(v, ".")
+				// a filter needs the dot after its operator, as in PostgREST:
+				// name=fts(english) is an argument
+				prefix, _, dotted := strings.Cut(v, ".")
 				if op, lang, ok := strings.Cut(prefix, "("); ok && strings.HasSuffix(lang, ")") && isFtsOperator(op) {
 					// fts(english).word is a filter with a language
 					prefix = op
 				}
-				if _, exists := postgRestParserOperators[prefix]; !exists {
+				if _, exists := postgRestParserOperators[prefix]; !exists || !dotted {
 					skipped[k] = append(skipped[k], v)
 					toRemove = append(toRemove, i)
 				}

@@ -926,27 +926,38 @@ func compareBool(a, b bool) int {
 	}
 }
 
-// withCallColumns returns si for a call to f, a function with OUT or TABLE
-// parameters: a copy that knows the array and composite types of those
-// columns, read through the alias t of the call, or si itself when it has
-// none. A JSON path on such a column needs to_jsonb (see toJson).
-func (si *SchemaInfo) withCallColumns(f *Function) *SchemaInfo {
-	if si == nil || f == nil || !f.HasOut {
+// withCallColumns returns si for a call to f: a copy that knows the
+// array and composite types of the output columns, read through the
+// alias t of the call, or si itself when there are none. The columns are
+// the OUT and TABLE parameters of f, or the columns of the table
+// schema.table that f returns. A JSON path on such a column needs to_jsonb
+// (see toJson), as in PostgREST (Plan.hs resolveTypeOrUnknown).
+func (si *SchemaInfo) withCallColumns(f *Function, table, schema string) *SchemaInfo {
+	if si == nil || f == nil {
 		return si
 	}
 	var cols map[string]ColumnType
-	for _, a := range f.Arguments {
-		if a.Mode != 'o' && a.Mode != 'b' && a.Mode != 't' {
-			continue
+	if table != "" {
+		for _, ct := range si.cachedColumnTypes[_s(table, schema)] {
+			if ct.IsArray || ct.IsComposite {
+				cols = si.cachedColumnTypes[_s(table, schema)]
+				break
+			}
 		}
-		typ := si.GetTypeById(a.TypeId)
-		if typ == nil || (!typ.IsArray && !typ.IsComposite && !typ.IsTable) {
-			continue
+	} else if f.HasOut {
+		for _, a := range f.Arguments {
+			if a.Mode != 'o' && a.Mode != 'b' && a.Mode != 't' {
+				continue
+			}
+			typ := si.GetTypeById(a.TypeId)
+			if typ == nil || (!typ.IsArray && !typ.IsComposite && !typ.IsTable) {
+				continue
+			}
+			if cols == nil {
+				cols = map[string]ColumnType{}
+			}
+			cols[a.Name] = ColumnType{Name: a.Name, Type: a.Type, IsArray: typ.IsArray, IsComposite: !typ.IsArray}
 		}
-		if cols == nil {
-			cols = map[string]ColumnType{}
-		}
-		cols[a.Name] = ColumnType{Name: a.Name, Type: a.Type, IsArray: typ.IsArray, IsComposite: !typ.IsArray}
 	}
 	if cols == nil {
 		return si

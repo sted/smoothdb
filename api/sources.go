@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"mime"
@@ -119,7 +118,7 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		fname := r.Param("fname")
-		record, raw, status, err := readCallRequest(c, w, r)
+		record, raw, status, err := readCallRequest(w, r)
 		if err != nil || status != 0 {
 			return status, err
 		}
@@ -170,16 +169,21 @@ var rawBodyTypes = map[string]string{
 // readCallRequest reads the body of a POST /rpc call, as PostgREST's
 // getPayload for a routine. It returns the arguments decoded from the body
 // and the body itself, for a function with a single unnamed parameter (see
-// database.RawBody):
+// database.RawBody). No body skips the call, as an empty insert does: the
+// function runs whatever the body.
 //   - A text/plain, text/xml or octet-stream body is only raw.
-//   - An empty JSON body is the object {}: the call takes no argument. An
-//     unnamed json parameter takes the body itself, the empty text, and
-//     fails (22P02), as in PostgREST.
+//   - An empty JSON body, or an empty array, passes no argument. An unnamed
+//     json parameter takes the body itself: the empty text fails (22P02),
+//     as in PostgREST.
 //   - A form passes all the values of a repeated field (database.QueryValues).
-func readCallRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (database.Record, *database.RawBody, int, error) {
+func readCallRequest(w http.ResponseWriter, r heligo.Request) (database.Record, *database.RawBody, int, error) {
 	ctype := "application/json"
 	if header := r.Header.Get("Content-Type"); header != "" {
-		ctype, _, _ = mime.ParseMediaType(header)
+		var err error
+		if ctype, _, err = mime.ParseMediaType(header); err != nil {
+			status, err := heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
+			return nil, nil, status, err
+		}
 	}
 	if typ, ok := rawBodyTypes[ctype]; ok {
 		body, err := io.ReadAll(r.Body)
@@ -195,19 +199,32 @@ func readCallRequest(c context.Context, w http.ResponseWriter, r heligo.Request)
 			status, err := WriteBadRequest(w, err)
 			return nil, nil, status, err
 		}
+		raw := &database.RawBody{Type: "json", Data: body}
 		if len(body) == 0 {
-			return database.Record{}, &database.RawBody{Type: "json", Data: body}, 0, nil
+			return database.Record{}, raw, 0, nil
 		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		records, status, err := ReadRequest(c, w, r)
-		if err != nil || status != 0 {
+		records, err := decodeJSONRecords(body)
+		if err != nil {
+			status, err := WriteBadRequest(w, err)
 			return nil, nil, status, err
 		}
-		return records[0], &database.RawBody{Type: "json", Data: body}, 0, nil
+		if len(records) == 0 {
+			return database.Record{}, raw, 0, nil
+		}
+		return records[0], raw, 0, nil
 	}
-	records, status, err := ReadRequest(c, w, r)
-	if err != nil || status != 0 {
+	if getContentType(r) == "" {
+		status, err := heligo.WriteHeader(w, http.StatusUnsupportedMediaType)
 		return nil, nil, status, err
+	}
+	records, _, err := readInputRecords(r, ctype)
+	if err != nil {
+		status, err := WriteBadRequest(w, err)
+		return nil, nil, status, err
+	}
+	if len(records) == 0 {
+		// a CSV body with a header and no row
+		return database.Record{}, nil, 0, nil
 	}
 	record := records[0]
 	if ctype == "application/x-www-form-urlencoded" {

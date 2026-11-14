@@ -282,6 +282,14 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 }
 
+// FunctionNotFoundError: no function of the schema cache takes the
+// arguments of a call (404, PostgREST PGRST202)
+type FunctionNotFoundError struct {
+	msg string
+}
+
+func (e FunctionNotFoundError) Error() string { return e.msg }
+
 // OIDs of the pseudo-types a function can return
 const (
 	recordOID = 2249
@@ -329,10 +337,22 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	if err != nil {
 		return nil, 0, err
 	}
-	if raw != nil && (record == nil || (f != nil && f.singleUnnamed() != nil)) {
-		// the body goes whole to the single unnamed parameter; with no
-		// function found, PostgreSQL resolves the call
-		record = Record{"": raw}
+	if raw != nil {
+		switch {
+		case f != nil && f.singleUnnamed() != nil:
+			// the body goes whole to the single unnamed parameter
+			record = Record{"": raw}
+		case rawType == "json":
+		case f == nil:
+			// a text, xml or bytea body fills only a single unnamed
+			// parameter of its type (PGRST202)
+			return nil, 0, &FunctionNotFoundError{"Could not find the function " + _s(function, options.Schema) +
+				" with a single unnamed " + rawType + " parameter in the schema cache"}
+		default:
+			// a function whose parameters all have a default: called without
+			// arguments, as PostgREST does
+			record = Record{}
+		}
 	}
 	// A call to a STABLE or IMMUTABLE function runs READ ONLY whatever the
 	// method, as in PostgREST (Plan.hs callReadPlan: Inv + Stable/Immutable ->
@@ -356,16 +376,37 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}
 	}
-	// The response is one object, not an array, when the function returns
-	// one value, or when the request asks for one (vnd.pgrst.object): then
-	// zero or many rows fail with 406, as in PostgREST (PGRST116).
-	single := (f != nil && !f.ReturnIsSet) || options.Singular
-	data, n, err := runRead(ctx, exec, values, scalar, single)
+	// vnd.pgrst.object asks for one row: zero or many fail with 406, as in
+	// PostgREST (PGRST116). Only it checks the number of rows (MainTx.hs).
+	// A VOLATILE call can write before the check: with TransactionMode
+	// "none" it runs in a transaction of its own, which a 406 rolls back
+	// (see writeRead).
+	if options.Singular && (f == nil || f.Volatility == "v") && gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	// A set of scalars as one object keeps its column (PostgREST's
+	// asJsonSingleF): {"pgrst_scalar": 1}.
+	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet && !f.returnsRecord()
+	data, n, err := runRead(ctx, exec, values, scalar, options.Singular)
 	if err != nil {
 		return nil, 0, err
 	}
 	if f != nil && f.ReturnTypeId == voidOID && !f.ReturnIsSet {
 		return nil, n, nil
+	}
+	// the JSON serializer writes every content type but CSV and binary (see runRead)
+	isJSON := options.ContentType != "text/csv" && options.ContentType != "application/octet-stream"
+	switch {
+	case setOfScalarObject && isJSON:
+		data = append(append([]byte(`{"pgrst_scalar":`), data...), '}')
+	case f != nil && !f.ReturnIsSet && !options.Singular && isJSON:
+		// a function that returns one value answers that value, not an
+		// array, and null for no row (a limit of 0)
+		if n == 0 {
+			data = []byte("null")
+		} else if len(data) >= 2 {
+			data = data[1 : len(data)-1]
+		}
 	}
 	if data == nil {
 		// an empty value (an empty bytea) is content: nil means void

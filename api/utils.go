@@ -103,7 +103,11 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 		status = http.StatusMultipleChoices
 		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.AmbiguousFunctionError).Hint})
 		return status, err
-	case *database.SerializeError, *database.ContentTypeError:
+	case *database.FunctionNotFoundError:
+		status = http.StatusNotFound
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "database", Message: err.Error()})
+		return status, err
+	case *database.SerializeError, *database.ContentTypeError, *database.CardinalityError:
 		status = http.StatusNotAcceptable
 		w.WriteHeader(status)
 		return status, err
@@ -256,6 +260,25 @@ func recordsJSON(records []database.Record) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// decodeJSONRecords decodes a JSON body, an object or an array of objects.
+// Numbers stay json.Number, so that large integers keep their digits.
+func decodeJSONRecords(body []byte) ([]database.Record, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if jsonIsArray(body) {
+		var records []database.Record
+		if err := decoder.Decode(&records); err != nil {
+			return nil, err
+		}
+		return records, nil
+	}
+	var record database.Record
+	if err := decoder.Decode(&record); err != nil {
+		return nil, err
+	}
+	return []database.Record{record}, nil
+}
+
 // readInputRecords is the low-level function to read and convert the data in the request body.
 // For a JSON body it also returns the body itself, which an insert sends as it is,
 // and for a CSV or form body the JSON PostgREST would convert it to.
@@ -270,24 +293,8 @@ func readInputRecords(r heligo.Request, contentType string) ([]database.Record, 
 			return nil, nil, err
 		}
 		jsonBody = body
-		isArray := jsonIsArray(body)
-
-		// Create decoder with UseNumber to preserve large integers
-		decoder := json.NewDecoder(bytes.NewReader(body))
-		decoder.UseNumber()
-
-		if isArray {
-			err = decoder.Decode(&records)
-			if err != nil {
-				return nil, nil, err
-			}
-		} else {
-			var record database.Record
-			err = decoder.Decode(&record)
-			if err != nil {
-				return nil, nil, err
-			}
-			records = append(records, record)
+		if records, err = decodeJSONRecords(body); err != nil {
+			return nil, nil, err
 		}
 
 	case "text/csv":

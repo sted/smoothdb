@@ -1259,7 +1259,8 @@ func onConflictClause(table, schema string, fields []string,
 // restricts which keys are included.
 func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Function) []string {
 	included := func(key string) bool {
-		if len(columnFields) == 0 {
+		// the body of a single unnamed parameter (key "") is no column
+		if len(columnFields) == 0 || key == "" {
 			return true
 		}
 		_, ok := columnFields[key]
@@ -2576,29 +2577,14 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	// Extract the return type and discover if it is a table.
 	// In that case, we will use its name and schema to compose the select clause
 	var t, s string
-	if f != nil && f.returnsRecord() {
-		// A record has no column list to select from (42601). As PostgREST,
-		// call the function in a select list and take each row as one JSON
-		// value. It has no column to select, filter or order by: PostgREST
-		// fails there with 42703.
-		for _, sf := range parts.selectFields {
-			if sf.field.name != "*" || sf.relation != nil {
-				return "", nil, &BuildError{"the function " + name + " returns record: it has no column to select"}
-			}
-		}
-		if (parts.whereConditionsTree != nil && len(parts.whereConditionsTree.children) > 0) || len(parts.orderFields) > 0 {
-			return "", nil, &BuildError{"the function " + name + " returns record: it has no column to filter or order by"}
-		}
-		query = "SELECT to_json(\"t\".\"pgrst_scalar\") "
-		from := "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
-		st := newBuildState(parts, valueList)
-		st.startCount(parts, options, f.Volatility == "v")
-		return buildAfterSelect(query, from, f.Volatility == "v", "", "", "", "", st.page.values, nil, st.count, parts, options)
-	}
-	// the JSON paths on the array and composite output columns
-	info = info.withCallColumns(f)
-	stack.info = info
-	if f != nil {
+	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
+	isRecord := f != nil && f.returnsRecord()
+	if isRecord {
+		// A record has no column list to select from (42601). As PostgREST
+		// (callPlanToQuery), call the function in a select list: each row is
+		// one value, the column pgrst_scalar.
+		from = "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
+	} else if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {
 			// the cache knows the function but not its return type: a schema
@@ -2615,6 +2601,9 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			s = rettype.Schema
 		}
 	}
+	// the JSON paths on the array and composite output columns
+	info = info.withCallColumns(f, t, s)
+	stack.info = info
 	// the root filters bind their values before the embeds (see buildAfterSelect)
 	st := newBuildState(parts, valueList)
 	stack.st = st
@@ -2647,6 +2636,16 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			selectClause = strings.Join(cols, ", ")
 		}
 	}
+	if isRecord && (selectClause == "*" || selectClause == "\"t\".\"pgrst_scalar\"") {
+		// The fields of a record have no names on the wire: JSON takes
+		// them from to_json, as PostgREST's json_agg does. CSV writes the
+		// record as PostgreSQL's text, as PostgREST does.
+		if options.ContentType == "text/csv" {
+			selectClause = "\"t\".\"pgrst_scalar\""
+		} else {
+			selectClause = "to_json(\"t\".\"pgrst_scalar\") AS \"pgrst_scalar\""
+		}
+	}
 	if err := checkFiltersApplied(parts.whereConditionsTree, false, true, &st.page); err != nil {
 		return "", nil, err
 	}
@@ -2657,7 +2656,6 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	// an aggregate beside plain columns groups by them, as on a table
 	groupByClause := groupByClauseAs("t", "", t, s, parts, info)
 	query = "SELECT " + selectClause
-	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 
 	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
 }
