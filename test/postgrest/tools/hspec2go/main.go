@@ -10,19 +10,28 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
 	fn := flag.String("func", "", "write a whole Go file with a test function of this name")
 	drift := flag.Bool("drift", false, "compare the Go files given as arguments with the spec files")
+	exclude := flag.String("exclude", "", "for -drift: spec files (comma-separated base names) left out of the coverage total")
 	specDir := flag.String("spec", os.ExpandEnv("$HOME/Devel/postgrest-v16.4/test/spec/Feature"), "the spec directory, for -drift")
+	flag.StringVar(&SkipReason, "skip", "", "port every case as skipped with this reason (a planned feature)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: hspec2go [-func Name] File.hs\n       hspec2go -drift [-spec dir] port_test.go...\n")
+		fmt.Fprintf(os.Stderr, "usage: hspec2go [-func Name] [-skip reason] File.hs\n       hspec2go -drift [-spec dir] port_test.go...\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 	if *drift {
-		if err := runDrift(os.Stdout, *specDir, flag.Args()); err != nil {
+		ex := map[string]bool{}
+		for _, f := range strings.Split(*exclude, ",") {
+			if f != "" {
+				ex[f] = true
+			}
+		}
+		if err := runDrift(os.Stdout, *specDir, flag.Args(), ex); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

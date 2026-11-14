@@ -617,7 +617,7 @@ var hNames = map[string]string{
 
 // parseHeader converts one request header expression to name/value pairs.
 func parseHeader(t []token) ([][2]string, error) {
-	t = stripParens(t)
+	t = collapseParens(stripParens(t))
 	// a tuple ("K", "V")
 	if len(t) == 0 {
 		return nil, fmt.Errorf("empty header")
@@ -763,6 +763,10 @@ func matchHeader(t []token) ([2]string, error) {
 		return [2]string{"Content-Type", "application/json; charset=utf-8"}, nil
 	case len(t) == 1 && t[0].is(tIdent, "matchContentTypeSingular"):
 		return [2]string{"Content-Type", "application/vnd.pgrst.object+json; charset=utf-8"}, nil
+	case len(t) == 1 && t[0].is(tIdent, "matchCTArrayStrip"):
+		return [2]string{"Content-Type", "application/vnd.pgrst.array+json;nulls=stripped; charset=utf-8"}, nil
+	case len(t) == 1 && t[0].is(tIdent, "matchCTSingularStrip"):
+		return [2]string{"Content-Type", "application/vnd.pgrst.object+json;nulls=stripped; charset=utf-8"}, nil
 	case len(t) == 2 && t[0].is(tIdent, "matchHeaderAbsent"):
 		name := t[1].text
 		if t[1].kind == tIdent {
@@ -889,6 +893,21 @@ func (f *SpecFile) substitute(toks []token, it *ItBlock) []token {
 			}
 		}
 		out = append(out, t)
+	}
+	return out
+}
+
+// collapseParens replaces ( x ) by x when x is one token, as a substituted
+// binding gives.
+func collapseParens(t []token) []token {
+	var out []token
+	for k := 0; k < len(t); k++ {
+		if k+2 < len(t) && t[k].is(tPunct, "(") && t[k+2].is(tPunct, ")") && t[k+1].kind != tPunct {
+			out = append(out, t[k+1])
+			k += 2
+			continue
+		}
+		out = append(out, t[k])
 	}
 	return out
 }

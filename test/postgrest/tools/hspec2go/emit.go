@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +15,11 @@ type item struct {
 	c           *Case
 	todo        string
 }
+
+// SkipReason, when set, is the Skip of every case Emit writes (-skip).
+// A request that the tool cannot convert then becomes a skipped case with
+// its method and path only, so that it is counted.
+var SkipReason string
 
 // Emit writes the Go cases of f: each case has its hspec text quoted above
 // it. A case or a part of an it that the tool cannot convert is written as
@@ -44,6 +50,7 @@ func Emit(w io.Writer, f *SpecFile, indent string) {
 		if len(items) == 0 {
 			f.quote(w, indent, it.First, it.Last)
 			fmt.Fprintf(w, "%s// TODO(hspec2go): no request in this it\n", indent)
+			f.emitSkeleton(w, &it, it.First, it.Last, indent)
 			continue
 		}
 		next := it.First
@@ -60,6 +67,7 @@ func Emit(w io.Writer, f *SpecFile, indent string) {
 			}
 			if x.todo != "" {
 				fmt.Fprintf(w, "%s// TODO(hspec2go): %s\n", indent, oneLine(x.todo))
+				f.emitSkeleton(w, &it, x.first, x.last, indent)
 				continue
 			}
 			emitCase(w, x.c, indent)
@@ -133,6 +141,36 @@ func emitCase(w io.Writer, c *Case, indent string) {
 		fmt.Fprintf(w, "%sExpectedHeaders: map[string]string{%s},\n", in, strings.Join(parts, ", "))
 	}
 	fmt.Fprintf(w, "%sStatus: %d,\n", in, c.Status)
+	if SkipReason != "" {
+		fmt.Fprintf(w, "%sSkip: %q,\n", in, SkipReason)
+	}
+	fmt.Fprintf(w, "%s},\n", indent)
+}
+
+var methodRE = regexp.MustCompile(`\bmethod(Get|Post|Patch|Put|Delete|Head|Options)\b|\b(get|post|patch|put|delete)\s+"`)
+var pathRE = regexp.MustCompile(`"(/[^"]*)"`)
+
+// emitSkeleton writes, in -skip mode, a skipped case for the first request
+// in lines [from, to] that the tool did not convert.
+func (f *SpecFile) emitSkeleton(w io.Writer, it *ItBlock, from, to int, indent string) {
+	if SkipReason == "" {
+		return
+	}
+	src := strings.Join(f.Lines[from-1:to], "\n")
+	p := pathRE.FindStringSubmatch(src)
+	if p == nil {
+		return
+	}
+	method := "GET"
+	if m := methodRE.FindStringSubmatch(src); m != nil {
+		method = strings.ToUpper(m[1] + m[2])
+	}
+	in := indent + "\t"
+	fmt.Fprintf(w, "%s{\n", indent)
+	fmt.Fprintf(w, "%sDescription: %s,\n", in, strconv.Quote(it.It.Title))
+	fmt.Fprintf(w, "%sMethod: %q,\n", in, method)
+	fmt.Fprintf(w, "%sQuery: %s,\n", in, strconv.Quote(p[1]))
+	fmt.Fprintf(w, "%sSkip: %q,\n", in, SkipReason+"; the expectations are not converted")
 	fmt.Fprintf(w, "%s},\n", indent)
 }
 

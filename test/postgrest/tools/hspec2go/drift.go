@@ -65,7 +65,7 @@ func stripComment(s string) string {
 	return s
 }
 
-func runDrift(w io.Writer, specDir string, files []string) error {
+func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bool) error {
 	// the upstream spec
 	var specs []*SpecFile
 	err := filepath.Walk(specDir, func(p string, info os.FileInfo, err error) error {
@@ -88,12 +88,14 @@ func runDrift(w io.Writer, specDir string, files []string) error {
 	}
 	byTitle := map[string][]*Case{}
 	itTitles := map[string]bool{}
+	var allCases []*Case
 	caseFile := map[*Case]string{}
 	var upText strings.Builder // the spec without whitespace
 	for _, s := range specs {
 		for i := range s.Cases {
 			c := &s.Cases[i]
 			byTitle[c.It.Title] = append(byTitle[c.It.Title], c)
+			allCases = append(allCases, c)
 			caseFile[c] = s.Name
 		}
 		for _, it := range s.Its {
@@ -107,6 +109,11 @@ func runDrift(w io.Writer, specDir string, files []string) error {
 	var rows, quoteRows []driftRow
 	up := upText.String()
 	used := map[*Case]bool{}
+	// the port cases of each spec request, and of each spec it whose requests
+	// the tool does not convert (by title): their Skip, "" when they run
+	status := map[*Case][]string{}
+	titleStatus := map[string][]string{}
+	unquotedMatched := map[string]int{}
 	unquoted := map[string]int{}
 	portCount := map[string]int{}
 	for _, fn := range files {
@@ -146,18 +153,33 @@ func runDrift(w io.Writer, specDir string, files []string) error {
 			// when it follows a quoted it
 			if pc.ItTitle == "" || !own {
 				unquoted[filepath.Base(pc.File)]++
+				// a port without quotes (aggregates_test.go) still counts
+				// when its request is a spec request
+				if m := pickCase(allCases, pc, used, caseFile, home); m != nil && m.TODO == "" && !used[m] {
+					used[m] = true
+					status[m] = append(status[m], skip)
+					unquotedMatched[filepath.Base(pc.File)]++
+				}
 				continue
 			}
 			cands := byTitle[pc.ItTitle]
 			if len(cands) == 0 && itTitles[pc.ItTitle] {
 				// the spec it has no request the tool converts: nothing to compare
-				continue
-			}
-			if len(cands) == 0 {
-				rows = append(rows, driftRow{where, pc.ItTitle, pc.req(), "it", "(no it with this title in 16.4)", "", skip})
+				titleStatus[pc.ItTitle] = append(titleStatus[pc.ItTitle], skip)
 				continue
 			}
 			c := pickCase(cands, pc, used, caseFile, home)
+			if c == nil {
+				// the same request under another it of the spec
+				if m := pickCase(allCases, pc, used, caseFile, home); m != nil && m.TODO == "" {
+					rows = append(rows, driftRow{where, pc.ItTitle, pc.req(), "it", "under it \"" + m.It.Title + "\" in " + caseFile[m], "", skip})
+					c = m
+				}
+			}
+			if c == nil && len(cands) == 0 {
+				rows = append(rows, driftRow{where, pc.ItTitle, pc.req(), "it", "(no it with this title in 16.4)", "", skip})
+				continue
+			}
 			if c == nil {
 				var reqs []string
 				for _, x := range cands {
@@ -167,6 +189,7 @@ func runDrift(w io.Writer, specDir string, files []string) error {
 				continue
 			}
 			used[c] = true
+			status[c] = append(status[c], skip)
 			if c.TODO != "" {
 				continue // the spec case is not convertible: nothing to compare
 			}
@@ -232,14 +255,15 @@ func runDrift(w io.Writer, specDir string, files []string) error {
 		}
 		fmt.Fprintf(w, "| %s | %s | %s | %s |\n", m.file, cell(m.it), cell(m.req), cell(note))
 	}
-	fmt.Fprintf(w, "\n## Port cases without a quoted it\n\n| port file | cases | without hspec text |\n|---|---|---|\n")
+	writeCoverage(w, specs, status, titleStatus, exclude)
+	fmt.Fprintf(w, "\n## Port cases without a quoted it\n\n| port file | cases | without hspec text | matched by request |\n|---|---|---|---|\n")
 	var names []string
 	for f := range portCount {
 		names = append(names, f)
 	}
 	sort.Strings(names)
 	for _, f := range names {
-		fmt.Fprintf(w, "| %s | %d | %d |\n", f, portCount[f], unquoted[f])
+		fmt.Fprintf(w, "| %s | %d | %d | %d |\n", f, portCount[f], unquoted[f], unquotedMatched[f])
 	}
 	return nil
 }
@@ -588,5 +612,68 @@ func evalTest(cl *ast.CompositeLit, pc *PortCase) {
 			}
 			pc.Fields[key] = s
 		}
+	}
+}
+
+// writeCoverage writes, for each spec file, how many of its it blocks the
+// port covers: an it is "live" when all its port cases run, "partly" when
+// some run and some are skipped, "skipped" when all are skipped, and
+// "missing" without port cases. The excluded files are features smoothdb
+// does not want: the total leaves them out.
+func writeCoverage(w io.Writer, specs []*SpecFile, status map[*Case][]string, titleStatus map[string][]string, exclude map[string]bool) {
+	fmt.Fprintf(w, "\n## Coverage of the it blocks\n\n| spec file | it | live | partly | skipped | missing |\n|---|---|---|---|---|---|\n")
+	var tot, totEx [5]int
+	for _, s := range specs {
+		var n [5]int
+		for _, it := range s.Its {
+			var st []string
+			for i := range s.Cases {
+				c := &s.Cases[i]
+				if c.It.Line == it.It.Line {
+					st = append(st, status[c]...)
+				}
+			}
+			if len(st) == 0 {
+				st = titleStatus[it.It.Title]
+			}
+			live, skip := 0, 0
+			for _, x := range st {
+				if x == "" {
+					live++
+				} else {
+					skip++
+				}
+			}
+			n[0]++
+			switch {
+			case live+skip == 0:
+				n[4]++
+			case skip == 0:
+				n[1]++
+			case live == 0:
+				n[3]++
+			default:
+				n[2]++
+			}
+		}
+		name := s.Name
+		ex := exclude[filepath.Base(s.Name)]
+		if ex {
+			name += " (excluded)"
+		}
+		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d |\n", name, n[0], n[1], n[2], n[3], n[4])
+		for i := range n {
+			tot[i] += n[i]
+			if !ex {
+				totEx[i] += n[i]
+			}
+		}
+	}
+	fmt.Fprintf(w, "| total | %d | %d | %d | %d | %d |\n", tot[0], tot[1], tot[2], tot[3], tot[4])
+	fmt.Fprintf(w, "| total without the excluded files | %d | %d | %d | %d | %d |\n", totEx[0], totEx[1], totEx[2], totEx[3], totEx[4])
+	if totEx[0] > 0 {
+		fmt.Fprintf(w, "\nit blocks with all port cases live: %d of %d (%.1f%%), with at least one live case: %d (%.1f%%)\n",
+			totEx[1], totEx[0], 100*float64(totEx[1])/float64(totEx[0]),
+			totEx[1]+totEx[2], 100*float64(totEx[1]+totEx[2])/float64(totEx[0]))
 	}
 }

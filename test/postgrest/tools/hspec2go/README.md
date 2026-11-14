@@ -22,6 +22,10 @@ requests, converted requests and TODO parts.
 Each case quotes its hspec text as a comment above the `test.Test`, as the rest of the
 port does. An `it` with several requests gives several cases.
 
+With `-skip "reason"`, every case gets that `Skip` reason: use it for a planned feature
+("PostgREST 16.4: ...; card N (label)"). In this mode, a request that the tool cannot
+convert also becomes a skipped case with its method and path, so that it is counted.
+
 The tool converts these forms:
 
 - `get`, `post`, `patch`, `put`, `delete`, `options`, and `request methodX path headers body`.
@@ -31,7 +35,7 @@ The tool converts these forms:
 - Bodies: strings, `[json|...|]` (bare object keys are quoted) and `[str|...|]`.
 - `shouldRespondWith` with a JSON block, a string (`""` gives `ExpectedEmpty`) or a status,
   and the record `{ matchStatus = N, matchHeaders = [...] }`.
-- `"Name" <:> "value"`, `matchContentTypeJson`, `matchContentTypeSingular` and
+- `"Name" <:> "value"`, `matchContentTypeJson`, `matchContentTypeSingular`, `matchCTArrayStrip`, `matchCTSingularStrip` and
   `matchHeaderAbsent hName` (an empty value in `ExpectedHeaders`).
 - Simple `let` and `where` bindings: the tool puts the expression in place of the name.
 
@@ -44,7 +48,9 @@ run it, and give a case that fails a `Skip` reason with the card that tracks it.
 
 ```sh
 cd test/postgrest
-go run ./tools/hspec2go -drift *_test.go ../../server/*_test.go > drift.md
+go run ./tools/hspec2go -drift \
+    -exclude CustomMediaSpec.hs,PostGISSpec.hs,TimezoneSpec.hs,NoSuperuserSpec.hs \
+    *_test.go ../../server/*_test.go > drift.md
 ```
 
 The tool reads every spec file under `-spec` (default `~/Devel/postgrest-v16.4/test/spec/Feature`)
@@ -59,6 +65,13 @@ own is an added case and is only counted. The report has these parts:
 - **Quoted hspec lines not in 16.4**: the quoted text changed upstream. The tool removes
   all whitespace and `--` comments before it compares.
 - **Spec cases missing from the port**, for each spec file, and the list of missing requests.
+- **Coverage of the `it` blocks**: for each spec file, the `it` blocks whose port cases all
+  run, partly run, are all skipped, or are missing. `-exclude A.hs,B.hs` leaves the spec
+  files that smoothdb does not want out of the total.
+
+A port case without quoted hspec text still counts when its method and path are a spec
+request (`aggregates_test.go`). The tool does not follow cases that Go helpers build
+(`rollback_test.go`): count those by hand.
 
 A difference is not always an error. Some cases are deliberate (`deliberate: ...` skips)
 or come from live runs of PostgREST 16.4. Read the case before you change an expectation.
