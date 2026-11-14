@@ -39,11 +39,28 @@ func TestPutRollsBackStatementTrigger(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgresql://postgres:postgres@localhost:5432/dbtest")
+	dbtest, err := pgx.ParseConfig(testDatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Database = "dbtest"
+	conn, err := pgx.ConnectConfig(ctx, dbtest)
 	if err != nil {
 		t.Fatalf("cannot connect to dbtest: %v", err)
 	}
 	defer conn.Close(ctx)
+	// the fixtures go away also when the test fails
+	t.Cleanup(func() {
+		c, err := pgx.ConnectConfig(ctx, dbtest)
+		if err != nil {
+			t.Errorf("cleanup: cannot connect to dbtest: %v", err)
+			return
+		}
+		defer c.Close(ctx)
+		if _, err := c.Exec(ctx, `DROP TABLE IF EXISTS putaudited, putaudit; DROP FUNCTION IF EXISTS putaudit_log()`); err != nil {
+			t.Errorf("cleanup: %v", err)
+		}
+	})
 	_, err = conn.Exec(ctx, `
 		DROP TABLE IF EXISTS putaudit;
 		CREATE TABLE putaudit (at timestamptz DEFAULT now());
@@ -68,33 +85,20 @@ func TestPutRollsBackStatementTrigger(t *testing.T) {
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
 	// The schema cache learns the key of the new table from a reload: until
-	// then a PUT answers 405. The refused PUT writes nothing, so it can run
-	// until the reload is done.
-	notify, err := pgx.Connect(ctx, testDatabaseURL)
+	// then a PUT answers 405. The reload is synchronous, with a deadline.
+	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	err = srv.GetDBE().ReloadDatabaseSchema(rctx, "dbtest")
+	cancel()
 	if err != nil {
-		t.Fatalf("cannot connect to the test database: %v", err)
+		t.Fatalf("cannot reload the schema cache of dbtest: %v", err)
 	}
-	_, err = notify.Exec(ctx, "NOTIFY smoothdb, 'reload schema dbtest'")
-	notify.Close(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := test.InitClient()
-	refused := &test.Command{Method: "PUT", Query: "/putaudited?id=eq.1", Body: `{"id": 2, "v": 2}`}
-	status := 0
-	for i := 0; i < 100; i++ {
-		_, _, status, err = test.Exec(client, testConfig, refused)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if status != 405 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if status != 400 {
-		t.Fatalf("a PUT whose body has not the key of its URL: status %d, want 400", status)
-	}
+	test.Execute(t, testConfig, []test.Test{{
+		Description: "a PUT whose body has not the key of its URL",
+		Method:      "PUT",
+		Query:       "/putaudited?id=eq.1",
+		Body:        `{"id": 2, "v": 2}`,
+		Status:      400,
+	}})
 	if n := audits(); n != 0 {
 		t.Errorf("a refused PUT kept the effect of its statement trigger: %d audit rows, want 0", n)
 	}

@@ -2079,6 +2079,14 @@ func TestPostgREST_Insert(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/xml"}},
 			Status:      400,
 		},
+		{
+			Description: "a missing table wins over an Accept that no handler serves",
+			Method:      "POST",
+			Query:       "/no_such_table",
+			Body:        `{"id": 1}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Status:      404,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

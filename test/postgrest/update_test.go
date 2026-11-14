@@ -1671,6 +1671,21 @@ func TestPostgREST_Update(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*", "Preference-Applied": "count=planned"},
 			Status:          204,
 		},
+		{
+			Description: "an empty body checks the filters of the embeds: an unknown one is refused",
+			Method:      "PATCH",
+			Query:       "/items?missing.id=eq.1",
+			Body:        `{}`,
+			Status:      400,
+		},
+		{
+			Description: "an empty body with return=representation reads the select: an unknown cast is refused",
+			Method:      "PATCH",
+			Query:       "/items?select=id::nonexistent_type",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Status:      400,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
