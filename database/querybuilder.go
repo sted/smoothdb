@@ -1276,61 +1276,107 @@ func insertedCounter(add bool) string {
 		"', true), '')::int, 0) " + op + " 1)::text, true) <> '" + never + "'"
 }
 
-// headersOnly wraps the write query of a request with return=headers-only.
-// The write returns the columns PostgREST infers from the select (Plan.hs,
-// inferColsEmbedNeeds): every column for the default select or a star, else
-// the selected columns, the keys of the embeds and the key of the relation.
-// So the select needs the same columns and privileges as in PostgREST. The
-// statement answers one row: the number of rows written and, when withLocation
-// and the write is one row, the "key=eq.value" items of the Location header,
-// read from row_to_json as PostgREST does (SqlFragment.hs, locationF).
-func headersOnly(query, table, schema string, parts *QueryParts, info *SchemaInfo, st *buildState, withLocation bool) (string, error) {
-	var keys []string
-	if info != nil {
-		keys = info.GetKeyColumns(_s(table, schema))
+// resolveEmbeds finds the relationship of every embed of fields, at every
+// level, from the schema cache: a write refuses an unknown embed before it
+// runs, whatever its return preference, as PostgREST plans the read of
+// every write (Plan.hs). It answers the columns of table that the embeds of
+// the first level join on, and computed when one of them is a computed
+// relationship.
+func resolveEmbeds(table, schema string, fields []SelectField, info *SchemaInfo) (keys []string, computed bool, err error) {
+	for _, f := range fields {
+		if f.relation == nil {
+			continue
+		}
+		parent := table
+		if f.relation.parent != "" {
+			parent = f.relation.parent
+		}
+		frel, err := findRelationship(parent, f.relation.name, f.relation.fk, schema, info)
+		if err != nil {
+			return nil, false, err
+		}
+		if frel.Type == Computed {
+			computed = true
+		} else {
+			keys = append(keys, frel.Columns...)
+		}
+		_, related := splitTableName(frel.RelatedTable)
+		if _, _, err := resolveEmbeds(related, schema, f.relation.fields, info); err != nil {
+			return nil, false, err
+		}
 	}
-	star := len(parts.selectFields) == 0
-	hasEmbed := false
+	return keys, computed, nil
+}
+
+// inferReturning answers the columns that a write returns when the request
+// asks for rows or headers, as PostgREST infers them from the select
+// (Plan.hs, inferColsEmbedNeeds): every column for the default select, a
+// star or a computed relationship; else the selected columns, the columns
+// of the embed joins and the key of the relation, in alphabetical order. So
+// the select needs the same columns and privileges as in PostgREST. The
+// names are qualified with the relation.
+func inferReturning(table, schema string, parts *QueryParts, info *SchemaInfo) (cols string, star bool, err error) {
+	keys, computed, err := resolveEmbeds(table, schema, parts.selectFields, info)
+	if err != nil {
+		return "", false, err
+	}
+	star = len(parts.selectFields) == 0 || computed
 	for _, f := range parts.selectFields {
-		if f.relation != nil {
-			hasEmbed = true
-		} else if isStar(f.field.name) {
+		if f.relation == nil && isStar(f.field.name) {
 			star = true
 		}
 	}
-	var cols []string
 	if star {
-		cols = []string{"*"}
-	} else {
-		seen := map[string]bool{}
-		add := func(name string) {
-			if name != "" && !seen[name] {
-				seen[name] = true
-				cols = append(cols, name)
-			}
+		return "*", true, nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
 		}
-		for _, f := range parts.selectFields {
-			if f.relation == nil {
-				add(f.field.name)
-			}
+	}
+	for _, f := range parts.selectFields {
+		if f.relation == nil {
+			add(f.field.name)
 		}
-		if hasEmbed {
-			// the columns of the embed joins, from a dry build
-			_, _, embedKeys, _, err := selectClause(table, schema, "", parts, BuildStack{info: info, afterWithClause: true, st: newBuildState(parts, nil)})
-			if err != nil {
-				return "", err
-			}
-			for _, k := range embedKeys {
-				add(k)
-			}
-		}
-		for _, k := range keys {
+	}
+	for _, k := range keys {
+		add(k)
+	}
+	if info != nil {
+		for _, k := range info.GetKeyColumns(_s(table, schema)) {
 			add(k)
 		}
-		sort.Strings(cols)
-		for i, c := range cols {
-			cols[i] = quote(c)
-		}
+	}
+	sort.Strings(names)
+	// qualified, so that a computed column (a function of the row type)
+	// reads as a call, as in PostgREST (pgFmtColumn)
+	for i, c := range names {
+		names[i] = _sq(table, schema) + "." + quote(c)
+	}
+	return strings.Join(names, ", "), false, nil
+}
+
+// headersOnly makes the write query of a request with return=headers-only
+// return the inferred columns (see inferReturning), and wraps it.
+func headersOnly(query, table, schema string, parts *QueryParts, info *SchemaInfo, st *buildState, withLocation bool) (string, error) {
+	cols, star, err := inferReturning(table, schema, parts, info)
+	if err != nil {
+		return "", err
+	}
+	return wrapHeadersOnly(query+" RETURNING "+cols, star, table, schema, info, st, withLocation), nil
+}
+
+// wrapHeadersOnly reads source, a write that returns rows, in a statement
+// that answers one row: the number of rows and, when withLocation and the
+// write is one row, the "key=eq.value" items of the Location header, read
+// from row_to_json as PostgREST does (SqlFragment.hs, locationF).
+func wrapHeadersOnly(source string, star bool, table, schema string, info *SchemaInfo, st *buildState, withLocation bool) string {
+	var keys []string
+	if info != nil {
+		keys = info.GetKeyColumns(_s(table, schema))
 	}
 	location := "NULL::text[]"
 	if withLocation && len(keys) > 0 {
@@ -1343,8 +1389,7 @@ func headersOnly(query, table, schema string, parts *QueryParts, info *SchemaInf
 		location = st.page.bind("CASE WHEN pg_catalog.count(*) = 1 THEN (SELECT array_agg(j.key || '=' || coalesce('eq.' || j.value, 'is.null')"+order+
 			") FROM (SELECT row_to_json(_) AS r FROM _source AS _ LIMIT 1) d CROSS JOIN json_each_text(d.r) AS j WHERE j.key = ANY(", keys) + ")) END"
 	}
-	return "WITH _source AS (" + query + " RETURNING " + strings.Join(cols, ", ") + ") SELECT pg_catalog.count(*), " +
-		location + " FROM _source", nil
+	return "WITH _source AS (" + source + ") SELECT pg_catalog.count(*), " + location + " FROM _source"
 }
 
 // orderedRecordKeys returns record's keys in a deterministic order for use
@@ -1939,7 +1984,8 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 			insert = "WITH _source AS (" + insert + ") " + sel
 		}
 	} else if options.Return == "headers-only" {
-		if insert, err = headersOnly(insert, table, schema, parts, info, st, true); err != nil {
+		// a PUT answers no Location (Response.hs, MutationSingleUpsert)
+		if insert, err = headersOnly(insert, table, schema, parts, info, st, parts.putConditions == nil); err != nil {
 			return "", nil, err
 		}
 	}
@@ -1978,7 +2024,20 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		// SET is a syntax error, so PostgREST selects nothing from the table
 		// instead (mutatePlanToQuery, null uCols) and the table name still
 		// reaches PostgreSQL, so a missing one answers 42P01.
-		return "SELECT * FROM " + _sq(table, schema) + " WHERE false", nil, nil
+		// The columns follow the return preference: none for return=minimal,
+		// the inferred ones otherwise (see inferReturning).
+		from := " FROM " + _sq(table, schema) + " WHERE false"
+		if !options.ReturnRepresentation && options.Return != "headers-only" {
+			return "SELECT NULL" + from, nil, nil
+		}
+		cols, star, err := inferReturning(table, schema, parts, info)
+		if err != nil {
+			return "", nil, err
+		}
+		if options.ReturnRepresentation {
+			return "SELECT " + cols + from, nil, nil
+		}
+		return wrapHeadersOnly("SELECT "+cols+from, star, table, schema, info, nil, false), nil, nil
 	}
 	st := newBuildState(parts, valueList)
 	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)

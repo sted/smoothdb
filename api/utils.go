@@ -427,7 +427,12 @@ func setPreferenceApplied(w http.ResponseWriter, r heligo.Request, options *data
 	if options.Return != "" && isTableWrite(r) {
 		applied = append(applied, "return="+options.Return)
 	}
-	if options.Count != "" {
+	// a write lists the count preference it was sent, as PostgREST, also
+	// count=planned that leaves the total unknown; a read lists the count it
+	// honours
+	if isTableWrite(r) && options.CountPreference != "" {
+		applied = append(applied, "count="+options.CountPreference)
+	} else if options.Count != "" {
 		applied = append(applied, "count="+options.Count)
 	}
 	if database.TxOverride() {

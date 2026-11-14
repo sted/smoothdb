@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -60,10 +61,15 @@ func checkSchema(ctx context.Context) error {
 	return nil
 }
 
-// checkWriteMedia refuses a write whose Accept header names no media type
-// that smoothdb serves, before the write runs: PostgREST negotiates the media
-// type first, whatever the return preference (Plan/Negotiate.hs, PGRST107).
-func checkWriteMedia(options *QueryOptions) error {
+// checkWritePlan ends the plan of a write, before it runs: the embeds of
+// its select must exist, whatever its return preference, and its Accept
+// header must name a media type that smoothdb serves (PGRST107). PostgREST
+// validates the plan and then negotiates the media type (Plan.hs), so the
+// errors of the plan come first.
+func checkWritePlan(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) error {
+	if _, _, err := resolveEmbeds(table, options.Schema, parts.selectFields, info); err != nil {
+		return err
+	}
 	if options.ContentType == "unknown/unknown" {
 		return &ContentTypeError{msg: "Content type not available"}
 	}
@@ -227,9 +233,6 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	if err := checkWriteMedia(options); err != nil {
-		return nil, 0, err
-	}
 	ignoreRange(options)
 	info := gi.Db.info.Load()
 	if body == nil {
@@ -241,6 +244,9 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	}
 	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkWritePlan(table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	// The resolution applies when the insert has a conflict target: the
@@ -346,15 +352,17 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	if err != nil {
 		return nil, 0, err
 	}
-	// limit and offset are refused when they narrow the range: offset=0
-	// keeps it whole (ApiRequest.hs, getRanges)
-	if parts.limit != "" || (parts.offset != "" && parts.offset != "0") {
+	// limit and offset are refused when they narrow the range: an offset
+	// of zero keeps it whole (ApiRequest.hs, getRanges)
+	if parts.limit != "" {
 		return nil, 0, errPutLimit
 	}
-	options := &gi.QueryOptions
-	if err := checkWriteMedia(options); err != nil {
-		return nil, 0, err
+	if parts.offset != "" {
+		if offset, err := strconv.ParseInt(parts.offset, 10, 64); err != nil || offset != 0 {
+			return nil, 0, errPutLimit
+		}
 	}
+	options := &gi.QueryOptions
 	ignoreRange(options)
 	// PostgREST ignores ?columns= on a PUT (ApiRequest/Payload.hs): every key
 	// of the body is written
@@ -379,14 +387,11 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 		parts.conflictFields[k] = struct{}{}
 	}
 	options.MergeDuplicates, options.IgnoreDuplicates = true, false
-	// a PUT answers no Location: return=headers-only is return=minimal
-	ret := options.Return
-	if ret == "headers-only" {
-		options.Return = ""
-	}
 	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
-	options.Return = ret
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := checkWritePlan(table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	// A body without the key of the URL writes no row, but a statement
@@ -412,7 +417,12 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	// one row or none: no single object to check
 	singular := options.Singular
 	options.Singular = false
-	n, err := writeExec(ctx, insert, values)
+	var n int64
+	if options.Return == "headers-only" {
+		_, n, err = writeHeadersOnly(ctx, insert, values)
+	} else {
+		n, err = writeExec(ctx, insert, values)
+	}
 	options.Singular = singular
 	if err == nil && n != 1 {
 		err = errPutPayload
@@ -463,12 +473,13 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	if err := checkWriteMedia(options); err != nil {
+	ignoreRange(options)
+	info := gi.Db.info.Load()
+	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, info)
+	if err != nil {
 		return nil, 0, err
 	}
-	ignoreRange(options)
-	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, gi.Db.info.Load())
-	if err != nil {
+	if err := checkWritePlan(table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
@@ -492,12 +503,13 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 		return nil, 0, err
 	}
 	options := &gi.QueryOptions
-	if err := checkWriteMedia(options); err != nil {
+	ignoreRange(options)
+	info := gi.Db.info.Load()
+	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, info)
+	if err != nil {
 		return nil, 0, err
 	}
-	ignoreRange(options)
-	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, gi.Db.info.Load())
-	if err != nil {
+	if err := checkWritePlan(table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {

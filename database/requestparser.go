@@ -135,7 +135,10 @@ type QueryOptions struct {
 	HasRange             bool
 	RangeMin             int64
 	RangeMax             int64
-	Count                string // exact, planned, estimated
+	Count                string // exact, estimated: the request counts its rows
+	// CountPreference is the first count preference of the request: exact,
+	// planned or estimated, honoured or not
+	CountPreference string
 	JQ                   string // jq program from the jq= query parameter
 	JQArgs               string // raw JSON object from the jq_args= query parameter
 	// Inserted is the number of rows a merge-duplicates insert created, as
@@ -1912,7 +1915,6 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	}
 
 	preferValues := header.Values("Prefer")
-	countSeen := false
 	for _, prefer := range preferValues {
 		parts := strings.Split(prefer, ",")
 		for _, part := range parts {
@@ -1945,12 +1947,13 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 					options.TxRollback = true
 				}
 			case "count=exact", "count=planned", "count=estimated":
-				// count=estimated counts the rows exactly, as PostgREST does
-				// below max-rows; count=planned is not honoured
-				if !countSeen {
-					countSeen = true
-					if preferValue != "count=planned" {
-						options.Count = preferValue[len("count="):]
+				// On a write count=estimated counts the rows exactly, as
+				// PostgREST does; count=planned leaves the total unknown.
+				// A read counts only with count=exact (card 32483).
+				if options.CountPreference == "" {
+					options.CountPreference = preferValue[len("count="):]
+					if preferValue == "count=exact" || preferValue == "count=estimated" && req.Method != "GET" && req.Method != "HEAD" {
+						options.Count = options.CountPreference
 					}
 				}
 			}
