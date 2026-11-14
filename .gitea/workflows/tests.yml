@@ -1,0 +1,67 @@
+# Tests on the Gitea runner. Gitea reads this directory and ignores
+# .github/workflows, so the goreleaser workflow does not run here.
+# The job runs in a container without PostgreSQL and without systemd:
+# the job installs PostgreSQL and starts it in the same container, so the
+# tests reach it at localhost:5432 as on a GitHub runner.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'misc/**'
+      - 'examples/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'misc/**'
+      - 'examples/**'
+
+jobs:
+  tests-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install and start PostgreSQL
+        run: |
+          SUDO=""
+          [ "$(id -u)" -ne 0 ] && SUDO=sudo
+          $SUDO apt-get update -q
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y -q postgresql postgresql-contrib
+          PG_VERSION=$(ls /etc/postgresql | sort -n | tail -1)
+          PG_HBA_PATH="/etc/postgresql/$PG_VERSION/main/pg_hba.conf"
+          # trust authentication for the tests
+          $SUDO sed -i 's/peer/trust/; s/scram-sha-256/trust/g; s/md5/trust/g' "$PG_HBA_PATH"
+          $SUDO pg_ctlcluster "$PG_VERSION" main start
+          for _ in $(seq 30); do pg_isready -h localhost && break; sleep 1; done
+          pg_isready -h localhost
+          psql -U postgres -h localhost --command="CREATE ROLE auth LOGIN NOINHERIT"
+
+      - name: Test PostgreSQL connection
+        run: psql -U postgres -h localhost -d postgres -c 'SELECT version();'
+
+      - name: Prepare tests
+        run: make prepare-postgrest-tests
+        env:
+          PGHOST: localhost
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: make test
+        env:
+          PGHOST: localhost
+          SMOOTHDB_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
