@@ -417,7 +417,8 @@ func TestPostgREST_ErrorsAudience(t *testing.T) {
 
 // TestPostgREST_ErrorsMinimal holds the case of ErrorSpec.hs that runs with
 // client-error-verbosity = minimal: it runs on a variant server with
-// VerboseErrors false.
+// ErrorVerbosity minimal. VerboseErrors false: a config file can set it,
+// and true contradicts minimal.
 func TestPostgREST_ErrorsMinimal(t *testing.T) {
 	tests := []test.Test{
 		// withConfig baseCfg{configClientErrorVerbosity = Minimal} $
@@ -439,10 +440,9 @@ func TestPostgREST_ErrorsMinimal(t *testing.T) {
           "message":"Could not find the table 'test.itemsx' in the schema cache"
         }`,
 			Status: 404,
-			Skip:   "PostgREST 16.4: client-error-verbosity = minimal leaves out details and hint; smoothdb with VerboseErrors false still writes the hint of PGRST205; no card",
 		},
 	}
-	withVariant(t, map[string]any{"VerboseErrors": false}, false, func(cfg test.Config) {
+	withVariant(t, map[string]any{"ErrorVerbosity": "minimal", "VerboseErrors": false}, false, func(cfg test.Config) {
 		test.Execute(t, cfg, tests)
 	})
 }

@@ -32,7 +32,7 @@ func suiteConfig() map[string]any {
 	}
 	return map[string]any{
 		"Address":                   "localhost:8084",
-		"VerboseErrors":             true, // the suites assert hint/details in error bodies
+		"ErrorVerbosity":            "verbose", // the suites assert hint/details in error bodies
 		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 		"AllowAnon":                 false,
 		"EnableAdminRoute":          true,

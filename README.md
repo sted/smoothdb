@@ -772,7 +772,8 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | WriteTimeout | The maximum duration before timing out writes of the response (seconds) | 60 |
 | GracefulShutdownTimeout | The maximum duration to wait for in-flight requests to complete on shutdown (seconds, 0 to wait until done) | 0 |
 | DrainDelay | Seconds to keep serving after /ready starts reporting 503 on a SIGTERM shutdown, so load balancers can deregister the instance; SIGINT skips the delay (0 to disable) | 0 |
-| VerboseErrors | Return full database error details (hint, detail) to clients; off by default because they help fingerprint the schema | false |
+| ErrorVerbosity | Shape of the error bodies: `normal` leaves out the hint and details of database errors, because they help fingerprint the schema; `verbose` writes them; `minimal` writes only code and message, as PostgREST's `client-error-verbosity = minimal` | normal |
+| VerboseErrors | Alias of `ErrorVerbosity` `verbose`, kept for old configurations | false |
 | RequestMaxBytes | Max bytes allowed in requests, to limit the size of incoming request bodies (0 for unlimited) | 1048576 (1MB) |
 | Database.URL | Database URL as postgresql://user:pwd@host:port/database | "" |
 | Database.MinPoolConnections | Minimum connections per pool | 10 |

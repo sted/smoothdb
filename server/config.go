@@ -55,7 +55,8 @@ type Config struct {
 	GracefulShutdownTimeout int64           `comment:"The maximum duration (seconds) to wait for in-flight requests to complete on shutdown (default: 0, wait until done)"`
 	DrainDelay              int64           `comment:"Seconds to keep serving after /ready starts reporting 503 on a SIGTERM shutdown, so load balancers can deregister the instance; SIGINT skips the delay (default: 0, disabled)"`
 	TokenExpiry             int64           `comment:"JWT token expiry in seconds (default: 86400 = 24h, 0 for no expiry)"`
-	VerboseErrors           bool            `comment:"Return full database error details (hint, detail) to clients (default: false)"`
+	ErrorVerbosity          string          `comment:"Error bodies: normal (no hint or details of database errors), verbose (all of them), minimal (code and message only, as PostgREST's client-error-verbosity = minimal) (default: normal)"`
+	VerboseErrors           bool            `comment:"Alias of ErrorVerbosity verbose, kept for old configurations (default: false)"`
 	RequestMaxBytes         int64           `comment:"Max bytes allowed in requests, to limit the size of incoming request bodies (default: 1M, 0 for unlimited)"`
 	Database                database.Config `comment:"Database configuration"`
 	JQ                      jqeval.Config   `comment:"jq evaluation configuration"`
@@ -94,6 +95,7 @@ func defaultConfig() *Config {
 		GracefulShutdownTimeout: 0,
 		DrainDelay:              0,
 		TokenExpiry:             86400,
+		ErrorVerbosity:          "normal",
 		VerboseErrors:           false,
 		RequestMaxBytes:         1024 * 1024,
 		Database:                *database.DefaultConfig(),
@@ -304,6 +306,18 @@ func jwtConfig(cfg *Config) authn.JWTConfig {
 }
 
 func checkConfig(cfg *Config) error {
+	switch cfg.ErrorVerbosity {
+	case "normal", "verbose", "minimal":
+	default:
+		return fmt.Errorf("invalid 'ErrorVerbosity' %q: must be normal, verbose or minimal", cfg.ErrorVerbosity)
+	}
+	if cfg.VerboseErrors {
+		// the old boolean: true is verbose
+		if cfg.ErrorVerbosity == "minimal" {
+			return fmt.Errorf("'ErrorVerbosity' minimal contradicts 'VerboseErrors' true: remove 'VerboseErrors'")
+		}
+		cfg.ErrorVerbosity = "verbose"
+	}
 	switch cfg.SessionMode {
 	case "none", "claims":
 	case "role":

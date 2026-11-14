@@ -20,7 +20,8 @@ func (s *Server) initHTTPServer() error {
 	s.router.Use(HTTPLogger(s.logger))
 
 	cfg := s.Config
-	api.SetVerboseErrors(cfg.VerboseErrors)
+	// checkConfig accepted the value
+	_ = api.SetErrorVerbosity(cfg.ErrorVerbosity)
 
 	// Security headers
 	hasTLS := cfg.CertFile != ""

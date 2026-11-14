@@ -27,9 +27,30 @@ import (
 
 var verboseErrors = true
 
+// minimalErrors makes an error body hold only code and message.
+var minimalErrors = false
+
 // SetVerboseErrors controls whether full database error details are returned to clients.
 func SetVerboseErrors(v bool) {
 	verboseErrors = v
+}
+
+// SetErrorVerbosity sets the shape of the error bodies: "verbose" (every key
+// with its value), "normal" (every key, but no hint or details of a database
+// error) or "minimal" (code and message only, as PostgREST's
+// client-error-verbosity = minimal).
+func SetErrorVerbosity(mode string) error {
+	switch mode {
+	case "verbose":
+		verboseErrors, minimalErrors = true, false
+	case "normal":
+		verboseErrors, minimalErrors = false, false
+	case "minimal":
+		verboseErrors, minimalErrors = false, true
+	default:
+		return fmt.Errorf("invalid error verbosity %q: must be normal, verbose or minimal", mode)
+	}
+	return nil
 }
 
 // SmoothError is an error body, in PostgREST's shape (Error.hs,
@@ -53,17 +74,28 @@ type errorBody struct {
 	Message string `json:"message"`
 }
 
+// minimalErrorBody is the JSON of a SmoothError with ErrorVerbosity minimal:
+// PostgREST's client-error-verbosity = minimal writes only these two keys.
+type minimalErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 // writeErrorBody writes an error with its status. The JSON escapes no HTML
 // character, as aeson does, so the Content-Length is PostgREST's. The JSON
 // encoder is acceptable here: an error body is small and not on the path of
 // the rows.
 func writeErrorBody(w http.ResponseWriter, status int, e SmoothError) (int, error) {
-	body := errorBody{Code: e.Code, Message: e.Message}
-	if s, ok := e.Details.(string); !ok || s != "" {
-		body.Details = e.Details
-	}
-	if e.Hint != "" {
-		body.Hint = e.Hint
+	var body any = minimalErrorBody{Code: e.Code, Message: e.Message}
+	if !minimalErrors {
+		full := errorBody{Code: e.Code, Message: e.Message}
+		if s, ok := e.Details.(string); !ok || s != "" {
+			full.Details = e.Details
+		}
+		if e.Hint != "" {
+			full.Hint = e.Hint
+		}
+		body = full
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

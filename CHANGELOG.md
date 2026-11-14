@@ -14,12 +14,15 @@
 * **Explain in the Data area** — an Explain panel shows the plan of the grid's request as a tree, with the time of each node, estimate errors and hints, and the text and JSON plans.
 * **Content-Profile on responses** — a response with a body names its schema when the request selects one or more than one schema is exposed.
 
+* **ErrorVerbosity** — `normal` (the default), `verbose` or `minimal`; `minimal` writes only code and message, as PostgREST's `client-error-verbosity = minimal`, and `VerboseErrors: true` is an alias of `verbose`.
+
 ### Changed
 * **RETURNS void answers 204** — with no body and no Content-Type.
 * **PostgREST statuses** — an unknown table or function is 404 PGRST205/PGRST202, an ambiguous embed 300, SQLSTATE class XX 500, an unsupported input Content-Type 400 PGRST102, and 409 on duplicate objects only on `/admin`.
 * **limit and offset as PostgREST** — a value that is not an integer is ignored, the range is intersected as in PostgREST (416 PGRST103), and a value beyond 64 bits is 22003.
 * **Single object on writes and calls** — `vnd.pgrst.object` refuses zero or many rows with 406 PGRST116 and rolls the write back, also without `return=representation`.
 * **Upsert status** — a merge-duplicates insert that creates no row answers 200; `POST []` runs the insert.
+* **Spaces in logic trees** — `and ( … )` and `or ( … )` with spaces before the parenthesis are accepted, as in PostgREST.
 * **PGRST205 and PGRST202 after PostgreSQL** — smoothdb decides them only after PostgreSQL fails, so a table or function created after the schema cache load still works (PostgREST answers from its cache alone).
 
 ## 0.12.0 - 2026-11-13
