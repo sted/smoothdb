@@ -18,7 +18,7 @@
 * [ ] Spread to-many relationships (correlated arrays)
 * [ ] Spread join table columns (junction table fields in M2M spread)
 * [ ] Overriding FK relationships with computed functions
-* [ ] Recursive relationships (self-referential computed functions)
+* [x] Recursive relationships (self-referential computed functions)
 
 ## API / Headers
 * [ ] missing=default header (column DEFAULT for missing values on insert)
@@ -29,19 +29,19 @@
 * [ ] return=headers-only
 * [ ] PUT for upsert
 * [x] Reject JSON arrays with mismatched object keys on bulk insert
-* [ ] prefer single-object (now just unnamed functions)
+* [ ] ~~prefer single-object~~: removed in PostgREST 16.4; smoothdb parses the preference and ignores it
 * [ ] Generate OpenAPI
 * [ ] OPTIONS support
 
 ## Functions / Types
 * [ ] variadic function
-* [ ] Computed fields
+* [x] Computed fields
 * [ ] Domains in RPC arguments and return types (querybuilder.go, the function return and OUT argument resolution); output needs nothing, PostgreSQL reports the base type on the wire
-* [ ] $ in table/column names
+* [x] $ in table/column names
 
 ## Infrastructure
-* [ ] SQL injection mitigation and related tests
-* [ ] Admin
+* [x] SQL injection mitigation and related tests
+* [x] Admin
 * [ ] Projects
 * [ ] Reload config
 * [ ] Change log level at runtime
