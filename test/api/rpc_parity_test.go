@@ -214,6 +214,37 @@ func TestRPCParity(t *testing.T) {
 			Expected:    `"Hello, fts(english)"`,
 			Status:      200,
 		},
+		// columns= leaves out every other key of the body, "" too (Payload.hs)
+		{
+			Description: "columns= leaves out an empty key",
+			Method:      "POST",
+			Query:       "/rpc/rpcp_sayhello?columns=name",
+			Body:        `{"name": "world", "": 123}`,
+			Expected:    `"Hello, world"`,
+			Status:      200,
+		},
+		// a set of records as one object keeps its column, as a set of scalars
+		{
+			Description: "setof record as an object",
+			Query:       "/rpc/rpcp_setof_record?limit=1",
+			Headers:     object,
+			Expected:    `{"pgrst_scalar": {"id": 1, "counter": 101}}`,
+			Status:      200,
+		},
+		{
+			Description: "a record as an object",
+			Query:       "/rpc/rpcp_record",
+			Headers:     object,
+			Expected:    `{"id": 1, "counter": 101}`,
+			Status:      200,
+		},
+		// a JSON path on pgrst_scalar reads the record as JSON (Plan.hs)
+		{
+			Description: "a filter on a JSON path of pgrst_scalar",
+			Query:       "/rpc/rpcp_setof_record?pgrst_scalar->>id=eq.2",
+			Expected:    `[{"id": 2, "counter": 2}]`,
+			Status:      200,
+		},
 	}
 	// one case at a time: Execute stops at the first failure
 	for _, tt := range tests {
