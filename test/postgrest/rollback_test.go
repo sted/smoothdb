@@ -14,16 +14,12 @@ import (
 // runs on the suite server. The other two run on a variant server (see
 // withVariant) with TransactionMode commit and rollback.
 //
-// PostgREST answers Preference-Applied: tx=... when it honours a Prefer tx;
-// smoothdb sends no Preference-Applied. A case asserting it runs without that
-// header, and a skipped twin (same request, " (Preference-Applied)" in the
-// description) counts the missing header.
+// PostgREST answers Preference-Applied: tx=... when it honours a Prefer tx,
+// and smoothdb does too: a case asserts the header with the rest of its
+// answer (see withApplied).
 
 const (
-	rollbackNoPrefApplied = "PostgREST 16.4: Preference-Applied names the tx preference it honoured; card 32479 (write headers)"
-	rollbackNoPut         = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put)"
-	rollbackDeferred      = "PostgREST 16.4: a transaction that ends in rollback checks the deferred constraints first (SET CONSTRAINTS ALL IMMEDIATE, MainTx.hs optionalRollback); no card"
-	rollbackEmptyBody     = "PostgREST 16.4: POST /rpc with an empty body calls the function with its defaults (smoothdb answers EOF); no card"
+	rollbackDeferred = "PostgREST 16.4: a transaction that ends in rollback checks the deferred constraints first (SET CONSTRAINTS ALL IMMEDIATE, MainTx.hs optionalRollback); no card"
 )
 
 // -- two helpers functions to make sure that each test can setup and cleanup properly
@@ -132,21 +128,20 @@ func (b rbBlock) skipOr(reason string) string {
 	return reason
 }
 
-// withApplied returns the case and, when PostgREST would report the tx
-// preference applied, its skipped twin asserting Preference-Applied: appliedValue
-// is the whole header PostgREST sends (a mutation lists return= too).
+// withApplied returns the case, which asserts Preference-Applied when
+// PostgREST would report the tx preference applied: appliedValue is the
+// whole header PostgREST sends (a mutation lists return= too). The request
+// runs once: it is not idempotent.
 func (b rbBlock) withApplied(tc test.Test, appliedValue string) []test.Test {
 	tc.Skip = b.skipOr(tc.Skip)
-	if b.applied == "" {
-		return []test.Test{tc}
+	if b.applied != "" {
+		headers := map[string]string{"Preference-Applied": appliedValue}
+		for k, v := range tc.ExpectedHeaders {
+			headers[k] = v
+		}
+		tc.ExpectedHeaders = headers
 	}
-	twin := tc
-	twin.Description += " (Preference-Applied)"
-	twin.ExpectedHeaders = map[string]string{"Preference-Applied": appliedValue}
-	if twin.Skip == "" {
-		twin.Skip = rollbackNoPrefApplied
-	}
-	return []test.Test{tc, twin}
+	return []test.Test{tc}
 }
 
 // shouldRespondToReads reqHeaders respHeaders = do
@@ -252,7 +247,7 @@ func (b rbBlock) shouldRaiseExceptions() []test.Test {
 			Headers:     test.Headers{"Prefer": b.prefer},
 			Expected:    conflict,
 			Status:      409,
-			Skip:        b.skipOr(rollbackEmptyBody),
+			Skip:        b.skip,
 		},
 		//   it "raises deferred constraints" $ do
 		//     request
@@ -329,7 +324,6 @@ func (b rbBlock) shouldPersistMutations() []test.Test {
 	tests = append(tests, b.withApplied(test.Test{
 		Description: ctx + "put",
 		Method:      "PUT",
-		Skip:        rollbackNoPut,
 		Query:       "/items?id=eq.0",
 		Headers:     test.Headers{"Prefer": b.prefer},
 		Body:        `{"id":0}`,
@@ -337,8 +331,8 @@ func (b rbBlock) shouldPersistMutations() []test.Test {
 		Status:      201,
 	}, mutation)...)
 	tests = append(tests,
-		rbGet(ctx, "/items?id=eq.0", `[{"id":0}]`, b.skipOr(rollbackNoPut)),
-		rbDeleteItems(ctx, b.skipOr(rollbackNoPut)))
+		rbGet(ctx, "/items?id=eq.0", `[{"id":0}]`, b.skip),
+		rbDeleteItems(ctx, b.skip))
 	//   it "does persist patch" $ do
 	//     postItem
 	//     request
@@ -438,14 +432,13 @@ func (b rbBlock) shouldNotPersistMutations() []test.Test {
 	tests = append(tests, b.withApplied(test.Test{
 		Description: ctx + "put",
 		Method:      "PUT",
-		Skip:        rollbackNoPut,
 		Query:       "/items?id=eq.0",
 		Headers:     test.Headers{"Prefer": b.prefer},
 		Body:        `{"id":0}`,
 		Expected:    `[{"id":0}]`,
 		Status:      201,
 	}, mutation)...)
-	tests = append(tests, rbGet(ctx, "/items?id=eq.0", `[]`, b.skipOr(rollbackNoPut)))
+	tests = append(tests, rbGet(ctx, "/items?id=eq.0", `[]`, b.skip))
 	//   it "does not persist patch" $ do
 	//     request
 	//       methodPatch
