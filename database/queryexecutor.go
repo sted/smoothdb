@@ -414,8 +414,12 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	}
 	if oneValue && options.ContentType != "application/octet-stream" {
 		// the page has one row, for Content-Range, also when the body is
-		// null; the total stays the count of the rows
+		// null. With no separate count the total is that count, as in
+		// PostgREST (countF); otherwise it stays the count of the rows.
 		n = 1
+		if options.Count != "" && options.totalQuery == "" {
+			options.Total = 1
+		}
 	}
 	if data == nil {
 		// an empty value (an empty bytea) is content: nil means void
