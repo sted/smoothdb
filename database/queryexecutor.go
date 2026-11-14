@@ -78,14 +78,26 @@ func checkWritePlan(ctx context.Context, table string, parts *QueryParts, option
 			// before it negotiates. smoothdb writes a relation created
 			// since the cache was loaded, so on this error path alone it
 			// asks the database whether the relation exists.
-			if missing, err := relationMissing(ctx, _sq(table, options.Schema)); err != nil {
+			if err := missingRelationError(ctx, table, options.Schema); err != nil {
 				return err
-			} else if missing {
-				return &pgconn.PgError{Severity: "ERROR", Code: "42P01",
-					Message: "relation \"" + _s(table, options.Schema) + "\" does not exist"}
 			}
 		}
-		return &ContentTypeError{msg: "Content type not available"}
+		return mediaTypeError(options.accept)
+	}
+	return nil
+}
+
+// missingRelationError answers PostgreSQL's undefined_table error (42P01)
+// when the relation does not exist, nil when it does. The handler turns
+// the error into PGRST205 (see TableNotFound).
+func missingRelationError(ctx context.Context, table, schema string) error {
+	missing, err := relationMissing(ctx, _sq(table, schema))
+	if err != nil {
+		return err
+	}
+	if missing {
+		return &pgconn.PgError{Severity: "ERROR", Code: "42P01",
+			Message: "relation \"" + _s(table, schema) + "\" does not exist"}
 	}
 	return nil
 }
@@ -402,7 +414,7 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	}
 	// limit and offset are refused when they narrow the range: an offset
 	// of zero keeps it whole (ApiRequest.hs, getRanges)
-	if parts.limit != "" {
+	if parts.limit != "" || parts.limitHuge != "" || parts.offsetHuge != "" {
 		return nil, 0, errPutLimit
 	}
 	if parts.offset != "" {
@@ -425,6 +437,13 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	var keys []string
 	if info != nil {
 		keys = info.GetKeyColumns(_s(table, options.Schema))
+	}
+	if len(keys) == 0 && info != nil && !info.hasRelation(_s(table, options.Schema)) {
+		// a relation missing from the cache: 404 comes before the key
+		// check, when the relation does not exist (see checkWritePlan)
+		if err := missingRelationError(ctx, table, options.Schema); err != nil {
+			return nil, 0, err
+		}
 	}
 	conds, ok := putConditions(parts.whereConditionsTree, keys)
 	if !ok {

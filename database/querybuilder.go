@@ -2071,6 +2071,7 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 			// (Plan.hs).
 			readParts := *parts
 			readParts.limit, readParts.offset = "", ""
+			readParts.limitHuge, readParts.offsetHuge = "", ""
 			readParts.whereConditionsTree = embedFilters(parts.whereConditionsTree)
 			return buildSelect(table, &readParts, &read, info, "false AND ROW("+cols+") IS NOT NULL")
 		case options.Return == "headers-only":
