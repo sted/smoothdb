@@ -58,15 +58,15 @@ var suiteServer *server.Server
 
 // startServer starts a server with the configuration c and waits until it
 // answers. The environment does not change c: a variant gets exactly its
-// overrides. The address must be free, so that no other process answers in
-// place of the new server.
+// overrides. The test binds the address itself and the server serves on
+// that listener (Start does the same with ListenAndServe), so no other
+// process can answer in place of the new server.
 func startServer(c map[string]any) (*server.Server, error) {
 	addr := c["Address"].(string)
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("the address of the server is not free: %w", err)
 	}
-	l.Close()
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
 			ConfigFilePath: "../../config.jsonc",
@@ -75,21 +75,11 @@ func startServer(c map[string]any) (*server.Server, error) {
 			SkipEnv:   true,
 		})
 	if err != nil {
+		l.Close()
 		return nil, err
 	}
-	started := make(chan error, 1)
-	go func() { started <- s.Start() }()
-	err = test.WaitForServer("http://" + addr)
-	if err == nil {
-		// a failed bind returns at once: when Start has returned, the
-		// answer came from another process
-		select {
-		case err = <-started:
-			err = fmt.Errorf("the server did not start: %w", err)
-		default:
-		}
-	}
-	if err != nil {
+	go s.HTTP.Serve(l)
+	if err := test.WaitForServer("http://" + addr); err != nil {
 		s.Shutdown(context.Background())
 		return nil, err
 	}
