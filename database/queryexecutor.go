@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -129,7 +130,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + options.acceptedTypes}
 	}
 	return runRead(ctx, query, values, false, options.Singular)
 }
@@ -144,7 +145,7 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
-		return nil, 0, &RangeError{msg: "Requested range not satisfiable"}
+		return nil, 0, lowerGTUpper
 	}
 	info := gi.Db.info.Load()
 	var serializer TextSerializer
@@ -589,7 +590,7 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "Content type not available"}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + options.acceptedTypes}
 	}
 	var params Filters
 	if readonly {
@@ -615,9 +616,20 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	}
 	info := gi.Db.info.Load()
 	// The overload the call invokes, by the names of the arguments it passes
-	f, err := info.FindFunctionFor(_s(function, options.Schema), orderedRecordKeys(record, parts.columnFields, nil), rawType)
+	fname := _s(function, options.Schema)
+	keys := orderedRecordKeys(record, parts.columnFields, nil)
+	f, err := info.FindFunctionFor(fname, keys, rawType)
 	if err != nil {
 		return nil, 0, err
+	}
+	// No function of the cache can take the call: PostgREST answers PGRST202
+	// before it runs anything. smoothdb still runs the call, because the
+	// function can be newer than the cache, and answers PGRST202 only when
+	// PostgreSQL does not find the function either. A single-object call
+	// names no argument, so it is left to PostgreSQL.
+	var noRpc error
+	if f == nil && !options.ParamsAsSingleObject {
+		noRpc = info.noRpc(fname, keys, !readonly, options.InputContentType)
 	}
 	if raw != nil {
 		switch {
@@ -675,6 +687,9 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	oneValue := f != nil && !f.ReturnIsSet
 	data, n, err := runRead(ctx, exec, values, scalar, options.Singular && !oneValue)
 	if err != nil {
+		if noRpc != nil && isUndefinedFunction(err, fname) {
+			return nil, 0, noRpc
+		}
 		return nil, 0, err
 	}
 	if f != nil && f.ReturnTypeId == voidOID && !f.ReturnIsSet {
@@ -708,4 +723,13 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 		data = []byte{}
 	}
 	return data, n, nil
+}
+
+// isUndefinedFunction reports whether err is the undefined_function error
+// (42883) of a call to the function fname (schema.name), and not of a call
+// that the function makes or of an operator.
+func isUndefinedFunction(err error, fname string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42883" &&
+		strings.HasPrefix(pgErr.Message, "function "+fname+"(")
 }

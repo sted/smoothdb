@@ -161,6 +161,7 @@ func InitSourcesRouter(apiHelper Helper) {
 		if err != nil || status != 0 {
 			return status, err
 		}
+		database.GetQueryOptions(c).InputContentType = getContentType(r)
 		data, count, err := database.CallFunction(c, fname, record, raw, payloadFilters(r))
 		if err == nil {
 			data, err = database.JQTransformResponse(c, data)
@@ -178,8 +179,8 @@ func InitSourcesRouter(apiHelper Helper) {
 	// The Allow header lists what is routed on /rpc/ (no OPTIONS yet).
 	rpcMethodNotAllowed := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		w.Header().Set("Allow", "GET, HEAD, POST")
-		return heligo.WriteJSON(w, http.StatusMethodNotAllowed,
-			SmoothError{Subsystem: "network", Message: "Cannot use the " + r.Method + " method on RPC"})
+		return writeErrorBody(w, http.StatusMethodNotAllowed,
+			SmoothError{Code: "PGRST101", Message: "Cannot use the " + r.Method + " method on RPC"})
 	}
 	api.Handle("DELETE", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PATCH", "/rpc/:fname", rpcMethodNotAllowed)

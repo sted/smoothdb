@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -929,7 +930,7 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	if len(fds) != 1 {
-		return nil, 0, &SerializeError{msg: "application/octet-stream requested but more than one column was selected"}
+		return nil, 0, &RequestError{Status: http.StatusNotAcceptable, Message: "application/octet-stream requested but more than one column was selected"}
 	}
 	for rows.Next() {
 		raw := rows.RawValues()[0]

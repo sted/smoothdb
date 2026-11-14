@@ -16,16 +16,16 @@ func jqParseArgs(raw string) (map[string]any, error) {
 		return nil, nil
 	}
 	if len(raw) > jqeval.MaxProgramBytes() {
-		return nil, &ParseError{"jq_args exceeds the maximum allowed size (" +
+		return nil, &ParseError{msg: "jq_args exceeds the maximum allowed size (" +
 			strconv.Itoa(jqeval.MaxProgramBytes()) + " bytes)"}
 	}
 	v, err := jqeval.Unmarshal([]byte(raw))
 	if err != nil {
-		return nil, &ParseError{"invalid jq_args: " + err.Error()}
+		return nil, &ParseError{msg: "invalid jq_args: " + err.Error()}
 	}
 	args, ok := v.(map[string]any)
 	if !ok {
-		return nil, &ParseError{"jq_args must be a JSON object"}
+		return nil, &ParseError{msg: "jq_args must be a JSON object"}
 	}
 	return args, nil
 }
@@ -41,11 +41,11 @@ func JQTransformResponse(ctx context.Context, data []byte) ([]byte, error) {
 		return data, nil
 	}
 	if !jqeval.Enabled() {
-		return nil, &ParseError{"jq evaluation is disabled (see the JQ configuration section)"}
+		return nil, &ParseError{msg: "jq evaluation is disabled (see the JQ configuration section)"}
 	}
 	if options.ContentType != "application/json" &&
 		options.ContentType != "application/vnd.pgrst.object+json" {
-		return nil, &ParseError{"jq transforms require a JSON content type"}
+		return nil, &ParseError{msg: "jq transforms require a JSON content type"}
 	}
 	args, err := jqParseArgs(options.JQArgs)
 	if err != nil {
@@ -89,7 +89,7 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	ignoreRange(options)
 	countEstimated(options)
 	if !jqeval.Enabled() {
-		return nil, 0, &ParseError{"jq evaluation is disabled (see the JQ configuration section)"}
+		return nil, 0, &ParseError{msg: "jq evaluation is disabled (see the JQ configuration section)"}
 	}
 	program := options.JQ
 	args, err := jqParseArgs(options.JQArgs)
@@ -105,7 +105,7 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 		return nil, 0, err
 	}
 	if parts.recursive != nil {
-		return nil, 0, &ParseError{"recursive filters are not supported in a jq update"}
+		return nil, 0, &ParseError{msg: "recursive filters are not supported in a jq update"}
 	}
 	schema := options.Schema
 	stack := BuildStack{info: gi.Db.info.Load()}
@@ -163,7 +163,7 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	// lets the deferred ROLLBACK fire, while a check after the COMMIT would
 	// answer an error for an update that was applied
 	if options.ReturnRepresentation && options.Singular && len(ctids) != 1 {
-		err = &SerializeError{"JSON object requested, multiple (or no) rows returned"}
+		err = singularityError(int64(len(ctids)))
 		return nil, int64(len(ctids)), err
 	}
 
@@ -217,7 +217,7 @@ func jqSelectRows(ctx context.Context, query string, values []any, maxRows int) 
 		return nil, nil, err
 	}
 	if len(ctids) > maxRows {
-		return nil, nil, &ParseError{"jq update would affect more than " +
+		return nil, nil, &ParseError{msg: "jq update would affect more than " +
 			strconv.Itoa(maxRows) + " rows (JQ.MaxUpdateRows)"}
 	}
 	return ctids, inputs, nil
@@ -240,7 +240,7 @@ func jqUpdateRow(ctx context.Context, table, schema, program string, args map[st
 	}
 	obj, ok := output.(map[string]any)
 	if !ok {
-		return nil, &ParseError{"jq update program must produce a JSON object of columns to update"}
+		return nil, &ParseError{msg: "jq update program must produce a JSON object of columns to update"}
 	}
 	if len(obj) == 0 {
 		// nothing to change for this row
@@ -252,7 +252,7 @@ func jqUpdateRow(ctx context.Context, table, schema, program string, args map[st
 	columns := make([]string, 0, len(obj))
 	for k := range obj {
 		if _, exists := inputColumns[k]; !exists {
-			return nil, &ParseError{"jq update output contains an unknown column: '" + k + "'"}
+			return nil, &ParseError{msg: "jq update output contains an unknown column: '" + k + "'"}
 		}
 		columns = append(columns, k)
 	}
@@ -291,7 +291,7 @@ func jqAssembleRows(rows [][]byte, options *QueryOptions) ([]byte, int64, error)
 	count := int64(len(rows))
 	if options.Singular {
 		if count != 1 {
-			return nil, count, &SerializeError{"JSON object requested, multiple (or no) rows returned"}
+			return nil, count, singularityError(count)
 		}
 		return rows[0], count, nil
 	}

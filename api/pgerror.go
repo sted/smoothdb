@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/authn"
 )
 
@@ -125,16 +124,12 @@ func writeDatabaseError(w http.ResponseWriter, dberr *pgconn.PgError, authentica
 	case http.StatusUnauthorized:
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	}
-	smoothErr := SmoothError{
-		Subsystem: "database",
-		Message:   dberr.Message,
-		Code:      dberr.Code,
-	}
+	smoothErr := SmoothError{Message: dberr.Message, Code: dberr.Code}
 	if verboseErrors {
 		smoothErr.Hint = dberr.Hint
 		smoothErr.Details = dberr.Detail
 	}
-	heligo.WriteJSON(w, status, smoothErr)
+	writeErrorBody(w, status, smoothErr)
 	return status, dberr
 }
 
@@ -149,11 +144,7 @@ func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, 
 	if aerr.Challenge != "" {
 		w.Header().Set("WWW-Authenticate", aerr.Challenge)
 	}
-	subsystem := "database" // an unknown database, a pool with no connection
-	if aerr.Status == http.StatusUnauthorized || aerr.Status == http.StatusForbidden {
-		subsystem = "auth"
-	}
-	smoothErr := SmoothError{Subsystem: subsystem, Message: aerr.Message, Code: aerr.Code}
+	smoothErr := SmoothError{Message: aerr.Message, Code: aerr.Code}
 	if verboseErrors {
 		if aerr.Details != "" {
 			smoothErr.Details = aerr.Details
@@ -161,6 +152,6 @@ func WriteAuthError(w http.ResponseWriter, err error, authenticated bool) (int, 
 			smoothErr.Details = aerr.Err.Error()
 		}
 	}
-	heligo.WriteJSON(w, aerr.Status, smoothErr)
+	writeErrorBody(w, aerr.Status, smoothErr)
 	return aerr.Status, err
 }

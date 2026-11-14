@@ -65,8 +65,8 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 
 		if ok, wait := limiter.Allow(clientIP(r.RemoteAddr)); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-			return heligo.WriteJSON(w, http.StatusTooManyRequests,
-				SmoothError{Subsystem: "auth", Message: "too many login attempts, retry later"})
+			return writeErrorBody(w, http.StatusTooManyRequests,
+				SmoothError{Message: "too many login attempts, retry later"})
 		}
 		r.Body = authn.LimitBody(w, r.Body, apiHelper.RequestMaxBytes())
 		err := r.ReadJSON(&credentials)
@@ -91,7 +91,7 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 				// the database and the dial address, and carries the server's
 				// FATAL text. The caller is unauthenticated: it gets a fixed
 				// message, the request log gets the cause.
-				heligo.WriteJSON(w, http.StatusBadRequest, SmoothError{Subsystem: "auth", Message: "invalid credentials"})
+				writeErrorBody(w, http.StatusBadRequest, SmoothError{Message: "invalid credentials"})
 				return http.StatusBadRequest, err
 			}
 		case "gotrue":
@@ -120,10 +120,9 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 				} else {
 					message = "See details for the Auth / GoTrue error"
 				}
-				heligo.WriteJSON(w, status, SmoothError{
-					Subsystem: "auth",
-					Message:   message,
-					Details:   errorMessage})
+				writeErrorBody(w, status, SmoothError{
+					Message: message,
+					Details: errorMessage})
 				return status, err
 			}
 		default:

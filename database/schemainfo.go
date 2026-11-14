@@ -31,6 +31,11 @@ type Relationship struct {
 	JColumns        []string
 	JRelatedColumns []string
 	ForeignKey      string
+	// The two constraints of an M2M junction, as PostgREST's Junction names
+	// them: JForeignKey goes from the junction to Table, JRelatedForeignKey
+	// from the junction to RelatedTable. The error bodies use them.
+	JForeignKey        string
+	JRelatedForeignKey string
 	// Computed relationship fields
 	FunctionName   string // function name (e.g., "read_principals")
 	FunctionSchema string // function schema (e.g., "public")
@@ -52,6 +57,7 @@ type SchemaInfo struct {
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
+	functions               functionIndex         // every function by name, see noRpc
 	// the primary key columns of a view, inferred from its base tables
 	// (see addViewPrimaryKeys)
 	cachedViewPrimaryKeys map[string][]string
@@ -185,6 +191,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	dbi.cachedFunctions = cacheFunctions(functions)
+	dbi.functions = indexFunctions(functions)
 	// Computed relationships: detect functions with a single IN argument of table type
 	for _, f := range functions {
 		// Count IN arguments (mode 0 means default=IN, 'i' means explicit IN)
@@ -519,26 +526,30 @@ func (si *SchemaInfo) addM2MRelationships(fkeys []ForeignKey) {
 
 	rels := [2]Relationship{
 		{
-			Type:            M2M,
-			Table:           ftable,
-			Columns:         fkeys[0].RelatedColumns,
-			RelatedTable:    freltable,
-			RelatedColumns:  fkeys[1].RelatedColumns,
-			JunctionTable:   fjtable,
-			JColumns:        fkeys[0].Columns,
-			JRelatedColumns: fkeys[1].Columns,
-			ForeignKey:      fkeys[0].Name,
+			Type:               M2M,
+			Table:              ftable,
+			Columns:            fkeys[0].RelatedColumns,
+			RelatedTable:       freltable,
+			RelatedColumns:     fkeys[1].RelatedColumns,
+			JunctionTable:      fjtable,
+			JColumns:           fkeys[0].Columns,
+			JRelatedColumns:    fkeys[1].Columns,
+			ForeignKey:         fkeys[0].Name,
+			JForeignKey:        fkeys[0].Name,
+			JRelatedForeignKey: fkeys[1].Name,
 		},
 		{
-			Type:            M2M,
-			Table:           freltable,
-			Columns:         fkeys[1].RelatedColumns,
-			RelatedTable:    ftable,
-			RelatedColumns:  fkeys[0].RelatedColumns,
-			JunctionTable:   fjtable,
-			JColumns:        fkeys[1].Columns,
-			JRelatedColumns: fkeys[0].Columns,
-			ForeignKey:      fkeys[1].Name,
+			Type:               M2M,
+			Table:              freltable,
+			Columns:            fkeys[1].RelatedColumns,
+			RelatedTable:       ftable,
+			RelatedColumns:     fkeys[0].RelatedColumns,
+			JunctionTable:      fjtable,
+			JColumns:           fkeys[1].Columns,
+			JRelatedColumns:    fkeys[0].Columns,
+			ForeignKey:         fkeys[1].Name,
+			JForeignKey:        fkeys[1].Name,
+			JRelatedForeignKey: fkeys[0].Name,
 		},
 	}
 
@@ -778,13 +789,15 @@ func (si *SchemaInfo) addViewRelationships(deps []ViewColDep) {
 							Type: M2M, Table: fts, Columns: ts.cols,
 							RelatedTable: frs, RelatedColumns: rs.cols,
 							JunctionTable: fjs, JColumns: jCols, JRelatedColumns: jRelCols,
-							ForeignKey: rel.ForeignKey,
+							ForeignKey:  rel.ForeignKey,
+							JForeignKey: rel.JForeignKey, JRelatedForeignKey: rel.JRelatedForeignKey,
 						})
 						si.cachedRelationships[frs] = append(si.cachedRelationships[frs], Relationship{
 							Type: M2M, Table: frs, Columns: rs.cols,
 							RelatedTable: fts, RelatedColumns: ts.cols,
 							JunctionTable: fjs, JColumns: jRelCols, JRelatedColumns: jCols,
-							ForeignKey: rel.ForeignKey,
+							ForeignKey:  rel.ForeignKey,
+							JForeignKey: rel.JRelatedForeignKey, JRelatedForeignKey: rel.JForeignKey,
 						})
 					}
 				}

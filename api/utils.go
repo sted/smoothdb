@@ -32,28 +32,78 @@ func SetVerboseErrors(v bool) {
 	verboseErrors = v
 }
 
-// SmoothError is the generic struct for error reporting
+// SmoothError is an error body, in PostgREST's shape (Error.hs,
+// errorPayload): code, details, hint and message. Code is a PGRST code for
+// an error that smoothdb decides, the SQLSTATE for a database error, and ""
+// for an error that PostgREST does not have. Details is a string or a JSON
+// value. An empty Details or Hint is written as null.
 type SmoothError struct {
-	Subsystem string `json:"subsystem"`
-	Message   string `json:"message"`
-	Code      string `json:"code"`
-	Hint      string `json:"hint"`
-	Details   any    `json:"details"`
-	Position  int32  `json:"position"`
+	Code    string
+	Message string
+	Details any
+	Hint    string
+}
+
+// errorBody is the JSON of a SmoothError. The fields are in the order that
+// PostgREST writes them: aeson sorts the keys of an object.
+type errorBody struct {
+	Code    string `json:"code"`
+	Details any    `json:"details"`
+	Hint    any    `json:"hint"`
+	Message string `json:"message"`
+}
+
+// writeErrorBody writes an error with its status. The JSON escapes no HTML
+// character, as aeson does, so the Content-Length is PostgREST's. The JSON
+// encoder is acceptable here: an error body is small and not on the path of
+// the rows.
+func writeErrorBody(w http.ResponseWriter, status int, e SmoothError) (int, error) {
+	body := errorBody{Code: e.Code, Message: e.Message}
+	if s, ok := e.Details.(string); !ok || s != "" {
+		body.Details = e.Details
+	}
+	if e.Hint != "" {
+		body.Hint = e.Hint
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(body); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return http.StatusInternalServerError, err
+	}
+	data := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	if e.Code != "" {
+		// PostgREST names the code of every error in this header (RFC 9209)
+		w.Header().Set("Proxy-Status", "PostgREST; error="+e.Code)
+	}
+	w.WriteHeader(status)
+	_, err := w.Write(data)
+	return status, err
 }
 
 // WriteBadRequest writes a BadRequest or StatusRequestEntityTooLarge status
 func WriteBadRequest(w http.ResponseWriter, err error) (int, error) {
 	var status int
-	smootherr := SmoothError{Message: err.Error(), Subsystem: "network"}
+	smootherr := SmoothError{Message: err.Error()}
 	if maxbyteserr, ok := err.(*http.MaxBytesError); ok {
 		status = http.StatusRequestEntityTooLarge
 		smootherr.Details = fmt.Sprintf("RequestMaxBytes is configured as %d", maxbyteserr.Limit)
 	} else {
 		status = http.StatusBadRequest
 	}
-	heligo.WriteJSON(w, status, smootherr)
+	writeErrorBody(w, status, smootherr)
 	return status, err
+}
+
+// writeRequestError writes an error that smoothdb decides before the
+// database runs the request, with its PGRST code.
+func writeRequestError(w http.ResponseWriter, err *database.RequestError) (int, error) {
+	return writeErrorBody(w, err.Status, SmoothError{
+		Code: err.Code, Message: err.Message, Details: err.Details, Hint: err.Hint,
+	})
 }
 
 // WriteServerError write a status related to a database error
@@ -72,14 +122,14 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 		if verboseErrors {
 			msg = err.Error()
 		}
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "auth", Message: msg})
+		writeErrorBody(w, status, SmoothError{Message: msg})
 	} else {
 		status = http.StatusInternalServerError
 		msg := "internal server error"
 		if verboseErrors {
 			msg = err.Error()
 		}
-		heligo.WriteJSON(w, status, SmoothError{Message: msg})
+		writeErrorBody(w, status, SmoothError{Message: msg})
 	}
 	return status, err
 }
@@ -87,38 +137,70 @@ func WriteServerError(w http.ResponseWriter, err error) (int, error) {
 // WriteError is the more general error function, combining the previous two.
 func WriteError(w http.ResponseWriter, err error) (int, error) {
 	var status int
-	switch err.(type) {
-	case *database.ParseError, *database.BuildError, *jqeval.Error:
+	switch e := err.(type) {
+	case *database.RequestError:
+		writeRequestError(w, e)
+		return e.Status, err
+	case *database.ParseError:
+		code, message, details := e.Body()
+		writeErrorBody(w, http.StatusBadRequest, SmoothError{Code: code, Message: message, Details: details})
+		return http.StatusBadRequest, err
+	case *database.BuildError, *jqeval.Error:
 		return WriteBadRequest(w, err)
 	case *database.CodedParseError:
+		// a parse error with a code of its own, such as PGRST123
 		status = http.StatusBadRequest
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Code: err.(*database.CodedParseError).Code})
+		writeErrorBody(w, status, SmoothError{Code: e.Code, Message: e.Msg})
 		return status, err
 	case *database.SchemaError:
+		// PostgREST's UnacceptableSchema (PGRST106)
 		status = http.StatusNotAcceptable
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.SchemaError).Hint})
+		writeErrorBody(w, status, SmoothError{Code: "PGRST106", Message: err.Error(), Hint: e.Hint})
 		return status, err
 	case *database.AmbiguousFunctionError:
-		// PostgREST answers 300 Multiple Choices, with no choice to follow
+		// PostgREST's AmbiguousRpc (PGRST203): 300 Multiple Choices, with no
+		// choice to follow
 		status = http.StatusMultipleChoices
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.AmbiguousFunctionError).Hint})
+		writeErrorBody(w, status, SmoothError{Code: "PGRST203", Message: err.Error(), Hint: e.Hint})
 		return status, err
 	case *database.FunctionNotFoundError:
+		// PostgREST's NoRpc (PGRST202)
 		status = http.StatusNotFound
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "database", Message: err.Error()})
+		writeErrorBody(w, status, SmoothError{Code: "PGRST202", Message: err.Error()})
 		return status, err
-	case *database.SerializeError, *database.ContentTypeError, *database.CardinalityError:
+	case *database.CardinalityError:
+		// PostgREST's SingularityError (PGRST116)
 		status = http.StatusNotAcceptable
-		w.WriteHeader(status)
+		writeErrorBody(w, status, SmoothError{
+			Code:    "PGRST116",
+			Message: "Cannot coerce the result to a single JSON object",
+			Details: "The result contains " + strconv.FormatInt(e.Rows, 10) + " rows",
+		})
+		return status, err
+	case *database.ContentTypeError:
+		// PostgREST's MediaTypeError (PGRST107)
+		status = http.StatusNotAcceptable
+		writeErrorBody(w, status, SmoothError{Code: "PGRST107", Message: err.Error()})
+		return status, err
+	case *database.SerializeError:
+		// A value that the serializer cannot decode is the server's fault,
+		// not a failed content negotiation. PostgREST builds the body in SQL
+		// and has no such error.
+		status = http.StatusInternalServerError
+		msg := "internal server error"
+		if verboseErrors {
+			msg = err.Error()
+		}
+		writeErrorBody(w, status, SmoothError{Message: msg})
 		return status, err
 	case *database.PutError:
-		e := err.(*database.PutError)
+		// PostgREST's PGRST105, PGRST114 and PGRST115 of a PUT
 		status = e.Status
-		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: e.Message, Code: e.Code})
+		writeErrorBody(w, status, SmoothError{Code: e.Code, Message: e.Message})
 		return status, err
 	case *database.RangeError:
 		status = http.StatusRequestedRangeNotSatisfiable
-		w.WriteHeader(status)
+		writeErrorBody(w, status, SmoothError{Code: "PGRST103", Message: err.Error()})
 		return status, err
 	default:
 		return WriteServerError(w, err)
@@ -498,10 +580,9 @@ func WriteRangeNotSatisfiable(ctx context.Context, w http.ResponseWriter) (int, 
 	options := database.GetQueryOptions(ctx)
 	status := http.StatusRequestedRangeNotSatisfiable
 	setContentProfile(w, options)
-	return heligo.WriteJSON(w, status, SmoothError{
-		Subsystem: "network",
-		Message:   "Requested range not satisfiable",
-		Code:      "PGRST103",
+	return writeErrorBody(w, status, SmoothError{
+		Message: "Requested range not satisfiable",
+		Code:    "PGRST103",
 		Details: fmt.Sprintf("An offset of %d was requested, but there are only %d rows.",
 			max(options.RangeMin, 0), options.Total),
 	})

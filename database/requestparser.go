@@ -86,12 +86,12 @@ func (node *WhereConditionNode) isContainer() bool {
 // RecursiveInfo holds the parameters for a recursive CTE query.
 // StartField/StartValue define the base case; RecurseField defines the FK to follow.
 type RecursiveInfo struct {
-	StartField   string // column for base case (e.g. "id")
-	StartValue   string // seed value (e.g. "5")
-	RecurseField string // FK column to follow (e.g. "manager_id")
-	MaxDepth     int    // max depth; -1 = unlimited (capped by server max)
-	ExcludeStart bool   // true when "after" operator is used instead of "start"
-	RecurseUp    bool   // true for recurse!up — follow the FK toward ancestors (single-table only)
+	StartField       string              // column for base case (e.g. "id")
+	StartValue       string              // seed value (e.g. "5")
+	RecurseField     string              // FK column to follow (e.g. "manager_id")
+	MaxDepth         int                 // max depth; -1 = unlimited (capped by server max)
+	ExcludeStart     bool                // true when "after" operator is used instead of "start"
+	RecurseUp        bool                // true for recurse!up — follow the FK toward ancestors (single-table only)
 	ViaTable         string              // edge table for multi-table recursion (empty = single-table)
 	ViaFromCol       string              // edge table column matching the start value (e.g. "src_id")
 	ViaToCol         string              // edge table column linking to main table's start field (e.g. "dst_id")
@@ -122,6 +122,9 @@ type QueryOptions struct {
 	// one schema is exposed (PostgREST ApiRequest.hs, getSchema)
 	SchemaNegotiated     bool
 	ContentType          string // json, csv
+	// InputContentType is the media type of the body of a POST to a function,
+	// set by the handler; the PGRST202 error names it
+	InputContentType     string
 	ReturnRepresentation bool
 	// Return is the return preference: "representation", "minimal",
 	// "headers-only", or "" when the request sends none
@@ -163,6 +166,9 @@ type QueryOptions struct {
 	// set by the executor of an insert with return=headers-only: the rows
 	// go to a LocationSerializer
 	locate bool
+	// acceptedTypes lists the media types of an Accept header that no
+	// representation matches, for the PGRST107 error
+	acceptedTypes string
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -200,7 +206,9 @@ func isNonNegativeInt(s string) bool {
 }
 
 type ParseError struct {
-	msg string // description of error
+	msg     string // description of error
+	message string // the message of PostgREST's body, when it differs from msg
+	details string // the details of PostgREST's body
 }
 
 func (e ParseError) Error() string { return e.msg }
@@ -214,10 +222,21 @@ type CodedParseError struct {
 
 func (e CodedParseError) Error() string { return e.Msg }
 
+// Body returns the code, the message and the details of the error body. A
+// parseFailure has PostgREST's message shape: its code is PGRST100 (QPError)
+// and what went wrong is in the details. Another parse error has no code.
+func (e *ParseError) Body() (code, message, details string) {
+	if e.message != "" {
+		return "PGRST100", e.message, e.details
+	}
+	return "", e.msg, ""
+}
+
 // parseFailure is a parse error in PostgREST's message shape (PGRST100):
 // "failed to parse <what> (<input>)", then what went wrong.
 func parseFailure(what, input, detail string) *ParseError {
-	return &ParseError{"failed to parse " + what + " (" + input + "): " + detail}
+	message := "failed to parse " + what + " (" + input + ")"
+	return &ParseError{msg: message + ": " + detail, message: message, details: detail}
 }
 
 // wrapParseFailure puts a parse error of one parameter in PostgREST's message
@@ -265,36 +284,36 @@ func isReservedParameter(k string) bool {
 
 // From https://github.com/PostgREST/postgrest/blob/main/src/PostgREST/Query/SqlFragment.hs
 var postgRestParserOperators = map[string]string{
-	"eq":     "=",
-	"gte":    ">=",
-	"gt":     ">",
-	"lte":    "<=",
-	"lt":     "<",
-	"neq":    "<>",
-	"like":   "LIKE",
-	"ilike":  "ILIKE",
-	"match":  "~",
-	"imatch": "~*",
-	"in":     "IN",
-	"is":     "IS",
-	"cs":     "@>",
-	"cd":     "<@",
-	"ov":     "&&",
-	"sl":     "<<",
-	"sr":     ">>",
-	"nxr":    "&<",
-	"nxl":    "&>",
-	"adj":       "-|-",
+	"eq":         "=",
+	"gte":        ">=",
+	"gt":         ">",
+	"lte":        "<=",
+	"lt":         "<",
+	"neq":        "<>",
+	"like":       "LIKE",
+	"ilike":      "ILIKE",
+	"match":      "~",
+	"imatch":     "~*",
+	"in":         "IN",
+	"is":         "IS",
+	"cs":         "@>",
+	"cd":         "<@",
+	"ov":         "&&",
+	"sl":         "<<",
+	"sr":         ">>",
+	"nxr":        "&<",
+	"nxl":        "&>",
+	"adj":        "-|-",
 	"isdistinct": "IS DISTINCT FROM",
-	"fts":     "@@",
-	"plfts":   "@@",
-	"phfts":   "@@",
-	"wfts":    "@@",
-	"not":     "",  // just to be recognizable in filterParameters
-	"start":   "",  // recursive: base case seed (includes root)
-	"after":   "",  // recursive: base case seed (excludes root)
-	"recurse": "",  // recursive: FK traversal
-	"via":     "",  // recursive: edge table for multi-table traversal
+	"fts":        "@@",
+	"plfts":      "@@",
+	"phfts":      "@@",
+	"wfts":       "@@",
+	"not":        "", // just to be recognizable in filterParameters
+	"start":      "", // recursive: base case seed (includes root)
+	"after":      "", // recursive: base case seed (excludes root)
+	"recurse":    "", // recursive: FK traversal
+	"via":        "", // recursive: edge table for multi-table traversal
 }
 
 // isValidAggregateFunction checks if the given function name is a valid PostgREST aggregate function
@@ -695,16 +714,16 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 	if token == "" && quoted {
 		// a quoted empty name ("") names no column; a filter on it must
 		// never pass for a boolean node, which has no field
-		return f, &ParseError{"field name expected, found an empty name"}
+		return f, &ParseError{msg: "field name expected, found an empty name"}
 	}
 	if token == "" {
 		if mayBeEmpty {
 			token = "*"
 		} else {
-			return f, &ParseError{"field expected"}
+			return f, &ParseError{msg: "field expected"}
 		}
 	} else if !quoted && p.isSeparator(token) {
-		return f, &ParseError{"field expected, found " + strconv.Quote(token)}
+		return f, &ParseError{msg: "field expected, found " + strconv.Quote(token)}
 	}
 	if mayHaveTable {
 		// tables
@@ -726,7 +745,7 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 		p.next()
 		token = p.next()
 		if token == "" {
-			return f, &ParseError{"json path member expected"}
+			return f, &ParseError{msg: "json path member expected"}
 		}
 		if _, err = strconv.Atoi(token); err == nil {
 			f.jsonPath += token
@@ -748,7 +767,7 @@ func (p *PostgRestParser) field(mayHaveTable bool, mayBeEmpty bool) (f Field, er
 func (p *PostgRestParser) castType() (string, error) {
 	cast, quoted := p.nextQuoted()
 	if cast == "" || (!quoted && p.isSeparator(cast)) {
-		return "", &ParseError{"cast type expected after '::'"}
+		return "", &ParseError{msg: "cast type expected after '::'"}
 	}
 	for p.lookAhead() == "." {
 		next := p.cur + 1
@@ -802,7 +821,7 @@ func (p *PostgRestParser) selectList(rel *SelectRelation) (selectFields []Select
 	for p.lookAhead() == "," {
 		p.next() // consume the comma
 		if p.atEnd() {
-			return nil, &ParseError{"select item expected after ','"}
+			return nil, &ParseError{msg: "select item expected after ','"}
 		}
 		fields, err := p.selectItem(rel)
 		if err != nil {
@@ -822,7 +841,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	if token == "" {
 		if quoted {
 			// a quoted empty name ("") is not the end of the list
-			return nil, &ParseError{"field name expected, found an empty name"}
+			return nil, &ParseError{msg: "field name expected, found an empty name"}
 		}
 		return nil, nil
 	}
@@ -837,7 +856,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		explicitLabel = true
 		p.next() // consume ':'
 		if p.atEnd() {
-			return nil, &ParseError{"field expected after the label " + strconv.Quote(label)}
+			return nil, &ParseError{msg: "field expected after the label " + strconv.Quote(label)}
 		}
 		token = p.next() // get the next token after ':'
 	}
@@ -910,10 +929,10 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	// parameters), so reject anything that is not a valid type name before it
 	// can reach the query builder.
 	if cast != "" && !isValidCastType(cast) {
-		return nil, &ParseError{"invalid cast type: " + cast}
+		return nil, &ParseError{msg: "invalid cast type: " + cast}
 	}
 	if aggCast != "" && !isValidCastType(aggCast) {
-		return nil, &ParseError{"invalid cast type: " + aggCast}
+		return nil, &ParseError{msg: "invalid cast type: " + aggCast}
 	}
 	// Embed parameters, as PostgREST's pEmbedParams reads them: up to two
 	// '!' parameters in either order, each a join modifier (inner, left) or
@@ -923,7 +942,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 	var hintSeen, joinSeen bool
 	for n := 0; p.lookAhead() == "!"; n++ {
 		if n == 2 {
-			return nil, &ParseError{"unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
+			return nil, &ParseError{msg: "unexpected '!' after the embed parameters of " + strconv.Quote(field.name)}
 		}
 		p.next()
 		param, quoted := p.nextQuoted()
@@ -935,7 +954,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 			continue
 		}
 		if param == "" || (!quoted && isSelectSeparator(param)) {
-			return nil, &ParseError{"embed hint expected after '!'"}
+			return nil, &ParseError{msg: "embed hint expected after '!'"}
 		}
 		if !hintSeen {
 			fk = param
@@ -946,7 +965,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		// field
 
 		if spread {
-			return nil, &ParseError{"cannot use the spread operator on fields"}
+			return nil, &ParseError{msg: "cannot use the spread operator on fields"}
 		}
 		if rel != nil {
 			field.tablename = rel.name
@@ -967,14 +986,14 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		if parenToken == "()" {
 			isEmptyParens = true
 		} else if parenToken != "(" {
-			return nil, &ParseError{"'(' expected"}
+			return nil, &ParseError{msg: "'(' expected"}
 		}
 
 		if cast != "" {
-			return nil, &ParseError{"table cannot have cast"}
+			return nil, &ParseError{msg: "table cannot have cast"}
 		}
 		if aggregate != "" {
-			return nil, &ParseError{"table cannot have aggregate function"}
+			return nil, &ParseError{msg: "table cannot have aggregate function"}
 		}
 		var parent string
 		if rel != nil {
@@ -992,7 +1011,7 @@ func (p *PostgRestParser) selectItem(rel *SelectRelation) (selectFields []Select
 		// Consume closing parenthesis only if we consumed a separate ( token
 		if parenToken == "(" {
 			if p.next() != ")" {
-				return nil, &ParseError{") expected"}
+				return nil, &ParseError{msg: ") expected"}
 			}
 		}
 
@@ -1057,7 +1076,7 @@ func (p *PostgRestParser) orderList(table, o string) (fields []OrderField, err e
 
 	token := p.lookAhead()
 	if token == "" {
-		return nil, &ParseError{"order fields expected"}
+		return nil, &ParseError{msg: "order fields expected"}
 	}
 	for {
 		field, err := p.field(false, false)
@@ -1075,7 +1094,7 @@ func (p *PostgRestParser) orderList(table, o string) (fields []OrderField, err e
 				return nil, err
 			}
 			if p.lookAhead() != ")" {
-				return nil, &ParseError{"')' expected"}
+				return nil, &ParseError{msg: "')' expected"}
 			}
 			p.next() // consume )
 		}
@@ -1093,11 +1112,11 @@ func (p *PostgRestParser) orderList(table, o string) (fields []OrderField, err e
 		}
 		if value1 != "" &&
 			value1 != "asc" && value1 != "desc" && value1 != "nullsfirst" && value1 != "nullslast" {
-			return nil, &ParseError{"asc, desc, nullsfirst or nullslast expected"}
+			return nil, &ParseError{msg: "asc, desc, nullsfirst or nullslast expected"}
 		}
 		if value2 != "" &&
 			value2 != "asc" && value2 != "desc" && value2 != "nullsfirst" && value2 != "nullslast" {
-			return nil, &ParseError{"asc, desc, nullsfirst or nullslast expected"}
+			return nil, &ParseError{msg: "asc, desc, nullsfirst or nullslast expected"}
 		}
 
 		descending := false
@@ -1196,7 +1215,7 @@ func (p *PostgRestParser) rawValue(stop string) string {
 	if i := strings.IndexAny(p.src[start:], stop); i >= 0 {
 		end = start + i
 	}
-	for p.fill(p.cur+1); p.cur < len(p.tokens) && p.ends[p.cur] <= end; p.fill(p.cur + 1) {
+	for p.fill(p.cur + 1); p.cur < len(p.tokens) && p.ends[p.cur] <= end; p.fill(p.cur + 1) {
 		p.cur++
 	}
 	if p.cur < len(p.tokens) && p.quoted[p.cur] {
@@ -1268,7 +1287,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode, stop string) error {
 	vstart := p.ends[p.cur-1] // where the value begins in the source
 	if strings.Contains(stop, "}") && p.atValueEnd(stop) {
 		// eq(any).{}
-		return &ParseError{"value expected"}
+		return &ParseError{msg: "value expected"}
 	}
 	token, quoted := p.nextQuoted()
 	value := token
@@ -1336,7 +1355,7 @@ func (p *PostgRestParser) value(node *WhereConditionNode, stop string) error {
 		lvalue := strings.ToLower(value)
 		if quoted || (lvalue != "null" && lvalue != "true" && lvalue != "false" &&
 			lvalue != "unknown" && lvalue != "not_null") {
-			return &ParseError{"IS operator requires null, not_null, true, false or unknown"}
+			return &ParseError{msg: "IS operator requires null, not_null, true, false or unknown"}
 		}
 		value = lvalue
 	} else if quoted {
@@ -1364,16 +1383,16 @@ func (p *PostgRestParser) booleanOp(table string, node *WhereConditionNode) (err
 	if token == "not" {
 		node.not = true
 		if p.next() != "." {
-			return &ParseError{"'.' expected"}
+			return &ParseError{msg: "'.' expected"}
 		}
 		token = p.next()
 	}
 	if token != "and" && token != "or" {
-		return &ParseError{"boolean operator expected"}
+		return &ParseError{msg: "boolean operator expected"}
 	}
 	node.operator = strings.ToUpper(token)
 	if p.next() != "(" {
-		return &ParseError{"'(' expected"}
+		return &ParseError{msg: "'(' expected"}
 	}
 	err = p.cond(table, node)
 	if err != nil {
@@ -1388,7 +1407,7 @@ func (p *PostgRestParser) booleanOp(table string, node *WhereConditionNode) (err
 		token = p.next()
 	}
 	if token != ")" {
-		return &ParseError{"')' expected"}
+		return &ParseError{msg: "')' expected"}
 	}
 	return nil
 }
@@ -1397,7 +1416,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 	p.depth++
 	defer func() { p.depth-- }()
 	if p.depth > maxFilterDepth {
-		return &ParseError{"filter nesting too deep"}
+		return &ParseError{msg: "filter nesting too deep"}
 	}
 	p.nodes++
 	node := &WhereConditionNode{id: p.nodes}
@@ -1414,7 +1433,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			}
 			boolOpTable = append(boolOpTable, p.next())
 			if token = p.next(); token != "." {
-				return &ParseError{"'.' expected"}
+				return &ParseError{msg: "'.' expected"}
 			}
 		}
 		if len(boolOpTable) == 0 {
@@ -1463,13 +1482,13 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 			}
 		}
 		if p.next() != nextSep {
-			return &ParseError{"'=' expected"}
+			return &ParseError{msg: "'=' expected"}
 		}
 		token = p.next()
 		if token == "not" {
 			node.not = true
 			if p.next() != "." {
-				return &ParseError{"'.' expected"}
+				return &ParseError{msg: "'.' expected"}
 			}
 			token = p.next()
 		}
@@ -1477,7 +1496,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		// the keywords with an empty operator (not, start, ...) are no operator:
 		// a node without one is taken for a container by the WHERE builder
 		if !ok || op == "" {
-			return &ParseError{"valid sql operator expected"}
+			return &ParseError{msg: "valid sql operator expected"}
 		}
 		node.operator = op
 		node.opSource = token
@@ -1493,29 +1512,29 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 					}
 				}
 				if token != ")" {
-					return &ParseError{"')' expected"}
+					return &ParseError{msg: "')' expected"}
 				}
 				token = p.next()
 			} else {
 				// Operator modifier: like(any), eq(all), etc.
 				mod := p.next()
 				if mod != "any" && mod != "all" {
-					return &ParseError{"'any' or 'all' expected"}
+					return &ParseError{msg: "'any' or 'all' expected"}
 				}
 				node.opModifier = mod
 				if p.next() != ")" {
-					return &ParseError{"')' expected"}
+					return &ParseError{msg: "')' expected"}
 				}
 				token = p.next()
 			}
 		}
 		if token != "." {
-			return &ParseError{"'.' expected"}
+			return &ParseError{msg: "'.' expected"}
 		}
 		// value
 		if node.operator == "IN" {
 			if p.next() != "(" {
-				return &ParseError{"'(' expected"}
+				return &ParseError{msg: "'(' expected"}
 			}
 			p.skipSpaces()
 			for {
@@ -1529,7 +1548,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 				}
 			}
 			if token != ")" {
-				return &ParseError{"')' expected"}
+				return &ParseError{msg: "')' expected"}
 			}
 			if len(node.values) == 1 && node.values[0] == "" { // in.() is the empty set
 				node.values = nil
@@ -1537,7 +1556,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 		} else if node.opModifier != "" {
 			// Parse {v1,v2,...} for any/all modifiers
 			if p.next() != "{" {
-				return &ParseError{"'{' expected"}
+				return &ParseError{msg: "'{' expected"}
 			}
 			for {
 				err = p.value(node, ",}")
@@ -1550,7 +1569,7 @@ func (p *PostgRestParser) cond(mainTable string, parent *WhereConditionNode) (er
 				}
 			}
 			if token != "}" {
-				return &ParseError{"'}' expected"}
+				return &ParseError{msg: "'}' expected"}
 			}
 		} else {
 			// a top-level value runs to the end of the parameter (PostgREST
@@ -1578,7 +1597,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	// "public"."doc"."derived"."member_choices" and failed with 42601 as a 500,
 	// after a prepare, a query and a rollback. Refuse it here, before any SQL.
 	if strings.Contains(mainTable, ".") {
-		return nil, &ParseError{"invalid source name " + strconv.Quote(mainTable) +
+		return nil, &ParseError{msg: "invalid source name " + strconv.Quote(mainTable) +
 			": a table or function name cannot contain a dot; select the schema with the Accept-Profile or Content-Profile header"}
 	}
 	parts = &QueryParts{}
@@ -1684,7 +1703,10 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	// limit=100
 	if limitFilter, ok := filters["limit"]; ok {
 		if !isNonNegativeInt(limitFilter[0]) {
-			return nil, &ParseError{"limit must be a non-negative integer"}
+			if n, err := strconv.ParseInt(limitFilter[0], 10, 64); err == nil && n < 0 {
+				return nil, negativeLimit
+			}
+			return nil, &ParseError{msg: "limit must be a non-negative integer"}
 		}
 		parts.limit = limitFilter[0]
 		delete(filters, "limit")
@@ -1693,7 +1715,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	// offset=50
 	if offsetFilter, ok := filters["offset"]; ok {
 		if !isNonNegativeInt(offsetFilter[0]) {
-			return nil, &ParseError{"offset must be a non-negative integer"}
+			return nil, &ParseError{msg: "offset must be a non-negative integer"}
 		}
 		parts.offset = offsetFilter[0]
 		delete(filters, "offset")
@@ -1714,7 +1736,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						recInfo = &RecursiveInfo{MaxDepth: -1}
 					}
 					if recInfo.RecurseField != "" {
-						return nil, &ParseError{"only one 'recurse' operator is allowed"}
+						return nil, &ParseError{msg: "only one 'recurse' operator is allowed"}
 					}
 					recInfo.RecurseField = k
 					recInfo.RecurseUp = (v == "recurse!up")
@@ -1727,22 +1749,22 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 						recInfo = &RecursiveInfo{MaxDepth: -1}
 					}
 					if recInfo.ViaTable != "" {
-						return nil, &ParseError{"only one 'via' operator is allowed"}
+						return nil, &ParseError{msg: "only one 'via' operator is allowed"}
 					}
 					open := strings.IndexByte(v, '(')
 					if open < 0 { // via!x) ends in ")" but opens no list
-						return nil, &ParseError{"via requires two columns: via(from_col,to_col)"}
+						return nil, &ParseError{msg: "via requires two columns: via(from_col,to_col)"}
 					}
 					if head := v[:open]; head != "via" {
 						if head[len("via!"):] != "both" {
-							return nil, &ParseError{"via direction must be 'both': via!both(from_col,to_col)"}
+							return nil, &ParseError{msg: "via direction must be 'both': via!both(from_col,to_col)"}
 						}
 						recInfo.ViaBidirectional = true
 					}
 					args := v[open+1 : len(v)-1] // strip "via(" / "via!both(" prefix and ")"
 					cols := strings.SplitN(args, ",", 2)
 					if len(cols) != 2 || cols[0] == "" || cols[1] == "" {
-						return nil, &ParseError{"via requires two columns: via(from_col,to_col)"}
+						return nil, &ParseError{msg: "via requires two columns: via(from_col,to_col)"}
 					}
 					recInfo.ViaTable = k
 					recInfo.ViaFromCol = cols[0]
@@ -1758,7 +1780,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 				prefix = strings.TrimSuffix(prefix, "!up")
 				recurseUp = true
 				if prefix != "recurse" {
-					return nil, &ParseError{"'!up' is only valid on 'recurse'"}
+					return nil, &ParseError{msg: "'!up' is only valid on 'recurse'"}
 				}
 			}
 			switch prefix {
@@ -1767,7 +1789,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 					recInfo = &RecursiveInfo{MaxDepth: -1}
 				}
 				if recInfo.StartField != "" {
-					return nil, &ParseError{"only one 'start'/'after' operator is allowed"}
+					return nil, &ParseError{msg: "only one 'start'/'after' operator is allowed"}
 				}
 				recInfo.StartField = k
 				recInfo.StartValue = rest
@@ -1777,7 +1799,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 					recInfo = &RecursiveInfo{MaxDepth: -1}
 				}
 				if recInfo.RecurseField != "" {
-					return nil, &ParseError{"only one 'recurse' operator is allowed"}
+					return nil, &ParseError{msg: "only one 'recurse' operator is allowed"}
 				}
 				recInfo.RecurseField = k
 				recInfo.RecurseUp = recurseUp
@@ -1786,7 +1808,7 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 				} else {
 					depth, err := strconv.Atoi(rest)
 					if err != nil || depth < 1 {
-						return nil, &ParseError{"recurse depth must be a positive integer or 'all'"}
+						return nil, &ParseError{msg: "recurse depth must be a positive integer or 'all'"}
 					}
 					recInfo.MaxDepth = depth
 				}
@@ -1795,16 +1817,16 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 	}
 	if recInfo != nil {
 		if recInfo.StartField == "" {
-			return nil, &ParseError{"'recurse' requires a 'start' or 'after' operator"}
+			return nil, &ParseError{msg: "'recurse' requires a 'start' or 'after' operator"}
 		}
 		if recInfo.RecurseField == "" {
-			return nil, &ParseError{"'start' requires a 'recurse' operator"}
+			return nil, &ParseError{msg: "'start' requires a 'recurse' operator"}
 		}
 		if recInfo.ViaTable != "" && recInfo.StartField != recInfo.RecurseField {
-			return nil, &ParseError{"'via' requires 'start' and 'recurse' to use the same field"}
+			return nil, &ParseError{msg: "'via' requires 'start' and 'recurse' to use the same field"}
 		}
 		if recInfo.ViaTable != "" && recInfo.RecurseUp {
-			return nil, &ParseError{"'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns"}
+			return nil, &ParseError{msg: "'recurse!up' is single-table only; reverse a 'via' walk by swapping its columns"}
 		}
 		// Remove start/recurse/via from filters so they don't become WHERE clauses
 		delete(filters, recInfo.StartField)
@@ -1895,6 +1917,22 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 
 var rangeRe = regexp.MustCompile(`^(\d+)?-(\d+)?$`)
 
+// acceptedMediaTypes lists the media types of the Accept headers without
+// their parameters, separated by ", ", as PostgREST's MediaTypeError
+// (PGRST107) names them.
+func acceptedMediaTypes(headers []string) string {
+	var types []string
+	for _, h := range headers {
+		for _, t := range strings.Split(h, ",") {
+			t, _, _ = strings.Cut(t, ";")
+			if t = strings.TrimSpace(t); t != "" {
+				types = append(types, t)
+			}
+		}
+	}
+	return strings.Join(types, ", ")
+}
+
 func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 	header := req.Header
 	options := QueryOptions{}
@@ -1912,6 +1950,7 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 		options.ContentType = mediatype
 	default:
 		options.ContentType = "unknown/unknown"
+		options.acceptedTypes = acceptedMediaTypes(acceptHeaders)
 	}
 
 	preferValues := header.Values("Prefer")

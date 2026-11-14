@@ -483,7 +483,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			// relationship to the relation named, and only to that one
 			hrels := info.FindRelationshipsByHintCol(tableWithSchema, relationWithSchema, fk)
 			if len(hrels) > 1 {
-				return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+				return nil, ambiguousRelBetween(table, relation, hrels)
 			}
 			if len(hrels) == 1 {
 				rel = &hrels[0]
@@ -497,7 +497,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 			}
 		}
 		if rel == nil {
-			return nil, &BuildError{"cannot find relationship for table " + table + " with table " + relation}
+			return nil, noRelBetween(table, relation, fk, tableWithSchema, info)
 		}
 	case nrels == 1:
 		// ok, found a single relationship
@@ -506,7 +506,7 @@ func findRelationship(table, relation, fk, schema string, info *SchemaInfo) (rel
 		// a self relationship, we prioritize the O2M one
 		rel = &frels[1]
 	default:
-		return nil, &BuildError{"more than one possible relationship for table " + table + " with table " + relation}
+		return nil, ambiguousRelBetween(table, relation, frels)
 	}
 	return rel, nil
 }
@@ -829,16 +829,16 @@ func validateRelatedOrder(table, schema string, o OrderField, selectFields []Sel
 			case M2O, O2O:
 				// OK
 			case O2M, M2M:
-				return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+				return "", relatedOrderNotToOne(parentTable, o.relation)
 			case Computed:
 				if rel.ReturnIsSet {
-					return "", &BuildError{"A related order on '" + o.relation + "' is not possible"}
+					return "", relatedOrderNotToOne(parentTable, o.relation)
 				}
 			}
 			return sfLabel, nil
 		}
 	}
-	return "", &BuildError{"'" + o.relation + "' is not an embedded resource in this request"}
+	return "", notEmbedded(o.relation)
 }
 
 // appendNull appends a NULL operand: a NULL parameter.
@@ -924,7 +924,7 @@ func checkFiltersApplied(node *WhereConditionNode, skipRoot, withEmbeds bool, b 
 	}
 	if onEmbed {
 		if fs := b.filter(node); fs.level == 0 && fs.matched < len(node.field.relPath) {
-			return &BuildError{"'" + node.field.relPath[fs.matched] + "' is not an embedded resource in this request"}
+			return notEmbedded(node.field.relPath[fs.matched])
 		}
 	}
 	if container {
@@ -1491,7 +1491,7 @@ func checkColumns(table, schema string, parts *QueryParts, info *SchemaInfo) err
 	sort.Strings(cols)
 	for _, c := range cols {
 		if info.GetColumnType(_s(table, schema), c) == nil {
-			return &BuildError{"Could not find the '" + c + "' column of '" + table + "' in the schema cache"}
+			return columnNotFound(table, c)
 		}
 	}
 	return nil
@@ -1916,7 +1916,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		// a null element is not an object, even beside an empty one
 		for i := range records {
 			if records[i] == nil || !sameKeys(records[0], records[i]) {
-				return "", nil, &BuildError{"All object keys must match"}
+				return "", nil, invalidBody("All object keys must match")
 			}
 		}
 		fieldList = lo.Keys(records[0])
@@ -1955,7 +1955,7 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		if typed {
 			ct := info.GetColumnType(ftable, f)
 			if ct == nil {
-				return "", nil, &BuildError{"Could not find the '" + f + "' column of '" + table + "' in the schema cache"}
+				return "", nil, columnNotFound(table, f)
 			}
 			defs += quote(f) + " " + ct.DataType
 			kinds[i] = goValueKind(ct)
@@ -2374,13 +2374,13 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	// Determine effective max depth.
 	// MaxRecursiveDepth == 0 means recursive queries are disabled.
 	if dbe != nil && dbe.config.MaxRecursiveDepth == 0 {
-		return "", nil, &ParseError{"recursive queries are disabled"}
+		return "", nil, &ParseError{msg: "recursive queries are disabled"}
 	}
 
 	// Embedding (LEFT JOIN LATERAL) composes with single-table recursion only.
 	// Via-mode embedding would fight the min-depth dedup, so reject it cleanly.
 	if joins != "" && rec.ViaTable != "" {
-		return "", nil, &ParseError{"embedding is not supported with via() recursion"}
+		return "", nil, &ParseError{msg: "embedding is not supported with via() recursion"}
 	}
 
 	// __depth and __path are selectable (and orderable) pseudo-columns. Single-table
@@ -2995,7 +2995,7 @@ func buildSelect(table string, parts *QueryParts, options *QueryOptions, info *S
 
 	if parts.recursive != nil {
 		if groupByClause != "" {
-			return "", nil, &ParseError{"aggregate functions cannot be used with recursive queries"}
+			return "", nil, &ParseError{msg: "aggregate functions cannot be used with recursive queries"}
 		}
 		return buildRecursiveSelect(table, schema, parts, options,
 			selectClause, whereClause, orderClause, joins, st, info)
