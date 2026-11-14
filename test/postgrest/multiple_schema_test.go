@@ -8,18 +8,17 @@ import (
 
 // Ported from test/spec/Feature/Query/MultipleSchemaSpec.hs, which runs with
 // db-schemas = v1, v2, SPECIAL "@/\#~_- (v1 the default). The schemas and
-// their tables are in the fixtures, but TestMain exposes only test and تست,
-// so every case here needs a configuration the suite lacks. The two cases on
-// an unknown schema, and the OpenAPI one, do not depend on which schemas are
-// exposed: they are ported in schema_profile_test.go against the suite's own.
+// their tables are in the fixtures; the cases run on a variant server (see
+// withVariant) that exposes them. The two cases on an unknown schema, and the
+// OpenAPI one, do not depend on which schemas are exposed: they are ported in
+// schema_profile_test.go against the suite's own.
 func TestPostgREST_MultipleSchema(t *testing.T) {
 
 	const (
-		msConfig  = "needs configuration Database.ExposedSchemas v1, v2, SPECIAL \"@/\\#~_- (TestMain exposes test, تست)"
-		msProfile = msConfig + "; and PostgREST 16.4: the response names its schema in a Content-Profile header; no card"
-		msMedia   = "PostgREST 16.4: a media type handler (a domain named after the type) answers text/plain and custom types; card 32503 (media types); and " + msConfig
-		msPut     = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put); and " + msConfig
-		msOpenAPI = "PostgREST 16.4: the root endpoint serves the OpenAPI description of the selected schema; card 32493 (openapi); and " + msConfig
+		msProfile = "PostgREST 16.4: the response names its schema in a Content-Profile header; no card"
+		msMedia   = "PostgREST 16.4: a media type handler (a domain named after the type) answers text/plain and custom types; card 32503 (media types)"
+		msPut     = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put)"
+		msOpenAPI = "PostgREST 16.4: the root endpoint serves the OpenAPI description of the selected schema; card 32493 (openapi)"
 	)
 
 	tests := []test.Test{
@@ -114,7 +113,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Query:       "/another_table",
 			Headers:     test.Headers{"Accept-Profile": {"v1"}},
 			Status:      404,
-			Skip:        msConfig,
 		},
 		//         it "succeeds in reading a table from a schema with uppercase and special characters in its name" $
 		//           request methodGet "/names?select=id,name" [("Accept-Profile", "SPECIAL \"@/\\#~_-")] ""
@@ -618,5 +616,12 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 		},
 	}
 
-	test.Execute(t, testConfig, tests)
+	// The schemas of the spec are exposed only on a variant server. Its
+	// requests name a schema only where the spec does.
+	withVariant(t, map[string]any{
+		"Database.ExposedSchemas": []string{"v1", "v2", "SPECIAL \"@/\\#~_-"},
+	}, false, func(cfg test.Config) {
+		cfg.CommonHeaders = test.Headers{"Authorization": testConfig.CommonHeaders["Authorization"]}
+		test.Execute(t, cfg, tests)
+	})
 }

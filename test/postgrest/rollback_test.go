@@ -11,7 +11,8 @@ import (
 // mirror them, quoting the hspec they port. The suite runs with
 // TransactionMode rollback-allow-override, PostgREST's baseCfg
 // (tx-rollback-all = true, tx-allow-override = true): the "allowed" block
-// runs, the other two need a TransactionMode TestMain does not set.
+// runs on the suite server. The other two run on a variant server (see
+// withVariant) with TransactionMode commit and rollback.
 //
 // PostgREST answers Preference-Applied: tx=... when it honours a Prefer tx;
 // smoothdb sends no Preference-Applied. A case asserting it runs without that
@@ -565,18 +566,20 @@ func TestPostgREST_RollbackAllowed(t *testing.T) {
 //	    preferRollback `shouldPersistMutations` withoutPreferenceApplied
 //	    preferRollback `shouldRaiseExceptions` withoutPreferenceApplied
 func TestPostgREST_RollbackDisallowed(t *testing.T) {
-	const skip = "needs configuration Database.TransactionMode commit (PostgREST tx-rollback-all = false, tx-allow-override = false); TestMain sets rollback-allow-override"
 	var tests []test.Test
 	for _, b := range []rbBlock{
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, skip: skip},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, skip: skip},
-		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, skip: skip},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, deferredSkip: rollbackCommitError},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, deferredSkip: rollbackCommitError},
+		{ctx: "tx-rollback-all = false, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, deferredSkip: rollbackCommitError},
 	} {
 		tests = append(tests, b.shouldRespondToReads()...)
 		tests = append(tests, b.shouldPersistMutations()...)
 		tests = append(tests, b.shouldRaiseExceptions()...)
 	}
-	test.Execute(t, testConfig, tests)
+	// the cases commit their writes: they run on a copy of pgrest
+	withVariant(t, map[string]any{"Database.TransactionMode": "commit"}, true, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }
 
 // forced :: SpecWithConfig
@@ -604,16 +607,18 @@ func TestPostgREST_RollbackDisallowed(t *testing.T) {
 //	    preferRollback `shouldNotPersistMutations` withoutPreferenceApplied
 //	    preferRollback `shouldRaiseExceptions` withoutPreferenceApplied
 func TestPostgREST_RollbackForced(t *testing.T) {
-	const skip = "needs configuration Database.TransactionMode rollback (PostgREST tx-rollback-all = true, tx-allow-override = false); TestMain sets rollback-allow-override"
 	var tests []test.Test
 	for _, b := range []rbBlock{
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, skip: skip},
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, skip: skip},
-		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, skip: skip},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, without Prefer tx: ", prefer: preferDefault, deferredSkip: rollbackDeferred},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=commit: ", prefer: preferCommit, deferredSkip: rollbackDeferred},
+		{ctx: "tx-rollback-all = true, tx-allow-override = false, Prefer tx=rollback: ", prefer: preferRollback, deferredSkip: rollbackDeferred},
 	} {
 		tests = append(tests, b.shouldRespondToReads()...)
 		tests = append(tests, b.shouldNotPersistMutations()...)
 		tests = append(tests, b.shouldRaiseExceptions()...)
 	}
-	test.Execute(t, testConfig, tests)
+	// every transaction rolls back: the cases can run on pgrest
+	withVariant(t, map[string]any{"Database.TransactionMode": "rollback"}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }

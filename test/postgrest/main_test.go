@@ -1,6 +1,7 @@
 package postgrest
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -19,8 +20,10 @@ var testConfig test.Config
 // where a card and the spec disagree. See README.md in this directory.
 const PostgRESTVersion = "16.4"
 
-func TestMain(m *testing.M) {
-	c := map[string]any{
+// suiteConfig is the configuration of the suite server. A variant server
+// (see withVariant) starts from it and changes some keys.
+func suiteConfig() map[string]any {
+	return map[string]any{
 		"Address":                   "localhost:8084",
 		"VerboseErrors":             true, // the suites assert hint/details in error bodies
 		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
@@ -40,6 +43,15 @@ func TestMain(m *testing.M) {
 		// PostgREST's test config: 42501 is 401 for it and 403 for the others
 		"Database.AnonRole": "postgrest_test_anonymous",
 	}
+}
+
+// suiteServer is the running suite server. withVariant stops it and starts
+// it again.
+var suiteServer *server.Server
+
+// startServer starts a server with the configuration c and waits until it
+// answers.
+func startServer(c map[string]any) (*server.Server, error) {
 	s, err := server.NewServerWithConfig(c,
 		&server.ConfigOptions{
 			ConfigFilePath: "../../config.jsonc",
@@ -47,8 +59,22 @@ func TestMain(m *testing.M) {
 			SkipFlags: true,
 		})
 	if err != nil {
+		return nil, err
+	}
+	go s.Start()
+	if err := test.WaitForServer("http://" + c["Address"].(string)); err != nil {
+		s.Shutdown(context.Background())
+		return nil, err
+	}
+	return s, nil
+}
+
+func TestMain(m *testing.M) {
+	s, err := startServer(suiteConfig())
+	if err != nil {
 		log.Fatal(err)
 	}
+	suiteServer = s
 
 	postgresToken, _ := authn.GenerateToken("postgres", s.JWTSecret())
 	anonymousToken, _ := authn.GenerateToken("postgrest_test_anonymous", s.JWTSecret())
@@ -60,11 +86,6 @@ func TestMain(m *testing.M) {
 			"Accept-Profile":  {"test"},
 			"Content-Profile": {"test"},
 		},
-	}
-
-	go s.Start()
-	if err := test.WaitForServer("http://localhost:8084"); err != nil {
-		log.Fatal(err)
 	}
 
 	// Tear-up

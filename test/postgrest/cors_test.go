@@ -8,23 +8,16 @@ import (
 
 // Ported from test/spec/Feature/CorsSpec.hs. smoothdb answers CORS through
 // rs/cors (server/cors.go), registered only when CORSAllowedOrigins is not
-// empty. TestMain sets no CORS configuration, so the suite's CORS state is
-// whatever the git-ignored config.jsonc it reads holds: a fresh one is written
-// with the shipped default, an empty list, which turns CORS off. So every
-// case is skipped for its configuration; checked here with ["*"] (a local
-// config.jsonc written by an older smoothdb), only the first request of
-// "allows INFO body ..." passes, and the reasons name what the others lack
-// beyond the configuration.
+// empty. TestMain sets no CORS configuration, so each spec block runs on a
+// variant server (see withVariant) with the CORS configuration of the block.
 func TestPostgREST_Cors(t *testing.T) {
 
 	const (
-		corsAll     = "needs configuration CORSAllowedOrigins [\"*\"] (TestMain sets none; a fresh config.jsonc has the shipped default, an empty list, which turns CORS off)"
-		corsOrigins = "needs configuration CORSAllowedOrigins http://example.com, http://example2.com and CORSAllowCredentials (TestMain sets neither)"
 		// rs/cors answers a preflight 204, and aborts it, with no CORS
 		// header at all, when a requested header is not in its fixed list
 		// or is not written in lowercase
 		corsPreflight = "PostgREST 16.4: a preflight answers 200, allowing every method and whatever headers it asks for; card 32497 (options cors)"
-		corsNoOrigin  = "PostgREST 16.4: Access-Control-Allow-Origin: * on every response, a request without Origin too; card 32497 (options cors); and " + corsAll
+		corsNoOrigin  = "PostgREST 16.4: Access-Control-Allow-Origin: * on every response, a request without Origin too; card 32497 (options cors)"
 	)
 
 	tests := []test.Test{
@@ -65,7 +58,7 @@ func TestPostgREST_Cors(t *testing.T) {
 				"Access-Control-Max-Age":       "86400",
 			},
 			Status: 200,
-			Skip:   corsPreflight + "; and " + corsAll,
+			Skip:   corsPreflight,
 		},
 		//   it "exposes necesssary response headers to regular request" $
 		//     request
@@ -90,7 +83,7 @@ func TestPostgREST_Cors(t *testing.T) {
 				"Access-Control-Expose-Headers": "Content-Encoding, Content-Location, Content-Range, Content-Type, Date, Location, Server, Transfer-Encoding, Range-Unit",
 			},
 			Status: 200,
-			Skip:   "PostgREST 16.4: Access-Control-Expose-Headers lists Content-Range, Location and the other response headers a client reads; card 32497 (options cors); and " + corsAll,
+			Skip:   "PostgREST 16.4: Access-Control-Expose-Headers lists Content-Range, Location and the other response headers a client reads; card 32497 (options cors)",
 		},
 		//   it "allows INFO body through even with CORS request headers present to postflight request" $ do
 		//     request
@@ -122,7 +115,6 @@ func TestPostgREST_Cors(t *testing.T) {
 			},
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "*"},
-			Skip:            corsAll,
 		},
 		//     request
 		//       methodOptions
@@ -158,6 +150,12 @@ func TestPostgREST_Cors(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "*"},
 			Skip:            corsNoOrigin,
 		},
+	}
+	withVariant(t, map[string]any{"CORSAllowedOrigins": []string{"*"}}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
+
+	tests = []test.Test{
 		// withConfig baseCfg{configServerCorsAllowedOrigins = ["http://example.com", "http://example2.com"]} $
 		//   describe "test preflight/non-preflight request and cors server allowed config" $ do
 		//     it "OPTIONS preflight request should return Access-Control-Allow-Origin equal to origin" $
@@ -193,7 +191,7 @@ func TestPostgREST_Cors(t *testing.T) {
 				"Access-Control-Allow-Credentials": "true",
 			},
 			Status: 200,
-			Skip:   corsPreflight + "; and " + corsOrigins,
+			Skip:   corsPreflight,
 		},
 		//     it "GET no preflight request should return Access-Control-Allow-Origin equal to origin" $
 		//       request
@@ -214,7 +212,6 @@ func TestPostgREST_Cors(t *testing.T) {
 			Headers:         test.Headers{"Accept": {"*/*"}, "Origin": {"http://example.com"}},
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": "http://example.com"},
 			Status:          200,
-			Skip:            corsOrigins,
 		},
 		//     it "GET no preflight request should not return Access-Control-Allow-Origin" $
 		//       request
@@ -235,8 +232,16 @@ func TestPostgREST_Cors(t *testing.T) {
 			Headers:         test.Headers{"Accept": {"*/*"}, "Origin": {"http://invalid.com"}},
 			ExpectedHeaders: map[string]string{"Access-Control-Allow-Origin": ""},
 			Status:          200,
-			Skip:            corsOrigins,
 		},
+	}
+	withVariant(t, map[string]any{
+		"CORSAllowedOrigins":   []string{"http://example.com", "http://example2.com"},
+		"CORSAllowCredentials": true,
+	}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
+
+	tests = []test.Test{
 		// withConfig baseCfg{configServerCorsAllowedOrigins = []} $
 		//   describe "test preflight request with empty cors allowed origin config" $
 		//     it "OPTIONS preflight request should allow all origins when config is not set or empty" $
@@ -275,6 +280,7 @@ func TestPostgREST_Cors(t *testing.T) {
 			Skip:   "PostgREST 16.4: an empty CORSAllowedOrigins allows every origin, where smoothdb turns CORS off; card 32497 (options cors); and " + corsPreflight[len("PostgREST 16.4: "):],
 		},
 	}
-
-	test.Execute(t, testConfig, tests)
+	withVariant(t, map[string]any{"CORSAllowedOrigins": []string{}}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }

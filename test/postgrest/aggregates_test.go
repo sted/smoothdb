@@ -510,9 +510,8 @@ func TestPostgREST_Aggregates(t *testing.T) {
 
 // TestPostgREST_AggregatesDisallowed ports the spec's "disallowed", which runs
 // PostgREST with db-aggregates-enabled off. The suite's server has aggregates
-// on, so the cases are skipped. Run by hand with Database.AggregatesEnabled
-// false, smoothdb answers each with a 400 and this message, code "" for
-// PGRST123, card 32494 (error taxonomy).
+// on, so the cases run on a variant server with Database.AggregatesEnabled
+// false.
 func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 
 	tests := []test.Test{
@@ -523,7 +522,6 @@ func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 			Headers:     nil,
 			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
 			Status:      400,
-			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
 		},
 		{
 			Description: "prevents the use of aggregates on embedded relationships",
@@ -531,7 +529,6 @@ func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 			Headers:     nil,
 			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
 			Status:      400,
-			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
 		},
 		{
 			Description: "prevents the use of aggregates on to-one spread embeds",
@@ -539,7 +536,6 @@ func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 			Headers:     nil,
 			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
 			Status:      400,
-			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
 		},
 		{
 			Description: "prevents the use of aggregates on to-many spread embeds",
@@ -547,9 +543,10 @@ func TestPostgREST_AggregatesDisallowed(t *testing.T) {
 			Headers:     nil,
 			Expected:    `{"subsystem":"network","message":"Use of aggregate functions is not allowed","code":"PGRST123","hint":"","details":null,"position":0}`,
 			Status:      400,
-			Skip:        "needs configuration Database.AggregatesEnabled=false, which main_test.go does not set",
 		},
 	}
 
-	test.Execute(t, testConfig, tests)
+	withVariant(t, map[string]any{"Database.AggregatesEnabled": false}, false, func(cfg test.Config) {
+		test.Execute(t, cfg, tests)
+	})
 }
