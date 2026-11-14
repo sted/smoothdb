@@ -76,6 +76,29 @@ func InitSourcesRouter(apiHelper Helper) {
 		}
 	})
 
+	api.Handle("PUT", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		sourcename := r.Param("sourcename")
+		records, body, status, err := readRequest(c, w, r)
+		if err != nil || status != 0 {
+			return status, err
+		}
+		data, count, err := database.UpsertRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
+		if err != nil {
+			return WriteError(w, err)
+		}
+		SetResponseHeaders(c, w, r, count)
+		if data == nil {
+			return heligo.WriteHeader(w, http.StatusNoContent)
+		}
+		// 201 when the row is new, 200 when it replaced one (Response.hs,
+		// MutationSingleUpsert)
+		status = http.StatusOK
+		if database.GetQueryOptions(c).Inserted > 0 {
+			status = http.StatusCreated
+		}
+		return WriteContent(c, w, status, data)
+	})
+
 	api.Handle("PATCH", "/:sourcename", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		sourcename := r.Param("sourcename")
 		if database.GetQueryOptions(c).JQ != "" || hasJQBody(r) {

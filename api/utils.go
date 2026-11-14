@@ -111,6 +111,11 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 		status = http.StatusNotAcceptable
 		w.WriteHeader(status)
 		return status, err
+	case *database.PutError:
+		e := err.(*database.PutError)
+		status = e.Status
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: e.Message, Code: e.Code})
+		return status, err
 	case *database.RangeError:
 		status = http.StatusRequestedRangeNotSatisfiable
 		w.WriteHeader(status)
@@ -395,6 +400,11 @@ func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Req
 	options := &sc.QueryOptions
 	// @@ must check if the table has a pk
 	w.Header().Set("Content-Location", r.RequestURI)
+	if r.Method == "PUT" {
+		// a PUT has no Content-Range (Response.hs, MutationSingleUpsert)
+		setPreferenceApplied(w, r, options)
+		return 0
+	}
 	rangeString := "*"
 	if r.Method == "PATCH" && count > 0 {
 		rangeString = "0-" + strconv.FormatInt(count-1, 10)

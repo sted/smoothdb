@@ -1879,6 +1879,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 	if options.MergeDuplicates {
 		// count the rows the insert proposes (see insertedCounter)
 		insert += " WHERE " + insertedCounter(true)
+		// a PUT takes the rows of the body with the key of its URL
+		for _, c := range parts.putConditions {
+			insert = st.page.bind(insert+" AND _."+quote(c.column)+" = ", c.value)
+		}
 	}
 	// ON CONFLICT only for a resolution, as PostgREST (Plan.hs, mutatePlan):
 	// on_conflict alone is a plain insert, and a conflict its 409

@@ -111,6 +111,8 @@ type QueryParts struct {
 	whereConditionsTree *WhereConditionNode
 	recursive           *RecursiveInfo
 	nodeCount           int // how many filter nodes the trees have (see WhereConditionNode.id)
+	// the primary key values of a PUT, from its filters (see putConditions)
+	putConditions []putCondition
 }
 
 type QueryOptions struct {
@@ -123,7 +125,7 @@ type QueryOptions struct {
 	ReturnRepresentation bool
 	// Return is the return preference: "representation", "minimal",
 	// "headers-only", or "" when the request sends none
-	Return string
+	Return               string
 	MergeDuplicates      bool
 	IgnoreDuplicates     bool
 	ParamsAsSingleObject bool

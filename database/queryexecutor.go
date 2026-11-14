@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -249,6 +250,132 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 		n, err := writeExec(ctx, insert, values)
 		return nil, n, err
 	}
+}
+
+// PutError is a PUT that PostgREST refuses before or after its write
+// (ApiRequest.hs, getRanges; Plan.hs, mutatePlan; MainTx.hs, failPut).
+type PutError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *PutError) Error() string { return e.Message }
+
+var (
+	errPutLimit   = &PutError{400, "PGRST114", "limit/offset querystring parameters are not allowed for PUT"}
+	errPutFilters = &PutError{405, "PGRST105", "Filters must include all and only primary key columns with 'eq' operators"}
+	errPutPayload = &PutError{400, "PGRST115", "Payload values do not match URL in primary key column(s)"}
+)
+
+// putCondition is a primary key column of a PUT and the value its filter
+// gives.
+type putCondition struct {
+	column, value string
+}
+
+// putConditions reads the primary key of a PUT from its filters: an eq
+// filter on each column of the key, and no other root filter. A logic
+// filter (and, or) is refused at any level. ok is false when the filters do
+// not address one row, or when the relation has no key.
+func putConditions(root *WhereConditionNode, keys []string) (conds []putCondition, ok bool) {
+	if len(keys) == 0 {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	if root != nil {
+		if root.not || root.operator != "" {
+			return nil, false
+		}
+		for _, n := range root.children {
+			if n.isContainer() {
+				return nil, false
+			}
+			if len(n.field.relPath) > 0 {
+				// a filter on an embedded resource
+				continue
+			}
+			if n.operator != "=" || n.not || n.opModifier != "" || n.field.jsonPath != "" ||
+				!slices.Contains(keys, n.field.name) || len(n.values) != 1 {
+				return nil, false
+			}
+			seen[n.field.name] = true
+			conds = append(conds, putCondition{n.field.name, n.values[0]})
+		}
+	}
+	if len(seen) != len(keys) {
+		return nil, false
+	}
+	return conds, true
+}
+
+// Upsert writes the row that the filters of a PUT address, as PostgREST
+// does (MutationSingleUpsert): an insert of the body rows with that key,
+// merged on the key. The filters must give the whole key and nothing else
+// (PGRST105, 405). limit and offset are refused (PGRST114, 400), a Range
+// header is ignored. When the body has no row with that key, nothing is
+// written (PGRST115, 400). Inserted tells a created row from an updated one.
+func Upsert(ctx context.Context, table string, records []Record, body []byte, filters Filters) ([]byte, int64, error) {
+	if err := checkSchema(ctx); err != nil {
+		return nil, 0, err
+	}
+	gi := GetSmoothContext(ctx)
+	parts, err := gi.RequestParser.parse(table, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	if parts.limit != "" || parts.offset != "" {
+		return nil, 0, errPutLimit
+	}
+	options := &gi.QueryOptions
+	ignoreRange(options)
+	info := gi.Db.info.Load()
+	if body == nil {
+		if info, err = info.withColumnTypesOf(ctx, table, options.Schema); err != nil {
+			return nil, 0, err
+		}
+	}
+	var keys []string
+	if info != nil {
+		keys = info.GetKeyColumns(_s(table, options.Schema))
+	}
+	conds, ok := putConditions(parts.whereConditionsTree, keys)
+	if !ok {
+		return nil, 0, errPutFilters
+	}
+	parts.putConditions = conds
+	parts.conflictFields = map[string]struct{}{}
+	for _, k := range keys {
+		parts.conflictFields[k] = struct{}{}
+	}
+	options.MergeDuplicates, options.IgnoreDuplicates = true, false
+	insert, values, err := gi.QueryBuilder.BuildInsert(table, records, body, parts, options, info)
+	if err != nil {
+		return nil, 0, err
+	}
+	options.Inserted = -1
+	options.insertedQuery = insertedQuery
+	defer func() { options.insertedQuery = "" }()
+	if options.ReturnRepresentation {
+		data, n, err := writeRead(ctx, insert, values)
+		if _, single := err.(*SerializeError); single && options.Singular {
+			// the representation of no row: the body has not the key
+			return nil, 0, errPutPayload
+		}
+		if err == nil && n != 1 {
+			err = errPutPayload
+		}
+		return data, n, err
+	}
+	// one row or none: nothing to roll back, and no single object to check
+	singular := options.Singular
+	options.Singular = false
+	n, err := writeExec(ctx, insert, values)
+	options.Singular = singular
+	if err == nil && n != 1 {
+		err = errPutPayload
+	}
+	return nil, n, err
 }
 
 // writeExec runs the write query of a request that asks for no rows back,
