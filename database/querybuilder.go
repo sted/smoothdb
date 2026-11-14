@@ -2025,19 +2025,35 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		// instead (mutatePlanToQuery, null uCols) and the table name still
 		// reaches PostgreSQL, so a missing one answers 42P01.
 		// The columns follow the return preference: none for return=minimal,
-		// the inferred ones otherwise (see inferReturning).
+		// the inferred ones for headers-only (see inferReturning), the read
+		// of the representation over the empty source otherwise. The filters
+		// of the embeds are checked as on any update.
 		from := " FROM " + _sq(table, schema) + " WHERE false"
-		if !options.ReturnRepresentation && options.Return != "headers-only" {
-			return "SELECT NULL" + from, nil, nil
+		st := newBuildState(parts, nil)
+		switch {
+		case options.ReturnRepresentation:
+			ret, sel, err := returningClause(table, schema, parts, info, st)
+			if err != nil {
+				return "", nil, err
+			}
+			update = "SELECT " + strings.TrimPrefix(ret, " RETURNING ") + from
+			if sel != "" {
+				update = "WITH _source AS (" + update + ") " + sel
+			}
+		case options.Return == "headers-only":
+			cols, star, err := inferReturning(table, schema, parts, info)
+			if err != nil {
+				return "", nil, err
+			}
+			update = wrapHeadersOnly("SELECT "+cols+from, star, table, schema, info, nil, false)
+		default:
+			update = "SELECT NULL" + from
 		}
-		cols, star, err := inferReturning(table, schema, parts, info)
-		if err != nil {
+		// the root filters take no part in the empty source
+		if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
 			return "", nil, err
 		}
-		if options.ReturnRepresentation {
-			return "SELECT " + cols + from, nil, nil
-		}
-		return wrapHeadersOnly("SELECT "+cols+from, star, table, schema, info, nil, false), nil, nil
+		return update, st.page.values, nil
 	}
 	st := newBuildState(parts, valueList)
 	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)

@@ -1947,13 +1947,13 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 					options.TxRollback = true
 				}
 			case "count=exact", "count=planned", "count=estimated":
-				// On a write count=estimated counts the rows exactly, as
-				// PostgREST does; count=planned leaves the total unknown.
-				// A read counts only with count=exact (card 32483).
+				// Only count=exact counts here. A table write also counts
+				// with count=estimated (see countEstimated); count=planned
+				// leaves the total unknown (card 32483).
 				if options.CountPreference == "" {
 					options.CountPreference = preferValue[len("count="):]
-					if preferValue == "count=exact" || preferValue == "count=estimated" && req.Method != "GET" && req.Method != "HEAD" {
-						options.Count = options.CountPreference
+					if preferValue == "count=exact" {
+						options.Count = "exact"
 					}
 				}
 			}

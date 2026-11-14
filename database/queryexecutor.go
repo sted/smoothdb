@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type RangeError struct {
@@ -66,14 +67,48 @@ func checkSchema(ctx context.Context) error {
 // header must name a media type that smoothdb serves (PGRST107). PostgREST
 // validates the plan and then negotiates the media type (Plan.hs), so the
 // errors of the plan come first.
-func checkWritePlan(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) error {
+func checkWritePlan(ctx context.Context, table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) error {
 	if _, _, err := resolveEmbeds(table, options.Schema, parts.selectFields, info); err != nil {
 		return err
 	}
 	if options.ContentType == "unknown/unknown" {
+		if info != nil && !info.hasRelation(_s(table, options.Schema)) {
+			// PostgREST answers 404 for a relation missing from its cache
+			// before it negotiates. smoothdb writes a relation created
+			// since the cache was loaded, so on this error path alone it
+			// asks the database whether the relation exists.
+			if missing, err := relationMissing(ctx, _sq(table, options.Schema)); err != nil {
+				return err
+			} else if missing {
+				return &pgconn.PgError{Severity: "ERROR", Code: "42P01",
+					Message: "relation \"" + _s(table, options.Schema) + "\" does not exist"}
+			}
+		}
 		return &ContentTypeError{msg: "Content type not available"}
 	}
 	return nil
+}
+
+// relationMissing says whether the relation does not exist.
+func relationMissing(ctx context.Context, relation string) (bool, error) {
+	conn, err := GetSmoothContext(ctx).conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	var oid *uint32
+	if err := conn.QueryRow(ctx, "SELECT to_regclass($1)::oid", relation).Scan(&oid); err != nil {
+		return false, err
+	}
+	return oid == nil, nil
+}
+
+// countEstimated makes a table write count its rows with count=estimated,
+// as PostgREST does: the count of a write is exact. A read and a function
+// call keep count=estimated unhonoured (card 32483).
+func countEstimated(options *QueryOptions) {
+	if options.CountPreference == "estimated" {
+		options.Count = "estimated"
+	}
 }
 
 // ignoreRange drops the Range header of a table write (insert, update or
@@ -234,6 +269,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	info := gi.Db.info.Load()
 	if body == nil {
 		// Go values need the column types (see insertRows), also for a
@@ -246,7 +282,7 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := checkWritePlan(table, parts, options, info); err != nil {
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	// The resolution applies when the insert has a conflict target: the
@@ -364,6 +400,7 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	// PostgREST ignores ?columns= on a PUT (ApiRequest/Payload.hs): every key
 	// of the body is written
 	parts.columnFields = nil
@@ -391,7 +428,7 @@ func Upsert(ctx context.Context, table string, records []Record, body []byte, fi
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := checkWritePlan(table, parts, options, info); err != nil {
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	// A body without the key of the URL writes no row, but a statement
@@ -474,12 +511,13 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	info := gi.Db.info.Load()
 	update, values, err := gi.QueryBuilder.BuildUpdate(table, record, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := checkWritePlan(table, parts, options, info); err != nil {
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {
@@ -504,12 +542,13 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	info := gi.Db.info.Load()
 	delete, values, err := gi.QueryBuilder.BuildDelete(table, parts, options, info)
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := checkWritePlan(table, parts, options, info); err != nil {
+	if err := checkWritePlan(ctx, table, parts, options, info); err != nil {
 		return nil, 0, err
 	}
 	if options.ReturnRepresentation {

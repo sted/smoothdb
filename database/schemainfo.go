@@ -389,6 +389,15 @@ func (si *SchemaInfo) addViewPrimaryKeys(deps []ViewColDep) {
 	}
 }
 
+// hasRelation says whether the cache knows the table or view ftable.
+func (si *SchemaInfo) hasRelation(ftable string) bool {
+	if _, ok := si.cachedTables[ftable]; ok {
+		return true
+	}
+	_, ok := si.cachedColumnTypes[ftable]
+	return ok
+}
+
 // GetKeyColumns returns the primary key columns of a table, or the inferred
 // ones of a view (see addViewPrimaryKeys), nil when there are none.
 func (si *SchemaInfo) GetKeyColumns(ftable string) []string {
