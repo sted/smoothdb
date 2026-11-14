@@ -3622,17 +3622,8 @@ func TestPostgREST_Query(t *testing.T) {
 			Expected:    `[{"site":"github.com","link":{"url":"http://postgrest.org/en/v6.0/api.html"}},{"site":"hub.docker.com","link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}]`,
 			Status:      200,
 		},
-		// it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
-		//   r <- get "/items"
-		//   liftIO $ do
-		//     let respHeaders = simpleHeaders r
-		//     respHeaders `shouldSatisfy` noProfileHeader
-		{
-			Description:     "shouldn't produce a Content-Profile header since only a single schema is exposed",
-			Query:           "/items",
-			ExpectedHeaders: map[string]string{"Content-Profile": ""},
-			Status:          200,
-		},
+		// "shouldn't produce a Content-Profile header since only a single
+		// schema is exposed": see TestPostgREST_QuerySingleSchema
 
 		// 	context "empty embed" $ do
 		//     it "works on a many-to-one relationship" $ do
@@ -4136,4 +4127,28 @@ func TestPostgREST_Query(t *testing.T) {
 	}
 
 	test.Execute(t, testConfig, tests)
+}
+
+// TestPostgREST_QuerySingleSchema ports a case of QuerySpec.hs that needs
+// one exposed schema and a request without a profile header. The suite
+// server exposes two schemas, and its requests name one, so the case runs
+// on a variant server.
+func TestPostgREST_QuerySingleSchema(t *testing.T) {
+	tests := []test.Test{
+		// it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
+		//   r <- get "/items"
+		//   liftIO $ do
+		//     let respHeaders = simpleHeaders r
+		//     respHeaders `shouldSatisfy` noProfileHeader
+		{
+			Description:     "shouldn't produce a Content-Profile header since only a single schema is exposed",
+			Query:           "/items",
+			ExpectedHeaders: map[string]string{"Content-Profile": ""},
+			Status:          200,
+		},
+	}
+	withVariant(t, map[string]any{"Database.ExposedSchemas": []string{"test"}}, false, func(cfg test.Config) {
+		cfg.CommonHeaders = test.Headers{"Authorization": testConfig.CommonHeaders["Authorization"]}
+		test.Execute(t, cfg, tests)
+	})
 }
