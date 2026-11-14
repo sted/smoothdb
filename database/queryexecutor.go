@@ -622,15 +622,6 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	if err != nil {
 		return nil, 0, err
 	}
-	// No function of the cache can take the call: PostgREST answers PGRST202
-	// before it runs anything. smoothdb still runs the call, because the
-	// function can be newer than the cache, and answers PGRST202 only when
-	// PostgreSQL does not find the function either. A single-object call
-	// names no argument, so it is left to PostgreSQL.
-	var noRpc error
-	if f == nil && !options.ParamsAsSingleObject {
-		noRpc = info.noRpc(fname, keys, !readonly, options.InputContentType)
-	}
 	if raw != nil {
 		switch {
 		case f != nil && f.singleUnnamed() != nil:
@@ -687,8 +678,16 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	oneValue := f != nil && !f.ReturnIsSet
 	data, n, err := runRead(ctx, exec, values, scalar, options.Singular && !oneValue)
 	if err != nil {
-		if noRpc != nil && isUndefinedFunction(err, fname) {
-			return nil, 0, noRpc
+		// No function of the cache can take the call: PostgREST answers
+		// PGRST202 before it runs anything. smoothdb runs the call, because
+		// the function can be newer than the cache, and answers PGRST202
+		// only when PostgreSQL does not find the function either. A
+		// single-object call names no argument, so its error stays
+		// PostgreSQL's.
+		if f == nil && !options.ParamsAsSingleObject && isUndefinedFunction(err, fname) {
+			if noRpc := info.noRpc(fname, keys, !readonly, options.InputContentType); noRpc != nil {
+				return nil, 0, noRpc
+			}
 		}
 		return nil, 0, err
 	}
