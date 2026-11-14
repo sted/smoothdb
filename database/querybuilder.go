@@ -2548,21 +2548,34 @@ func selectFieldName(sf SelectField) string {
 	return sf.field.name
 }
 
-// recordSelect returns the select of a call whose response is the column
-// pgrst_scalar (see recordExtracts): the field with that name. PostgREST
-// ignores the other fields, and fails without one (42703).
-func recordSelect(parts *QueryParts, name string) (*QueryParts, error) {
-	if len(parts.selectFields) == 0 {
-		return parts, nil
+// recordOutput wraps query, the call of a function that returns record
+// (see BuildExecute), for a JSON response. The query keeps the record as
+// a record, with the whole projection, so that filters, order, casts and
+// unknown columns act as in PostgreSQL. The wrapper converts to JSON only
+// the values that are records, as PostgREST's json_agg does: their fields
+// have no names on the wire.
+//   - When the response is the column pgrst_scalar (see recordExtracts),
+//     it selects that column. PostgreSQL fails without it (42703).
+//   - Otherwise (one object of a SETOF record) it selects every column of
+//     the projection, a bare pgrst_scalar through to_json.
+func recordOutput(query string, f *Function, parts *QueryParts, options *QueryOptions) string {
+	if recordExtracts(f, options) {
+		return "SELECT to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\" FROM (" + query + ") \"_t\""
 	}
+	if len(parts.selectFields) == 0 {
+		return "SELECT to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\" FROM (" + query + ") \"_t\""
+	}
+	cols := make([]string, 0, len(parts.selectFields))
 	for _, sf := range parts.selectFields {
-		if sf.relation == nil && selectFieldName(sf) == "pgrst_scalar" {
-			p := *parts
-			p.selectFields = []SelectField{sf}
-			return &p, nil
+		name := quote(selectFieldName(sf))
+		if sf.relation == nil && sf.field.jsonPath == "" && sf.cast == "" && sf.aggregate == "" &&
+			(isStar(sf.field.name) || sf.field.name == "pgrst_scalar") {
+			cols = append(cols, "to_json(\"_t\"."+name+") AS "+name)
+		} else {
+			cols = append(cols, "\"_t\"."+name)
 		}
 	}
-	return nil, &BuildError{"the select of the function " + name + " that returns record has no column pgrst_scalar"}
+	return "SELECT " + strings.Join(cols, ", ") + " FROM (" + query + ") \"_t\""
 }
 
 // pgArrayLiteral writes values as a PostgreSQL array literal, each element
@@ -2631,20 +2644,8 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	if isRecord {
 		// A record has no column list to select from (42601). As PostgREST
 		// (callPlanToQuery), call the function in a select list: each row is
-		// one value, the column pgrst_scalar. Its fields have no names on
-		// the wire: JSON reads it through to_json, as PostgREST's json_agg,
-		// and its JSON paths need no to_jsonb. CSV writes PostgreSQL's text.
-		call := _sq(name, schema) + "(" + pairs + ")"
-		if options.ContentType != "text/csv" {
-			call = "to_json(" + call + ")"
-		}
-		from = "FROM (SELECT " + call + " \"pgrst_scalar\") t "
-		if recordExtracts(f, options) {
-			var err error
-			if parts, err = recordSelect(parts, name); err != nil {
-				return "", nil, err
-			}
-		}
+		// one value, the column pgrst_scalar (see recordOutput).
+		from = "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
 	} else if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {
@@ -2663,7 +2664,7 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 		}
 	}
 	// the JSON paths on the array and composite output columns
-	info = info.withCallColumns(f, t, s, options.ContentType == "text/csv")
+	info = info.withCallColumns(f, t, s)
 	stack.info = info
 	// the root filters bind their values before the embeds (see buildAfterSelect)
 	st := newBuildState(parts, valueList)
@@ -2708,7 +2709,11 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	groupByClause := groupByClauseAs("t", "", t, s, parts, info)
 	query = "SELECT " + selectClause
 
-	return buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
+	query, valueList, err = buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
+	if err == nil && isRecord && options.ContentType != "text/csv" {
+		query = recordOutput(query, f, parts, options)
+	}
+	return query, valueList, err
 }
 
 type DirectQueryBuilder struct {

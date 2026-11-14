@@ -930,19 +930,15 @@ func compareBool(a, b bool) int {
 // array and composite types of the output columns, read through the
 // alias t of the call, or si itself when there are none. The columns are
 // the OUT and TABLE parameters of f, or the columns of the table
-// schema.table that f returns. For a record (see BuildExecute) it is the
-// column pgrst_scalar when the call reads it as a record, in CSV: JSON
-// reads it as json already. A JSON path on such a column needs to_jsonb
-// (see toJson), as in PostgREST (Plan.hs resolveTypeOrUnknown).
-func (si *SchemaInfo) withCallColumns(f *Function, table, schema string, csv bool) *SchemaInfo {
+// schema.table that f returns, or pgrst_scalar for a record (see
+// BuildExecute). A JSON path on such a column needs to_jsonb (see toJson),
+// as in PostgREST (Plan.hs resolveTypeOrUnknown).
+func (si *SchemaInfo) withCallColumns(f *Function, table, schema string) *SchemaInfo {
 	if si == nil || f == nil {
 		return si
 	}
 	var cols map[string]ColumnType
 	if f.returnsRecord() {
-		if !csv {
-			return si
-		}
 		cols = map[string]ColumnType{"pgrst_scalar": {Name: "pgrst_scalar", Type: "record", IsComposite: true}}
 	} else if table != "" {
 		for _, ct := range si.cachedColumnTypes[_s(table, schema)] {

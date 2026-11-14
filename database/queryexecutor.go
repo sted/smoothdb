@@ -388,7 +388,10 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	// A set of scalars as one object keeps its column (PostgREST's
 	// asJsonSingleF): {"pgrst_scalar": 1}. A set of records is a row already.
 	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet && !f.returnsRecord()
-	data, n, err := runRead(ctx, exec, values, scalar, options.Singular)
+	// A function that returns one value counts one row whatever it answers
+	// (PostgREST's pageCountSelectF): vnd.pgrst.object never refuses it.
+	oneValue := f != nil && !f.ReturnIsSet
+	data, n, err := runRead(ctx, exec, values, scalar, options.Singular && !oneValue)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -400,7 +403,7 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	switch {
 	case setOfScalarObject && isJSON:
 		data = append(append([]byte(`{"pgrst_scalar":`), data...), '}')
-	case f != nil && !f.ReturnIsSet && !options.Singular && isJSON:
+	case oneValue && isJSON:
 		// a function that returns one value answers that value, not an
 		// array, and null for no row (a limit of 0)
 		if n == 0 {
