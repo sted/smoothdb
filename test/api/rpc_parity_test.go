@@ -238,6 +238,20 @@ func TestRPCParity(t *testing.T) {
 			Expected:    `{"id": 1, "counter": 101}`,
 			Status:      200,
 		},
+		// a projection of a record result names its own columns (SqlFragment.hs)
+		{
+			Description: "setof record projected, as an object",
+			Query:       "/rpc/rpcp_setof_record?select=id:pgrst_scalar->id,counter:pgrst_scalar->counter&limit=1",
+			Headers:     object,
+			Expected:    `{"id": 1, "counter": 101}`,
+			Status:      200,
+		},
+		{
+			Description: "a record projected",
+			Query:       "/rpc/rpcp_record?select=id:pgrst_scalar->id",
+			Expected:    `{"id": 1}`,
+			Status:      200,
+		},
 		// a JSON path on pgrst_scalar reads the record as JSON (Plan.hs)
 		{
 			Description: "a filter on a JSON path of pgrst_scalar",
