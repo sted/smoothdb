@@ -1,6 +1,7 @@
 package test_api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/sted/smoothdb/test"
@@ -274,6 +275,7 @@ func TestRPCRecordSelect(t *testing.T) {
 	}
 	object := test.Headers{"Accept": {"application/vnd.pgrst.object+json"}}
 	row := `{"id": 1, "counter": 1}`
+	row2 := `{"id": 2, "counter": 2}`
 	cases := []struct {
 		fn, sel      string
 		json, single string // the expected body, "" for a 400
@@ -292,11 +294,28 @@ func TestRPCRecordSelect(t *testing.T) {
 		{"rpcp_setof_record", "pgrst_scalar:pgrst_scalar->id", "[1]", `{"pgrst_scalar": 1}`},
 		{"rpcp_setof_record", "pgrst_scalar->id", "", `{"id": 1}`},
 		{"rpcp_setof_record", "id:pgrst_scalar->id,counter:pgrst_scalar->counter", "", row},
+		// the record stays a record in the read: order, filters, casts,
+		// unknown columns and aggregates act as in PostgreSQL ("=": the
+		// parameters as they are)
+		{"rpcp_record", "order=pgrst_scalar->id.desc", row, row},
+		{"rpcp_record", "pgrst_scalar->id=eq.2", "null", "null"},
+		{"rpcp_record", "pgrst_scalar::text", `"(1,1)"`, `"(1,1)"`},
+		{"rpcp_record", "pgrst_scalar,missing", "", ""},
+		{"rpcp_record", "pgrst_scalar,count()", row, row},
+		{"rpcp_setof_record", "order=pgrst_scalar->id.desc", "[" + row2 + "]", `{"pgrst_scalar": ` + row2 + `}`},
+		{"rpcp_setof_record", "pgrst_scalar->id=eq.2", "[" + row2 + "]", `{"pgrst_scalar": ` + row2 + `}`},
+		{"rpcp_setof_record", "pgrst_scalar::text", `["(1,1)"]`, `{"pgrst_scalar": "(1,1)"}`},
+		{"rpcp_setof_record", "pgrst_scalar,missing", "", ""},
+		{"rpcp_setof_record", "pgrst_scalar,count()", "[" + row + "]", `{"pgrst_scalar": ` + row + `, "count": 1}`},
 	}
 	for _, c := range cases {
 		query := "/rpc/" + c.fn + "?limit=1"
 		if c.sel != "" {
-			query += "&select=" + c.sel
+			if strings.Contains(c.sel, "=") {
+				query += "&" + c.sel
+			} else {
+				query += "&select=" + c.sel
+			}
 		}
 		for _, single := range []bool{false, true} {
 			tt := test.Test{Description: query, Query: query, Expected: c.json, Status: 200}
