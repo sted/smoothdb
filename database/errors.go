@@ -188,6 +188,20 @@ func singularityError(rows int64) *RequestError {
 	}
 }
 
+// errOctetColumns is the binary serializer's refusal of more than one
+// column. runRead answers it as mediaTypeError.
+var errOctetColumns = &RequestError{Status: http.StatusNotAcceptable, Code: "PGRST107"}
+
+// mediaTypeError is PostgREST's MediaTypeError (PGRST107), which names every
+// alternative of the Accept headers.
+func mediaTypeError(accept []string) *RequestError {
+	return &RequestError{
+		Status:  http.StatusNotAcceptable,
+		Code:    "PGRST107",
+		Message: "None of these media types are available: " + acceptedMediaTypes(accept),
+	}
+}
+
 // aggregatesNotAllowed is PostgREST's AggregatesNotAllowed (PGRST123).
 var aggregatesNotAllowed = &RequestError{
 	Status:  http.StatusBadRequest,

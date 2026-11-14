@@ -282,6 +282,18 @@ func writeIfZeroRecordsToUpdate(w http.ResponseWriter, records []database.Record
 	return true, 0, err
 }
 
+// onlyJSONSpace reports whether content holds only JSON whitespace.
+func onlyJSONSpace(content []byte) bool {
+	for _, b := range content {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // firstNonSpace returns the first byte of a JSON text after its whitespace,
 // and 0 for a text that is only whitespace.
 func firstNonSpace(content []byte) byte {
@@ -336,6 +348,16 @@ func recordsJSON(records []database.Record) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// jsonBodyError is PostgREST's InvalidBody (PGRST102) for a JSON body that
+// does not decode to records: a body that is not JSON, or JSON that is not
+// an object or an array of objects (Payload.hs, getPayload).
+func jsonBodyError(body []byte) error {
+	if json.Valid(body) {
+		return database.InvalidBody("All object keys must match")
+	}
+	return database.InvalidBody("Empty or invalid json")
+}
+
 // decodeJSONRecords decodes a JSON body as PostgREST's getPayload reads it:
 // an object or an array of objects. A scalar, null included, is no record
 // (Payload.hs, payloadAttributes). A body that is not one JSON value is
@@ -364,20 +386,10 @@ func decodeJSONRecords(body []byte) ([]database.Record, error) {
 	}
 	// The body is one JSON value: text after it makes the body invalid,
 	// as PostgREST decodes the whole body.
-	if _, err := decoder.Token(); err != io.EOF {
+	if !onlyJSONSpace(body[decoder.InputOffset():]) {
 		return nil, database.InvalidBody("Empty or invalid json")
 	}
 	return records, nil
-}
-
-// jsonBodyError is PostgREST's InvalidBody (PGRST102) for a JSON body that
-// does not decode to records: a body that is not JSON, or JSON that is not
-// an object or an array of objects (Payload.hs, getPayload).
-func jsonBodyError(body []byte) error {
-	if json.Valid(body) {
-		return database.InvalidBody("All object keys must match")
-	}
-	return database.InvalidBody("Empty or invalid json")
 }
 
 // readInputRecords is the low-level function to read and convert the data in the request body.
@@ -486,12 +498,9 @@ func ReadRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (records []database.Record, jsonBody []byte, status int, err error) {
 	ctype := getContentType(r)
 	if ctype == "" {
-		// PostgREST answers a body it has no reader for as an invalid
-		// body (Payload.hs, getPayload), not with 415
+		// PostgREST answers a body it has no reader for as an invalid body,
+		// with the media type in full (Payload.hs, getPayload), not with 415
 		header := r.Header.Get("Content-Type")
-		if mt, _, perr := mime.ParseMediaType(header); perr == nil {
-			header = mt
-		}
 		status, err = writeRequestError(w, database.InvalidBody("Content-Type not acceptable: "+header))
 		return
 	} else {

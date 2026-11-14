@@ -130,7 +130,7 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + options.acceptedTypes}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + acceptedMediaTypes(options.accept)}
 	}
 	return runRead(ctx, query, values, false, options.Singular)
 }
@@ -142,6 +142,15 @@ func querySerialize(ctx context.Context, query string, values []any) ([]byte, in
 // query (and options.totalPrelude, if any, before it): one round trip, and
 // the page needs no row of its own to carry the total (see buildAfterSelect).
 func runRead(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
+	out, n, err := runReadRows(ctx, query, values, scalar, single)
+	if errors.Is(err, errOctetColumns) {
+		err = mediaTypeError(GetSmoothContext(ctx).QueryOptions.accept)
+	}
+	return out, n, err
+}
+
+// runReadRows is runRead without the conversion of errOctetColumns.
+func runReadRows(ctx context.Context, query string, values []any, scalar, single bool) ([]byte, int64, error) {
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.RangeMin > options.RangeMax && options.RangeMin != -1 && options.RangeMax != -1 {
@@ -590,7 +599,7 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	if options.ContentType == "unknown/unknown" {
-		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + options.acceptedTypes}
+		return nil, 0, &ContentTypeError{msg: "None of these media types are available: " + acceptedMediaTypes(options.accept)}
 	}
 	var params Filters
 	if readonly {

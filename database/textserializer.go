@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -930,8 +929,9 @@ func (b *BinarySerializer) Serialize(rows pgx.Rows, scalar bool, single bool, in
 	defer serializeRecover(&out, &n, &err)
 	fds := rows.FieldDescriptions()
 	if len(fds) != 1 {
-		// PostgREST 16.4 refuses the media type at negotiation (PGRST107)
-		return nil, 0, &RequestError{Status: http.StatusNotAcceptable, Code: "PGRST107", Message: "None of these media types are available: application/octet-stream"}
+		// PostgREST 16.4 refuses the media type at negotiation (PGRST107);
+		// runRead adds the Accept alternatives
+		return nil, 0, errOctetColumns
 	}
 	for rows.Next() {
 		raw := rows.RawValues()[0]

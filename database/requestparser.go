@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"math/big"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Filters = url.Values
@@ -157,6 +160,8 @@ type QueryOptions struct {
 	totalQuery   string
 	totalValues  []any
 	totalPrelude string
+	// accept holds the Accept headers as given, for the PGRST107 error
+	accept []string
 	// ResolutionApplied says that the insert applied the resolution
 	// preference: it has a conflict target (written by the executor)
 	ResolutionApplied bool
@@ -166,9 +171,6 @@ type QueryOptions struct {
 	// set by the executor of an insert with return=headers-only: the rows
 	// go to a LocationSerializer
 	locate bool
-	// acceptedTypes lists the media types of an Accept header that no
-	// representation matches, for the PGRST107 error
-	acceptedTypes string
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -199,19 +201,103 @@ type PostgRestParser struct {
 // Real queries never approach this.
 const maxFilterDepth = 100
 
-// isNegativeInteger reports whether s is a negative base-10 integer of any
-// size.
-func isNegativeInteger(s string) bool {
-	digits, ok := strings.CutPrefix(s, "-")
-	if !ok || digits == "" {
-		return false
+// readInteger reads s as a base-10 integer of any size, as Haskell's
+// readMaybe reads an Integer: an optional minus sign and digits. It
+// returns nil for anything else.
+func readInteger(s string) *big.Int {
+	digits := strings.TrimPrefix(s, "-")
+	if digits == "" {
+		return nil
 	}
 	for i := 0; i < len(digits); i++ {
 		if digits[i] < '0' || digits[i] > '9' {
-			return false
+			return nil
 		}
 	}
-	return strings.Trim(digits, "0") != ""
+	n, _ := new(big.Int).SetString(s, 10)
+	return n
+}
+
+// lastNonEmpty returns the last non-empty value of a parameter, as
+// PostgREST keeps it (QueryParams.hs, nonemptyParams and a map).
+func lastNonEmpty(values []string) (string, bool) {
+	for i := len(values) - 1; i >= 0; i-- {
+		if values[i] != "" {
+			return values[i], true
+		}
+	}
+	return "", false
+}
+
+// pageRange removes limit and offset from filters and returns the LIMIT and
+// OFFSET of the request, "" for none, as PostgREST's getRanges computes
+// them (QueryParams.hs, ApiRequest.hs, RangeQuery.hs). The two parameters
+// make one range, from the offset for limit rows, intersected with the rows
+// from 0. A value that is not an integer counts as absent. An empty range
+// is 416 PGRST103, except the range that ends at row -1, which is limit 0.
+// A value beyond 64 bits gets the 22003 error that PostgreSQL answers.
+func pageRange(filters Filters) (limit, offset string, err error) {
+	limitValue, hasLimit := lastNonEmpty(filters["limit"])
+	offsetValue, hasOffset := lastNonEmpty(filters["offset"])
+	delete(filters, "limit")
+	delete(filters, "offset")
+	if !hasLimit && !hasOffset {
+		return "", "", nil
+	}
+	l, o := readInteger(limitValue), readInteger(offsetValue)
+	zero, one := big.NewInt(0), big.NewInt(1)
+	lower := zero
+	var upper *big.Int // nil: no upper bound
+	switch {
+	case hasLimit && hasOffset:
+		// the length of the limit range is l; with no l it has none, so 0
+		if o != nil {
+			lower = o
+		}
+		length := zero
+		if l != nil {
+			length = l
+		}
+		upper = new(big.Int).Sub(new(big.Int).Add(lower, length), one)
+	case hasLimit:
+		if l != nil {
+			upper = new(big.Int).Sub(l, one)
+		}
+	default:
+		if o != nil {
+			lower = o
+		}
+	}
+	if upper != nil && upper.Cmp(big.NewInt(-1)) == 0 {
+		return "0", "", nil
+	}
+	if lower.Sign() < 0 {
+		lower = zero
+	}
+	if upper != nil && upper.Cmp(lower) < 0 {
+		return "", "", negativeLimit
+	}
+	if upper != nil {
+		limit = new(big.Int).Add(new(big.Int).Sub(upper, lower), one).String()
+		if !isNonNegativeInt(limit) {
+			return "", "", bigintOutOfRange(limit)
+		}
+	}
+	if lower.Sign() > 0 {
+		offset = lower.String()
+		if !isNonNegativeInt(offset) {
+			return "", "", bigintOutOfRange(offset)
+		}
+	}
+	return limit, offset, nil
+}
+
+// bigintOutOfRange is the error PostgreSQL answers to a LIMIT or an OFFSET
+// beyond 64 bits. smoothdb binds them as 64-bit integers, so it answers the
+// same error without the round trip.
+func bigintOutOfRange(value string) error {
+	return &pgconn.PgError{Severity: "ERROR", Code: "22003",
+		Message: `value "` + value + `" is out of range for type bigint`}
 }
 
 // isNonNegativeInt reports whether s is a base-10 non-negative 64-bit integer.
@@ -1714,26 +1800,10 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 		delete(filters, k)
 	}
 
-	// LIMIT
-	// limit=100
-	// PostgREST reads limit and offset with readMaybe (QueryParams.hs): a
-	// value that is not an integer is ignored. A negative limit, of any
-	// size, empties the range (416 PGRST103); a negative offset is a no-op.
-	if limitFilter, ok := filters["limit"]; ok {
-		if isNonNegativeInt(limitFilter[0]) {
-			parts.limit = limitFilter[0]
-		} else if isNegativeInteger(limitFilter[0]) {
-			return nil, negativeLimit
-		}
-		delete(filters, "limit")
-	}
-	// OFFSET
-	// offset=50
-	if offsetFilter, ok := filters["offset"]; ok {
-		if isNonNegativeInt(offsetFilter[0]) {
-			parts.offset = offsetFilter[0]
-		}
-		delete(filters, "offset")
+	// LIMIT and OFFSET
+	// limit=100&offset=50
+	if parts.limit, parts.offset, err = pageRange(filters); err != nil {
+		return nil, err
 	}
 
 	// RECURSIVE
@@ -1954,6 +2024,7 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 
 	acceptHeaders := header.Values("Accept")
 	mediatype := contentNegotiation(acceptHeaders)
+	options.accept = acceptHeaders
 
 	switch mediatype {
 	case "application/vnd.pgrst.object+json":
@@ -1965,7 +2036,6 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 		options.ContentType = mediatype
 	default:
 		options.ContentType = "unknown/unknown"
-		options.acceptedTypes = acceptedMediaTypes(acceptHeaders)
 	}
 
 	preferValues := header.Values("Prefer")

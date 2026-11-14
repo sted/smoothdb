@@ -58,7 +58,8 @@ type SchemaInfo struct {
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
 	functions               functionIndex         // every function by name, see noRpc
-	tableNames              map[string][]string   // the tables and views of each schema, for the PGRST205 hint
+	tableHints              map[string]*fuzzySet  // the tables and views of each schema, for the PGRST205 hint
+	functionHints           map[string]*fuzzySet  // the callable functions of each schema, for the PGRST202 hint
 	// the primary key columns of a view, inferred from its base tables
 	// (see addViewPrimaryKeys)
 	cachedViewPrimaryKeys map[string][]string
@@ -124,7 +125,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 			}
 		}
 	}
-	dbi.tableNames = indexTables(dbi.cachedTables)
+	dbi.tableHints = hintSets(indexTables(dbi.cachedTables), maxTablesForFuzzySearch)
 	// Column types
 	colTypes, err := GetColumnTypes(ctx)
 	if err != nil {
@@ -194,6 +195,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 	}
 	dbi.cachedFunctions = cacheFunctions(functions)
 	dbi.functions = indexFunctions(functions)
+	dbi.functionHints = hintSets(dbi.functions.callable, 0)
 	// Computed relationships: detect functions with a single IN argument of table type
 	for _, f := range functions {
 		// Count IN arguments (mode 0 means default=IN, 'i' means explicit IN)

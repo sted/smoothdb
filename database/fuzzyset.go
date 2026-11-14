@@ -78,7 +78,7 @@ type fuzzyMatch struct {
 func (fs *fuzzySet) get(value string, minScore float64) []fuzzyMatch {
 	// A value from the request can be as long as the body. No hint is
 	// worth the work of comparing a value this long, so it gets none.
-	if len(value) > maxFuzzyBytes {
+	if fs == nil || len(value) > maxFuzzyBytes {
 		return nil
 	}
 	key := strings.ToLower(value)

@@ -43,14 +43,26 @@ func (si *SchemaInfo) tableNotFoundHint(schema, name string) string {
 	if si == nil {
 		return ""
 	}
-	tables := si.tableNames[schema]
-	if len(tables) >= maxTablesForFuzzySearch {
-		return ""
-	}
-	if found, ok := newFuzzySet(tables).getOne(name, 0.75); ok {
-		return "Perhaps you meant the table '" + schema + "." + found + "'"
+	// a schema with too many tables has no set
+	if set := si.tableHints[schema]; set != nil {
+		if found, ok := set.getOne(name, 0.75); ok {
+			return "Perhaps you meant the table '" + schema + "." + found + "'"
+		}
 	}
 	return ""
+}
+
+// hintSets builds a fuzzy set per schema from the names of each schema,
+// once, when the schema cache loads. A schema with max names or more gets
+// none; max 0 is no limit. The sets are not changed after this.
+func hintSets(names map[string][]string, max int) map[string]*fuzzySet {
+	sets := make(map[string]*fuzzySet, len(names))
+	for schema, n := range names {
+		if max == 0 || len(n) < max {
+			sets[schema] = newFuzzySet(n)
+		}
+	}
+	return sets
 }
 
 // indexTables lists the names of the tables and views per schema, sorted,
@@ -177,13 +189,18 @@ func (si *SchemaInfo) noRpc(name string, keys []string, post bool, contentType s
 func (si *SchemaInfo) noRpcHint(schema, proc string, keys []string, overloads []Function) string {
 	const hint = "Perhaps you meant to call the function "
 	if len(overloads) == 0 {
-		if found, ok := newFuzzySet(si.functions.callable[schema]).getOne(proc, 0.75); ok {
+		if found, ok := si.functionHints[schema].getOne(proc, 0.75); ok {
 			return hint + schema + "." + found
 		}
 		return ""
 	}
 	listToText := func(names []string) string {
 		return "(" + strings.Join(slices.Sorted(slices.Values(names)), ", ") + ")"
+	}
+	// check the length before the set of the overloads is built
+	called := listToText(keys)
+	if len(called) > maxFuzzyBytes {
+		return ""
 	}
 	lists := make([]string, len(overloads))
 	for i, f := range overloads {
@@ -193,7 +210,7 @@ func (si *SchemaInfo) noRpcHint(schema, proc string, keys []string, overloads []
 		}
 		lists[i] = listToText(names)
 	}
-	if found, ok := newFuzzySet(lists).getOne(listToText(keys), 0.33); ok {
+	if found, ok := newFuzzySet(lists).getOne(called, 0.33); ok {
 		return hint + schema + "." + proc + found
 	}
 	return ""
@@ -203,7 +220,8 @@ func (si *SchemaInfo) noRpcHint(schema, proc string, keys []string, overloads []
 // has relationships in the schema, the closest relation it has to target;
 // else the closest table with relationships to origin.
 func (si *SchemaInfo) noRelBetweenHint(origin, target, schema string) string {
-	if si == nil {
+	// check the lengths before the sets of the relationships are built
+	if si == nil || len(origin) > maxFuzzyBytes || len(target) > maxFuzzyBytes {
 		return ""
 	}
 	var parents, children []string
