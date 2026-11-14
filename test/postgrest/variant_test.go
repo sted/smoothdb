@@ -10,8 +10,9 @@ import (
 	"github.com/sted/smoothdb/test"
 )
 
-// variantAddress is where a variant server listens.
-const variantAddress = "localhost:8180"
+// variantAddress is where a variant server listens. It names 127.0.0.1, not
+// localhost, so that the bind, the probe and the client use the same address.
+const variantAddress = "127.0.0.1:8180"
 
 // variantDBs counts the copies of pgrest that withVariant made.
 var variantDBs int
