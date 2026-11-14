@@ -89,17 +89,19 @@ func checkWritePlan(ctx context.Context, table string, parts *QueryParts, option
 	return nil
 }
 
-// relationMissing says whether the relation does not exist.
+// relationMissing says whether no table, view, materialized view or
+// foreign table has the name relation: an index or a sequence is no
+// relation of the API, as in PostgREST's schema cache.
 func relationMissing(ctx context.Context, relation string) (bool, error) {
 	conn, err := GetSmoothContext(ctx).conn(ctx)
 	if err != nil {
 		return false, err
 	}
-	var oid *uint32
-	if err := conn.QueryRow(ctx, "SELECT to_regclass($1)::oid", relation).Scan(&oid); err != nil {
+	var exists bool
+	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid = to_regclass($1) AND relkind IN ('r', 'p', 'v', 'm', 'f'))", relation).Scan(&exists); err != nil {
 		return false, err
 	}
-	return oid == nil, nil
+	return !exists, nil
 }
 
 // countEstimated makes a table write count its rows with count=estimated,

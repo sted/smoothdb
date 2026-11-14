@@ -87,6 +87,7 @@ func UpdateRecordsWithJQ(ctx context.Context, table string, filters Filters) ([]
 	gi := GetSmoothContext(ctx)
 	options := &gi.QueryOptions
 	ignoreRange(options)
+	countEstimated(options)
 	if !jqeval.Enabled() {
 		return nil, 0, &ParseError{"jq evaluation is disabled (see the JQ configuration section)"}
 	}

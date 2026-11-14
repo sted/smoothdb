@@ -2032,14 +2032,20 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 		st := newBuildState(parts, nil)
 		switch {
 		case options.ReturnRepresentation:
-			ret, sel, err := returningClause(table, schema, parts, info, st)
+			// The read of the representation, grouping and embeds
+			// included, over no row. The guard reads the inferred columns,
+			// so the request needs their privileges, as the source of
+			// PostgREST does (QueryBuilder.hs, emptyBodyReturnedColumns).
+			cols, star, err := inferReturning(table, schema, parts, info)
 			if err != nil {
 				return "", nil, err
 			}
-			update = "SELECT " + strings.TrimPrefix(ret, " RETURNING ") + from
-			if sel != "" {
-				update = "WITH _source AS (" + update + ") " + sel
+			if star {
+				cols = _sq(table, schema) + ".*"
 			}
+			read := *options
+			read.Count = ""
+			return buildSelect(table, parts, &read, info, "false AND ROW("+cols+") IS NOT NULL")
 		case options.Return == "headers-only":
 			cols, star, err := inferReturning(table, schema, parts, info)
 			if err != nil {
@@ -2921,6 +2927,12 @@ type DirectQueryBuilder struct {
 }
 
 func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (string, []any, error) {
+	return buildSelect(table, parts, options, info, "")
+}
+
+// buildSelect is BuildSelect. A guard, when given, is a condition that the
+// WHERE of the root level puts before its filters.
+func buildSelect(table string, parts *QueryParts, options *QueryOptions, info *SchemaInfo, guard string) (string, []any, error) {
 	st := newBuildState(parts, nil)
 	stack := BuildStack{info: info, maxRows: maxRows(), st: st}
 	schema := options.Schema
@@ -2930,6 +2942,13 @@ func (DirectQueryBuilder) BuildSelect(table string, parts *QueryParts, options *
 	// the root filters bind their values before the embeds, so that the total
 	// of a ranged count shares them (see buildAfterSelect)
 	whereClause, _ := st.pageWhere(table, schema, "", parts.whereConditionsTree, stack)
+	if guard != "" {
+		if whereClause != "" {
+			whereClause = guard + " AND (" + whereClause + ")"
+		} else {
+			whereClause = guard
+		}
+	}
 	if parts.recursive == nil {
 		st.startCount(parts, options, false)
 		stack.countChain = st.countMode != countNone
