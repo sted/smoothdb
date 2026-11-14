@@ -179,6 +179,15 @@ type ParseError struct {
 
 func (e ParseError) Error() string { return e.msg }
 
+// CodedParseError is a parse error that PostgREST answers with its own error
+// code. The wrappers of ParseError leave it unchanged.
+type CodedParseError struct {
+	Msg  string
+	Code string // the PostgREST code, such as PGRST123
+}
+
+func (e CodedParseError) Error() string { return e.Msg }
+
 // parseFailure is a parse error in PostgREST's message shape (PGRST100):
 // "failed to parse <what> (<input>)", then what went wrong.
 func parseFailure(what, input, detail string) *ParseError {
@@ -308,10 +317,11 @@ func isValidCastType(s string) bool {
 	return castTypeRe.MatchString(s)
 }
 
-// checkAggregatesEnabled checks if aggregate functions are enabled in the configuration
+// checkAggregatesEnabled checks if aggregate functions are enabled in the
+// configuration. PostgREST answers PGRST123 when they are not.
 func checkAggregatesEnabled() error {
 	if dbe != nil && !dbe.config.AggregatesEnabled {
-		return &ParseError{"Use of aggregate functions is not allowed"}
+		return &CodedParseError{Msg: "Use of aggregate functions is not allowed", Code: "PGRST123"}
 	}
 	return nil
 }

@@ -90,6 +90,10 @@ func WriteError(w http.ResponseWriter, err error) (int, error) {
 	switch err.(type) {
 	case *database.ParseError, *database.BuildError, *jqeval.Error:
 		return WriteBadRequest(w, err)
+	case *database.CodedParseError:
+		status = http.StatusBadRequest
+		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Code: err.(*database.CodedParseError).Code})
+		return status, err
 	case *database.SchemaError:
 		status = http.StatusNotAcceptable
 		heligo.WriteJSON(w, status, SmoothError{Subsystem: "network", Message: err.Error(), Hint: err.(*database.SchemaError).Hint})
