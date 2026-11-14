@@ -1178,7 +1178,7 @@ func TestBuildInsertTyped(t *testing.T) {
 			name:     "upsert",
 			records:  []Record{{"id": 1, "body": "x"}},
 			options:  QueryOptions{MergeDuplicates: true},
-			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer) ON CONFLICT ("id") DO UPDATE SET "body" = EXCLUDED."body", "id" = EXCLUDED."id"`,
+			wantSQL:  `INSERT INTO "t" ("body", "id") SELECT _."body", _."id" FROM json_to_recordset($1::json) AS _("body" character varying(20), "id" integer) WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) + 1)::text, true) <> '0' ON CONFLICT ("id") DO UPDATE SET "body" = EXCLUDED."body", "id" = EXCLUDED."id" WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) - 1)::text, true) <> '-1'`,
 			wantRows: `[{"body":"x","id":1}]`,
 		},
 		{
@@ -1250,7 +1250,7 @@ func TestBuildInsertTyped(t *testing.T) {
 			name:     "a merge of empty objects does nothing on conflict",
 			records:  []Record{{}},
 			options:  QueryOptions{MergeDuplicates: true},
-			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _ ON CONFLICT ("id") DO NOTHING`,
+			wantSQL:  `INSERT INTO "t" SELECT FROM json_array_elements($1::json) AS _ WHERE set_config('smoothdb.inserted', (coalesce(nullif(current_setting('smoothdb.inserted', true), '')::int, 0) + 1)::text, true) <> '0' ON CONFLICT ("id") DO NOTHING`,
 			wantRows: `[{}]`,
 		},
 	}

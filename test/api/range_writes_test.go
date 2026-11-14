@@ -9,7 +9,9 @@ import (
 // TestRangeOnTableWrites: a Range header has no effect on a write to a
 // table, neither on its representation nor on Content-Range, as in PostgREST
 // (the header is ignored for table mutations); a GET still honours it. RPC
-// keeps it too, see the getitemrange spec in test/postgrest.
+// keeps it too, see the getitemrange spec in test/postgrest. The
+// Content-Range of a PATCH reports the rows it wrote (0-3/*), whatever the
+// Range header.
 func TestRangeOnTableWrites(t *testing.T) {
 
 	cmdConfig := test.Config{
@@ -72,7 +74,7 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Body:            `{"v": 0}`,
 			Headers:         repr,
 			Expected:        `[{"id": 1, "v": 0}, {"id": 2, "v": 0}, {"id": 3, "v": 0}, {"id": 4, "v": 0}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/*"},
 			Status:          200,
 		},
 		{
@@ -82,7 +84,7 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Body:            `{"v": 5}`,
 			Headers:         reprRange("0-0"),
 			Expected:        `[{"id": 1, "v": 5}, {"id": 2, "v": 5}, {"id": 3, "v": 5}, {"id": 4, "v": 5}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/*"},
 			Status:          200,
 		},
 		{
@@ -92,7 +94,7 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Body:            `{"v": 6}`,
 			Headers:         reprRange("1-0"),
 			Expected:        `[{"id": 1, "v": 6}, {"id": 2, "v": 6}, {"id": 3, "v": 6}, {"id": 4, "v": 6}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/*"},
 			Status:          200,
 		},
 		{
@@ -102,7 +104,7 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Body:            `{"v": 7}`,
 			Headers:         test.Headers{"Range": {"0-0"}},
 			ExpectedEmpty:   true,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/*"},
 			Status:          204,
 		},
 		{
@@ -111,7 +113,7 @@ func TestRangeOnTableWrites(t *testing.T) {
 			Query:           jqQuery("/rangewrites", "order=id", `{"v": .id}`, ""),
 			Headers:         reprRange("0-0"),
 			Expected:        `[{"id": 1, "v": 1}, {"id": 2, "v": 2}, {"id": 3, "v": 3}, {"id": 4, "v": 4}]`,
-			ExpectedHeaders: map[string]string{"Content-Range": "*/*"},
+			ExpectedHeaders: map[string]string{"Content-Range": "0-3/*"},
 			Status:          200,
 		},
 		{

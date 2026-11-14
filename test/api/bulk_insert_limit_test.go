@@ -70,7 +70,8 @@ func TestBulkInsertOverParameterLimit(t *testing.T) {
 			Body:          bulkBody(rows, 3),
 			Headers:       test.Headers{"Prefer": {"resolution=merge-duplicates"}},
 			ExpectedEmpty: true,
-			Status:        201,
+			// every row existed: a merge that creates no row answers 200
+			Status: 200,
 		},
 		{
 			Description:     "the merge updated the rows and added none",
