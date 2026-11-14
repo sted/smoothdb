@@ -205,6 +205,21 @@ func InitSourcesRouter(apiHelper Helper) {
 	api.Handle("DELETE", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PATCH", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PUT", "/rpc/:fname", rpcMethodNotAllowed)
+
+	// A path with more segments than a table or /rpc/name is refused, as
+	// PostgREST does after the token check and before it reads the method
+	// (ApiRequest.hs getResource: InvalidResourcePath, PGRST125). The router
+	// tries the routes above first and falls back to this one. Its group
+	// checks the token only: it takes no connection, and it reads no path
+	// parameter, which CleanPaths can move after the match.
+	invalidPath := func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+		return writeErrorBody(w, http.StatusNotFound,
+			SmoothError{Code: "PGRST125", Message: "Invalid path specified in request URL"})
+	}
+	pathOnly := apiHelper.GetRouter().Group(baseURL, apiHelper.MiddlewareAuth())
+	for _, method := range []string{"GET", "POST", "PATCH", "PUT", "DELETE"} {
+		pathOnly.Handle(method, "/:sourcename/*rest", invalidPath)
+	}
 }
 
 // writeCallResult answers a function call. A function that returns void
