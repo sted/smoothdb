@@ -78,7 +78,7 @@ func TestPostgREST_ErrorBodies(t *testing.T) {
 		{
 			Description: "refuses an unknown operator with PGRST100",
 			Query:       "/items?id=noop.1",
-			Expected:    `{"code":"PGRST100","details":"unknown operator 'noop'","hint":null,"message":"failed to parse filter (noop.1)"}`,
+			Expected:    `{"code":"PGRST100","details":"valid sql operator expected","hint":null,"message":"failed to parse filter (noop.1)"}`,
 			Status:      400,
 		},
 		{

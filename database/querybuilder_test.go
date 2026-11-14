@@ -713,10 +713,10 @@ func TestFilterValueErrors(t *testing.T) {
 		errMsg string
 	}{
 		{"?or=(x.eq.a,b)", "failed to parse logic tree ((x.eq.a,b)): '=' expected"},
-		{"?x=eq", "'.' expected"},
-		{"?x=in", "'.' expected"},
-		{"?x=is.null.x", "IS operator requires null, not_null, true, false or unknown"},
-		{"?x=in.(a", "')' expected"},
+		{"?x=eq", "failed to parse filter (eq): '.' expected"},
+		{"?x=in", "failed to parse filter (in): '.' expected"},
+		{"?x=is.null.x", "failed to parse filter (is.null.x): IS operator requires null, not_null, true, false or unknown"},
+		{"?x=in.(a", "failed to parse filter (in.(a): ')' expected"},
 	}
 
 	for i, test := range errorTests {
