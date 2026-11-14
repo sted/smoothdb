@@ -245,7 +245,12 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	case options.Return == "headers-only":
 		options.locate = true
 		defer func() { options.locate = false }()
-		return writeRead(ctx, insert, values)
+		if options.Singular {
+			// a refused row count rolls the insert back
+			return writeRead(ctx, insert, values)
+		}
+		// no rows to refuse: no transaction of the request, no COMMIT
+		return runRead(ctx, insert, values, false, false)
 	default:
 		n, err := writeExec(ctx, insert, values)
 		return nil, n, err
