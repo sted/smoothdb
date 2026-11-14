@@ -805,7 +805,8 @@ func TestNotEmbeddedFilterErrors(t *testing.T) {
 // TestBuildUpdateEmptySet: when ?columns= leaves no key of the body to set,
 // the statement is a no-op select, as PostgREST builds it (an UPDATE with an
 // empty SET is a syntax error); the table name still reaches PostgreSQL, so a
-// missing table answers 42P01 (404) rather than 42601.
+// missing table answers 42P01 (404) rather than 42601. With return=minimal it
+// selects no column (QueryBuilder.hs, emptyBodyReturnedColumns).
 func TestBuildUpdateEmptySet(t *testing.T) {
 	u, _ := url.Parse("?columns=body&id=eq.1")
 	parts, err := PostgRestParser{}.parse("table", u.Query())
@@ -816,7 +817,7 @@ func TestBuildUpdateEmptySet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `SELECT * FROM "table" WHERE false`; query != want {
+	if want := `SELECT NULL FROM "table" WHERE false`; query != want {
 		t.Errorf("expected %q, got %q", want, query)
 	}
 	if len(values) != 0 {
