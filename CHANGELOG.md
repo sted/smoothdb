@@ -1,5 +1,25 @@
 # Change Log
 
+## Unreleased
+
+**PostgREST 16.4 spec cases: 1396 run, 278 skipped (83.4%)**
+
+### Added
+* **PostgREST error body** — errors answer `{code, details, hint, message}` with PostgREST's PGRST codes, messages, `Proxy-Status` and "Perhaps you meant" hints; the `subsystem` and `position` keys are removed.
+* **PUT** — PUT upserts the single row that its primary key filters address, as in PostgREST.
+* **Write response headers** — writes send `Preference-Applied`, PATCH reports its rows in `Content-Range`, and `return=headers-only` answers a `Location` header.
+* **RPC parameters** — VARIADIC, a single unnamed parameter that takes the whole body, an empty body that calls the function with no argument, and `fts(lang)` on GET.
+* **Record results** — functions that return `record` or `setof record` answer as PostgREST, through `pgrst_scalar`.
+* **Content-Profile on responses** — a response with a body names its schema when the request selects one or more than one schema is exposed.
+
+### Changed
+* **RETURNS void answers 204** — with no body and no Content-Type.
+* **PostgREST statuses** — an unknown table or function is 404 PGRST205/PGRST202, an ambiguous embed 300, SQLSTATE class XX 500, an unsupported input Content-Type 400 PGRST102, and 409 on duplicate objects only on `/admin`.
+* **limit and offset as PostgREST** — a value that is not an integer is ignored, the range is intersected as in PostgREST (416 PGRST103), and a value beyond 64 bits is 22003.
+* **Single object on writes and calls** — `vnd.pgrst.object` refuses zero or many rows with 406 PGRST116 and rolls the write back, also without `return=representation`.
+* **Upsert status** — a merge-duplicates insert that creates no row answers 200; `POST []` runs the insert.
+* **PGRST205 and PGRST202 after PostgreSQL** — smoothdb decides them only after PostgreSQL fails, so a table or function created after the schema cache load still works (PostgREST answers from its cache alone).
+
 ## 0.12.0 - 2026-11-13
 
 **PostgREST 16.4 spec cases: 1098 run, 528 skipped (67.5%)**
