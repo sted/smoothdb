@@ -52,6 +52,10 @@ type SchemaInfo struct {
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
+	// callColumnTypes are the types of the output columns of a function
+	// call, by the names the call builder reads them with (see withCallColumns).
+	// Only the copy of a call sets it.
+	callColumnTypes map[string]map[string]ColumnType
 }
 
 func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
@@ -275,6 +279,9 @@ func (si *SchemaInfo) GetTable(ftable string) *Table {
 }
 
 func (si *SchemaInfo) GetColumnType(ftable string, column string) *ColumnType {
+	if ct, ok := si.callColumnTypes[ftable][column]; ok {
+		return &ct
+	}
 	t, ok := si.cachedColumnTypes[ftable]
 	if !ok {
 		return nil
@@ -724,11 +731,13 @@ func filterRelationships(rels []Relationship, relatedTable, fk string) []Relatio
 
 // cacheFunctions groups the functions by schema-qualified name, each name
 // keeping all its overloads (PostgREST's RoutineMap), in compareOverloads
-// order. A function with an unnamed argument is left out (card 32489 rpc-params).
+// order. A function with an unnamed argument is left out, unless that
+// argument is its only input: a call can pass the body to it (see
+// FindFunctionFor).
 func cacheFunctions(functions []Function) map[string][]Function {
 	cached := map[string][]Function{}
 	for _, f := range functions {
-		if f.HasUnnamed {
+		if f.HasUnnamed && f.singleUnnamed() == nil {
 			continue
 		}
 		fname := _s(f.Name, f.Schema)
@@ -761,14 +770,37 @@ func (e AmbiguousFunctionError) Error() string { return e.msg }
 // argument. With more than one it returns an AmbiguousFunctionError naming
 // them, where PostgreSQL would pick one by its type rules or fail.
 func (si *SchemaInfo) FindFunction(name string, keys []string) (*Function, error) {
+	return si.FindFunctionFor(name, keys, "")
+}
+
+// FindFunctionFor is FindFunction for a POST whose body can fill a single
+// unnamed parameter of type raw (see RawBody; "" for none), as PostgREST's
+// findProc. A "json" body passes its keys, and falls back to an overload
+// with one unnamed json or jsonb parameter when no overload takes the keys.
+// A "text", "xml" or "bytea" body passes no key: it calls an overload
+// with one unnamed parameter of that type, or one whose parameters all have
+// a default, never one without parameters.
+func (si *SchemaInfo) FindFunctionFor(name string, keys []string, raw string) (*Function, error) {
 	if si == nil {
 		return nil, nil
 	}
-	var found []Function
+	var found, fallback []Function
 	for _, f := range si.cachedFunctions[name] {
+		if u := f.singleUnnamed(); u != nil {
+			if raw != "" && rawFills(raw, u.Type) {
+				fallback = append(fallback, f)
+			}
+			continue
+		}
+		if raw != "" && raw != "json" && len(f.inputArguments()) == 0 {
+			continue
+		}
 		if f.acceptsArguments(keys) {
 			found = append(found, f)
 		}
+	}
+	if len(found) == 0 {
+		found = fallback
 	}
 	switch len(found) {
 	case 0:
@@ -788,6 +820,35 @@ func (si *SchemaInfo) FindFunction(name string, keys []string) (*Function, error
 		"Could not choose the best candidate function between: " + strings.Join(signatures, ", "),
 		"Try renaming the parameters or the function itself in the database so function overloading can be resolved",
 	}
+}
+
+// rawFills reports whether a body of type raw (see RawBody) can fill an
+// unnamed parameter of type typ.
+func rawFills(raw, typ string) bool {
+	switch raw {
+	case "json":
+		return typ == "json" || typ == "jsonb"
+	case "text", "xml", "bytea":
+		return typ == raw
+	}
+	return false
+}
+
+// singleUnnamed returns the only input argument of f when it has no name,
+// and nil otherwise.
+func (f *Function) singleUnnamed() *Argument {
+	inputs := f.inputArguments()
+	if len(inputs) == 1 && inputs[0].Name == "" {
+		return &inputs[0]
+	}
+	return nil
+}
+
+// returnsRecord reports whether f returns record or setof record with no
+// OUT parameter to name the columns. PostgREST takes such a result as a
+// scalar: each row is one value, which serializes as a JSON object.
+func (f *Function) returnsRecord() bool {
+	return f.ReturnTypeId == recordOID && !f.HasOut
 }
 
 // inputArguments returns the arguments a call passes: IN, INOUT and VARIADIC
@@ -863,4 +924,34 @@ func compareBool(a, b bool) int {
 	default:
 		return 1
 	}
+}
+
+// withCallColumns returns si for a call to f, a function with OUT or TABLE
+// parameters: a copy that knows the array and composite types of those
+// columns, read through the alias t of the call, or si itself when it has
+// none. A JSON path on such a column needs to_jsonb (see toJson).
+func (si *SchemaInfo) withCallColumns(f *Function) *SchemaInfo {
+	if si == nil || f == nil || !f.HasOut {
+		return si
+	}
+	var cols map[string]ColumnType
+	for _, a := range f.Arguments {
+		if a.Mode != 'o' && a.Mode != 'b' && a.Mode != 't' {
+			continue
+		}
+		typ := si.GetTypeById(a.TypeId)
+		if typ == nil || (!typ.IsArray && !typ.IsComposite && !typ.IsTable) {
+			continue
+		}
+		if cols == nil {
+			cols = map[string]ColumnType{}
+		}
+		cols[a.Name] = ColumnType{Name: a.Name, Type: a.Type, IsArray: typ.IsArray, IsComposite: !typ.IsArray}
+	}
+	if cols == nil {
+		return si
+	}
+	c := *si
+	c.callColumnTypes = map[string]map[string]ColumnType{_s("", ""): cols, _s("t", ""): cols}
+	return &c
 }

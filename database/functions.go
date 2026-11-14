@@ -299,5 +299,27 @@ func DeleteFunctionSignature(ctx context.Context, name string, types []string) e
 }
 
 func ExecFunction(ctx context.Context, fname string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
-	return Execute(ctx, fname, record, filters, readonly)
+	return Execute(ctx, fname, record, nil, filters, readonly)
+}
+
+// RawBody is the body of a POST /rpc call that can go whole to a function
+// with a single unnamed parameter (PostgREST's RawPay and its JSON
+// fallback). Type is the parameter type the body can fill: "json" (also
+// jsonb), "text", "xml" or "bytea".
+type RawBody struct {
+	Type string
+	Data []byte
+}
+
+// QueryValues are the values of one argument that come from the query
+// string or from a form: text, and repeated when the key is repeated. A
+// VARIADIC parameter takes all of them as an array; any other parameter
+// takes the last one, as in PostgREST (CallPlan.hs toRpcParams).
+type QueryValues []string
+
+// CallFunction calls the function fname with the arguments of a POST body:
+// record, decoded from it, and raw, the body itself (nil when the content
+// type cannot fill a single unnamed parameter).
+func CallFunction(ctx context.Context, fname string, record Record, raw *RawBody, filters Filters) ([]byte, int64, error) {
+	return Execute(ctx, fname, record, raw, filters, false)
 }

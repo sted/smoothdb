@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"mime"
 	"net/http"
 
 	"github.com/sted/heligo"
@@ -108,7 +111,7 @@ func InitSourcesRouter(apiHelper Helper) {
 			json, err = database.JQTransformResponse(c, json)
 		}
 		if err == nil {
-			return writeRead(c, w, r, json, count)
+			return writeCallResult(c, w, r, json, count)
 		} else {
 			return WriteError(w, err)
 		}
@@ -116,21 +119,16 @@ func InitSourcesRouter(apiHelper Helper) {
 
 	api.Handle("POST", "/rpc/:fname", func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
 		fname := r.Param("fname")
-		records, status, err := ReadRequest(c, w, r)
+		record, raw, status, err := readCallRequest(c, w, r)
 		if err != nil || status != 0 {
 			return status, err
 		}
-		data, count, err := database.ExecFunction(c, fname, records[0], payloadFilters(r), false)
+		data, count, err := database.CallFunction(c, fname, record, raw, payloadFilters(r))
 		if err == nil {
 			data, err = database.JQTransformResponse(c, data)
 		}
 		if err == nil {
-			if data == nil {
-				SetReadResponseHeaders(c, w, r, count)
-				return heligo.WriteJSON(w, http.StatusOK, count)
-			} else {
-				return writeRead(c, w, r, data, count)
-			}
+			return writeCallResult(c, w, r, data, count)
 		} else {
 			return WriteError(w, err)
 		}
@@ -148,6 +146,76 @@ func InitSourcesRouter(apiHelper Helper) {
 	api.Handle("DELETE", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PATCH", "/rpc/:fname", rpcMethodNotAllowed)
 	api.Handle("PUT", "/rpc/:fname", rpcMethodNotAllowed)
+}
+
+// writeCallResult answers a function call. A function that returns void
+// (nil data) answers 204 with no body and no Content-Type, as PostgREST
+// (Response.hs: funcReturnsVoid).
+func writeCallResult(c context.Context, w http.ResponseWriter, r heligo.Request, data []byte, count int64) (int, error) {
+	if data == nil {
+		SetReadResponseHeaders(c, w, r, count)
+		return heligo.WriteHeader(w, http.StatusNoContent)
+	}
+	return writeRead(c, w, r, data, count)
+}
+
+// rawBodyTypes maps the content types whose body can go whole to a single
+// unnamed parameter to the type of that parameter (PostgREST's RawPay).
+var rawBodyTypes = map[string]string{
+	"text/plain":               "text",
+	"text/xml":                 "xml",
+	"application/octet-stream": "bytea",
+}
+
+// readCallRequest reads the body of a POST /rpc call, as PostgREST's
+// getPayload for a routine. It returns the arguments decoded from the body
+// and the body itself, for a function with a single unnamed parameter (see
+// database.RawBody):
+//   - A text/plain, text/xml or octet-stream body is only raw.
+//   - An empty JSON body is the object {}: the call takes no argument. An
+//     unnamed json parameter takes the body itself, the empty text, and
+//     fails (22P02), as in PostgREST.
+//   - A form passes all the values of a repeated field (database.QueryValues).
+func readCallRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (database.Record, *database.RawBody, int, error) {
+	ctype := "application/json"
+	if header := r.Header.Get("Content-Type"); header != "" {
+		ctype, _, _ = mime.ParseMediaType(header)
+	}
+	if typ, ok := rawBodyTypes[ctype]; ok {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			status, err := WriteBadRequest(w, err)
+			return nil, nil, status, err
+		}
+		return nil, &database.RawBody{Type: typ, Data: body}, 0, nil
+	}
+	if ctype == "application/json" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			status, err := WriteBadRequest(w, err)
+			return nil, nil, status, err
+		}
+		if len(body) == 0 {
+			return database.Record{}, &database.RawBody{Type: "json", Data: body}, 0, nil
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		records, status, err := ReadRequest(c, w, r)
+		if err != nil || status != 0 {
+			return nil, nil, status, err
+		}
+		return records[0], &database.RawBody{Type: "json", Data: body}, 0, nil
+	}
+	records, status, err := ReadRequest(c, w, r)
+	if err != nil || status != 0 {
+		return nil, nil, status, err
+	}
+	record := records[0]
+	if ctype == "application/x-www-form-urlencoded" {
+		for key, values := range r.PostForm {
+			record[key] = database.QueryValues(values)
+		}
+	}
+	return record, nil, 0, nil
 }
 
 // writeRead answers a read of rows: with 206 when the page is shorter than

@@ -282,7 +282,17 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 }
 
-func Execute(ctx context.Context, function string, record Record, filters Filters, readonly bool) ([]byte, int64, error) {
+// OIDs of the pseudo-types a function can return
+const (
+	recordOID = 2249
+	voidOID   = 2278
+)
+
+// Execute calls the function named function. A GET (readonly) takes the
+// arguments from the query string, a POST from record, decoded from the
+// body, or from raw, the body itself (see RawBody). A function that returns
+// void answers nil data: the handler answers 204 with no body.
+func Execute(ctx context.Context, function string, record Record, raw *RawBody, filters Filters, readonly bool) ([]byte, int64, error) {
 	if err := checkSchema(ctx); err != nil {
 		return nil, 0, err
 	}
@@ -300,21 +310,29 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 		return nil, 0, err
 	}
 	if readonly {
-		if len(record) != 0 {
-
-		}
-		record = make(map[string]any)
+		record = make(Record, len(params))
 		for k, vv := range params {
-			for _, v := range vv {
-				record[k] = v
-			}
+			record[k] = QueryValues(vv)
+		}
+	}
+	var rawType string
+	if raw != nil {
+		rawType = raw.Type
+		if rawType != "json" {
+			// a text, xml or bytea body is no list of arguments
+			record = nil
 		}
 	}
 	info := gi.Db.info.Load()
 	// The overload the call invokes, by the names of the arguments it passes
-	f, err := info.FindFunction(_s(function, options.Schema), orderedRecordKeys(record, parts.columnFields, nil))
+	f, err := info.FindFunctionFor(_s(function, options.Schema), orderedRecordKeys(record, parts.columnFields, nil), rawType)
 	if err != nil {
 		return nil, 0, err
+	}
+	if raw != nil && (record == nil || (f != nil && f.singleUnnamed() != nil)) {
+		// the body goes whole to the single unnamed parameter; with no
+		// function found, PostgreSQL resolves the call
+		record = Record{"": raw}
 	}
 	// A call to a STABLE or IMMUTABLE function runs READ ONLY whatever the
 	// method, as in PostgREST (Plan.hs callReadPlan: Inv + Stable/Immutable ->
@@ -331,11 +349,27 @@ func Execute(ctx context.Context, function string, record Record, filters Filter
 	}
 	var scalar bool
 	if f != nil {
-		rettype := info.GetTypeById(f.ReturnTypeId)
-		if rettype != nil {
+		if f.returnsRecord() {
+			// one json value per row (see BuildExecute)
+			scalar = true
+		} else if rettype := info.GetTypeById(f.ReturnTypeId); rettype != nil {
 			scalar = !rettype.IsComposite && !rettype.IsTable && !f.HasOut
 		}
 	}
-	single := f != nil && !f.ReturnIsSet
-	return runRead(ctx, exec, values, scalar, single)
+	// The response is one object, not an array, when the function returns
+	// one value, or when the request asks for one (vnd.pgrst.object): then
+	// zero or many rows fail with 406, as in PostgREST (PGRST116).
+	single := (f != nil && !f.ReturnIsSet) || options.Singular
+	data, n, err := runRead(ctx, exec, values, scalar, single)
+	if err != nil {
+		return nil, 0, err
+	}
+	if f != nil && f.ReturnTypeId == voidOID && !f.ReturnIsSet {
+		return nil, n, nil
+	}
+	if data == nil {
+		// an empty value (an empty bytea) is content: nil means void
+		data = []byte{}
+	}
+	return data, n, nil
 }

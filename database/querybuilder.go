@@ -2447,6 +2447,97 @@ func buildRecursiveSelect(table, schema string, parts *QueryParts, options *Quer
 	return q.String(), b.values, nil
 }
 
+// OIDs of the json types
+const (
+	jsonOID  = 114
+	jsonbOID = 3802
+)
+
+// argumentValue returns the value that the argument key of a call to f
+// (nil when unknown) binds, whether the argument is VARIADIC, and the
+// cast of its placeholder, as PostgREST's callPlanToQuery:
+//   - QueryValues fill a VARIADIC parameter as an array; any other
+//     parameter takes the last of them.
+//   - A JSON string for a json or jsonb parameter stays a JSON string. The
+//     driver sends a Go string to a json parameter as JSON text.
+//   - The body for a single unnamed parameter (a *RawBody) takes the type
+//     of the parameter, so that PostgreSQL can choose the overload. With
+//     no function found, it takes the type of the body: the call fails
+//     there (42883, 404), as in PostgREST, and does not reach a function
+//     of another type.
+func argumentValue(f *Function, key string, value any) (any, bool, string) {
+	if raw, ok := value.(*RawBody); ok {
+		typ := raw.Type
+		if f != nil {
+			if u := f.singleUnnamed(); u != nil {
+				typ = u.Type
+			}
+		}
+		switch typ {
+		case "text", "xml":
+			return string(raw.Data), false, "::" + typ
+		}
+		return raw.Data, false, "::" + typ
+	}
+	var arg *Argument
+	if f != nil {
+		for i := range f.Arguments {
+			a := &f.Arguments[i]
+			if a.Name == key && a.TypeId != 0 && a.Mode != 'o' && a.Mode != 't' {
+				arg = a
+				break
+			}
+		}
+	}
+	if arg == nil {
+		if vv, ok := value.(QueryValues); ok {
+			return vv[len(vv)-1], false, ""
+		}
+		return value, false, ""
+	}
+	variadic := arg.Mode == 'v'
+	switch v := value.(type) {
+	case QueryValues:
+		if variadic {
+			return pgArrayLiteral(v), true, ""
+		}
+		return v[len(v)-1], false, ""
+	case string:
+		if arg.TypeId == jsonOID || arg.TypeId == jsonbOID {
+			var buf bytes.Buffer
+			enc := json.NewEncoder(&buf)
+			enc.SetEscapeHTML(false)
+			if enc.Encode(v) == nil {
+				return bytes.TrimRight(buf.Bytes(), "\n"), variadic, ""
+			}
+		}
+	}
+	return value, variadic, ""
+}
+
+// pgArrayLiteral writes values as a PostgreSQL array literal, each element
+// quoted, as PostgREST's pgBuildArrayLiteral. PostgreSQL reads it as an
+// array of the type of the parameter.
+func pgArrayLiteral(values []string) string {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, v := range values {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('"')
+		for _, c := range strings.ReplaceAll(v, "\x00", "") {
+			if c == '"' || c == '\\' {
+				b.WriteByte('\\')
+			}
+			b.WriteRune(c)
+		}
+		b.WriteByte('"')
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
 func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts *QueryParts, options *QueryOptions, info *SchemaInfo) (
 	query string, valueList []any, err error) {
 	if parts.recursive != nil {
@@ -2470,17 +2561,43 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 			pairs += ", "
 		}
 		i++
-		if key != "" { // unnamed parameter @@ to be continued
+		value, variadic, cast := argumentValue(f, key, record[key])
+		if variadic {
+			pairs += "VARIADIC "
+		}
+		if key != "" {
 			pairs += quote(key)
 			pairs += " := "
 		}
-		pairs += "$" + strconv.Itoa(i)
-		valueList = append(valueList, record[key])
+		pairs += "$" + strconv.Itoa(i) + cast
+		valueList = append(valueList, value)
 	}
 
 	// Extract the return type and discover if it is a table.
 	// In that case, we will use its name and schema to compose the select clause
 	var t, s string
+	if f != nil && f.returnsRecord() {
+		// A record has no column list to select from (42601). As PostgREST,
+		// call the function in a select list and take each row as one JSON
+		// value. It has no column to select, filter or order by: PostgREST
+		// fails there with 42703.
+		for _, sf := range parts.selectFields {
+			if sf.field.name != "*" || sf.relation != nil {
+				return "", nil, &BuildError{"the function " + name + " returns record: it has no column to select"}
+			}
+		}
+		if (parts.whereConditionsTree != nil && len(parts.whereConditionsTree.children) > 0) || len(parts.orderFields) > 0 {
+			return "", nil, &BuildError{"the function " + name + " returns record: it has no column to filter or order by"}
+		}
+		query = "SELECT to_json(\"t\".\"pgrst_scalar\") "
+		from := "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
+		st := newBuildState(parts, valueList)
+		st.startCount(parts, options, f.Volatility == "v")
+		return buildAfterSelect(query, from, f.Volatility == "v", "", "", "", "", st.page.values, nil, st.count, parts, options)
+	}
+	// the JSON paths on the array and composite output columns
+	info = info.withCallColumns(f)
+	stack.info = info
 	if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {

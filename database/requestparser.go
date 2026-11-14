@@ -356,6 +356,16 @@ func checkAggregatesEnabled(fields []SelectField) error {
 	return nil
 }
 
+// isFtsOperator reports whether op is a full-text search operator, the
+// operators that take a language: fts(english).
+func isFtsOperator(op string) bool {
+	switch op {
+	case "fts", "plfts", "phfts", "wfts":
+		return true
+	}
+	return false
+}
+
 // filterParameters checks the map of filters and skip the keys with this rationale:
 // - they are not reserved words and
 // - they do not have an operator prefixing their value
@@ -367,6 +377,10 @@ func (p PostgRestParser) filterParameters(filters Filters) Filters {
 			var toRemove []int
 			for i, v := range vv {
 				prefix, _, _ := strings.Cut(v, ".")
+				if op, lang, ok := strings.Cut(prefix, "("); ok && strings.HasSuffix(lang, ")") && isFtsOperator(op) {
+					// fts(english).word is a filter with a language
+					prefix = op
+				}
 				if _, exists := postgRestParserOperators[prefix]; !exists {
 					skipped[k] = append(skipped[k], v)
 					toRemove = append(toRemove, i)
