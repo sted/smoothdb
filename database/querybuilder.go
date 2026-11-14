@@ -1259,8 +1259,11 @@ func onConflictClause(table, schema string, fields []string,
 // restricts which keys are included.
 func orderedRecordKeys(record Record, columnFields map[string]struct{}, f *Function) []string {
 	included := func(key string) bool {
-		// the body of a single unnamed parameter (key "") is no column
-		if len(columnFields) == 0 || key == "" {
+		if len(columnFields) == 0 {
+			return true
+		}
+		// the body of a single unnamed parameter is no column
+		if _, raw := record[key].(*RawBody); raw && key == "" {
 			return true
 		}
 		_, ok := columnFields[key]

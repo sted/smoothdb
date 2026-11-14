@@ -380,13 +380,13 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 	// PostgREST (PGRST116). Only it checks the number of rows (MainTx.hs).
 	// A VOLATILE call can write before the check: with TransactionMode
 	// "none" it runs in a transaction of its own, which a 406 rolls back
-	// (see writeRead).
-	if options.Singular && (f == nil || f.Volatility == "v") && gi.vars != nil && dbe.config.TransactionMode == "none" {
+	// (see writeRead). A GET runs READ ONLY and writes nothing.
+	if options.Singular && !readonly && (f == nil || f.Volatility == "v") && gi.vars != nil && dbe.config.TransactionMode == "none" {
 		gi.vars.writeTx = true
 	}
-	// A set of scalars as one object keeps its column (PostgREST's
+	// A set of scalars or records as one object keeps its column (PostgREST's
 	// asJsonSingleF): {"pgrst_scalar": 1}.
-	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet && !f.returnsRecord()
+	setOfScalarObject := options.Singular && scalar && f != nil && f.ReturnIsSet
 	data, n, err := runRead(ctx, exec, values, scalar, options.Singular)
 	if err != nil {
 		return nil, 0, err
