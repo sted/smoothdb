@@ -412,6 +412,11 @@ func Execute(ctx context.Context, function string, record Record, raw *RawBody, 
 			data = data[1 : len(data)-1]
 		}
 	}
+	if oneValue && options.ContentType != "application/octet-stream" {
+		// the page has one row, for Content-Range, also when the body is
+		// null; the total stays the count of the rows
+		n = 1
+	}
 	if data == nil {
 		// an empty value (an empty bytea) is content: nil means void
 		data = []byte{}

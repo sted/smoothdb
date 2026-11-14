@@ -2548,34 +2548,39 @@ func selectFieldName(sf SelectField) string {
 	return sf.field.name
 }
 
-// recordOutput wraps query, the call of a function that returns record
-// (see BuildExecute), for a JSON response. The query keeps the record as
-// a record, with the whole projection, so that filters, order, casts and
-// unknown columns act as in PostgreSQL. The wrapper converts to JSON only
-// the values that are records, as PostgREST's json_agg does: their fields
-// have no names on the wire.
+// recordOutput prepares the call of a function that returns record (see
+// BuildExecute) for a JSON response. The call keeps the record as a
+// record, with the whole projection, so that filters, order, casts and
+// unknown columns act as in PostgreSQL. An outer select converts each
+// output column with to_json: a record, whatever its cast, becomes an
+// object, as in PostgREST's json_agg (its fields have no names on the
+// wire), and any other value the same JSON. It returns the select of the
+// call and the outer select list.
 //   - When the response is the column pgrst_scalar (see recordExtracts),
-//     it selects that column. PostgreSQL fails without it (42703).
-//   - Otherwise (one object of a SETOF record) it selects every column of
-//     the projection, a bare pgrst_scalar through to_json.
-func recordOutput(query string, f *Function, parts *QueryParts, options *QueryOptions) string {
-	if recordExtracts(f, options) {
-		return "SELECT to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\" FROM (" + query + ") \"_t\""
+//     the outer select takes that column. PostgreSQL fails without it
+//     (42703).
+//   - Otherwise (one object of a SETOF record) it takes every column. The
+//     call names them by position, so that two columns can share a name.
+func recordOutput(f *Function, parts *QueryParts, options *QueryOptions) (*QueryParts, string) {
+	scalar := "to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\""
+	if recordExtracts(f, options) || len(parts.selectFields) == 0 {
+		return parts, scalar
 	}
-	if len(parts.selectFields) == 0 {
-		return "SELECT to_json(\"_t\".\"pgrst_scalar\") AS \"pgrst_scalar\" FROM (" + query + ") \"_t\""
-	}
-	cols := make([]string, 0, len(parts.selectFields))
-	for _, sf := range parts.selectFields {
-		name := quote(selectFieldName(sf))
-		if sf.relation == nil && sf.field.jsonPath == "" && sf.cast == "" && sf.aggregate == "" &&
-			(isStar(sf.field.name) || sf.field.name == "pgrst_scalar") {
-			cols = append(cols, "to_json(\"_t\"."+name+") AS "+name)
+	p := *parts
+	p.selectFields = make([]SelectField, len(parts.selectFields))
+	cols := make([]string, len(parts.selectFields))
+	for i, sf := range parts.selectFields {
+		if sf.relation == nil && sf.label == "" && sf.aggregate == "" && sf.field.jsonPath == "" && isStar(sf.field.name) {
+			// the call has the column pgrst_scalar only
+			cols[i] = scalar
 		} else {
-			cols = append(cols, "\"_t\"."+name)
+			name := quote(selectFieldName(sf))
+			sf.label = "_c" + strconv.Itoa(i)
+			cols[i] = "to_json(\"_t\"." + quote(sf.label) + ") AS " + name
 		}
+		p.selectFields[i] = sf
 	}
-	return "SELECT " + strings.Join(cols, ", ") + " FROM (" + query + ") \"_t\""
+	return &p, strings.Join(cols, ", ")
 }
 
 // pgArrayLiteral writes values as a PostgreSQL array literal, each element
@@ -2641,11 +2646,15 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	var t, s string
 	from := "FROM " + _sq(name, schema) + "(" + pairs + ") t "
 	isRecord := f != nil && f.returnsRecord()
+	var recordCols string // the outer select of a record call (see recordOutput)
 	if isRecord {
 		// A record has no column list to select from (42601). As PostgREST
 		// (callPlanToQuery), call the function in a select list: each row is
 		// one value, the column pgrst_scalar (see recordOutput).
 		from = "FROM (SELECT " + _sq(name, schema) + "(" + pairs + ") \"pgrst_scalar\") t "
+		if options.ContentType != "text/csv" {
+			parts, recordCols = recordOutput(f, parts, options)
+		}
 	} else if f != nil {
 		rettype := info.GetTypeById(f.ReturnTypeId)
 		if rettype == nil {
@@ -2710,8 +2719,8 @@ func (CommonBuilder) BuildExecute(name string, f *Function, record Record, parts
 	query = "SELECT " + selectClause
 
 	query, valueList, err = buildAfterSelect(query, from, once, joins, whereClause, groupByClause, orderClause, st.page.values, innerConds, st.count, parts, options)
-	if err == nil && isRecord && options.ContentType != "text/csv" {
-		query = recordOutput(query, f, parts, options)
+	if err == nil && recordCols != "" {
+		query = "SELECT " + recordCols + " FROM (" + query + ") \"_t\""
 	}
 	return query, valueList, err
 }
