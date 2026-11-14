@@ -16,7 +16,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 
 	const (
 		msMedia   = "PostgREST 16.4: a media type handler (a domain named after the type) answers text/plain and custom types; card 32503 (media types)"
-		msPut     = "PostgREST 16.4: PUT upserts the row its primary key filter addresses; card 32478 (put)"
 		msOpenAPI = "PostgREST 16.4: the root endpoint serves the OpenAPI description of the selected schema; card 32493 (openapi)"
 	)
 
@@ -428,7 +427,6 @@ func TestPostgREST_MultipleSchema(t *testing.T) {
 			Expected:        `[{"id": 111, "name": "child v2-111", "parent_id": null}]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8", "Content-Profile": "v2"},
 			Status:          201,
-			Skip:            msPut,
 		},
 		//       context "OpenAPI output" $ do
 		//         it "succeeds in reading table definition from default schema v1 if no schema is selected via header" $ do

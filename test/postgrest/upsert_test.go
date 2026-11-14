@@ -651,7 +651,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses limit and offset (400, PGRST114); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST114 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "fails if offset is specified" $
 		//         put
@@ -669,7 +669,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"limit/offset querystring parameters are not allowed for PUT","code":"PGRST114","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses limit and offset (400, PGRST114); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST114 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "rejects every other filter than pk cols eq's" $ do
 		//         put
@@ -687,7 +687,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?id=not.eq.Java"
@@ -704,7 +704,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?id=in.(Go)"
@@ -721,7 +721,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/tiobe_pls?and=(id.eq.Go)"
@@ -738,7 +738,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       it "fails if not all composite key cols are specified as eq filters" $ do
 		//         put
@@ -756,7 +756,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//         put
 		//           "/employees?last_name=eq.Heidt"
@@ -773,7 +773,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     it "fails if the uri primary key doesn't match the payload primary key" $ do
 		//       put "/tiobe_pls?name=eq.MATLAB" [json| [ { "name": "Perl", "rank": 17 } ]|]
@@ -789,7 +789,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses a payload whose primary key differs from the URL (400, PGRST115); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST115 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//       put
 		//         "/employees?first_name=eq.Wendy&last_name=eq.Anderson"
@@ -806,7 +806,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Payload values do not match URL in primary key column(s)","code":"PGRST115","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: PUT refuses a payload whose primary key differs from the URL (400, PGRST115); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST115 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     it "fails if the table has no PK" $
 		//       put "/no_pk?a=eq.one&b=eq.two" [json| [ { "a": "one", "b": "two" } ]|]
@@ -822,7 +822,7 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `{"message":"Filters must include all and only primary key columns with 'eq' operators","code":"PGRST105","details":null,"hint":null}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          405,
-			Skip:            "PostgREST 16.4: PUT refuses filters other than eq on every primary key column (405, PGRST105); card 32478 (PUT upsert)",
+			Skip:            "PostgREST 16.4: the PGRST105 error body (code, null details and hint, no subsystem and position); card 32494 (error body)",
 		},
 		//     context "Inserting row" $ do
 		//       it "succeeds on table with single pk col" $ do
@@ -852,7 +852,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Go", "rank": 19 } ]`,
 			Expected:    `[ { "name": "Go", "rank": 19 } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//
 		//       it "succeeds on table with composite pk" $ do
@@ -882,7 +881,17 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
 			Expected:    `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "$48,000.00", "company": "GEX", "occupation": "Railroad engineer" } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
+			Skip:        "PostgREST 16.4: a money column is serialized as its text (\"$48,000.00\"), smoothdb answers a number; no card",
+		},
+		// @@ added: the same PUT, its money column left out of the representation (see the skip above)
+		{
+			Description: "with PUT inserting row succeeds on table with composite pk, salary not selected",
+			Method:      "PUT",
+			Query:       "/employees?first_name=eq.Susan&last_name=eq.Heidt&select=first_name,last_name,company,occupation",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Body:        `[ { "first_name": "Susan", "last_name": "Heidt", "salary": "48000", "company": "GEX", "occupation": "Railroad engineer" } ]`,
+			Expected:    `[ { "first_name": "Susan", "last_name": "Heidt", "company": "GEX", "occupation": "Railroad engineer" } ]`,
+			Status:      201,
 		},
 		//
 		//       it "succeeds on a partitioned table with composite pk" $ do
@@ -912,7 +921,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Supra", "year": 2021 } ]`,
 			Expected:    `[ { "name": "Supra", "year": 2021, "car_brand_name": null } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//
 		//       it "succeeds if the table has only PK cols and no other cols" $ do
@@ -942,7 +950,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "id": 10 } ]`,
 			Expected:    `[ { "id": 10 } ]`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key (201); card 32478 (PUT upsert)",
 		},
 		//     context "Updating row" $ do
 		//       it "succeeds on table with single pk col" $ do
@@ -970,7 +977,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 13 } ]`,
 			Expected:    `[ { "name": "Java", "rank": 13 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds if the payload has more than one row, but it only puts the first element" $ do
 		//         -- assert that the next request will indeed be an update
@@ -999,7 +1005,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 19 }, { "name": "Swift", "rank": 12 } ]`,
 			Expected:    `{ "name": "Java", "rank": 19 }`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT of a payload with more rows writes only its first element, as a vnd.pgrst.object; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds on table with composite pk" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1027,7 +1032,17 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "60000", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
 			Expected:    `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "$60,000.00", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
+			Skip:        "PostgREST 16.4: a money column is serialized as its text (\"$60,000.00\"), smoothdb answers a number; no card",
+		},
+		// @@ added: the same PUT, its money column left out of the representation (see the skip above)
+		{
+			Description: "with PUT updating row succeeds on table with composite pk, salary not selected",
+			Method:      "PUT",
+			Query:       "/employees?first_name=eq.Frances M.&last_name=eq.Roe&select=first_name,last_name,company,occupation",
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Body:        `[ { "first_name": "Frances M.", "last_name": "Roe", "salary": "60000", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
+			Expected:    `[ { "first_name": "Frances M.", "last_name": "Roe", "company": "Gamma Gas", "occupation": "Railroad engineer" } ]`,
+			Status:      200,
 		},
 		//       it "succeeds on a partitioned table with composite pk" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1054,7 +1069,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "DeLorean", "year": 1981, "car_brand_name": null } ]`,
 			Expected:    `[ { "name": "DeLorean", "year": 1981, "car_brand_name": null } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "succeeds if the table has only PK cols and no other cols" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1081,7 +1095,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "id": 1 } ]`,
 			Expected:    `[ { "id": 1 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by its primary key; card 32478 (PUT upsert)",
 		},
 		//       it "ignores the Range header" $ do
 		//         -- assert that the next request will indeed be an update
@@ -1108,7 +1121,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Java", "rank": 5 } ]`,
 			Expected:    `[ { "name": "Java", "rank": 5 } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT ignores the Range header; card 32478 (PUT upsert)",
 		},
 		//
 		//     -- TODO: move this to SingularSpec?
@@ -1130,7 +1142,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Body:        `[ { "name": "Ruby", "rank": 11 } ]`,
 			Expected:    `{ "name": "Ruby", "rank": 11 }`,
 			Status:      201,
-			Skip:        "PostgREST 16.4: PUT inserts the row addressed by its primary key, as a vnd.pgrst.object; card 32478 (PUT upsert)",
 		},
 		//
 		//   context "with a camel case pk column" $ do
@@ -1201,7 +1212,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//       get "/UnitTest?idUnitTest=eq.1"
 		//         `shouldRespondWith` [json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]
@@ -1211,7 +1221,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Query:       "/UnitTest?idUnitTest=eq.1",
 			Expected:    `[ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//     it "works with request method PUT and return=minimal" $ do
 		//       request
@@ -1235,7 +1244,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedEmpty:   true,
 			ExpectedHeaders: map[string]string{"Content-Type": ""},
 			Status:          204,
-			Skip:            "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//       get "/UnitTest?idUnitTest=eq.1"
 		//         `shouldRespondWith` [json| [ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]|]
@@ -1245,7 +1253,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Query:       "/UnitTest?idUnitTest=eq.1",
 			Expected:    `[ { "idUnitTest": 1, "nameUnitTest": "unit test 1" } ]`,
 			Status:      200,
-			Skip:        "PostgREST 16.4: PUT updates the row addressed by a camel case primary key; card 32478 (PUT upsert)",
 		},
 		//
 		//   context "with ordering" $ do
@@ -1270,7 +1277,6 @@ func TestPostgREST_Upsert(t *testing.T) {
 			Expected:        `[ { "id": 0, "name": "tardis-upserted", "web_content": [ { "name": "bar" }, { "name": "fezz" }, { "name": "foo" } ]} ]`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          200,
-			Skip:            "PostgREST 16.4: PUT upserts the row addressed by its primary key, its representation ordered; card 32478 (PUT upsert)",
 		},
 		//     it "works with batch upserts and embedded resource" $
 		//       request
