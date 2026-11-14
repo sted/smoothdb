@@ -1732,6 +1732,15 @@ func TestPostgREST_Update(t *testing.T) {
 			ExpectedHeaders: map[string]string{"Content-Range": "0-0/*"},
 			Status:          200,
 		},
+		{
+			Description: "an empty body with return=representation ignores an offset beyond 64 bits",
+			Method:      "PATCH",
+			Query:       "/items?offset=9223372036854775808",
+			Body:        `{}`,
+			Headers:     test.Headers{"Prefer": {"return=representation"}},
+			Expected:    `[]`,
+			Status:      200,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

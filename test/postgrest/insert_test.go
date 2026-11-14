@@ -2087,6 +2087,15 @@ func TestPostgREST_Insert(t *testing.T) {
 			Headers:     test.Headers{"Accept": {"application/xml"}},
 			Status:      404,
 		},
+		{
+			Description: "a write with an Accept that no handler serves names the media types",
+			Method:      "POST",
+			Query:       "/items",
+			Body:        `{"id": 9999}`,
+			Headers:     test.Headers{"Accept": {"application/xml"}},
+			Expected:    `{"code":"PGRST107","details":null,"hint":null,"message":"None of these media types are available: application/xml"}`,
+			Status:      406,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)

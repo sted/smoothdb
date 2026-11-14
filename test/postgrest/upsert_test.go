@@ -1339,6 +1339,30 @@ func TestPostgREST_Upsert(t *testing.T) {
 			ExpectedEmpty: true,
 			Status:        204,
 		},
+		{
+			Description: "PUT refuses an offset beyond 64 bits",
+			Method:      "PUT",
+			Query:       "/items?id=eq.1&offset=9223372036854775808",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST114","details":null,"hint":null,"message":"limit/offset querystring parameters are not allowed for PUT"}`,
+			Status:      400,
+		},
+		{
+			Description: "PUT refuses a limit beyond 64 bits",
+			Method:      "PUT",
+			Query:       "/items?id=eq.1&limit=9223372036854775808",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST114","details":null,"hint":null,"message":"limit/offset querystring parameters are not allowed for PUT"}`,
+			Status:      400,
+		},
+		{
+			Description: "PUT on a missing table answers 404",
+			Method:      "PUT",
+			Query:       "/no_such_table?id=eq.1",
+			Body:        `{"id": 1}`,
+			Expected:    `{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'test.no_such_table' in the schema cache"}`,
+			Status:      404,
+		},
 	}
 
 	test.Execute(t, testConfig, tests)
