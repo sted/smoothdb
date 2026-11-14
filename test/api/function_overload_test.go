@@ -64,7 +64,7 @@ func TestFunctionOverloads(t *testing.T) {
 		},
 	}
 
-	const ambiguous = `{"subsystem":"network","message":"Could not choose the best candidate function between: rpc_overload.f_over(a => integer), rpc_overload.f_over(a => text)","code":"","hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","details":null,"position":0}`
+	const ambiguous = `{"code":"","details":null,"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","message":"Could not choose the best candidate function between: rpc_overload.f_over(a => integer), rpc_overload.f_over(a => text)"}`
 
 	// test.Execute stops a list at its first wrong body: one list per
 	// behaviour, so that each reports

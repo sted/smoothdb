@@ -223,7 +223,7 @@ func (b rbBlock) shouldRespondToReads() []test.Test {
 // Exceptions are always without preference applied (the spec passes
 // withoutPreferenceApplied in every block), so these have no twin.
 func (b rbBlock) shouldRaiseExceptions() []test.Test {
-	const conflict = `{"subsystem":"database","message":"duplicate key value violates unique constraint \"deferrable_unique_constraint_col_key\"","code":"23505","hint":"","details":"Key (col)=(1) already exists.","position":0}`
+	const conflict = `{"code":"23505","details":"Key (col)=(1) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"deferrable_unique_constraint_col_key\""}`
 	return []test.Test{
 		//   it "raises immediate constraints" $ do
 		//     request

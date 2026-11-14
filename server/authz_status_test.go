@@ -132,7 +132,7 @@ func TestAuthorizationStatusFollowsPostgREST(t *testing.T) {
 				<-done
 			}()
 			base := "http://localhost:" + m.port + "/api/postgres"
-			denied := `{"subsystem":"database","message":"permission denied for table authz_private","code":"42501","hint":"","details":null,"position":0}`
+			denied := `{"code":"42501","details":null,"hint":null,"message":"permission denied for table authz_private"}`
 			user := signClaims(t, map[string]any{"role": "authz_user"}, postgrestJWTSecret)
 			anonToken := signClaims(t, map[string]any{"role": "authz_anon"}, postgrestJWTSecret)
 			refused := signClaims(t, map[string]any{"role": "authz_denied"}, postgrestJWTSecret)
@@ -169,7 +169,7 @@ func TestAuthorizationStatusFollowsPostgREST(t *testing.T) {
 				{
 					Description:     "a role the authenticator cannot become is 403",
 					Query:           "/authz_private",
-					Expected:        `{"subsystem":"database","message":"permission denied to set role \"authz_denied\"","code":"42501","hint":"","details":null,"position":0}`,
+					Expected:        `{"code":"42501","details":null,"hint":null,"message":"permission denied to set role \"authz_denied\""}`,
 					ExpectedHeaders: map[string]string{"WWW-Authenticate": ""},
 					Status:          403,
 				},
@@ -178,7 +178,7 @@ func TestAuthorizationStatusFollowsPostgREST(t *testing.T) {
 				{
 					Description:     "a role that does not exist is 401 with the challenge",
 					Query:           "/authz_private",
-					Expected:        `{"subsystem":"database","message":"role \"authz_nobody\" does not exist","code":"22023","hint":"","details":null,"position":0}`,
+					Expected:        `{"code":"22023","details":null,"hint":null,"message":"role \"authz_nobody\" does not exist"}`,
 					ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
 					Status:          401,
 				},
@@ -237,7 +237,7 @@ func TestAuthRefusalsCarryTheChallenge(t *testing.T) {
 						Method:          "POST",
 						Query:           path,
 						Body:            `{}`,
-						Expected:        `{"subsystem":"auth","message":"Anonymous access is disabled","code":"PGRST302","hint":"","details":null,"position":0}`,
+						Expected:        `{"code":"PGRST302","details":null,"hint":null,"message":"Anonymous access is disabled"}`,
 						ExpectedHeaders: map[string]string{"WWW-Authenticate": "Bearer"},
 						Status:          401,
 					},

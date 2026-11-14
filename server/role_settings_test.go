@@ -201,7 +201,7 @@ func TestPoolAcquisitionTimeout(t *testing.T) {
 		{
 			Description: "a saturated pool answers 504 once the acquisition timeout runs out",
 			Query:       "",
-			Expected:    `{"subsystem":"database","message":"Timed out acquiring connection from connection pool.","code":"PGRST003","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST003","details":null,"hint":null,"message":"Timed out acquiring connection from connection pool."}`,
 			Status:      504,
 		},
 	})
@@ -382,7 +382,7 @@ func TestDatabaseActivationAcquisitionTimeout(t *testing.T) {
 		{
 			Description: "a saturated main pool answers 504 to the activation of a database",
 			Query:       "",
-			Expected:    `{"subsystem":"database","message":"Timed out acquiring connection from connection pool.","code":"PGRST003","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"PGRST003","details":null,"hint":null,"message":"Timed out acquiring connection from connection pool."}`,
 			Status:      504,
 		},
 	})

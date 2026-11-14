@@ -14,7 +14,7 @@ func TestIsOperandRejected(t *testing.T) {
 		BaseUrl:       "http://localhost:8082/api/dbtest",
 		CommonHeaders: test.Headers{"Authorization": {adminToken}},
 	}
-	const body = `{"subsystem":"network","message":"IS operator requires null, not_null, true, false or unknown","code":"","hint":"","details":null,"position":0}`
+	const body = `{"code":"","details":null,"hint":null,"message":"IS operator requires null, not_null, true, false or unknown"}`
 	tests := []test.Test{
 		{Description: "quoted operand", Query: `/whatever?a=is."foo"`, Expected: body, Status: 400},
 		{Description: "quoted keyword", Query: `/whatever?a=is."null"`, Expected: body, Status: 400},

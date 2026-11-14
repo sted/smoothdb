@@ -51,10 +51,11 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 		//               ]
 		//           }
 		{
-			Description: "errs when there are o2m and m2m cardinalities to the target table",
-			Query:       "/sites?select=*,big_projects(*)",
-			Status:      300,
-			Skip:        "PostgREST 16.4: 300 PGRST201 on an ambiguous embed (smoothdb answers 400); card 32494 (error taxonomy)",
+			Description:     "errs when there are o2m and m2m cardinalities to the target table",
+			Query:           "/sites?select=*,big_projects(*)",
+			Expected:        `{"details":[{"cardinality":"many-to-one","relationship":"main_project using sites(main_project_id) and big_projects(big_project_id)","embedding":"sites with big_projects"},{"cardinality":"many-to-many","relationship":"jobs using jobs_site_id_fkey(site_id) and jobs_big_project_id_fkey(big_project_id)","embedding":"sites with big_projects"},{"cardinality":"many-to-many","relationship":"main_jobs using jobs_site_id_fkey(site_id) and jobs_big_project_id_fkey(big_project_id)","embedding":"sites with big_projects"}],"hint":"Try changing 'big_projects' to one of the following: 'big_projects!main_project', 'big_projects!jobs', 'big_projects!main_jobs'. Find the desired relationship in the 'details' key.","message":"Could not embed because more than one relationship was found for 'sites' and 'big_projects'","code":"PGRST201"}`,
+			ExpectedHeaders: map[string]string{"Content-Length": "828", "Content-Type": "application/json; charset=utf-8"},
+			Status:          300,
 		},
 		//     it "errs on an ambiguous embed that has a circular reference" $
 		//       get "/agents?select=*,departments(*)"
@@ -83,8 +84,8 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 		{
 			Description: "errs on an ambiguous embed that has a circular reference",
 			Query:       "/agents?select=*,departments(*)",
+			Expected:    `{"details":[{"cardinality":"one-to-many","relationship":"departments_head_id_fkey using agents(id) and departments(head_id)","embedding":"agents with departments"},{"cardinality":"many-to-one","relationship":"agents_department_id_fkey using agents(department_id) and departments(id)","embedding":"agents with departments"}],"hint":"Try changing 'departments' to one of the following: 'departments!departments_head_id_fkey', 'departments!agents_department_id_fkey'. Find the desired relationship in the 'details' key.","message":"Could not embed because more than one relationship was found for 'agents' and 'departments'","code":"PGRST201"}`,
 			Status:      300,
-			Skip:        "PostgREST 16.4: 300 PGRST201 on an ambiguous embed (smoothdb answers 400); card 32494 (error taxonomy)",
 		},
 		//     it "errs when there are more than two fks on a junction table but it can be disambiguated with spread embeds" $ do
 		//       -- We have 4 possibilities for doing the junction JOIN here.
@@ -124,8 +125,8 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 		{
 			Description: "errs when there are more than two fks on a junction table but it can be disambiguated with spread embeds",
 			Query:       "/whatev_sites?select=*,whatev_projects(*)",
+			Expected:    `{"details":[{"cardinality":"many-to-many","relationship":"whatev_jobs using whatev_jobs_site_id_1_fkey(site_id_1) and whatev_jobs_project_id_1_fkey(project_id_1)","embedding":"whatev_sites with whatev_projects"},{"cardinality":"many-to-many","relationship":"whatev_jobs using whatev_jobs_site_id_1_fkey(site_id_1) and whatev_jobs_project_id_2_fkey(project_id_2)","embedding":"whatev_sites with whatev_projects"},{"cardinality":"many-to-many","relationship":"whatev_jobs using whatev_jobs_site_id_2_fkey(site_id_2) and whatev_jobs_project_id_1_fkey(project_id_1)","embedding":"whatev_sites with whatev_projects"},{"cardinality":"many-to-many","relationship":"whatev_jobs using whatev_jobs_site_id_2_fkey(site_id_2) and whatev_jobs_project_id_2_fkey(project_id_2)","embedding":"whatev_sites with whatev_projects"}],"hint":"Try changing 'whatev_projects' to one of the following: 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs'. Find the desired relationship in the 'details' key.","message":"Could not embed because more than one relationship was found for 'whatev_sites' and 'whatev_projects'","code":"PGRST201"}`,
 			Status:      300,
-			Skip:        "PostgREST 16.4: 300 PGRST201 on an ambiguous embed (smoothdb answers 400); card 32494 (error taxonomy)",
 		},
 		//       -- Each of those 4 possibilities can be done with spread embeds, by following the details in the error above
 		//       get "/whatev_sites?select=*,whatev_jobs!site_id_1(...whatev_projects!project_id_1(*))" `shouldRespondWith` [json|[]|]
@@ -195,8 +196,8 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 		{
 			Description: "errs on an ambiguous embed that has two one-to-one relationships",
 			Query:       "/first?select=second(*)",
+			Expected:    `{"code":"PGRST201","details":[{"cardinality":"one-to-one","embedding":"first with second","relationship":"first_second_id_1_fkey using first(second_id_1) and second(id)"},{"cardinality":"one-to-one","embedding":"first with second","relationship":"first_second_id_2_fkey using first(second_id_2) and second(id)"}],"hint":"Try changing 'second' to one of the following: 'second!first_second_id_1_fkey', 'second!first_second_id_2_fkey'. Find the desired relationship in the 'details' key.","message":"Could not embed because more than one relationship was found for 'first' and 'second'"}`,
 			Status:      300,
-			Skip:        "PostgREST 16.4: 300 PGRST201 on an ambiguous embed (smoothdb answers 400); card 32494 (error taxonomy)",
 		},
 		//     it "errs with multiple references to the same composite key columns in a view" $
 		//       get "/i2459_composite_v2?select=*,i2459_composite_v1(*)"
@@ -235,8 +236,8 @@ func TestPostgREST_EmbedDisambiguation(t *testing.T) {
 		{
 			Description: "errs with multiple references to the same composite key columns in a view",
 			Query:       "/i2459_composite_v2?select=*,i2459_composite_v1(*)",
+			Expected:    `{"code":"PGRST201","details":[{"cardinality":"many-to-one","embedding":"i2459_composite_v2 with i2459_composite_v1","relationship":"i2459_composite_t2_t1_a_t1_b_fkey using i2459_composite_v2(t1_a1, t1_b1) and i2459_composite_v1(a, b)"},{"cardinality":"many-to-one","embedding":"i2459_composite_v2 with i2459_composite_v1","relationship":"i2459_composite_t2_t1_a_t1_b_fkey using i2459_composite_v2(t1_a1, t1_b2) and i2459_composite_v1(a, b)"},{"cardinality":"many-to-one","embedding":"i2459_composite_v2 with i2459_composite_v1","relationship":"i2459_composite_t2_t1_a_t1_b_fkey using i2459_composite_v2(t1_a2, t1_b1) and i2459_composite_v1(a, b)"},{"cardinality":"many-to-one","embedding":"i2459_composite_v2 with i2459_composite_v1","relationship":"i2459_composite_t2_t1_a_t1_b_fkey using i2459_composite_v2(t1_a2, t1_b2) and i2459_composite_v1(a, b)"}],"hint":"Try changing 'i2459_composite_v1' to one of the following: 'i2459_composite_v1!i2459_composite_t2_t1_a_t1_b_fkey', 'i2459_composite_v1!i2459_composite_t2_t1_a_t1_b_fkey', 'i2459_composite_v1!i2459_composite_t2_t1_a_t1_b_fkey', 'i2459_composite_v1!i2459_composite_t2_t1_a_t1_b_fkey'. Find the desired relationship in the 'details' key.","message":"Could not embed because more than one relationship was found for 'i2459_composite_v2' and 'i2459_composite_v1'"}`,
 			Status:      300,
-			Skip:        "PostgREST 16.4: 300 PGRST201 on an ambiguous embed (smoothdb answers 400); card 32494 (error taxonomy)",
 		},
 		//   context "disambiguating requests with embed hints" $ do
 		//     context "using FK to specify the relationship" $ do

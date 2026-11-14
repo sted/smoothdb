@@ -500,7 +500,6 @@ func TestPostgREST_RPC(t *testing.T) {
 				"details":"Searched for the function test.sayhell without parameters, but no matches were found in the schema cache."}`,
 			ExpectedHeaders: map[string]string{"Content-Length": "291", "Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		//   it "should fail with 404 on unknown proc args" $ do
@@ -541,7 +540,6 @@ func TestPostgREST_RPC(t *testing.T) {
 				"details":"Searched for the function test.sayhello with parameter nam, but no matches were found in the schema cache."}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 		//   it "should not ignore unknown args and fail with 404" $
 		//     get "/rpc/add_them?a=1&b=2&smthelse=blabla" `shouldRespondWith`
@@ -625,7 +623,7 @@ func TestPostgREST_RPC(t *testing.T) {
 			Description:     "should fail with 300 Multiple Choices without explicit type casts",
 			Method:          "GET",
 			Query:           "/rpc/overloaded_same_args?arg=value",
-			Expected:        `{"subsystem":"network","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)","code":"","hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","details":null,"position":0}`,
+			Expected:        `{"code":"","details":null,"hint":"Try renaming the parameters or the function itself in the database so function overloading can be resolved","message":"Could not choose the best candidate function between: test.overloaded_same_args(arg => integer), test.overloaded_same_args(arg => xml), test.overloaded_same_args(arg => text, num => integer)"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          300,
 		},
@@ -1497,7 +1495,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{}`,
 			Expected:    `{"code":"P0001","details":null,"hint":null,"message":"bad thing"}`,
 			Status:      400,
-			Skip:        "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 		//   it "treats plpgsql assert as internal server error" $ do
 		//     p <- post "/rpc/assert" "{}"
@@ -1511,7 +1508,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Body:        `{}`,
 			Expected:    `{"code":"P0004","details":null,"hint":null,"message":"bad thing"}`,
 			Status:      500,
-			Skip:        "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		// context "unsupported method" $ do
@@ -1877,7 +1873,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `{ "hint": "Upgrade your plan", "details": "Quota exceeded", "code": "PT402", "message": "Payment Required" }`,
 			ExpectedHeaders: map[string]string{"Content-Length": "99", "Content-Type": "application/json; charset=utf-8"},
 			Status:          402,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 		// it "defaults to status 500 if RAISE code is PT not followed by a number" $
 		//   get "/rpc/raise_bad_pt"
@@ -1894,7 +1889,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `{"hint": null, "details": null, "code": "PT40A", "message": "Wrong"}`,
 			ExpectedHeaders: map[string]string{"Content-Length": "61", "Content-Type": "application/json; charset=utf-8"},
 			Status:          500,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		// context "expects a single json object" $ do
@@ -3103,7 +3097,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		//     it "will err when no function with single unnamed text parameter exists and text/plain is specified" $
@@ -3353,7 +3346,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          404,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		//     it "should fail with multiple choices when two fallback functions with single unnamed json and jsonb parameters exist" $ do
@@ -3455,7 +3447,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `{"code":"22001","details":null,"hint":null,"message":"value too long for type character(5)"}`,
 			ExpectedHeaders: map[string]string{"Content-Length": "92", "Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		//   it "modifies the param type from bit to bit varying" $ do
@@ -3488,7 +3479,6 @@ func TestPostgREST_RPC(t *testing.T) {
 			Expected:        `{"code":"22026","details":null,"hint":null,"message":"bit string length 6 does not match type bit(5)"}`,
 			ExpectedHeaders: map[string]string{"Content-Length": "102", "Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
-			Skip:            "PostgREST 16.4: the PGRST error body ({code, message, details, hint}); card 32494 (error body)",
 		},
 
 		// context "get message and details from raise sqlstate" $ do

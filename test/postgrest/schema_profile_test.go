@@ -25,7 +25,7 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 			Description: "fails trying to read table from unknown schema",
 			Query:       "/projects",
 			Headers:     test.Headers{"Accept-Profile": {"unknown"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: unknown","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
 		},
 		// it "fails when inserting on an unknown schema" $
@@ -43,7 +43,7 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 			Query:       "/projects",
 			Body:        `{"id": 999, "name": "x"}`,
 			Headers:     test.Headers{"Content-Profile": {"unknown"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: unknown","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
 		},
 		// it "fails trying to read definitions from unknown schema" $
@@ -55,7 +55,7 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 			Description: "fails trying to read definitions from unknown schema",
 			Query:       "/",
 			Headers:     test.Headers{"Accept-Profile": {"unknown"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: unknown","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
 		},
 		// @@ added: an RPC call checks the schema too
@@ -63,7 +63,7 @@ func TestPostgREST_SchemaProfile(t *testing.T) {
 			Description: "fails trying to call a function from unknown schema",
 			Query:       "/rpc/getallprojects",
 			Headers:     test.Headers{"Accept-Profile": {"unknown"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: unknown","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: unknown"}`,
 			Status:      406,
 		},
 		// @@ added: an exposed schema other than the first is accepted even
@@ -136,7 +136,7 @@ func TestPostgREST_RootListsOneSchema(t *testing.T) {
 			Description: "the root refuses a schema that exists but is not exposed",
 			Query:       "/",
 			Headers:     test.Headers{"Accept-Profile": {"private"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: private","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: private"}`,
 			Status:      406,
 		},
 	})
@@ -170,7 +170,7 @@ func TestPostgREST_InfoDescribesOnlyExposedTables(t *testing.T) {
 			Description: "$info refuses a table of a schema that is not exposed",
 			Query:       "/$info/internal_job",
 			Headers:     test.Headers{"Accept-Profile": {"private"}},
-			Expected:    `{"subsystem":"network","message":"Invalid schema: private","code":"","hint":"Only the following schemas are exposed: test, تست","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":"Only the following schemas are exposed: test, تست","message":"Invalid schema: private"}`,
 			Status:      406,
 		},
 	})

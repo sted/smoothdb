@@ -166,7 +166,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:           "/articles",
 			Body:            `[{"id": 100, "body": "xxxxx"}, {"id": 111, "body": "xxxx", "owner": "me"}]`,
 			Headers:         nil,
-			Expected:        `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`,
+			Expected:        `{"code":"","details":null,"hint":null,"message":"All object keys must match"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -412,7 +412,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Method:          "POST",
 			Query:           "/simple_pk",
 			Body:            `{ "extra":"foo"}`,
-			Expected:        `{"subsystem":"database","message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint","code":"23502","hint":"","details":"Failing row contains (null, foo).","position":0}`,
+			Expected:        `{"code":"23502","details":"Failing row contains (null, foo).","hint":null,"message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			Status:          400,
 		},
@@ -619,7 +619,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/simple_pk",
 			Body:        `{ "k":"xyyx", "extra":"e1" }`,
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"duplicate key value violates unique constraint \"simple_pk_pkey\"","code":"23505","hint":"","details":"Key (k)=(xyyx) already exists.","position":0}`,
+			Expected:    `{"code":"23505","details":"Key (k)=(xyyx) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"simple_pk_pkey\""}`,
 			Status:      409,
 		},
 		//     context "attempting to insert a row with conflicting unique constraint" $
@@ -961,7 +961,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Method:      "POST",
 			Query:       "/articles?columns=",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"subsystem":"network","message":"failed to parse columns parameter (): unexpected end of input expecting field name","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"failed to parse columns parameter (): unexpected end of input expecting field name"}`,
 			Status:      400,
 		},
 		//       it "disallows ?columns which don't exist" $
@@ -981,7 +981,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Method:      "POST",
 			Query:       "/articles?columns=helicopter",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
 			Status:      400,
 		},
 		//       it "returns missing table error even if also has invalid ?columns" $
@@ -1010,7 +1010,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id,nosuch(*)",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"subsystem":"network","message":"cannot find relationship for table articles with table nosuch","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"cannot find relationship for table articles with table nosuch"}`,
 			Status:      400,
 		},
 		// @@ added: a filter on a relation that is not embedded is refused on a
@@ -1022,7 +1022,7 @@ func TestPostgREST_Insert(t *testing.T) {
 			Query:       "/articles?select=id&nosuch.id=eq.1",
 			Body:        `{"id": 204, "body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"subsystem":"network","message":"'nosuch' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"'nosuch' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		//       it "disallows array elements that are not json objects" $
@@ -1184,7 +1184,7 @@ func TestPostgREST_Insert(t *testing.T) {
 				{"a": "val", "b": "val"}
 			]`,
 			Headers:  test.Headers{"Prefer": {"return=representation", "missing=default"}},
-			Expected: `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"b\"","code":"428C9","hint":"","details":"Column \"b\" is a generated column.","position":0}`,
+			Expected: `{"code":"428C9","details":"Column \"b\" is a generated column.","hint":null,"message":"cannot insert a non-DEFAULT value into column \"b\""}`,
 			Status:   400,
 		},
 		//         it "inserts a default on a DOMAIN with default" $

@@ -749,7 +749,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Query:       "/articles?id=eq.1&columns=helicopter",
 			Body:        `{"body": "yyy"}`,
 			Headers:     test.Headers{"Prefer": {"return=representation"}},
-			Expected:    `{"subsystem":"network","message":"Could not find the 'helicopter' column of 'articles' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'helicopter' column of 'articles' in the schema cache"}`,
 			Status:      400,
 		},
 		//       it "returns missing table error even if also has invalid ?columns" $ do
@@ -784,7 +784,7 @@ func TestPostgREST_Update(t *testing.T) {
 			Method:      "PATCH",
 			Query:       "/articles?id=eq.1",
 			Body:        `[{"id": 204, "body": "yyy"}, {"id": 205, "body": "zzz"}]`,
-			Expected:    `{"subsystem":"network","message":"a PATCH body must be a single object","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"a PATCH body must be a single object"}`,
 			Status:      400,
 		},
 		// @@ added: ?columns= that leaves nothing of the body to set is a no-op,

@@ -212,7 +212,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		{
 			Description: "fails when is not a to-one relationship",
 			Query:       "/clients?select=*,projects(*)&order=projects(id)",
-			Expected:    `{"subsystem":"network","message":"A related order on 'projects' is not possible","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"A related order on 'projects' is not possible"}`,
 			Status:      400,
 		},
 		//   get "/clients?select=*,pros:projects(*)&order=pros(id)"
@@ -228,7 +228,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		{
 			Description: "fails when is not a to-one relationship",
 			Query:       "/clients?select=*,pros:projects(*)&order=pros(id)",
-			Expected:    `{"subsystem":"network","message":"A related order on 'pros' is not possible","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"A related order on 'pros' is not possible"}`,
 			Status:      400,
 		},
 		//   get "/designers?select=id,computed_videogames(id)&order=computed_videogames(id).desc"
@@ -244,7 +244,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		{
 			Description: "fails when is not a to-one relationship",
 			Query:       "/designers?select=id,computed_videogames(id)&order=computed_videogames(id).desc",
-			Expected:    `{"subsystem":"network","message":"A related order on 'computed_videogames' is not possible","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"A related order on 'computed_videogames' is not possible"}`,
 			Status:      400,
 		},
 		// it "fails when the resource is not embedded" $
@@ -261,7 +261,7 @@ func TestPostgREST_RelatedOrders(t *testing.T) {
 		{
 			Description: "fails when the resource is not embedded",
 			Query:       "/projects?select=id,clients(name)&order=clientsx(name).nullsfirst",
-			Expected:    `{"subsystem":"network","message":"'clientsx' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"'clientsx' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		// context "related conditions through null operator on embed" $ do

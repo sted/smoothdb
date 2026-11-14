@@ -1376,7 +1376,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource doesn't exist and an embedded filter is applied to it",
 			Query:       "/clients?select=*&non_existent_projects.name=like.*NonExistent*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'non_existent_projects' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"'non_existent_projects' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		// 	get "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*" `shouldRespondWith`
@@ -1401,14 +1401,14 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "errs when the embedded resource is aliased and the filter names the table",
 			Query:       "/clients?select=*,amiga_projects:projects(*)&amiga_projectsss.name=ilike.*Amiga*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'amiga_projectsss' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"'amiga_projectsss' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 		{
 			Description: "errs when a nested embedded resource doesn't exist and a filter is applied to it",
 			Query:       "/clients?select=id,projects(id,tasks(id,name))&projects.tasks2.name=like.Design*",
 			Headers:     nil,
-			Expected:    `{"subsystem":"network","message":"'tasks2' is not an embedded resource in this request","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"'tasks2' is not an embedded resource in this request"}`,
 			Status:      400,
 		},
 
@@ -1540,7 +1540,7 @@ func TestPostgREST_Query(t *testing.T) {
 			Description: "fails on bad casting (wrong cast type)",
 			Query:       "/complex_items?select=id::fakecolumntype",
 			Headers:     nil,
-			Expected:    `{"subsystem":"database","message":"type \"fakecolumntype\" does not exist","code":"42704","hint":"","details":"","position":0}`,
+			Expected:    `{"code":"42704","details":null,"hint":null,"message":"type \"fakecolumntype\" does not exist"}`,
 			Status:      400,
 		},
 

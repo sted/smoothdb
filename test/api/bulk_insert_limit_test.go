@@ -210,7 +210,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_types",
 			Body:        `[{"id": 2, "mood": "angry"}]`,
-			Expected:    `{"subsystem":"database","message":"invalid input value for enum bulk_mood: \"angry\"","code":"22P02","hint":"","details":"","position":0}`,
+			Expected:    `{"code":"22P02","details":null,"hint":null,"message":"invalid input value for enum bulk_mood: \"angry\""}`,
 			Status:      400,
 		},
 		{
@@ -220,7 +220,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_types",
 			Body:        `[{"id": 2, "nope": 1}]`,
-			Expected:    `{"subsystem":"network","message":"Could not find the 'nope' column of 'bulk_types' in the schema cache","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"Could not find the 'nope' column of 'bulk_types' in the schema cache"}`,
 			Status:      400,
 		},
 		{
@@ -230,7 +230,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_types?on_conflict=id",
 			Body:        `{"id": 1}`,
-			Expected:    `{"subsystem":"database","message":"duplicate key value violates unique constraint \"bulk_types_pkey\"","code":"23505","hint":"","details":"Key (id)=(1) already exists.","position":0}`,
+			Expected:    `{"code":"23505","details":"Key (id)=(1) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"bulk_types_pkey\""}`,
 			Status:      409,
 		},
 		{
@@ -238,7 +238,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_types",
 			Body:        `[{"id": 2, "doubled": 5}]`,
-			Expected:    `{"subsystem":"database","message":"cannot insert a non-DEFAULT value into column \"doubled\"","code":"428C9","hint":"","details":"Column \"doubled\" is a generated column.","position":0}`,
+			Expected:    `{"code":"428C9","details":"Column \"doubled\" is a generated column.","hint":null,"message":"cannot insert a non-DEFAULT value into column \"doubled\""}`,
 			Status:      400,
 		},
 		{
@@ -267,7 +267,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_defaults",
 			Body:        `[null, {}]`,
-			Expected:    `{"subsystem":"network","message":"All object keys must match","code":"","hint":"","details":null,"position":0}`,
+			Expected:    `{"code":"","details":null,"hint":null,"message":"All object keys must match"}`,
 			Status:      400,
 		},
 		{
@@ -287,7 +287,7 @@ func TestBulkInsertValueConversion(t *testing.T) {
 			Method:      "POST",
 			Query:       "/bulk_defaults?columns=v",
 			Body:        `null`,
-			Expected:    `{"subsystem":"database","message":"cannot call json_to_recordset on a scalar","code":"22023","hint":"","details":"","position":0}`,
+			Expected:    `{"code":"22023","details":null,"hint":null,"message":"cannot call json_to_recordset on a scalar"}`,
 			Status:      400,
 		},
 		{
