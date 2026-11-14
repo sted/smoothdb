@@ -94,21 +94,23 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	}
 	info := gi.Db.info.Load()
 	var serializer TextSerializer
-	switch options.ContentType {
-	case "text/csv":
+	switch {
+	case options.locate:
+		serializer = LocationSerializer{}
+	case options.ContentType == "text/csv":
 		serializer = &CSVSerializer{}
-	case "application/octet-stream":
+	case options.ContentType == "application/octet-stream":
 		serializer = &BinarySerializer{}
 	default:
 		serializer = gi.QueryBuilder.preferredSerializer()
 	}
 	// the request's variables ride in front of the statements when they are
 	// still pending (see requestVars)
-	batch, err := gi.newBatch(ctx, options.totalPrelude, query, options.totalQuery)
+	batch, err := gi.newBatch(ctx, options.totalPrelude, query, options.totalQuery, options.insertedQuery)
 	if err != nil {
 		return nil, 0, err
 	}
-	if options.totalQuery == "" && batch.lead == 0 {
+	if options.totalQuery == "" && options.insertedQuery == "" && batch.lead == 0 {
 		rows, err := gi.Conn.Query(ctx, query, values...)
 		if err != nil {
 			return nil, 0, err
@@ -129,6 +131,9 @@ func runRead(ctx context.Context, query string, values []any, scalar, single boo
 	batch.Queue(query, values...)
 	if options.totalQuery != "" {
 		batch.Queue(options.totalQuery, options.totalValues...)
+	}
+	if options.insertedQuery != "" {
+		batch.Queue(options.insertedQuery)
 	}
 	br, err := gi.send(ctx, batch)
 	if err != nil {
@@ -169,6 +174,11 @@ func readBatch(br pgx.BatchResults, options *QueryOptions, serializer TextSerial
 		}
 	} else if err := br.QueryRow().Scan(&options.Total); err != nil {
 		return nil, 0, err
+	}
+	if options.insertedQuery != "" {
+		if err := br.QueryRow().Scan(&options.Inserted); err != nil {
+			return nil, 0, err
+		}
 	}
 	return out, n, nil
 }
@@ -219,15 +229,59 @@ func InsertJSON(ctx context.Context, table string, records []Record, body []byte
 	if err != nil {
 		return nil, 0, err
 	}
-	if options.ReturnRepresentation {
-		return writeRead(ctx, insert, values)
-	} else {
-		tag, err := gi.exec(ctx, insert, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		return nil, tag.RowsAffected(), nil
+	// The resolution applies when the insert has a conflict target: the
+	// primary key or ?on_conflict= (Response.hs, responsePreferences).
+	options.ResolutionApplied = (options.MergeDuplicates || options.IgnoreDuplicates) &&
+		(len(parts.conflictFields) > 0 || (info != nil && info.GetPrimaryKey(_s(table, options.Schema)) != nil))
+	options.Inserted = -1
+	if options.MergeDuplicates {
+		options.insertedQuery = insertedQuery
+		defer func() { options.insertedQuery = "" }()
 	}
+	switch {
+	case options.ReturnRepresentation:
+		return writeRead(ctx, insert, values)
+	case options.Return == "headers-only":
+		options.locate = true
+		defer func() { options.locate = false }()
+		return writeRead(ctx, insert, values)
+	default:
+		n, err := writeExec(ctx, insert, values)
+		return nil, n, err
+	}
+}
+
+// writeExec runs the write query of a request that asks for no rows back,
+// and answers the number of rows it wrote. With a single object asked
+// (vnd.pgrst.object), a write of more or less than one row fails and rolls
+// back, as in PostgREST, whatever the return preference: the write runs in
+// a transaction of the request, as in writeRead. With a merge-duplicates
+// insert, the count of the created rows follows in the same batch (see
+// insertedCounter). Otherwise it is one statement, without rows.
+func writeExec(ctx context.Context, query string, values []any) (int64, error) {
+	gi := GetSmoothContext(ctx)
+	options := &gi.QueryOptions
+	if options.Singular && gi.vars != nil && dbe.config.TransactionMode == "none" {
+		gi.vars.writeTx = true
+	}
+	var n int64
+	if options.insertedQuery == "" {
+		tag, err := gi.exec(ctx, query, values...)
+		if err != nil {
+			return 0, err
+		}
+		n = tag.RowsAffected()
+	} else {
+		tag, err := gi.execInserted(ctx, query, values)
+		if err != nil {
+			return 0, err
+		}
+		n = tag.RowsAffected()
+	}
+	if options.Singular && n != 1 {
+		return 0, notSingleError(n)
+	}
+	return n, nil
 }
 
 func Update(ctx context.Context, table string, record Record, filters Filters) ([]byte, int64, error) {
@@ -247,13 +301,9 @@ func Update(ctx context.Context, table string, record Record, filters Filters) (
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, update, values)
-	} else {
-		tag, err := gi.exec(ctx, update, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		return nil, tag.RowsAffected(), nil
 	}
+	n, err := writeExec(ctx, update, values)
+	return nil, n, err
 }
 
 func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, error) {
@@ -273,13 +323,9 @@ func Delete(ctx context.Context, table string, filters Filters) ([]byte, int64, 
 	}
 	if options.ReturnRepresentation {
 		return writeRead(ctx, delete, values)
-	} else {
-		tag, err := gi.exec(ctx, delete, values...)
-		if err != nil {
-			return nil, 0, err
-		}
-		return nil, tag.RowsAffected(), nil
 	}
+	n, err := writeExec(ctx, delete, values)
+	return nil, n, err
 }
 
 // FunctionNotFoundError: no function of the schema cache takes the

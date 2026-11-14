@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -217,6 +218,12 @@ func ReleaseConnection(ctx context.Context, conn *DbPoolConn, httpErr bool, rese
 // The statement runs even when the client has hung up (see detach). An open
 // transaction is known without a round trip; without one, the call costs
 // nothing.
+// TxOverride says whether a request can choose the end of its transaction
+// with Prefer: tx=commit or tx=rollback (see EndTransaction).
+func TxOverride() bool {
+	return dbe != nil && strings.HasSuffix(dbe.config.TransactionMode, "-allow-override")
+}
+
 func EndTransaction(ctx context.Context, conn *DbPoolConn, httpErr bool) error {
 	c := conn.Conn()
 	if c.PgConn().TxStatus() == 'I' {

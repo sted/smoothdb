@@ -1247,8 +1247,67 @@ func onConflictClause(table, schema string, fields []string,
 			f = quote(f)
 			s += f + " = EXCLUDED." + f
 		}
+		// a conflict takes back the row the counter added
+		s += " WHERE " + insertedCounter(false)
 	}
 	return s
+}
+
+// insertedSetting is the transaction-local setting that counts the rows a
+// merge-duplicates insert creates.
+const insertedSetting = "smoothdb.inserted"
+
+// insertedQuery answers the count of insertedSetting, after the insert in
+// the same transaction.
+const insertedQuery = "SELECT coalesce(nullif(current_setting('" + insertedSetting + "', true), '')::int, 0)"
+
+// insertedCounter is a condition that is always true and that counts rows
+// in insertedSetting, as PostgREST does (SqlFragment.hs,
+// addConfigPgrstInserted). The WHERE of the insert adds one for each
+// proposed row. The WHERE of DO UPDATE takes one back for each conflict.
+// The count tells a merge that created rows (201) from one that only
+// updated rows (200), and needs no SELECT privilege on the table.
+func insertedCounter(add bool) string {
+	op, never := "+", "0"
+	if !add {
+		op, never = "-", "-1"
+	}
+	return "set_config('" + insertedSetting + "', (coalesce(nullif(current_setting('" + insertedSetting +
+		"', true), '')::int, 0) " + op + " 1)::text, true) <> '" + never + "'"
+}
+
+// locationReturning is the RETURNING clause of an insert with
+// return=headers-only: the primary key columns as text, to build the
+// Location header (see LocationSerializer). The columns come in the order
+// of PostgREST's locationF: the key order when the select is the default
+// one, else alphabetical. The key of a view is inferred from its base
+// tables. A relation without a key returns no column.
+func locationReturning(table, schema string, parts *QueryParts, info *SchemaInfo) string {
+	var keys []string
+	if info != nil {
+		keys = info.GetKeyColumns(_s(table, schema))
+	}
+	if len(keys) == 0 {
+		return " RETURNING 1"
+	}
+	cols := slices.Clone(keys)
+	star := len(parts.selectFields) == 0
+	for _, f := range parts.selectFields {
+		if f.relation == nil && f.field.name == "*" {
+			star = true
+		}
+	}
+	if !star {
+		sort.Strings(cols)
+	}
+	ret := " RETURNING "
+	for i, c := range cols {
+		if i > 0 {
+			ret += ", "
+		}
+		ret += quote(c) + "::text AS " + quote(c)
+	}
+	return ret
 }
 
 // orderedRecordKeys returns record's keys in a deterministic order for use
@@ -1817,6 +1876,10 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 	default:
 		insert += " (" + fields + ") SELECT " + sourceFields + " FROM json_populate_recordset(NULL::" + _sq(table, schema) + ", $1::json) AS _"
 	}
+	if options.MergeDuplicates {
+		// count the rows the insert proposes (see insertedCounter)
+		insert += " WHERE " + insertedCounter(true)
+	}
 	// ON CONFLICT only for a resolution, as PostgREST (Plan.hs, mutatePlan):
 	// on_conflict alone is a plain insert, and a conflict its 409
 	if options.MergeDuplicates || options.IgnoreDuplicates {
@@ -1834,6 +1897,8 @@ func (CommonBuilder) BuildInsert(table string, records []Record, body []byte, pa
 		if sel != "" {
 			insert = "WITH _source AS (" + insert + ") " + sel
 		}
+	} else if options.Return == "headers-only" {
+		insert += locationReturning(table, schema, parts, info)
 	}
 	if err := checkWriteFilters(table, schema, parts, options, info, st, true); err != nil {
 		return "", nil, err

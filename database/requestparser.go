@@ -121,6 +121,9 @@ type QueryOptions struct {
 	SchemaNegotiated     bool
 	ContentType          string // json, csv
 	ReturnRepresentation bool
+	// Return is the return preference: "representation", "minimal",
+	// "headers-only", or "" when the request sends none
+	Return string
 	MergeDuplicates      bool
 	IgnoreDuplicates     bool
 	ParamsAsSingleObject bool
@@ -133,6 +136,10 @@ type QueryOptions struct {
 	Count                string // exact, planned, estimated
 	JQ                   string // jq program from the jq= query parameter
 	JQArgs               string // raw JSON object from the jq_args= query parameter
+	// Inserted is the number of rows a merge-duplicates insert created, as
+	// opposed to the rows it updated; -1 when the executor of an insert does
+	// not count them (written by the executor, see insertedCounter)
+	Inserted int64
 	// Total is the total of a counted read (Count set), written by the
 	// executor: the rows that the request selects, whatever its range
 	Total int64
@@ -142,6 +149,15 @@ type QueryOptions struct {
 	totalQuery   string
 	totalValues  []any
 	totalPrelude string
+	// ResolutionApplied says that the insert applied the resolution
+	// preference: it has a conflict target (written by the executor)
+	ResolutionApplied bool
+	// set by the executor of a merge-duplicates insert: the statement that
+	// answers Inserted, sent in the same batch after the insert
+	insertedQuery string
+	// set by the executor of an insert with return=headers-only: the rows
+	// go to a LocationSerializer
+	locate bool
 }
 
 // RequestParser is the interface used to parse the query string in the request and
@@ -1899,19 +1915,32 @@ func (p PostgRestParser) getQueryOptions(req *Request) QueryOptions {
 		for _, part := range parts {
 			preferValue := strings.TrimSpace(part)
 
+			// The first value of a preference wins, as in PostgREST
+			// (Preferences.hs, fromHeaders).
 			switch preferValue {
-			case "return=representation":
-				options.ReturnRepresentation = true
+			case "return=representation", "return=minimal", "return=headers-only":
+				if options.Return == "" {
+					options.Return = preferValue[len("return="):]
+					options.ReturnRepresentation = options.Return == "representation"
+				}
 			case "resolution=merge-duplicates":
-				options.MergeDuplicates = true
+				if !options.IgnoreDuplicates {
+					options.MergeDuplicates = true
+				}
 			case "resolution=ignore-duplicates":
-				options.IgnoreDuplicates = true
+				if !options.MergeDuplicates {
+					options.IgnoreDuplicates = true
+				}
 			case "params=single-object":
 				options.ParamsAsSingleObject = true
 			case "tx=commit":
-				options.TxCommit = true
+				if !options.TxRollback {
+					options.TxCommit = true
+				}
 			case "tx=rollback":
-				options.TxRollback = true
+				if !options.TxCommit {
+					options.TxRollback = true
+				}
 			case "count=exact":
 				options.Count = "exact"
 			}

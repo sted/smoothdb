@@ -46,21 +46,33 @@ func InitSourcesRouter(apiHelper Helper) {
 			return status, err
 		}
 		data, count, err := database.CreateRecordsFromJSON(c, sourcename, records, body, payloadFilters(r))
-		if err == nil {
-			SetResponseHeaders(c, w, r, count)
-			if data == nil {
-				// No representation requested (the default, `return=minimal`):
-				// PostgREST answers 201 with no body and no Content-Type, so a
-				// client can rely on "2xx write => body only if I asked for it".
-				// We used to write the affected-row count here, which is both
-				// non-standard and redundant — the count already travels in
-				// Content-Range via SetResponseHeaders above.
-				return heligo.WriteHeader(w, http.StatusCreated)
-			} else {
-				return WriteContent(c, w, http.StatusCreated, data)
-			}
-		} else {
+		if err != nil {
 			return WriteError(w, err)
+		}
+		SetResponseHeaders(c, w, r, count)
+		options := database.GetQueryOptions(c)
+		// A merge that created no row answers 200, as in PostgREST
+		// (Response.hs, isInsertIfGTZero).
+		status = http.StatusCreated
+		if options.MergeDuplicates && options.Inserted == 0 {
+			status = http.StatusOK
+		}
+		switch {
+		case options.Return == "headers-only":
+			// the created row, when it is one row of a table with a
+			// primary key; no body
+			if len(data) > 0 {
+				w.Header().Set("Location", "/"+sourcename+"?"+string(data))
+			}
+			return heligo.WriteHeader(w, status)
+		case data == nil:
+			// No representation requested (the default, `return=minimal`):
+			// PostgREST answers with no body and no Content-Type, so a
+			// client can rely on "2xx write => body only if I asked for it".
+			// The count travels in Content-Range (SetResponseHeaders).
+			return heligo.WriteHeader(w, status)
+		default:
+			return WriteContent(c, w, status, data)
 		}
 	})
 

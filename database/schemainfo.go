@@ -52,6 +52,9 @@ type SchemaInfo struct {
 	cachedCheckConstraints  map[string][]Constraint
 	cachedRelationships     map[string][]Relationship
 	cachedFunctions         map[string][]Function // the overloads of each name, see FindFunction
+	// the primary key columns of a view, inferred from its base tables
+	// (see addViewPrimaryKeys)
+	cachedViewPrimaryKeys map[string][]string
 	// callColumnTypes are the types of the output columns of a function
 	// call, by the names the call builder reads them with (see withCallColumns).
 	// Only the copy of a call sets it.
@@ -174,6 +177,7 @@ func NewSchemaInfo(ctx context.Context, db *Database) (*SchemaInfo, error) {
 		return nil, err
 	}
 	dbi.addViewRelationships(viewColDeps)
+	dbi.addViewPrimaryKeys(viewColDeps)
 
 	// Functions
 	functions, err := GetFunctions(ctx)
@@ -331,6 +335,67 @@ func (si *SchemaInfo) GetPrimaryKey(ftable string) *Constraint {
 		return nil
 	}
 	return &c
+}
+
+// addViewPrimaryKeys infers the primary key of each view, as PostgREST does
+// (SchemaCache.hs, addViewPrimaryKeys): a base table whose primary key
+// columns all appear in the view gives them, each as the first view column
+// that comes from it. The columns are in the order of the view (deps comes
+// ordered by view and column).
+func (si *SchemaInfo) addViewPrimaryKeys(deps []ViewColDep) {
+	si.cachedViewPrimaryKeys = map[string][]string{}
+	for start := 0; start < len(deps); {
+		end := start
+		for end < len(deps) && deps[end].ViewSchema == deps[start].ViewSchema && deps[end].ViewName == deps[start].ViewName {
+			end++
+		}
+		view := deps[start:end]
+		// the first view column of each base column
+		first := map[[2]string]int{}
+		for i, d := range view {
+			key := [2]string{_s(d.BaseTable, d.BaseSchema), d.BaseColumn}
+			if _, ok := first[key]; !ok {
+				first[key] = i
+			}
+		}
+		var cols []int
+		seen := map[string]bool{}
+		for _, d := range view {
+			ftable := _s(d.BaseTable, d.BaseSchema)
+			pk, ok := si.cachedPrimaryKeys[ftable]
+			if !ok || seen[ftable] {
+				continue
+			}
+			seen[ftable] = true
+			var found []int
+			for _, c := range pk.Columns {
+				if i, ok := first[[2]string{ftable, c}]; ok {
+					found = append(found, i)
+				}
+			}
+			if len(found) == len(pk.Columns) {
+				cols = append(cols, found...)
+			}
+		}
+		if len(cols) > 0 {
+			slices.Sort(cols)
+			names := make([]string, len(cols))
+			for i, c := range cols {
+				names[i] = view[c].ViewColumn
+			}
+			si.cachedViewPrimaryKeys[_s(view[0].ViewName, view[0].ViewSchema)] = names
+		}
+		start = end
+	}
+}
+
+// GetKeyColumns returns the primary key columns of a table, or the inferred
+// ones of a view (see addViewPrimaryKeys), nil when there are none.
+func (si *SchemaInfo) GetKeyColumns(ftable string) []string {
+	if c, ok := si.cachedPrimaryKeys[ftable]; ok {
+		return c.Columns
+	}
+	return si.cachedViewPrimaryKeys[ftable]
 }
 
 func (si *SchemaInfo) GetForeignKeys(ftable string) []ForeignKey {

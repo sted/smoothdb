@@ -171,30 +171,6 @@ func writeZeroRecords(w http.ResponseWriter, contentType string, status int) (in
 	return writeString(w, contentType, content, status)
 }
 
-// writeIfZeroRecordsToInsert manages the case when there are 0 records on input for
-// an insert operation.
-// In that case it will:
-// - write a response with content and status
-// - return an error if the write operation fails
-// - return true to mean "zero records on input"
-func writeIfZeroRecordsToInsert(w http.ResponseWriter, records []database.Record,
-	options *database.QueryOptions) (bool, int, error) {
-	var err error
-	var status int
-	if len(records) == 0 {
-		if options.ReturnRepresentation {
-			status = http.StatusCreated
-			setContentProfile(w, options)
-			_, err = writeZeroRecords(w, options.ContentType, status)
-		} else {
-			status = http.StatusNoContent
-			heligo.WriteHeader(w, status)
-		}
-		return true, status, err
-	}
-	return false, 0, err
-}
-
 // writeIfZeroRecordsToUpdate manages the case when there are 0 records on input for
 // an update operation.
 // In that case it will:
@@ -382,22 +358,10 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	var zero bool
 	sc := database.GetSmoothContext(c)
 	options := &sc.QueryOptions
-	// a write with an empty payload answers without the database: check its
-	// query string first, as PostgREST does
-	if r.Method == "POST" || r.Method == "PATCH" {
-		if len(records) == 0 || (r.Method == "PATCH" && len(records) == 1 && len(records[0]) == 0) {
-			if err = database.CheckQuery(c, r.Param("sourcename"), payloadFilters(r)); err != nil {
-				status, err = WriteError(w, err)
-				return
-			}
-		}
-	}
-	if r.Method == "POST" {
-		// [] as input cause no inserts
-		if zero, status, err = writeIfZeroRecordsToInsert(w, records, options); zero {
-			return
-		}
-	} else if r.Method == "PATCH" {
+	// A POST of no rows ([]) runs its insert all the same, as in PostgREST:
+	// the table must exist, a single object is refused (406), a merge
+	// answers 200 and an insert 201.
+	if r.Method == "PATCH" {
 		if len(records) > 1 {
 			// A deliberate divergence: PostgREST hands the whole array to
 			// json_to_recordset and updates with whichever row PostgreSQL
@@ -406,6 +370,9 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 			return
 		}
 		// {}, [] and [{}] as input cause no updates
+		if len(records) == 0 || len(records[0]) == 0 {
+			SetResponseHeaders(c, w, r, 0)
+		}
 		if zero, status, err = writeIfZeroRecordsToUpdate(w, records, options); zero {
 			return
 		}
@@ -413,10 +380,12 @@ func readRequest(c context.Context, w http.ResponseWriter, r heligo.Request) (re
 	return records, jsonBody, status, err
 }
 
-// SetResponseHeaders sets the response headers (Content-Location and
-// Content-Range). A read (GET, HEAD) goes to SetReadResponseHeaders; a write
-// has no range, as PostgREST's contentRangeH 1 0: its Content-Range is */*,
-// or */count with Prefer: count. It returns a status != 0 if the response
+// SetResponseHeaders sets the response headers (Content-Location,
+// Content-Range and Preference-Applied). A read (GET, HEAD) goes to
+// SetReadResponseHeaders. The Content-Range of a write follows PostgREST
+// (Response.hs, actionResponse): an update reports the rows it wrote,
+// 0-(count-1); an insert and a delete report no range. The total is * or,
+// with Prefer: count, the count. It returns a status != 0 if the response
 // must take it instead of the usual one (416, 206).
 func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Request, count int64) int {
 	if r.Method == "GET" || r.Method == "HEAD" {
@@ -426,12 +395,60 @@ func SetResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo.Req
 	options := &sc.QueryOptions
 	// @@ must check if the table has a pk
 	w.Header().Set("Content-Location", r.RequestURI)
-	if options.Count == "" {
-		w.Header().Set("Content-Range", "*/*")
-	} else {
-		w.Header().Set("Content-Range", "*/"+strconv.FormatInt(count, 10))
+	rangeString := "*"
+	if r.Method == "PATCH" && count > 0 {
+		rangeString = "0-" + strconv.FormatInt(count-1, 10)
 	}
+	if options.Count == "" {
+		rangeString += "/*"
+	} else {
+		rangeString += "/" + strconv.FormatInt(count, 10)
+	}
+	w.Header().Set("Content-Range", rangeString)
+	setPreferenceApplied(w, r, options)
 	return 0
+}
+
+// setPreferenceApplied sets the Preference-Applied header: the preferences
+// of the request that smoothdb honours, in PostgREST's order (Preferences.hs,
+// prefAppliedHeader). The resolution applies to an insert with a conflict
+// target, the return preference to a table write, the transaction
+// preference when Database.TransactionMode allows an override.
+func setPreferenceApplied(w http.ResponseWriter, r heligo.Request, options *database.QueryOptions) {
+	var applied []string
+	if r.Method == "POST" && options.ResolutionApplied {
+		if options.IgnoreDuplicates {
+			applied = append(applied, "resolution=ignore-duplicates")
+		} else {
+			applied = append(applied, "resolution=merge-duplicates")
+		}
+	}
+	if options.Return != "" && isTableWrite(r) {
+		applied = append(applied, "return="+options.Return)
+	}
+	if options.Count != "" {
+		applied = append(applied, "count="+options.Count)
+	}
+	if database.TxOverride() {
+		if options.TxCommit {
+			applied = append(applied, "tx=commit")
+		} else if options.TxRollback {
+			applied = append(applied, "tx=rollback")
+		}
+	}
+	if len(applied) > 0 {
+		w.Header().Set("Preference-Applied", strings.Join(applied, ", "))
+	}
+}
+
+// isTableWrite says whether the request writes a table: a write method on a
+// path other than /rpc/.
+func isTableWrite(r heligo.Request) bool {
+	switch r.Method {
+	case "POST", "PATCH", "DELETE", "PUT":
+		return r.Param("fname") == ""
+	}
+	return false
 }
 
 // SetReadResponseHeaders sets the headers of a read, from a table or a
@@ -457,6 +474,7 @@ func SetReadResponseHeaders(ctx context.Context, w http.ResponseWriter, r heligo
 		rangeString += "/*"
 	}
 	w.Header().Set("Content-Range", rangeString)
+	setPreferenceApplied(w, r, options)
 	switch {
 	case !counted:
 		return 0
