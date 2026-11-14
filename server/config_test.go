@@ -70,6 +70,8 @@ func TestCheckConfigErrorVerbosity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		cfg := defaultConfig()
+		// an explicit URL: without one, pgx connects as the OS user
+		cfg.Database.URL = "postgresql://postgres:postgres@localhost:5432/postgres"
 		cfg.ErrorVerbosity = tt.verbosity
 		cfg.VerboseErrors = tt.verbose
 		err := checkConfig(cfg)
