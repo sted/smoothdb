@@ -80,7 +80,8 @@ type ItBlock struct {
 }
 
 // a block header; it may follow a definition (spec actualPgVersion = describe "...")
-var blockRE = regexp.MustCompile(`^(\s*)(?:[a-z][\w' ]*=\s*)?(describe|context|it|specify)\s+"((?:[^"\\]|\\.)*)"`)
+// or the in of a let (in  it "...")
+var blockRE = regexp.MustCompile(`^(\s*)(?:[a-z][\w' ]*=\s*|in\s+)?(describe|context|it|specify)\s+"((?:[^"\\]|\\.)*)"`)
 
 // ParseSpec reads the text of a spec file and returns its it blocks and
 // cases.

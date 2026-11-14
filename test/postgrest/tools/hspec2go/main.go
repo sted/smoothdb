@@ -18,6 +18,7 @@ func main() {
 	drift := flag.Bool("drift", false, "compare the Go files given as arguments with the spec files")
 	exclude := flag.String("exclude", "", "for -drift: spec files (comma-separated base names) left out of the coverage total")
 	specDir := flag.String("spec", os.ExpandEnv("$HOME/Devel/postgrest-v16.4/test/spec/Feature"), "the spec directory, for -drift")
+	flag.BoolVar(&Fix, "fix", false, "with -drift: add the checks the port does not do and refresh changed quotes, in place")
 	flag.StringVar(&SkipReason, "skip", "", "port every case as skipped with this reason (a planned feature)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: hspec2go [-func Name] [-skip reason] File.hs\n       hspec2go -drift [-spec dir] port_test.go...\n")

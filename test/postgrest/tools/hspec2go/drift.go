@@ -29,6 +29,15 @@ type PortCase struct {
 	Status    int
 	ExpEmpty  bool
 	Unevaled  []string // fields with an expression the tool cannot evaluate
+
+	// byte offsets in the file, for -fix: the comments above the literal
+	// (CmtStart < 0 without comments), the braces of the literal, and the
+	// closing brace of its ExpectedHeaders map (-1 without one)
+	CmtStart, CmtEnd  int
+	LitOpen, LitClose int
+	HdrClose          int
+	HasStatus         bool
+	ExpVal            [2]int // the value of an Expected field, {-1, -1} without one
 }
 
 type driftRow struct {
@@ -44,7 +53,7 @@ func (r driftRow) kind() string {
 	return "conflict"
 }
 
-var itQuoteRE = regexp.MustCompile(`\bit "((?:[^"\\]|\\.)*)"`)
+var itQuoteRE = regexp.MustCompile(`\bit\s+"((?:[^"\\]|\\.)*)"`)
 
 // a quoted comment line that matches is hspec text, not a note of the port
 var hspecRE = regexp.MustCompile(`^\s*(it|context|describe|get|post|patch|put|delete) "|shouldRespondWith|^\s*request\b|\bmethod[A-Z][a-z]+\b|\[json\||matchStatus|matchHeaders|<:>`)
@@ -65,7 +74,12 @@ func stripComment(s string) string {
 	return s
 }
 
+// Fix makes runDrift edit the port files (see applyFixes).
+var Fix bool
+
 func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bool) error {
+	var fixes []fixItem
+	caseSpec := map[*Case]*SpecFile{}
 	// the upstream spec
 	var specs []*SpecFile
 	err := filepath.Walk(specDir, func(p string, info os.FileInfo, err error) error {
@@ -96,6 +110,7 @@ func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bo
 			c := &s.Cases[i]
 			byTitle[c.It.Title] = append(byTitle[c.It.Title], c)
 			allCases = append(allCases, c)
+			caseSpec[c] = s
 			caseFile[c] = s.Name
 		}
 		for _, it := range s.Its {
@@ -135,23 +150,49 @@ func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bo
 				home = f
 			}
 		}
+		added := false
 		for _, pc := range pcs {
 			where := fmt.Sprintf("%s:%d", filepath.Base(pc.File), pc.Line)
 			skip := pc.Fields["Skip"]
-			for _, q := range pc.Quoted {
-				if isHspec(q) && !strings.Contains(up, squeeze(q)) {
-					quoteRows = append(quoteRows, driftRow{where: where, it: pc.ItTitle, spec: "", port: strings.TrimSpace(q)})
-				}
-			}
 			own := false
 			for _, q := range pc.Quoted {
 				if isHspec(q) {
 					own = true
 				}
+				// "@@ added" marks the cases of the port that are not 16.4
+				// cases, up to the next it or context that 16.4 has
+				if strings.HasPrefix(strings.TrimSpace(q), "@@ added") {
+					// set below: it wins over an it or context of this comment
+				} else if m := itQuoteRE.FindStringSubmatch(q); m != nil && itLineRE.MatchString(q) && itTitles[unquoteTitle(m[1])] {
+					added = false
+				} else if ctxLineRE.MatchString(q) && strings.Contains(up, squeeze(q)) {
+					added = false
+				}
+			}
+			for _, q := range pc.Quoted {
+				if strings.HasPrefix(strings.TrimSpace(q), "@@ added") {
+					added = true
+				}
+			}
+			// the quoted text that 16.4 does not have, but not in an added
+			// case, nor before a note "Not in PostgREST 16.4" that says so
+			documented := false
+			for _, q := range pc.Quoted {
+				t := strings.TrimSpace(q)
+				if strings.HasPrefix(t, "Not in PostgREST 16.4") || strings.HasPrefix(t, "(16.4 ") || strings.HasPrefix(t, "@@") {
+					documented = true
+				}
+			}
+			if !added && !documented {
+				for _, q := range pc.Quoted {
+					if isHspec(q) && !strings.Contains(up, squeeze(q)) {
+						quoteRows = append(quoteRows, driftRow{where: where, it: pc.ItTitle, spec: "", port: strings.TrimSpace(q)})
+					}
+				}
 			}
 			// a case without hspec text of its own is an added case, even
 			// when it follows a quoted it
-			if pc.ItTitle == "" || !own {
+			if pc.ItTitle == "" || !own || added {
 				unquoted[filepath.Base(pc.File)]++
 				// a port without quotes (aggregates_test.go) still counts
 				// when its request is a spec request
@@ -169,9 +210,11 @@ func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bo
 				continue
 			}
 			c := pickCase(cands, pc, used, caseFile, home)
-			if c == nil {
-				// the same request under another it of the spec
-				if m := pickCase(allCases, pc, used, caseFile, home); m != nil && m.TODO == "" {
+			if c == nil && itTitles[pc.ItTitle] {
+				// the same request under another it of the spec (only for a
+				// quoted it that 16.4 has: an it 16.4 does not have is not a
+				// move)
+				if m := pickHome(allCases, pc, used, caseFile, home); m != nil && m.TODO == "" {
 					rows = append(rows, driftRow{where, pc.ItTitle, pc.req(), "it", "under it \"" + m.It.Title + "\" in " + caseFile[m], "", skip})
 					c = m
 				}
@@ -193,9 +236,26 @@ func runDrift(w io.Writer, specDir string, files []string, exclude map[string]bo
 			if c.TODO != "" {
 				continue // the spec case is not convertible: nothing to compare
 			}
+			fi := fixItem{pc: pc, c: c, spec: caseSpec[c]}
 			for _, d := range compare(c, pc) {
-				rows = append(rows, driftRow{where, pc.ItTitle, pc.req(), d[0], d[1], d[2], skip})
+				r := driftRow{where, pc.ItTitle, pc.req(), d[0], d[1], d[2], skip}
+				rows = append(rows, r)
+				if r.kind() == "less" && !strings.Contains(d[2], "not evaluated") {
+					fi.less = append(fi.less, d)
+				}
 			}
+			fixes = append(fixes, fi)
+		}
+	}
+
+	if Fix {
+		nc, nq, err := applyFixes(fixes, up)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "fix: checks added to %d cases, quotes refreshed on %d cases\n", nc, nq)
+		for _, m := range Manual {
+			fmt.Fprintf(os.Stderr, "fix: quote to refresh by hand: %s\n", m)
 		}
 	}
 
@@ -288,7 +348,14 @@ func cell(s string) string {
 // squeeze removes all whitespace: a quote may wrap lines another way
 func squeeze(s string) string { return strings.Join(strings.Fields(stripComment(s)), "") }
 
-func isHspec(s string) bool { return hspecRE.MatchString(s) }
+func isHspec(s string) bool {
+	t := strings.TrimSpace(s)
+	// a TODO of the converter, a note in parentheses, an abridged quote
+	if strings.HasPrefix(t, "TODO(") || strings.HasPrefix(t, "(") || strings.HasPrefix(t, "...") || strings.HasPrefix(t, "@@") {
+		return false
+	}
+	return hspecRE.MatchString(s)
+}
 
 func (pc *PortCase) req() string {
 	m := pc.Fields["Method"]
@@ -322,12 +389,17 @@ func pickCase(cands []*Case, pc *PortCase, used map[*Case]bool, caseFile map[*Ca
 		m = "GET"
 	}
 	var best *Case
-	for pass := 0; pass < 4 && best == nil; pass++ {
+	pe, _ := normJSON(pc.Fields["Expected"])
+	// passes: home file first, unused first, the same expected body first
+	for pass := 0; pass < 8 && best == nil; pass++ {
 		for _, c := range cands {
 			if pass%2 == 0 && caseFile[c] != home {
 				continue
 			}
-			if pass < 2 && used[c] {
+			if pass%4 < 2 && used[c] {
+				continue
+			}
+			if ce, _ := normJSON(c.Expected); pass < 4 && ce != pe {
 				continue
 			}
 			if c.Method == m && sameQuery(c.Query, pc.Fields["Query"]) {
@@ -492,8 +564,13 @@ func readPort(fn string) ([]*PortCase, error) {
 				continue
 			}
 			var quoted []string
+			cmtStart, cmtEnd := -1, -1
 			for _, cg := range file.Comments {
 				if cg.Pos() > prev && cg.End() < cl.Pos() {
+					if cmtStart < 0 {
+						cmtStart = fset.Position(cg.Pos()).Offset
+					}
+					cmtEnd = fset.Position(cg.End()).Offset
 					for _, c := range cg.List {
 						quoted = append(quoted, strings.TrimPrefix(strings.TrimPrefix(c.Text, "//"), " "))
 					}
@@ -508,8 +585,23 @@ func readPort(fn string) ([]*PortCase, error) {
 					}
 				}
 			}
-			pc := &PortCase{File: fn, Line: fset.Position(cl.Pos()).Line, ItTitle: title, Quoted: quoted, Fields: map[string]string{}}
+			pc := &PortCase{File: fn, Line: fset.Position(cl.Pos()).Line, ItTitle: title, Quoted: quoted, Fields: map[string]string{},
+				CmtStart: cmtStart, CmtEnd: cmtEnd, LitOpen: fset.Position(cl.Lbrace).Offset, LitClose: fset.Position(cl.Rbrace).Offset, HdrClose: -1, ExpVal: [2]int{-1, -1}}
 			evalTest(cl, pc)
+			for _, e := range cl.Elts {
+				if kv, ok := e.(*ast.KeyValueExpr); ok {
+					switch kv.Key.(*ast.Ident).Name {
+					case "ExpectedHeaders":
+						if m, ok := kv.Value.(*ast.CompositeLit); ok {
+							pc.HdrClose = fset.Position(m.Rbrace).Offset
+						}
+					case "Status":
+						pc.HasStatus = true
+					case "Expected":
+						pc.ExpVal = [2]int{fset.Position(kv.Value.Pos()).Offset, fset.Position(kv.Value.End()).Offset}
+					}
+				}
+			}
 			out = append(out, pc)
 			prev = cl.End()
 		}
@@ -676,4 +768,22 @@ func writeCoverage(w io.Writer, specs []*SpecFile, status map[*Case][]string, ti
 			totEx[1], totEx[0], 100*float64(totEx[1])/float64(totEx[0]),
 			totEx[1]+totEx[2], 100*float64(totEx[1]+totEx[2])/float64(totEx[0]))
 	}
+}
+
+// pickHome is pickCase limited to the home spec file of the port file.
+func pickHome(cands []*Case, pc *PortCase, used map[*Case]bool, caseFile map[*Case]string, home string) *Case {
+	var own []*Case
+	for _, c := range cands {
+		if caseFile[c] == home {
+			own = append(own, c)
+		}
+	}
+	return pickCase(own, pc, used, caseFile, home)
+}
+
+func unquoteTitle(s string) string {
+	if t, err := strconv.Unquote(`"` + s + `"`); err == nil {
+		return t
+	}
+	return s
 }

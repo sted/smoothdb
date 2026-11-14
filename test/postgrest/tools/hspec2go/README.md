@@ -73,5 +73,19 @@ A port case without quoted hspec text still counts when its method and path are 
 request (`aggregates_test.go`). The tool does not follow cases that Go helpers build
 (`rollback_test.go`): count those by hand.
 
+With `-fix`, the drift mode also edits the port files in place:
+
+- It adds the checks the spec does and the port does not (status, body, `ExpectedEmpty`,
+  headers). It never changes a value the port checks, and it leaves out a check that an
+  "@@ not asserted" note of the case names.
+- It replaces quoted hspec text that 16.4 changed, or that names another `it`, with the
+  16.4 text. It does this only for a comment with nothing but hspec text, and lists the
+  others ("quote to refresh by hand").
+
+Run the suite after `-fix`. A new check that smoothdb fails becomes an "@@ not asserted"
+note with its reason, or a skip when the case cannot pass at all. The port marks with
+"@@ added" the cases that are not 16.4 cases (from an older spec, or smoothdb's own): the
+drift mode counts them as added, up to the next `it` or `context` that 16.4 has.
+
 A difference is not always an error. Some cases are deliberate (`deliberate: ...` skips)
 or come from live runs of PostgREST 16.4. Read the case before you change an expectation.
