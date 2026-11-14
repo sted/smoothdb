@@ -1308,6 +1308,26 @@ func resolveEmbeds(table, schema string, fields []SelectField, info *SchemaInfo)
 	return keys, computed, nil
 }
 
+// embedFilters answers a copy of the root of a filter tree with only the
+// conditions on embedded resources: those whose field names a relation
+// path. nil when there is none.
+func embedFilters(root *WhereConditionNode) *WhereConditionNode {
+	if root == nil {
+		return nil
+	}
+	kept := *root
+	kept.children = nil
+	for _, n := range root.children {
+		if len(n.field.relPath) > 0 {
+			kept.children = append(kept.children, n)
+		}
+	}
+	if len(kept.children) == 0 {
+		return nil
+	}
+	return &kept
+}
+
 // inferReturning answers the columns that a write returns when the request
 // asks for rows or headers, as PostgREST infers them from the select
 // (Plan.hs, inferColsEmbedNeeds): every column for the default select, a
@@ -2045,7 +2065,14 @@ func (CommonBuilder) BuildUpdate(table string, record Record, parts *QueryParts,
 			}
 			read := *options
 			read.Count = ""
-			return buildSelect(table, parts, &read, info, "false AND ROW("+cols+") IS NOT NULL")
+			// The read keeps the filters of the embeds. It leaves out the
+			// root filters and the root logic, which select the rows of
+			// the update, and limit and offset, which a mutation ignores
+			// (Plan.hs).
+			readParts := *parts
+			readParts.limit, readParts.offset = "", ""
+			readParts.whereConditionsTree = embedFilters(parts.whereConditionsTree)
+			return buildSelect(table, &readParts, &read, info, "false AND ROW("+cols+") IS NOT NULL")
 		case options.Return == "headers-only":
 			cols, star, err := inferReturning(table, schema, parts, info)
 			if err != nil {
