@@ -445,25 +445,6 @@ func (dbe *DbEngine) GetMainDatabase(ctx context.Context) (*Database, error) {
 	return dbe.mainDb, nil
 }
 
-// VerifyAuthN checks a login by connecting to the main database as user.
-// ctx bounds the dial and the ping: a client that hangs up cancels them.
-func VerifyAuthN(ctx context.Context, user, password string) error {
-	config, err := pgx.ParseConfig(dbe.config.URL)
-	if err != nil {
-		return err
-	}
-	config.User = user
-	config.Password = password
-	conn, err := pgx.ConnectConfig(ctx, config)
-	if err != nil {
-		return err
-	}
-	defer conn.Close(ctx)
-
-	// Test the connection
-	return conn.Ping(ctx)
-}
-
 // reloadRoleSettingsAndLog reads the role settings again, with the schema
 // cache: an ALTER ROLE ... SET takes effect on the same notification.
 func (dbe *DbEngine) reloadRoleSettingsAndLog(ctx context.Context) {

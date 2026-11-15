@@ -28,7 +28,7 @@ func (h loginHelper) RequestMaxBytes() int64    { return 1 << 20 }
 func postToken(t *testing.T, authURL string, limit time.Duration) *httptest.ResponseRecorder {
 	t.Helper()
 	h := loginHelper{router: heligo.New()}
-	InitLoginRoute(h, "gotrue", authURL, "secret", 0)
+	InitLoginRoute(h, "gotrue", authURL, "secret", 0, false)
 	req := httptest.NewRequest("POST", "/token", strings.NewReader(`{"email":"a@b.c","password":"x"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

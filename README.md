@@ -101,6 +101,8 @@ The response holds `access_token`, `token_type`, `expires_in`, `expires_at`, `re
 
 The server does not start without a `JWTSecret` when `LoginMode` is not `"none"` (with `JWTKeys`, only for `"db"`). `/token` is rate limited per client address (`LoginRateLimit`).
 
+In `"db"` mode a connection proves the password only when PostgreSQL asks for one (password, md5 or scram-sha-256 in `pg_hba.conf`). Under `trust`, `peer`, `ident` or certificate authentication `/token` refuses every login, unless `LoginAllowTrust` is set, for development only (`SMOOTHDB_DEBUG` sets it). An empty password and the name of the authenticator are always refused.
+
 We will omit the Authorization header in the following examples.
 
 ### Create a database
@@ -751,6 +753,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | LoginMode | Login mode: "none", "db", "gotrue" | none |
 | AuthURL | URL of the external AuthN service | "" |
 | LoginRateLimit | Max POST /token attempts per minute per client address, 0 to disable | 30 |
+| LoginAllowTrust | With LoginMode "db", issue a token when PostgreSQL did not ask for a password (trust, peer, ident, certificate); for development only | false |
 | AllowAnon | Allow unauthenticated connections; also requires a non-empty Database.AnonRole, otherwise anonymous requests are refused (401) | false |
 | JWTSecret | Secret for JWT tokens: a passphrase (HS256), a JWK or a JWK set. Required when LoginMode is not "none" (with JWTKeys, only for "db") | "" |
 | JWTSecretIsBase64 | JWTSecret is base64-encoded | false |
@@ -825,7 +828,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | SMOOTHDB_ADMIN_ROLES | AdminRoles (comma-separated list) |
 | SMOOTHDB_CORS_ALLOWED_ORIGINS | CORSAllowedOrigins (comma-separated list) |
 | SMOOTHDB_CORS_ALLOW_CREDENTIALS | CORSAllowCredentials (true/false) |
-| SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", EnableAdminRoute: true, AdminRoles: ["*"] when empty, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
+| SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", LoginAllowTrust: true, EnableAdminRoute: true, AdminRoles: ["*"] when empty, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
 	
 ### Command line parameters
 

@@ -52,7 +52,9 @@ type AccessTokenResponse struct {
 // call to the auth server of gotrue mode.
 var loginTimeout = 10 * time.Second
 
-func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string, tokenExpiry int64) {
+// InitLoginRoute serves POST /token. With loginMode "db", allowTrust accepts a
+// login that PostgreSQL did not ask a password for (LoginAllowTrust).
+func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecret string, tokenExpiry int64, allowTrust bool) {
 	api := apiHelper.GetRouter()
 	// /token is reachable without credentials and sits outside MiddlewareStd, so
 	// it gets its own per-client rate limit and the same body cap as every
@@ -77,7 +79,7 @@ func InitLoginRoute(apiHelper Helper, loginMode string, authURL string, jwtSecre
 		case "db":
 			ctx, cancel := context.WithTimeout(c, loginTimeout)
 			defer cancel()
-			err = database.VerifyAuthN(ctx, credentials.Email, credentials.Password)
+			err = database.VerifyAuthN(ctx, credentials.Email, credentials.Password, allowTrust)
 			if err == nil {
 				var expiry time.Duration
 				if tokenExpiry > 0 {

@@ -31,6 +31,7 @@ type Config struct {
 	LoginMode               string          `comment:"Login mode: none, db, gotrue (default: none)"`
 	AuthURL                 string          `comment:"URL of the external AuthN service (default: '')"`
 	LoginRateLimit          int             `comment:"Max POST /token attempts per minute per client address, 0 to disable (default: 30)"`
+	LoginAllowTrust         bool            `comment:"With LoginMode db, issue a token when PostgreSQL did not ask for a password (trust, peer, ident, certificate); for development only (default: false, true with SMOOTHDB_DEBUG)"`
 	AllowAnon               bool            `comment:"Allow unauthenticated connections (default: false)"`
 	JWTSecret               string          `comment:"Secret for JWT tokens: a passphrase, a JWK or a JWK set"`
 	JWTSecretIsBase64       bool            `comment:"JWTSecret is base64-encoded (default: false)"`
@@ -138,6 +139,7 @@ func getEnvironment(c *Config) {
 	if strings.ToLower(debug) == "true" {
 		c.AllowAnon = true
 		c.LoginMode = "db"
+		c.LoginAllowTrust = true
 		c.EnableAdminRoute = true
 		c.EnableAdminUI = true
 		if len(c.AdminRoles) == 0 {

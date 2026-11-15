@@ -22,6 +22,23 @@ func TestCheckConfigRejectsEmptyJWTSecret(t *testing.T) {
 	}
 }
 
+// LoginAllowTrust is off by default; debug mode, which sets LoginMode "db",
+// turns it on, so a local trust server still signs in.
+func TestLoginAllowTrustDefaults(t *testing.T) {
+	t.Setenv("SMOOTHDB_DEBUG", "")
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if cfg.LoginAllowTrust {
+		t.Error("LoginAllowTrust is on by default")
+	}
+	t.Setenv("SMOOTHDB_DEBUG", "true")
+	cfg = defaultConfig()
+	getEnvironment(cfg)
+	if !cfg.LoginAllowTrust {
+		t.Error("debug mode does not set LoginAllowTrust")
+	}
+}
+
 // As PostgREST's db-schemas, Database.ExposedSchemas may not name pg_catalog or
 // information_schema: the server does not start (Config.hs, parseDbSchemas).
 func TestCheckConfigRejectsCatalogSchemas(t *testing.T) {

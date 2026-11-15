@@ -8,6 +8,7 @@ import (
 
 	"github.com/sted/heligo"
 	"github.com/sted/smoothdb/api"
+	"github.com/sted/smoothdb/database"
 )
 
 func (s *Server) initHTTPServer() error {
@@ -60,7 +61,16 @@ func (s *Server) initHTTPServer() error {
 	}
 
 	if cfg.LoginMode != "none" {
-		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, s.JWTSecret(), cfg.TokenExpiry)
+		api.InitLoginRoute(s, cfg.LoginMode, cfg.AuthURL, s.JWTSecret(), cfg.TokenExpiry, cfg.LoginAllowTrust)
+		if cfg.LoginMode == "db" && !cfg.LoginAllowTrust {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			asked, err := database.AuthenticatorPasswordAsked(ctx)
+			cancel()
+			if err == nil && !asked {
+				s.logger.Warn().Msg("PostgreSQL does not ask the authenticator for a password on this host " +
+					"(trust, peer, ident or certificate): /token refuses every login unless LoginAllowTrust is set")
+			}
+		}
 	}
 
 	if cfg.JQ.Enabled {
