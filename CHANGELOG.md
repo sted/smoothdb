@@ -36,6 +36,7 @@
 
 ### Fixed
 * **String literals with a backslash** — JSON path keys, full-text search configurations and admin comments with a backslash are written as `E''` literals, which read back the same with `standard_conforming_strings` off.
+* **Escaped type names in JSON and CSV** — composite attribute names and enum labels with a quote, a backslash, a comma or a line break no longer break the body.
 
 ## 0.12.0 - 2026-11-13
 

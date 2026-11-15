@@ -530,8 +530,9 @@ func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, a
 		// for the bytes that follow.
 		oid := binary.BigEndian.Uint32(buf[rp:])
 		rp += 4
+		// the attribute name is a name of the DDL: it can hold a quote
 		t.WriteByte('"')
-		t.WriteString(typ.SubTypeNames[i])
+		t.appendString([]byte(typ.SubTypeNames[i]), true)
 		t.WriteString("\":")
 		flen := binary.BigEndian.Uint32(buf[rp:])
 		rp += 4
@@ -546,10 +547,6 @@ func (t *TextBuilder) appendComposite(buf []byte, typ *Type, info *SchemaInfo, a
 	}
 	t.WriteByte('}')
 	return nil
-}
-
-func (t *TextBuilder) appendEnum(buf []byte) {
-	t.Write(buf)
 }
 
 // JSONSerializer writes the rows as a JSON array of objects, decoding the raw
@@ -646,8 +643,9 @@ func (j *JSONSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) er
 			case ct.IsComposite:
 				return j.appendComposite(buf, ct, info, j)
 			case ct.IsEnum:
+				// the label, escaped as the text path escapes it
 				j.WriteByte('"')
-				j.appendEnum(buf)
+				j.appendString(buf, true)
 				j.WriteByte('"')
 			default:
 				return noBinaryDecoder(typ, ct)
@@ -812,7 +810,7 @@ func (csv *CSVSerializer) appendType(buf []byte, typ uint32, info *SchemaInfo) e
 				}
 				csv.appendFieldString(csv.lit.String()[start:])
 			case ct.IsEnum:
-				csv.appendEnum(buf)
+				csv.appendField(buf)
 			default:
 				return noBinaryDecoder(typ, ct)
 			}
