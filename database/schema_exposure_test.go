@@ -19,6 +19,18 @@ func TestSchemaExposed(t *testing.T) {
 		{"تست", []string{"test", "تست"}, "", ""},
 		{"unknown", []string{"test", "تست"}, "Invalid schema: unknown", "Only the following schemas are exposed: test, تست"},
 		{"extensions", []string{"collhub"}, "Invalid schema: extensions", "Only the following schemas are exposed: collhub"},
+		// with no list, the system schemas stay closed
+		{"pg_catalog", nil, "Invalid schema: pg_catalog", systemSchemaHint},
+		{"information_schema", nil, "Invalid schema: information_schema", systemSchemaHint},
+		{"pg_toast", []string{}, "Invalid schema: pg_toast", systemSchemaHint},
+		{"pg_temp", nil, "Invalid schema: pg_temp", systemSchemaHint},
+		{"pg_temp_3", nil, "Invalid schema: pg_temp_3", systemSchemaHint},
+		// PostgreSQL reserves only the lower-case prefix
+		{"PG_data", nil, "", ""},
+		{"pgdata", nil, "", ""},
+		// a list that names a system schema exposes it
+		{"pg_catalog", []string{"api", "pg_catalog"}, "", ""},
+		{"information_schema", []string{"api"}, "Invalid schema: information_schema", "Only the following schemas are exposed: api"},
 	}
 	for i, test := range tests {
 		err := schemaExposed(test.schema, test.exposed)

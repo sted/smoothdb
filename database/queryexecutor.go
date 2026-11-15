@@ -32,10 +32,25 @@ type SchemaError struct {
 
 func (e SchemaError) Error() string { return e.msg }
 
+// systemSchemaHint is the hint of a system schema refused with no exposed list.
+const systemSchemaHint = "System schemas are exposed only when Database.ExposedSchemas names them"
+
+// isSystemSchema reports a schema of PostgreSQL itself. PostgreSQL reserves
+// the lower-case prefix pg_ (pg_catalog, pg_toast, pg_temp_N), so no user
+// schema has it.
+func isSystemSchema(schema string) bool {
+	return strings.HasPrefix(schema, "pg_") || schema == "information_schema"
+}
+
 // schemaExposed refuses a schema outside the exposed list, with the list as
-// a hint; an empty list exposes every schema.
+// a hint. An empty list exposes every user schema, but not the system
+// schemas: pg_catalog alone holds functions such as query_to_xml that run
+// any SQL. A list that names a system schema exposes it.
 func schemaExposed(schema string, exposed []string) *SchemaError {
 	if len(exposed) == 0 {
+		if isSystemSchema(schema) {
+			return &SchemaError{"Invalid schema: " + schema, systemSchemaHint}
+		}
 		return nil
 	}
 	for _, s := range exposed {

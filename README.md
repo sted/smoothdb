@@ -781,7 +781,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | Database.AnonRole | Role for anonymous requests, and for tokens without a role claim, when AllowAnon is true; empty refuses anonymous access (like PostgREST's unset db-anon-role). Set it to an explicit non-superuser role, never the connecting role | "" |
 | Database.AllowedDatabases | Allowed databases | [] for all |
 | Database.SchemaSearchPath | Schema search path of the connections (name resolution of unqualified types, functions and views) | [] for Postgres search path |
-| Database.ExposedSchemas | Schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`); a header naming another schema answers 406 | [] for every schema, with the first of the search path as default |
+| Database.ExposedSchemas | Schemas a request may select with `Accept-Profile`/`Content-Profile`, the first being the default (PostgREST's `db-schemas`); a header naming another schema answers 406 | [] for every schema except the system schemas (`pg_*`, `information_schema`), with the first of the search path as default |
 | Database.TransactionMode | General transaction mode for operations: "none", "commit", "rollback" (also "commit-allow-override", "rollback-allow-override", overridable per request with `Prefer: tx=commit` / `tx=rollback`). Whatever the mode, GET and HEAD requests (and POST calls to STABLE or IMMUTABLE functions) run read-only, see [Functions](#functions) | "none" |
 | Database.MaxRows | Maximum rows a read answers, at the top level and in each embed (PostgREST's `db-max-rows`); 0 for no limit | 0 |
 | Database.AggregatesEnabled | Enable aggregate functions | true |
@@ -851,6 +851,8 @@ The authenticator must be able to login and should not "inherits” the privileg
 ```sql
 CREATE ROLE auth LOGIN NOINHERIT
 ```
+
+A request runs as its role, but its connection stays logged in as the authenticator. SQL that runs in a request can therefore switch to any role granted to the authenticator, with `SET ROLE` or `set_config('role', ...)`. This is the same in PostgREST. Grant to the authenticator only the roles that requests use, and do not expose functions that run SQL text from their arguments.
 
 Invoking
 

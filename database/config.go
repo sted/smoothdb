@@ -9,7 +9,7 @@ type Config struct {
 	AnonRole               string   `comment:"Anonymous role (default: '' for no anon)"`
 	AllowedDatabases       []string `comment:"Allowed databases (default: [] for all)"`
 	SchemaSearchPath       []string `comment:"Schema search path (default: [] for Postgres search path)"`
-	ExposedSchemas         []string `comment:"Schemas a Profile header may select, the first is the default (default: [] for every schema, the first of the search path as default)"`
+	ExposedSchemas         []string `comment:"Schemas a Profile header may select, the first is the default (default: [] for every schema except pg_* and information_schema, the first of the search path as default)"`
 	TransactionMode        string   `comment:"General transaction mode for operations: none, commit, commit-allow-override, rollback, rollback-allow-override (default: none)"`
 	AggregatesEnabled      bool     `comment:"Enable aggregate functions (default: true)"`
 	PlanEnabled            bool     `comment:"Answer the EXPLAIN plan of a request with Accept: application/vnd.pgrst.plan, as PostgREST's db-plan-enabled (default: false)"`
