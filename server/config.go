@@ -340,6 +340,12 @@ func checkConfig(cfg *Config) error {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
 	}
+	// as PostgREST's db-schemas (Config.hs, parseDbSchemas)
+	for _, schema := range cfg.Database.ExposedSchemas {
+		if schema == "pg_catalog" || schema == "information_schema" {
+			return fmt.Errorf("'Database.ExposedSchemas' does not allow schema: '%s'", schema)
+		}
+	}
 	if cfg.EnableAdminRoute && len(cfg.AdminRoles) == 0 {
 		fmt.Println("Warning: 'EnableAdminRoute' is on but 'AdminRoles' is empty: the admin routes refuse every role")
 	}

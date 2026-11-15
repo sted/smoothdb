@@ -22,6 +22,26 @@ func TestCheckConfigRejectsEmptyJWTSecret(t *testing.T) {
 	}
 }
 
+// As PostgREST's db-schemas, Database.ExposedSchemas may not name pg_catalog or
+// information_schema: the server does not start (Config.hs, parseDbSchemas).
+func TestCheckConfigRejectsCatalogSchemas(t *testing.T) {
+	for _, schema := range []string{"pg_catalog", "information_schema"} {
+		cfg := defaultConfig()
+		cfg.Database.ExposedSchemas = []string{"api", schema}
+		err := checkConfig(cfg)
+		if err == nil {
+			t.Errorf("ExposedSchemas with %s: no error", schema)
+		} else if !strings.Contains(err.Error(), "'"+schema+"'") {
+			t.Errorf("ExposedSchemas with %s: %v", schema, err)
+		}
+	}
+	cfg := defaultConfig()
+	cfg.Database.ExposedSchemas = []string{"api", "pg_toast"}
+	if err := checkConfig(cfg); err != nil {
+		t.Errorf("ExposedSchemas with pg_toast: %v", err)
+	}
+}
+
 // Debug mode is a dev convenience and should not require the operator to set a
 // secret by hand — but it must not fall back to the empty (forgeable) key. It
 // should auto-generate a strong random secret.

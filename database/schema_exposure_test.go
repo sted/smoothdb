@@ -28,8 +28,9 @@ func TestSchemaExposed(t *testing.T) {
 		// PostgreSQL reserves only the lower-case prefix
 		{"PG_data", nil, "", ""},
 		{"pgdata", nil, "", ""},
-		// a list that names a system schema exposes it
-		{"pg_catalog", []string{"api", "pg_catalog"}, "", ""},
+		// a list that names a system schema exposes it (the configuration
+		// check refuses pg_catalog and information_schema in a list)
+		{"pg_toast", []string{"api", "pg_toast"}, "", ""},
 		{"information_schema", []string{"api"}, "Invalid schema: information_schema", "Only the following schemas are exposed: api"},
 	}
 	for i, test := range tests {

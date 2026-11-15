@@ -45,7 +45,8 @@ func isSystemSchema(schema string) bool {
 // schemaExposed refuses a schema outside the exposed list, with the list as
 // a hint. An empty list exposes every user schema, but not the system
 // schemas: pg_catalog alone holds functions such as query_to_xml that run
-// any SQL. A list that names a system schema exposes it.
+// any SQL. A list may name pg_toast or pg_temp, but not pg_catalog or
+// information_schema: the configuration check refuses them, as PostgREST.
 func schemaExposed(schema string, exposed []string) *SchemaError {
 	if len(exposed) == 0 {
 		if isSystemSchema(schema) {
