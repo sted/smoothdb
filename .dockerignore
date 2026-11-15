@@ -1,0 +1,15 @@
+# Files that must never reach a build context: local configuration with
+# secrets, keys, logs, the git and agent state, and build-only trees.
+config.jsonc
+**/config.jsonc
+*.pem
+*.key
+*.log
+.git
+.claude
+.env
+_plugins
+smoothdb
+test
+ui/node_modules
+misc

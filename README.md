@@ -43,6 +43,13 @@ If you have Go installed, you can install SmoothDB using:
 go install github.com/sted/smoothdb@latest
 ```
 
+To build a container image, use `misc/Dockerfile` from the repository root. The image holds only the binary and runs as a non-root user. Give the configuration with the `SMOOTHDB_*` environment variables, or mount a `config.jsonc` on `/data`:
+
+```
+docker build -f misc/Dockerfile --build-arg VERSION=$(git describe --tags --always) -t smoothdb .
+docker run -p 4000:4000 -e SMOOTHDB_DATABASE_URL=postgresql://... -e SMOOTHDB_JWT_SECRET=... smoothdb
+```
+
 To test your installation type 
 
 ```
