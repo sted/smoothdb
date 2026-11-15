@@ -154,7 +154,11 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 				return nil, nil, false, &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003",
 					Message: err.Error()}
 			} else if err != nil {
-				return nil, nil, false, &Error{Status: http.StatusNotFound, Message: err.Error(), Err: err}
+				// the cause can be a pgx error that names the user and the
+				// host of a failed connection: it goes to the details of a
+				// verbose error body only
+				return nil, nil, false, &Error{Status: http.StatusNotFound,
+					Message: fmt.Sprintf("database %q not found", dbname), Err: err}
 			}
 			session.Db = db
 		}

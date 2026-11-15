@@ -37,6 +37,7 @@
 ### Fixed
 * **String literals with a backslash** — JSON path keys, full-text search configurations and admin comments with a backslash are written as `E''` literals, which read back the same with `standard_conforming_strings` off.
 * **Escaped type names in JSON and CSV** — composite attribute names and enum labels with a quote, a backslash, a comma or a line break no longer break the body.
+* **Database activation errors** — a request to a database that cannot be activated answers 404 `database "x" not found`; the cause goes only to the details of verbose errors.
 
 ## 0.12.0 - 2026-11-13
 
