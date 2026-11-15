@@ -32,6 +32,7 @@
 * **CONNECT privilege** — a request whose role has no `CONNECT` on its database answers 403 (42501), or 401 when anonymous; a `REVOKE` takes effect at the next schema cache reload, and template databases are not served.
 * **System schemas are not exposed by default** — with no `Database.ExposedSchemas`, a Profile header that names `pg_*` or `information_schema` answers 406 PGRST106; before, `pg_catalog.query_to_xml` ran any SQL from a request. As in PostgREST, the server does not start when the list names `pg_catalog` or `information_schema`.
 * **JWT secret length** — as in PostgREST, the server does not start with a passphrase `JWTSecret` shorter than 32 characters; `SMOOTHDB_DEBUG` accepts a shorter one.
+* **via tables without a dot** — a `via()` edge table with a dot in its name answers 400 PGRST100; before, the dotted name could reach a relation outside the request schema.
 
 ## 0.12.0 - 2026-11-13
 

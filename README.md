@@ -425,7 +425,7 @@ GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__dep
 GET /api/testdb/employees?id=start.1&manager_id=recurse.all&select=id,name,__path&order=__path HTTP/1.1
 ```
 
-**Edge tables (`via`).** Traverse a graph through a separate edge table with source/target columns. Add the `!both` hint to follow edges in either direction; filter which edges to follow with the standard `table.column` syntax (`eq`, `in`, `or`, …):
+**Edge tables (`via`).** Traverse a graph through a separate edge table with source/target columns. The edge table is a name in the schema of the request, without a dot. Add the `!both` hint to follow edges in either direction; filter which edges to follow with the standard `table.column` syntax (`eq`, `in`, `or`, …):
 
 ```http
 GET /api/testdb/documents?id=after.1&id=recurse.all&relationships=via(src_id,dst_id) HTTP/1.1

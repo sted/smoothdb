@@ -1962,6 +1962,13 @@ func (p PostgRestParser) parse(mainTable string, filters Filters) (parts *QueryP
 					if len(cols) != 2 || cols[0] == "" || cols[1] == "" {
 						return nil, &ParseError{msg: "via requires two columns: via(from_col,to_col)"}
 					}
+					// the via table is quoted by splitting on dots, like the
+					// main table (see parse): a dotted key would name a
+					// relation outside the request schema
+					if strings.Contains(k, ".") {
+						return nil, &ParseError{msg: "invalid via table " + strconv.Quote(k) +
+							": a table name cannot contain a dot; select the schema with the Accept-Profile header"}
+					}
 					recInfo.ViaTable = k
 					recInfo.ViaFromCol = cols[0]
 					recInfo.ViaToCol = cols[1]

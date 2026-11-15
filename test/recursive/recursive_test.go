@@ -276,6 +276,21 @@ func TestViaErrors(t *testing.T) {
 			Query:       "/doc?id=start.1&name=recurse.all&doc_rel=via(src_id,dst_id)",
 			Status:      400,
 		},
+		{
+			// the via table is quoted by splitting on dots, so a dotted key
+			// would name a relation outside the request schema
+			Description: "via table with a dot — error",
+			Query:       "/doc?id=start.1&id=recurse.all&public.doc_rel=via(src_id,dst_id)&select=id",
+			Expected:    `{"code":"PGRST100","details":null,"hint":null,"message":"invalid via table \"public.doc_rel\": a table name cannot contain a dot; select the schema with the Accept-Profile header"}`,
+			Status:      400,
+		},
+		{
+			// positive control: the same walk without the schema prefix
+			Description: "via table without a dot",
+			Query:       "/doc?id=start.6&id=recurse.all&doc_rel=via(src_id,dst_id)&select=id",
+			Expected:    `[{"id":6}]`,
+			Status:      200,
+		},
 	}
 	test.Execute(t, testConfig(), tests)
 }
