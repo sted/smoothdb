@@ -167,6 +167,13 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 		}
 		db = session.Db
 	}
+	anonRole := m.AnonRole()
+	authenticated = anonRole == "" || session.Claims.Role != anonRole
+	if db != nil && dbname != "" && !forceDBE {
+		if err := checkConnect(ctx, db, session.Claims.Role, authenticated); err != nil {
+			return nil, nil, authenticated, err
+		}
+	}
 	dbconn, err = database.AcquireRequestConnection(ctx, db)
 	if errors.Is(err, database.ErrAcquisitionTimeout) {
 		// PostgREST's AcquisitionTimeoutUsageError
@@ -179,8 +186,6 @@ func (m middleware) acquireSession(c context.Context, r heligo.Request,
 	}
 	session.DbConn = dbconn
 	claimsString = session.Claims.RawClaims
-	anonRole := m.AnonRole()
-	authenticated = anonRole == "" || session.Claims.Role != anonRole
 	// GET and HEAD are safe methods: like PostgREST, run them READ ONLY, so a
 	// function or view that writes fails (25006 -> 405) instead of mutating on
 	// a request that proxies, prefetchers and caches replay at will.
@@ -410,4 +415,28 @@ func LimitBody(w http.ResponseWriter, body io.ReadCloser, max int64) io.ReadClos
 		return body
 	}
 	return http.MaxBytesReader(w, body, max)
+}
+
+// checkConnect refuses a request whose role has no CONNECT privilege on db,
+// as PostgreSQL refuses a connection: 42501, with 403 for an authenticated
+// request and 401 otherwise. It runs on every request, on a hit too, so that
+// a REVOKE reaches cached sessions at the next schema cache reload.
+func checkConnect(ctx context.Context, db *database.Database, role string, authenticated bool) error {
+	allowed, err := db.CanConnect(ctx, role)
+	if errors.Is(err, database.ErrAcquisitionTimeout) {
+		return &Error{Status: http.StatusGatewayTimeout, Code: "PGRST003", Message: err.Error()}
+	} else if err != nil {
+		return &Error{Status: http.StatusServiceUnavailable, Code: "PGRST000",
+			Message: "Database connection error.", Err: err}
+	}
+	if allowed {
+		return nil
+	}
+	e := &Error{Status: http.StatusForbidden, Code: "42501",
+		Message: "permission denied for database " + db.Name}
+	if !authenticated {
+		e.Status = http.StatusUnauthorized
+		e.Challenge = "Bearer"
+	}
+	return e
 }

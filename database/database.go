@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"fmt"
+	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
@@ -157,6 +159,40 @@ type Database struct {
 	// statements says how the connections of the pool prepare the statements
 	// of a batch (see statementsInBatch)
 	statements int
+	// connect caches CanConnect per role until the next schema cache reload
+	connect sync.Map
+}
+
+// connectQuery answers whether a role has CONNECT on a database, directly or
+// through the roles it inherits from. No row means that the role does not
+// exist: the role switch of the request reports that.
+const connectQuery = `SELECT has_database_privilege(r.oid, d.oid, 'CONNECT')
+	FROM pg_catalog.pg_roles r, pg_catalog.pg_database d
+	WHERE r.rolname = $1 AND d.datname = $2`
+
+// CanConnect reports whether role has the CONNECT privilege on db. SmoothDB
+// connects as the authenticator and then switches role, so PostgreSQL checks
+// CONNECT only for the authenticator; this is the check for the request role.
+// The answer is cached per role until the next schema cache reload.
+func (db *Database) CanConnect(ctx context.Context, role string) (bool, error) {
+	if v, ok := db.connect.Load(role); ok {
+		return v.(bool), nil
+	}
+	conn, err := acquireBounded(ctx, dbe.mainDb)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Release()
+	allowed := true
+	err = conn.QueryRow(ctx, connectQuery, role, db.Name).Scan(&allowed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		allowed, err = true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	db.connect.Store(role, allowed)
+	return allowed, nil
 }
 
 // activate initializes a database and starts its connection pool
@@ -295,6 +331,8 @@ func (db *Database) ReloadSchemaCache(ctx context.Context) error {
 
 	// Atomically replace the old schema info with the new one
 	db.info.Store(newInfo)
+	// a GRANT or REVOKE CONNECT takes effect with the reload
+	db.connect.Clear()
 
 	// The DDL that motivates a reload also invalidates the plans the
 	// pool's connections keep for their cached statements: a view

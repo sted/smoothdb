@@ -859,6 +859,8 @@ CREATE ROLE auth LOGIN NOINHERIT
 
 A request runs as its role, but its connection stays logged in as the authenticator. SQL that runs in a request can therefore switch to any role granted to the authenticator, with `SET ROLE` or `set_config('role', ...)`. This is the same in PostgREST. Grant to the authenticator only the roles that requests use, and do not expose functions that run SQL text from their arguments.
 
+PostgreSQL checks the `CONNECT` privilege of a database only for the authenticator, which opens the connections. SmoothDB checks it for the request role: a request on `/api/<db>` or `/admin/databases/<db>/...` whose role has no `CONNECT` on `<db>` answers 403 (42501), or 401 when it is anonymous. SmoothDB caches the answer per role, so a `GRANT` or `REVOKE CONNECT` takes effect at the next schema cache reload. Template databases are not served.
+
 Invoking
 
 ```

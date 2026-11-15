@@ -220,7 +220,7 @@ func (dbe *DbEngine) getDatabase(ctx context.Context, conn *pgx.Conn, name strin
 	}
 	dbi := &DatabaseInfo{}
 	err := conn.QueryRow(ctx, databaseQuery+
-		" WHERE d.datname = $1", name).Scan(&dbi.Name, &dbi.Owner)
+		" WHERE d.datname = $1 AND NOT d.datistemplate", name).Scan(&dbi.Name, &dbi.Owner)
 	if err != nil {
 		return nil, fmt.Errorf("database %q not found (%w)", name, err)
 	}
