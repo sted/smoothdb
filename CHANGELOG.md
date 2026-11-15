@@ -34,6 +34,9 @@
 * **JWT secret length** — as in PostgREST, the server does not start with a passphrase `JWTSecret` shorter than 32 characters; `SMOOTHDB_DEBUG` accepts a shorter one.
 * **via tables without a dot** — a `via()` edge table with a dot in its name answers 400 PGRST100; before, the dotted name could reach a relation outside the request schema.
 
+### Fixed
+* **String literals with a backslash** — JSON path keys, full-text search configurations and admin comments with a backslash are written as `E''` literals, which read back the same with `standard_conforming_strings` off.
+
 ## 0.12.0 - 2026-11-13
 
 **PostgREST 16.4 spec cases: 1098 run, 528 skipped (67.5%)**

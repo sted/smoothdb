@@ -25,7 +25,16 @@ func escapeLiteral(identifier string) string {
 	return strings.ReplaceAll(identifier, `'`, `''`)
 }
 
+// quoteLit writes s as a string literal that PostgreSQL reads back as s
+// whatever standard_conforming_strings says. With it off, a backslash in a
+// plain '...' literal is an escape, so a string with a backslash is written
+// as an escape string, E'...', with the backslashes doubled (as lib/pq's
+// QuoteLiteral). The leading space keeps the E from joining a preceding
+// identifier.
 func quoteLit(s string) string {
+	if strings.Contains(s, `\`) {
+		return " E'" + strings.ReplaceAll(escapeLiteral(s), `\`, `\\`) + "'"
+	}
 	return "'" + escapeLiteral(s) + "'"
 }
 
