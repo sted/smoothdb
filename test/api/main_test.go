@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 		"EnableAdminRoute":    true,
 		"AdminRoles":          []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 		"LoginMode":           "db",
-		"JWTSecret":           "smoothdb-test-suite-secret",
+		"JWTSecret":           "smoothdb-test-suite-secret-0123456789",
 		"LoginRateLimit":      5,
 		"SessionMode":         "claims",
 		"Database.URL":        testDatabaseURL,

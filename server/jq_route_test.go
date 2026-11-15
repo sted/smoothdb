@@ -75,7 +75,7 @@ func TestJQDoesNotNeedAConnection(t *testing.T) {
 // is verified and the anonymous-access rules are the same as for every other
 // route.
 func TestJQAuthentication(t *testing.T) {
-	const secret = "jq-route-test-secret"
+	const secret = "jq-route-test-secret-0123456789abcdef"
 	s := newSingleConnectionServer(t, map[string]any{
 		"Address":          "localhost:9301",
 		"AllowAnon":        false,

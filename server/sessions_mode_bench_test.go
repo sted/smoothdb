@@ -24,7 +24,7 @@ func BenchmarkSessionModeRequest(b *testing.B) {
 				"Logging.FileLogging": false,
 				"Logging.StdOut":      false,
 				"SessionMode":         m.mode,
-				"JWTSecret":           "bench-secret",
+				"JWTSecret":           "bench-secret-0123456789abcdefghijklmnop",
 				"EnableAdminRoute":    false,
 			}, &ConfigOptions{ConfigFilePath: b.TempDir() + "/config.jsonc", SkipFlags: true})
 			if err != nil {
@@ -40,7 +40,7 @@ func BenchmarkSessionModeRequest(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			token, _ := authn.GenerateToken("postgres", "bench-secret")
+			token, _ := authn.GenerateToken("postgres", "bench-secret-0123456789abcdefghijklmnop")
 			req, _ := http.NewRequest("GET", "http://localhost:"+m.port+"/api/postgres", nil)
 			req.Header.Set("Authorization", "Bearer "+token)
 			client := &http.Client{}

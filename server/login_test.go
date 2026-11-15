@@ -41,7 +41,7 @@ func TestTokenDoesNotLeakConnectionDetails(t *testing.T) {
 	s := newTestServer(t, map[string]any{
 		"Address":          "localhost:9303",
 		"LoginMode":        "db",
-		"JWTSecret":        "login-test-secret",
+		"JWTSecret":        "login-test-secret-0123456789abcdefghij",
 		"LoginRateLimit":   0,
 		"LoginAllowTrust":  true,
 		"EnableAdminRoute": false,

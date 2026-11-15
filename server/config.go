@@ -63,6 +63,8 @@ type Config struct {
 	Database                database.Config `comment:"Database configuration"`
 	JQ                      jqeval.Config   `comment:"jq evaluation configuration"`
 	Logging                 logging.Config  `comment:"Logging configuration"`
+	// debug is set by SMOOTHDB_DEBUG; it is not a configuration key
+	debug bool
 }
 
 func defaultConfig() *Config {
@@ -137,6 +139,7 @@ func getEnvironment(c *Config) {
 	}
 	debug := os.Getenv("SMOOTHDB_DEBUG")
 	if strings.ToLower(debug) == "true" {
+		c.debug = true
 		c.AllowAnon = true
 		c.LoginMode = "db"
 		c.LoginAllowTrust = true
@@ -360,6 +363,12 @@ func checkConfig(cfg *Config) error {
 	verifier, err := authn.NewJWTVerifier(jwtConfig(cfg))
 	if err != nil {
 		return fmt.Errorf("invalid JWT configuration ('JWTSecret', 'JWTSecretIsBase64', 'JWTAud', 'JWTRoleClaimKey', 'JWTKeys'): %w", err)
+	}
+	// as PostgREST (Config.hs, parseSecret): a token signed with a short
+	// passphrase lets anyone who has one try passphrases offline
+	if verifier.ShortPassphrase() && !cfg.debug {
+		return fmt.Errorf("'JWTSecret' must be at least %d characters long (after the base64 decoding "+
+			"when 'JWTSecretIsBase64' is set); only debug mode accepts a shorter one", authn.MinSecretLength)
 	}
 	if cfg.LoginMode == "db" && verifier.SigningSecret() == "" {
 		return fmt.Errorf("'JWTSecret' has no HMAC key for /token to sign with: " +

@@ -69,7 +69,7 @@ func TestExpiredTokenOnSessionHitReleasesConnection(t *testing.T) {
 	s := newSingleConnectionServer(t, map[string]any{
 		"Address":          "localhost:8179",
 		"AllowAnon":        false,
-		"JWTSecret":        "connection-leak-test-secret",
+		"JWTSecret":        "connection-leak-test-secret-0123456789",
 		"SessionMode":      "role",
 		"EnableAdminRoute": false,
 	})

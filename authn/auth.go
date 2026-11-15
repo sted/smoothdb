@@ -121,13 +121,16 @@ type JWTVerifier struct {
 	// token is refused
 	configured bool
 	signing    []byte
+	// passphrase is the length of a passphrase secret, -1 for a JWK or a
+	// JWK set
+	passphrase int
 	aud        string
 	roleKey    *RoleClaimKey
 }
 
 // NewJWTVerifier checks the JWT configuration and builds its verifier.
 func NewJWTVerifier(cfg JWTConfig) (*JWTVerifier, error) {
-	v := &JWTVerifier{aud: cfg.Aud}
+	v := &JWTVerifier{aud: cfg.Aud, passphrase: -1}
 	var err error
 	if v.roleKey, err = ParseRoleClaimKey(cfg.RoleClaimKey); err != nil {
 		return nil, err
@@ -145,6 +148,9 @@ func NewJWTVerifier(cfg JWTConfig) (*JWTVerifier, error) {
 		keys, passphrase := parseSecretKeys(secret)
 		v.keys, v.configured = keys, true
 		v.signing = signingKey(keys, passphrase)
+		if passphrase {
+			v.passphrase = len(secret)
+		}
 	}
 	if cfg.Keys != "" {
 		// the catalog verifies; the secret only signs /token tokens
@@ -158,6 +164,16 @@ func NewJWTVerifier(cfg JWTConfig) (*JWTVerifier, error) {
 
 // RoleClaimKey is the parsed role claim key.
 func (v *JWTVerifier) RoleClaimKey() *RoleClaimKey { return v.roleKey }
+
+// MinSecretLength is PostgREST's minimum length of a passphrase jwt-secret
+// (Config.hs, parseSecret), in bytes after the base64 decoding.
+const MinSecretLength = 32
+
+// ShortPassphrase says that the secret is a passphrase shorter than
+// MinSecretLength. A JWK or a JWK set is never short.
+func (v *JWTVerifier) ShortPassphrase() bool {
+	return v.passphrase >= 0 && v.passphrase < MinSecretLength
+}
 
 // SigningSecret is the HMAC key that GenerateToken signs with: the secret,
 // base64-decoded when JWTSecretIsBase64 is set, or the one oct key that

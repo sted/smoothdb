@@ -64,7 +64,7 @@ func TestAnonymousWithEmptyAnonRoleIsRefused(t *testing.T) {
 		"Address":           "localhost:8086",
 		"AllowAnon":         true,
 		"Database.AnonRole": "",
-		"JWTSecret":         "anon-role-test-secret",
+		"JWTSecret":         "anon-role-test-secret-0123456789abcdef",
 		"SessionMode":       "none",
 		"EnableAdminRoute":  false,
 	})
@@ -122,7 +122,7 @@ func TestAnonymousRunsAsConfiguredRoleWithClaims(t *testing.T) {
 		"Address":           "localhost:8087",
 		"AllowAnon":         true,
 		"Database.AnonRole": "anon_probe_role",
-		"JWTSecret":         "anon-role-test-secret",
+		"JWTSecret":         "anon-role-test-secret-0123456789abcdef",
 		"SessionMode":       "none",
 		"EnableAdminRoute":  false,
 	})

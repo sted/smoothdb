@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 		"EnableAdminRoute":    true,
 		"AdminRoles":          []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 		"LoginMode":           "none",
-		"JWTSecret":           "smoothdb-test-suite-secret", // CI has no config.jsonc: an empty secret now refuses every token
+		"JWTSecret":           "smoothdb-test-suite-secret-0123456789", // CI has no config.jsonc: an empty secret now refuses every token
 		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
 		"Logging.Level":       "info",
 		"Logging.FileLogging": true,

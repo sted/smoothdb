@@ -31,6 +31,7 @@
 * **db login checks the password** — `/token` in `"db"` mode issues a token only when PostgreSQL asked for a password, and refuses an empty password and the authenticator; `LoginAllowTrust` (set by `SMOOTHDB_DEBUG`) accepts trust for development. Before, trust authentication gave a token for any role with any password.
 * **CONNECT privilege** — a request whose role has no `CONNECT` on its database answers 403 (42501), or 401 when anonymous; a `REVOKE` takes effect at the next schema cache reload, and template databases are not served.
 * **System schemas are not exposed by default** — with no `Database.ExposedSchemas`, a Profile header that names `pg_*` or `information_schema` answers 406 PGRST106; before, `pg_catalog.query_to_xml` ran any SQL from a request. As in PostgREST, the server does not start when the list names `pg_catalog` or `information_schema`.
+* **JWT secret length** — as in PostgREST, the server does not start with a passphrase `JWTSecret` shorter than 32 characters; `SMOOTHDB_DEBUG` accepts a shorter one.
 
 ## 0.12.0 - 2026-11-13
 

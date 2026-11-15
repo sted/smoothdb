@@ -1,9 +1,13 @@
 package server
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
+
+// testJWTSecret has the 32 characters that checkConfig requires of a passphrase
+const testJWTSecret = "config-test-secret-0123456789abcdef"
 
 // An empty JWT secret with authentication enabled means tokens are signed/verified
 // with an empty HMAC key — anyone can forge a token for any role. The server must
@@ -56,6 +60,58 @@ func TestCheckConfigRejectsCatalogSchemas(t *testing.T) {
 	cfg.Database.ExposedSchemas = []string{"api", "pg_toast"}
 	if err := checkConfig(cfg); err != nil {
 		t.Errorf("ExposedSchemas with pg_toast: %v", err)
+	}
+}
+
+// A passphrase JWTSecret must have at least 32 characters, as PostgREST
+// requires (Config.hs, parseSecret): any issued token lets an attacker try
+// the passphrases of an HS256 key offline. The length is the one of the
+// decoded bytes when JWTSecretIsBase64 is set. A JWK or a JWK set is not a
+// passphrase and has no minimum. Debug mode accepts a short passphrase.
+func TestCheckConfigJWTSecretLength(t *testing.T) {
+	short := strings.Repeat("s", 31)
+	long := strings.Repeat("s", 32)
+	cases := []struct {
+		name   string
+		set    func(*Config)
+		refuse bool
+	}{
+		{"31 characters", func(c *Config) { c.JWTSecret = short }, true},
+		{"32 characters", func(c *Config) { c.JWTSecret = long }, false},
+		{"31 bytes in base64", func(c *Config) {
+			c.JWTSecret = base64.StdEncoding.EncodeToString([]byte(short))
+			c.JWTSecretIsBase64 = true
+		}, true},
+		{"32 bytes in base64", func(c *Config) {
+			c.JWTSecret = base64.StdEncoding.EncodeToString([]byte(long))
+			c.JWTSecretIsBase64 = true
+		}, false},
+		{"short oct JWK", func(c *Config) { c.JWTSecret = `{"kty":"oct","k":"c2VjcmV0"}` }, false},
+		{"31 characters in debug mode", func(c *Config) { c.JWTSecret = short; c.debug = true }, false},
+		{"31 characters, authentication off", func(c *Config) { c.JWTSecret = short; c.LoginMode = "none" }, true},
+	}
+	for _, c := range cases {
+		cfg := defaultConfig()
+		c.set(cfg)
+		err := checkConfig(cfg)
+		if c.refuse {
+			if err == nil || !strings.Contains(err.Error(), "at least 32 characters") {
+				t.Errorf("%s: expected the length error, got %v", c.name, err)
+			}
+		} else if err != nil {
+			t.Errorf("%s: unexpected error %v", c.name, err)
+		}
+	}
+}
+
+// SMOOTHDB_DEBUG sets the debug flag that admits a short passphrase.
+func TestDebugModeAdmitsShortJWTSecret(t *testing.T) {
+	t.Setenv("SMOOTHDB_DEBUG", "true")
+	t.Setenv("SMOOTHDB_JWT_SECRET", "short")
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if err := checkConfig(cfg); err != nil {
+		t.Errorf("debug mode with a short secret: %v", err)
 	}
 }
 
@@ -202,7 +258,7 @@ func TestCheckConfigRejectsInvalidJWTSettings(t *testing.T) {
 	}
 	for _, c := range cases {
 		cfg := defaultConfig()
-		cfg.JWTSecret = "secret"
+		cfg.JWTSecret = testJWTSecret
 		c.set(cfg)
 		err := checkConfig(cfg)
 		if err == nil || !strings.Contains(err.Error(), c.key) {
@@ -237,7 +293,7 @@ func TestJWTKeysConfig(t *testing.T) {
 	}
 
 	cfg = defaultConfig()
-	cfg.JWTSecret = "secret"
+	cfg.JWTSecret = testJWTSecret
 	cfg.JWTKeys = `[{"kty":"oct","k":"c2VjcmV0"}]` // no kid
 	if err := checkConfig(cfg); err == nil || !strings.Contains(err.Error(), "JWTKeys") {
 		t.Errorf("an invalid JWTKeys must stop the server, got %v", err)
@@ -273,7 +329,7 @@ func TestCheckConfigLoginModeDBNeedsTopLevelRole(t *testing.T) {
 	for _, key := range []string{"$.app.role", "$.roles[0]", ".app.role"} {
 		cfg := defaultConfig()
 		cfg.LoginMode = "db"
-		cfg.JWTSecret = "secret"
+		cfg.JWTSecret = testJWTSecret
 		cfg.JWTRoleClaimKey = key
 		err := checkConfig(cfg)
 		if err == nil || !strings.Contains(err.Error(), "JWTRoleClaimKey") || !strings.Contains(err.Error(), "LoginMode") {
@@ -283,7 +339,7 @@ func TestCheckConfigLoginModeDBNeedsTopLevelRole(t *testing.T) {
 	for _, key := range []string{"$.role", ".role", ""} {
 		cfg := defaultConfig()
 		cfg.LoginMode = "db"
-		cfg.JWTSecret = "secret"
+		cfg.JWTSecret = testJWTSecret
 		cfg.JWTRoleClaimKey = key
 		// the check before the database one: an unreachable database fails
 		// past it
@@ -295,7 +351,7 @@ func TestCheckConfigLoginModeDBNeedsTopLevelRole(t *testing.T) {
 	// a custom key is fine when /token is off
 	cfg := defaultConfig()
 	cfg.LoginMode = "gotrue"
-	cfg.JWTSecret = "secret"
+	cfg.JWTSecret = testJWTSecret
 	cfg.JWTRoleClaimKey = "$.app.role"
 	cfg.Database.URL = "postgresql://nobody@localhost:1/none"
 	if err := checkConfig(cfg); err == nil || strings.Contains(err.Error(), "JWTRoleClaimKey") {

@@ -74,7 +74,7 @@ func TestReadOnlyFollowsEachRequestOnARetainedConnection(t *testing.T) {
 			s := newSingleConnectionServer(t, map[string]any{
 				"Address":                  "localhost:" + c.port,
 				"AllowAnon":                false,
-				"JWTSecret":                "read-only-test-secret",
+				"JWTSecret":                "read-only-test-secret-0123456789abcdef",
 				"SessionMode":              c.session,
 				"EnableAdminRoute":         false,
 				"Database.TransactionMode": c.txMode,
