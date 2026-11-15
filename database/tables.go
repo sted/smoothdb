@@ -159,7 +159,7 @@ func CreateTable(ctx context.Context, table *Table) (*Table, error) {
 		create += "INHERITS (" + table.Inherits + ")"
 	}
 	err := withTx(ctx, conn, func() error {
-		_, err := conn.Exec(ctx, create)
+		err := execDDL(ctx, conn, create)
 		if err != nil {
 			return err
 		}

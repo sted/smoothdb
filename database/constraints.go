@@ -128,7 +128,7 @@ func CreateConstraint(ctx context.Context, constraint *Constraint) (*Constraint,
 	}
 	create += constraint.Definition
 
-	_, err := conn.Exec(ctx, create)
+	err := execDDL(ctx, conn, create)
 	if err != nil {
 		return nil, err
 	}

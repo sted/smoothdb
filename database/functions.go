@@ -267,7 +267,7 @@ func CreateFunction(ctx context.Context, function *Function) (*Function, error) 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := conn.Exec(ctx, create); err != nil {
+	if err := execDDL(ctx, conn, create); err != nil {
 		return nil, err
 	}
 	return function, nil

@@ -40,6 +40,7 @@ type Config struct {
 	SessionMode             string          `comment:"Session mode: none, claims (default: claims); role is a deprecated alias of claims"`
 	MaxSessions             int             `comment:"Maximum number of cached sessions, further requests run without one (default: 10000)"`
 	EnableAdminRoute        bool            `comment:"Enable administration of databases and tables (default: false)"`
+	AdminRoles              []string        `comment:"Roles that may use the admin routes, '*' for every role (default: [] for none)"`
 	EnableAdminUI           bool            `comment:"Enable Admin dashboard (default: false)"`
 	EnableAPIRoute          bool            `comment:"Enable API access (default: true)"`
 	BaseAPIURL              string          `comment:"Base URL for the API (default: /api)"`
@@ -139,6 +140,9 @@ func getEnvironment(c *Config) {
 		c.LoginMode = "db"
 		c.EnableAdminRoute = true
 		c.EnableAdminUI = true
+		if len(c.AdminRoles) == 0 {
+			c.AdminRoles = []string{"*"}
+		}
 		c.Logging.Level = "trace"
 		c.Logging.StdOut = true
 		c.EnableDebugRoute = true
@@ -164,6 +168,9 @@ func getEnvironment(c *Config) {
 	enableAdminRoute := os.Getenv("SMOOTHDB_ENABLE_ADMIN_ROUTE")
 	if enableAdminRoute != "" {
 		c.EnableAdminRoute = strings.ToLower(enableAdminRoute) == "true"
+	}
+	if adminRoles := os.Getenv("SMOOTHDB_ADMIN_ROLES"); adminRoles != "" {
+		c.AdminRoles = strings.Split(adminRoles, ",")
 	}
 
 	// CORS configuration
@@ -332,6 +339,9 @@ func checkConfig(cfg *Config) error {
 	if cfg.ShortAPIURL && len(cfg.Database.AllowedDatabases) != 1 {
 		fmt.Println("Warning: 'ShortAPIURL' requires a single db in 'Database.AllowedDatabases'")
 		cfg.ShortAPIURL = false
+	}
+	if cfg.EnableAdminRoute && len(cfg.AdminRoles) == 0 {
+		fmt.Println("Warning: 'EnableAdminRoute' is on but 'AdminRoles' is empty: the admin routes refuse every role")
 	}
 	// "db" signs the /token tokens with JWTSecret; the other modes only
 	// verify, which JWTKeys can do alone

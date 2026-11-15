@@ -13,6 +13,25 @@ import (
 type DbPoolConn = pgxpool.Conn
 type DbConn = pgx.Conn
 
+// execDDL runs a DDL statement that contains raw SQL from the request (a
+// view definition, a column type or default, a policy expression). It uses
+// the extended protocol, which refuses a string with more than one statement
+// (42601). conn.Exec with no arguments always uses the simple protocol, which
+// runs every statement of the string: a raw field could append a RESET ROLE
+// and return to the authenticator. The statement goes to the query tracer
+// like an Exec.
+func execDDL(ctx context.Context, conn *DbConn, sql string) error {
+	tracer := conn.Config().Tracer
+	if tracer != nil {
+		ctx = tracer.TraceQueryStart(ctx, conn, pgx.TraceQueryStartData{SQL: sql})
+	}
+	tag, err := conn.PgConn().ExecParams(ctx, sql, nil, nil, nil, nil).Close()
+	if tracer != nil {
+		tracer.TraceQueryEnd(ctx, conn, pgx.TraceQueryEndData{CommandTag: tag, Err: err})
+	}
+	return err
+}
+
 // readOnlyGUC makes every implicit (autocommit) transaction of a session READ
 // ONLY: it is how a request runs read-only with TransactionMode "none", where
 // there is no BEGIN to qualify. PostgreSQL reports the setting to the client

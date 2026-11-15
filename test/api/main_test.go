@@ -25,6 +25,7 @@ func TestMain(m *testing.M) {
 		"VerboseErrors":       true, // the suites assert hint/details in error bodies
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
+		"AdminRoles":          []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 		"LoginMode":           "db",
 		"JWTSecret":           "smoothdb-test-suite-secret",
 		"LoginRateLimit":      5,

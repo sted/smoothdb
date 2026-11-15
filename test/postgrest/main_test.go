@@ -36,6 +36,7 @@ func suiteConfig() map[string]any {
 		"JWTSecret":                 "reallyreallyreallyreallyverysafe",
 		"AllowAnon":                 false,
 		"EnableAdminRoute":          true,
+		"AdminRoles":                []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 		"Logging.Level":             "info",
 		"Logging.FileLogging":       true,
 		"Logging.FilePath":          "../../smoothdb.log",

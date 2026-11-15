@@ -25,6 +25,8 @@
 * **Spaces in logic trees** — `and ( … )` and `or ( … )` with spaces before the parenthesis are accepted, as in PostgREST.
 * **Invalid paths** — a path with more segments than a table or `/rpc/name` answers 404 PGRST125, after the token check and with no connection.
 * **PGRST205 and PGRST202 after PostgreSQL** — smoothdb decides them only after PostgreSQL fails, so a table or function created after the schema cache load still works (PostgREST answers from its cache alone).
+* **AdminRoles** — only the roles in `AdminRoles` (`SMOOTHDB_ADMIN_ROLES`) may use the admin routes, `"*"` for every role; the default `[]` refuses all of them, and `SMOOTHDB_DEBUG` sets `["*"]`.
+* **One statement per admin DDL** — a raw SQL field of the admin API (view definition, column type or default, policy expression, function return type) with a second statement answers 400; before, the second statement ran and could switch role.
 * **System schemas are not exposed by default** — with no `Database.ExposedSchemas`, a Profile header that names `pg_*` or `information_schema` answers 406 PGRST106; before, `pg_catalog.query_to_xml` ran any SQL from a request.
 
 ## 0.12.0 - 2026-11-13

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sted/heligo"
+	"github.com/sted/smoothdb/authn"
 	"github.com/sted/smoothdb/database"
 )
 
@@ -15,8 +16,9 @@ func InitAdminRouter(apiHelper Helper) {
 	router := apiHelper.GetRouter()
 
 	adminURL := apiHelper.BaseAdminURL()
-	admin_db := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareStd())
-	admin_dbe := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareDBE())
+	gate := adminGate(apiHelper.AdminRoles())
+	admin_db := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareStd(), gate)
+	admin_dbe := router.Group(adminURL, adminRoutes, apiHelper.MiddlewareDBE(), gate)
 	// ROLES
 
 	roles := admin_db.Group("/roles")
@@ -628,4 +630,34 @@ func InitAdminRouter(apiHelper Helper) {
 		stats := apiHelper.SessionStatistics()
 		return heligo.WriteJSON(w, http.StatusOK, stats)
 	})
+}
+
+// adminGate admits to the admin routes only the request roles in roles; "*"
+// admits every role and an empty list none. The PostgreSQL privileges of a
+// role are no limit here: SQL that the admin API stores (a function body, a
+// view, a default, a policy) can call set_config('role', ...) when it runs,
+// and PostgreSQL checks that switch against the authenticator. A refused
+// request answers before any SQL: 401 when it is anonymous, 403 otherwise.
+func adminGate(roles []string) heligo.Middleware {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		allowed[strings.TrimSpace(r)] = struct{}{}
+	}
+	_, everyone := allowed["*"]
+	return func(next heligo.Handler) heligo.Handler {
+		return func(c context.Context, w http.ResponseWriter, r heligo.Request) (int, error) {
+			role := database.GetDbRole(c)
+			if _, ok := allowed[role]; everyone || ok {
+				return next(c, w, r)
+			}
+			status := http.StatusForbidden
+			if !authn.IsAuthenticated(w) {
+				status = http.StatusUnauthorized
+				w.Header().Set("WWW-Authenticate", "Bearer")
+			}
+			return writeErrorBody(w, status, SmoothError{Code: "42501",
+				Message: "role \"" + role + "\" may not use the admin API",
+				Hint:    "Add the role to AdminRoles"})
+		}
+	}
 }

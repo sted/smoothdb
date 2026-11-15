@@ -250,6 +250,10 @@ func (s *Server) BaseAdminURL() string {
 	return s.Config.BaseAdminURL
 }
 
+func (s *Server) AdminRoles() []string {
+	return s.Config.AdminRoles
+}
+
 func (s *Server) BaseAPIURL() string {
 	return s.Config.BaseAPIURL
 }

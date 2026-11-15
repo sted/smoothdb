@@ -41,6 +41,40 @@ func TestDebugModeGeneratesJWTSecret(t *testing.T) {
 	}
 }
 
+// AdminRoles is empty by default, which refuses the admin routes to every
+// role. Debug mode opens them to every role unless AdminRoles names some,
+// and SMOOTHDB_ADMIN_ROLES sets the list.
+func TestAdminRolesDefaults(t *testing.T) {
+	t.Setenv("SMOOTHDB_DEBUG", "")
+	t.Setenv("SMOOTHDB_ADMIN_ROLES", "")
+	cfg := defaultConfig()
+	getEnvironment(cfg)
+	if len(cfg.AdminRoles) != 0 {
+		t.Errorf("default AdminRoles %v, want empty", cfg.AdminRoles)
+	}
+
+	t.Setenv("SMOOTHDB_DEBUG", "true")
+	cfg = defaultConfig()
+	getEnvironment(cfg)
+	if len(cfg.AdminRoles) != 1 || cfg.AdminRoles[0] != "*" {
+		t.Errorf("debug AdminRoles %v, want [*]", cfg.AdminRoles)
+	}
+	cfg = defaultConfig()
+	cfg.AdminRoles = []string{"collhub"}
+	getEnvironment(cfg)
+	if len(cfg.AdminRoles) != 1 || cfg.AdminRoles[0] != "collhub" {
+		t.Errorf("debug with AdminRoles [collhub]: %v, want [collhub]", cfg.AdminRoles)
+	}
+
+	t.Setenv("SMOOTHDB_DEBUG", "")
+	t.Setenv("SMOOTHDB_ADMIN_ROLES", "collhub,service_role")
+	cfg = defaultConfig()
+	getEnvironment(cfg)
+	if len(cfg.AdminRoles) != 2 || cfg.AdminRoles[0] != "collhub" || cfg.AdminRoles[1] != "service_role" {
+		t.Errorf("SMOOTHDB_ADMIN_ROLES: %v, want [collhub service_role]", cfg.AdminRoles)
+	}
+}
+
 // Verbose database errors (hint, detail) are a fingerprinting aid for an
 // attacker. The safe default is off; development opts in.
 func TestVerboseErrorsDefaultsToFalse(t *testing.T) {

@@ -117,7 +117,7 @@ func CreateColumn(ctx context.Context, column *Column) (*Column, error) {
 
 	create := "ALTER TABLE " + ftablename + " ADD COLUMN "
 	composeColumnSQL(&create, column)
-	_, err := conn.Exec(ctx, create)
+	err := execDDL(ctx, conn, create)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 		// TYPE
 		if column.Type != nil {
 			alter = prefix + quote(name) + " TYPE " + *column.Type
-			_, err = conn.Exec(ctx, alter)
+			err = execDDL(ctx, conn, alter)
 			if err != nil {
 				return err
 			}
@@ -171,7 +171,7 @@ func UpdateColumn(ctx context.Context, tablename string, name string, column *Co
 			} else {
 				alter = prefix + quote(name) + " DROP DEFAULT"
 			}
-			_, err = conn.Exec(ctx, alter)
+			err = execDDL(ctx, conn, alter)
 			if err != nil {
 				return err
 			}

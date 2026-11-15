@@ -97,8 +97,8 @@ func composeRoles(roles []string) string {
 // buildCreatePolicy writes CREATE POLICY on ftablename, the quoted and
 // qualified table name. USING and WITH CHECK are SQL expressions by design
 // (like PostgREST RLS policies) and cannot be parameterized: CreatePolicy is
-// only reachable via the admin API, which requires EnableAdminRoute and
-// authentication.
+// only reachable via the admin API, which requires EnableAdminRoute and a
+// role in AdminRoles. execDDL keeps them to one statement.
 func buildCreatePolicy(ftablename string, policy *Policy) (string, error) {
 	command := strings.ToUpper(strings.TrimSpace(policy.Command))
 	if command == "" {
@@ -132,7 +132,7 @@ func CreatePolicy(ctx context.Context, policy *Policy) (*Policy, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := conn.Exec(ctx, create); err != nil {
+	if err := execDDL(ctx, conn, create); err != nil {
 		return nil, err
 	}
 	return policy, nil
@@ -156,7 +156,7 @@ func UpdatePolicy(ctx context.Context, tablename string, name string, policy *Po
 			clauses += " WITH CHECK (" + *policy.Check + ")"
 		}
 		if clauses != "" {
-			if _, err := conn.Exec(ctx, alter+clauses); err != nil {
+			if err := execDDL(ctx, conn, alter+clauses); err != nil {
 				return err
 			}
 		}

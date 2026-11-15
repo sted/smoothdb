@@ -91,7 +91,7 @@ func CreateView(ctx context.Context, view *View) (*View, error) {
 	}
 	fviewname := composeName(ctx, view.Schema, view.Name)
 	create += "VIEW " + fviewname + " AS " + view.Definition
-	_, err := conn.Exec(ctx, create)
+	err := execDDL(ctx, conn, create)
 	if err != nil {
 		return nil, err
 	}

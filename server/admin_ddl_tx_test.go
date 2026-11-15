@@ -112,6 +112,7 @@ func TestAdminDDLFollowsTheRequestTransaction(t *testing.T) {
 				"Database.AnonRole":        "postgres",
 				"Database.TransactionMode": m.tx,
 				"EnableAdminRoute":         true,
+				"AdminRoles":               []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 			})
 			done := startTestServer(t, s)
 			defer func() {

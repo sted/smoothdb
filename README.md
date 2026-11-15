@@ -684,9 +684,12 @@ Enable it with `EnableAdminUI`. The Admin area also needs `EnableAdminRoute`:
 ```json
 {
 	"EnableAdminRoute": true,
+	"AdminRoles": ["admin"],
 	"EnableAdminUI": true
 }
 ```
+
+Only the roles in `AdminRoles` may use the admin routes; `"*"` admits every role, and an empty list refuses all of them. The PostgreSQL privileges of a role are not enough of a limit: SQL that the admin API stores (a function body, a view, a column default, a policy) can switch to any role granted to the authenticator when it runs. Give `AdminRoles` only to roles you trust with the authenticator.
 
 The UI signs in with `/token` (`LoginMode` `"db"` or `"gotrue"`). With `AllowAnon` and a `Database.AnonRole` it also works without a login.
 
@@ -758,6 +761,7 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | SessionMode | Session mode: "none" (no cache), "claims" (cache the verified claims); "role" is a deprecated alias of "claims" | "claims" |
 | MaxSessions | Maximum number of cached sessions; beyond it a request runs without a session | 10000 |
 | EnableAdminRoute | Enable administration of databases and tables | false |
+| AdminRoles | Roles that may use the admin routes; `"*"` for every role. A refused request answers 403, or 401 when anonymous | [] for none |
 | EnableAdminUI | Enable Admin dashboard | false |
 | EnableAPIRoute | Enable API access | true |
 | BaseAPIURL | Base URL for the API | "/api" |
@@ -818,9 +822,10 @@ The configuration file *config.jsonc* (JSON with Comments) is created automatica
 | SMOOTHDB_AUTH_URL | AuthURL |
 | SMOOTHDB_ALLOW_ANON | AllowAnon |
 | SMOOTHDB_ENABLE_ADMIN_ROUTE | EnableAdminRoute | 
+| SMOOTHDB_ADMIN_ROLES | AdminRoles (comma-separated list) |
 | SMOOTHDB_CORS_ALLOWED_ORIGINS | CORSAllowedOrigins (comma-separated list) |
 | SMOOTHDB_CORS_ALLOW_CREDENTIALS | CORSAllowCredentials (true/false) |
-| SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", EnableAdminRoute: true, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
+| SMOOTHDB_DEBUG | true forces: AllowAnon: true, LoginMode: "db", EnableAdminRoute: true, AdminRoles: ["*"] when empty, EnableAdminUI: "true", Logging.Level: "trace", Logging.StdOut: true, EnableDebugRoute: true |
 	
 ### Command line parameters
 

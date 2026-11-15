@@ -20,6 +20,7 @@ type Helper interface {
 	MiddlewareWithDbName(string) heligo.Middleware
 
 	BaseAdminURL() string
+	AdminRoles() []string
 	BaseAPIURL() string
 	HasShortAPIURL() bool
 	IsDraining() bool

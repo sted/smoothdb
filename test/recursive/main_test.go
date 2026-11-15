@@ -22,6 +22,7 @@ func TestMain(m *testing.M) {
 		"VerboseErrors":       true, // the suites assert hint/details in error bodies
 		"AllowAnon":           false,
 		"EnableAdminRoute":    true,
+		"AdminRoles":          []string{"*"}, // the gate has its own test (server/admin_security_test.go)
 		"LoginMode":           "none",
 		"JWTSecret":           "smoothdb-test-suite-secret", // CI has no config.jsonc: an empty secret now refuses every token
 		"Database.URL":        "postgresql://postgres:postgres@localhost:5432/postgres",
